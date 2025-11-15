@@ -1,0 +1,3072 @@
+'use client';
+
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+    Route,
+    Plus,
+    Search,
+    TruckIcon,
+    Package,
+    Eye,
+    Edit,
+    ArrowUpDown,
+    ArrowUp,
+    ArrowDown,
+    ChevronDown,
+    Play,
+    MapPin,
+    Printer,
+    DollarSign,
+    Trash2
+} from 'lucide-react';
+import Button from '@/components/ui/Button';
+import Badge from '@/components/ui/Badge';
+import Modal from '@/components/ui/Modal';
+import OptimizationSidebar, { OptimizationSettings } from '@/components/vrp/OptimizationSidebar';
+import RouteMap from '@/components/maps/RouteMap';
+import PrintRoutePlanModal from '@/components/receiving/PrintRoutePlanModal';
+import EditShippingCostModal from '@/components/receiving/EditShippingCostModal';
+import TransportContractModal from '@/components/receiving/TransportContractModal';
+import DraggableStopList from '@/components/receiving/DraggableStopList';
+import EditorDraftOrdersPanel from '@/components/receiving/EditorDraftOrdersPanel';
+// import { CreditCard } from 'lucide-react'; // ลบออกเนื่องจากไม่ได้ใช้งาน
+
+// --- Interfaces และ Types ย้ายมาไว้ข้างนอก ---
+
+interface RoutePlan {
+    plan_id: number;
+    plan_code: string;
+    plan_name?: string;
+    plan_date: string;
+    warehouse_id: string;
+    warehouse?: { warehouse_name?: string };
+    status: string;
+    total_trips?: number;
+    total_distance_km?: number;
+    total_drive_minutes?: number;
+}
+
+interface DraftOrder {
+    order_id: number;
+    order_no: string;
+    shop_name?: string;
+    province?: string;
+    total_weight?: number;
+    phone?: string;
+    address?: string;
+    customer_latitude?: number;
+    customer_longitude?: number;
+    customer_id?: string;
+    customer?: {
+        customer_id: string;
+        customer_name?: string;
+        customer_code?: string;
+        latitude?: number;
+        longitude?: number;
+    };
+}
+
+interface StopOrderDetail {
+    order_id: number | null;
+    order_no?: string | null;
+    customer_name?: string | null;
+    allocated_weight_kg?: number | null;
+    total_order_weight_kg?: number | null;
+}
+
+interface EditorStop {
+    stop_id: number;
+    sequence_no: number;
+    stop_name: string;
+    address?: string | null;
+    load_weight_kg?: number | null;
+    load_volume_cbm?: number | null;
+    load_pallets?: number | null;
+    load_units?: number | null;
+    service_duration_minutes?: number | null;
+    manual_override?: boolean;
+    override_note?: string | null;
+    split_from_stop_id?: number | null;
+    order_id?: number | null;
+    order_no?: string | null;
+    order_ids?: number[];
+    orders?: StopOrderDetail[];
+    latitude?: number | null;
+    longitude?: number | null;
+    notes?: string | null;
+    tags?: {
+        order_ids?: number[];
+        customer_id?: string;
+    };
+}
+
+interface EditorTrip {
+    trip_id: number;
+    trip_number?: number;
+    trip_sequence: number;
+    trip_code: string;
+    trip_status: string;
+    vehicle_id?: string | number | null;
+    driver_id?: string | number | null;
+    vehicle_label?: string | null;
+    driver_label?: string | null;
+    vehicle_name?: string | null;
+    driver_name?: string | null;
+    total_distance_km?: number | null;
+    total_drive_minutes?: number | null;
+    total_service_minutes?: number | null;
+    total_weight_kg?: number | null;
+    total_volume_cbm?: number | null;
+    total_stops?: number | null;
+    manual_override?: boolean;
+    is_overweight?: boolean;
+    stops: EditorStop[];
+}
+
+interface SplitItemFormPayload {
+    orderItemId: number;
+    moveWeightKg: number;
+    moveQuantity?: number | null;
+    moveVolumeCbm?: number | null;
+    movePallets?: number | null;
+}
+
+interface SplitFormPayload {
+    stopId: number;
+    targetTripId?: number | null;
+    newTrip?: {
+        trip_name?: string | null;
+    };
+    items: SplitItemFormPayload[];
+    serviceMinutes?: number | null;
+    note?: string | null;
+}
+
+// --- Helper Components ย้ายมาไว้ข้างนอก ---
+
+interface MetricCardProps {
+    title: string;
+    value: number;
+    icon: React.ReactNode;
+    iconBg: string;
+}
+
+function MetricCard({ title, value, icon, iconBg }: MetricCardProps) {
+    return (
+        <div className="bg-white/90 backdrop-blur-sm border border-gray-200 rounded-lg p-3">
+            <div className="flex items-center justify-between">
+                <div>
+                    <p className="text-xs text-gray-600">{title}</p>
+                    <p className="text-xl font-bold text-gray-900">{value}</p>
+                </div>
+                <div className={`${iconBg} rounded-full p-2`}>{icon}</div>
+            </div>
+        </div>
+    );
+}
+
+interface SplitStopModalProps {
+    isOpen: boolean;
+    stop: EditorStop | null;
+    orderId?: number | null;
+    trips: EditorTrip[];
+    currentTripId: number | null;
+    onClose: () => void;
+    onSubmit: (payload: SplitFormPayload) => void;
+}
+
+interface SplitModalItem {
+    orderItemId: number;
+    skuId: string | null;
+    skuName: string | null;
+    availableWeight: number;
+    availableQty: number;
+    unitWeight: number | null;
+    moveWeight: string;
+    moveQty: string;
+}
+
+function SplitStopModal({ isOpen, stop, orderId, trips, currentTripId, onClose, onSubmit }: SplitStopModalProps) {
+    const [loading, setLoading] = useState(false);
+    const [fetchError, setFetchError] = useState<string | null>(null);
+    const [orderInfo, setOrderInfo] = useState<any | null>(null);
+    const [items, setItems] = useState<SplitModalItem[]>([]);
+    const [targetTripId, setTargetTripId] = useState<number | '' | 'new'>('');
+    const [serviceMinutes, setServiceMinutes] = useState('');
+    const [note, setNote] = useState('');
+    const [formError, setFormError] = useState<string | null>(null);
+    const [newTripName, setNewTripName] = useState('');
+
+    useEffect(() => {
+        if (!isOpen) {
+            setOrderInfo(null);
+            setItems([]);
+            setFetchError(null);
+            setFormError(null);
+            setServiceMinutes('');
+            setNote('');
+            setNewTripName('');
+            return;
+        }
+
+        if (stop) {
+            const load = async () => {
+                try {
+                    setLoading(true);
+                    setFetchError(null);
+                    const url = orderId
+                        ? `/api/route-plans/stops/${stop.stop_id}/order?order_id=${orderId}`
+                        : `/api/route-plans/stops/${stop.stop_id}/order`;
+                    const res = await fetch(url);
+                    const { data, error } = await res.json();
+                    if (error) {
+                        setFetchError(error);
+                        setOrderInfo(null);
+                        setItems([]);
+                        return;
+                    }
+
+                    const fetchedItems: SplitModalItem[] = (data?.items || []).map((item: any) => ({
+                        orderItemId: item.order_item_id,
+                        skuId: item.sku_id,
+                        skuName: item.sku_name,
+                        availableWeight: Number(item.available_weight ?? 0),
+                        availableQty: Number(item.available_qty ?? 0),
+                        unitWeight: item.unit_weight ?? null,
+                        moveWeight: '',
+                        moveQty: ''
+                    }));
+
+                    setOrderInfo(data);
+                    setItems(fetchedItems);
+                    setServiceMinutes(stop.service_duration_minutes != null ? String(stop.service_duration_minutes) : '');
+                    setFormError(null);
+                } catch (error) {
+                    console.error('Error loading order details:', error);
+                    setFetchError('ไม่สามารถโหลดรายละเอียดสินค้าได้');
+                    setOrderInfo(null);
+                    setItems([]);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            load();
+        }
+    }, [isOpen, stop, orderId]);
+
+    useEffect(() => {
+        if (isOpen) {
+            const alternativeTrip = trips.find(trip => trip.trip_id !== currentTripId);
+            setTargetTripId(alternativeTrip ? alternativeTrip.trip_id : 'new');
+        }
+    }, [isOpen, trips, currentTripId]);
+
+    const handleWeightChange = (orderItemId: number, value: string) => {
+        setFormError(null);
+        setItems(prev =>
+            prev.map(item => {
+                if (item.orderItemId !== orderItemId) return item;
+                const numeric = value === '' ? 0 : Number(value);
+                const clamped = Math.max(0, Math.min(item.availableWeight, Number.isFinite(numeric) ? numeric : 0));
+                const unitWeight = item.unitWeight && item.unitWeight > 0 ? item.unitWeight : null;
+                const computedQty = unitWeight ? clamped / unitWeight : undefined;
+                return {
+                    ...item,
+                    moveWeight: clamped === 0 && value === '' ? '' : clamped.toString(),
+                    moveQty: unitWeight && computedQty !== undefined ? computedQty.toFixed(3) : item.moveQty
+                };
+            })
+        );
+    };
+
+    const handleQtyChange = (orderItemId: number, value: string) => {
+        setFormError(null);
+        setItems(prev =>
+            prev.map(item => {
+                if (item.orderItemId !== orderItemId) return item;
+                const numeric = value === '' ? 0 : Number(value);
+                const clampedQty = Math.max(0, Number.isFinite(numeric) ? numeric : 0);
+                const unitWeight = item.unitWeight && item.unitWeight > 0 ? item.unitWeight : null;
+                let weight = unitWeight ? clampedQty * unitWeight : Number(item.moveWeight || 0);
+                if (weight > item.availableWeight) {
+                    weight = item.availableWeight;
+                }
+                const adjustedQty = unitWeight ? weight / unitWeight : clampedQty;
+                return {
+                    ...item,
+                    moveQty: adjustedQty === 0 && value === '' ? '' : adjustedQty.toFixed(3),
+                    moveWeight: weight.toFixed(3)
+                };
+            })
+        );
+    };
+
+    const handleFillAll = (orderItemId: number) => {
+        setFormError(null);
+        setItems(prev =>
+            prev.map(item => {
+                if (item.orderItemId !== orderItemId) return item;
+                const weight = Number(item.availableWeight.toFixed(3));
+                const qtyString =
+                    item.unitWeight && item.unitWeight > 0
+                        ? (weight / item.unitWeight).toFixed(3)
+                        : item.availableQty.toFixed(3);
+                return {
+                    ...item,
+                    moveWeight: weight.toString(),
+                    moveQty: qtyString
+                };
+            })
+        );
+    };
+
+    const totalSelectedWeight = items.reduce((sum, item) => sum + (item.moveWeight ? Number(item.moveWeight) : 0), 0);
+
+    const handleSubmit = () => {
+        if (!stop) return;
+        if (!targetTripId) {
+            setFormError('กรุณาเลือกเที่ยวปลายทางที่ต้องการย้าย');
+            return;
+        }
+
+        const selectedItems = items
+            .filter(item => item.moveWeight && Number(item.moveWeight) > 0)
+            .map(item => ({
+                orderItemId: item.orderItemId,
+                moveWeightKg: Number(item.moveWeight),
+                moveQuantity: item.moveQty ? Number(item.moveQty) : null
+            }));
+
+        if (selectedItems.length === 0) {
+            setFormError('กรุณาเลือกสินค้าที่ต้องการย้ายอย่างน้อย 1 รายการ');
+            return;
+        }
+
+        if (targetTripId !== 'new' && targetTripId === currentTripId) {
+            setFormError('กรุณาเลือกเที่ยวปลายทางที่แตกต่างจากเที่ยวปัจจุบัน');
+            return;
+        }
+
+        const stopWeight = Number(stop.load_weight_kg ?? 0);
+        if (totalSelectedWeight >= stopWeight) {
+            setFormError('น้ำหนักที่ย้ายต้องน้อยกว่าน้ำหนักทั้งหมดของออเดอร์');
+            return;
+        }
+
+        const isNewTrip = targetTripId === 'new';
+
+        onSubmit({
+            stopId: stop.stop_id,
+            targetTripId: isNewTrip ? undefined : Number(targetTripId),
+            newTrip: isNewTrip
+                ? {
+                    trip_name: newTripName.trim() || null
+                }
+                : undefined,
+            items: selectedItems,
+            serviceMinutes: serviceMinutes.trim() === '' ? null : Number(serviceMinutes),
+            note: note.trim() || null
+        });
+    };
+
+    return (
+        <Modal isOpen={isOpen} onClose={onClose} title="แบ่งออเดอร์ไปยังคันอื่น" size="lg">
+            {!stop ? (
+                <div className="py-6 text-center text-gray-500">กรุณาเลือกจุดที่ต้องการแบ่ง</div>
+            ) : loading ? (
+                <div className="py-10 text-center text-gray-500">กำลังโหลดรายละเอียดสินค้า...</div>
+            ) : fetchError ? (
+                <div className="py-6 text-center text-red-500">{fetchError}</div>
+            ) : (
+                <div className="space-y-4">
+                    <div className="bg-gray-50 border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-700">
+                        <div className="font-semibold text-gray-800">{stop.stop_name}</div>
+                        <div className="text-xs text-gray-500">
+                            น้ำหนักปัจจุบัน: {Number(stop.load_weight_kg ?? 0).toFixed(2)} kg
+                        </div>
+                        {orderInfo?.order && (
+                            <div className="text-xs text-gray-500 mt-1">
+                                เลขที่ออเดอร์: {orderInfo.order.order_no || orderInfo.order_id}
+                            </div>
+                        )}
+                    </div>
+
+                    {formError && (
+                        <div className="text-sm text-red-500 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+                            {formError}
+                        </div>
+                    )}
+
+                    <div className="overflow-x-auto border border-gray-200 rounded-lg">
+                        <table className="w-full text-xs">
+                            <thead className="bg-gray-100 text-gray-600">
+                                <tr>
+                                    <th className="px-3 py-2 text-left">SKU</th>
+                                    <th className="px-3 py-2 text-left">รายการ</th>
+                                    <th className="px-3 py-2 text-right">คงเหลือ (kg)</th>
+                                    <th className="px-3 py-2 text-right">คงเหลือ (หน่วย)</th>
+                                    <th className="px-3 py-2 text-right">ย้าย (kg)</th>
+                                    <th className="px-3 py-2 text-right">ย้าย (หน่วย)</th>
+                                    <th className="px-3 py-2"></th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-gray-100">
+                                {items.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={7} className="px-3 py-4 text-center text-gray-500">
+                                            ไม่มีข้อมูลสินค้าในออเดอร์นี้
+                                        </td>
+                                    </tr>
+                                ) : (
+                                    items.map(item => (
+                                        <tr key={item.orderItemId}>
+                                            <td className="px-3 py-2 text-gray-700">{item.skuId || '-'}</td>
+                                            <td className="px-3 py-2 text-gray-700">{item.skuName || '-'}</td>
+                                            <td className="px-3 py-2 text-right text-gray-700">{item.availableWeight.toFixed(2)}</td>
+                                            <td className="px-3 py-2 text-right text-gray-700">{item.availableQty.toFixed(2)}</td>
+                                            <td className="px-3 py-2 text-right">
+                                                <input
+                                                    type="number"
+                                                    min={0}
+                                                    max={item.availableWeight}
+                                                    step="0.01"
+                                                    value={item.moveWeight}
+                                                    onChange={event => handleWeightChange(item.orderItemId, event.target.value)}
+                                                    className="w-24 border border-gray-300 rounded-md px-2 py-1 text-right"
+                                                />
+                                            </td>
+                                            <td className="px-3 py-2 text-right">
+                                                <input
+                                                    type="number"
+                                                    min={0}
+                                                    step="0.01"
+                                                    value={item.moveQty}
+                                                    onChange={event => handleQtyChange(item.orderItemId, event.target.value)}
+                                                    className="w-20 border border-gray-300 rounded-md px-2 py-1 text-right"
+                                                    disabled={!item.unitWeight}
+                                                />
+                                            </td>
+                                            <td className="px-3 py-2 text-right">
+                                                <button
+                                                    className="text-xs text-blue-600 hover:underline"
+                                                    onClick={() => handleFillAll(item.orderItemId)}
+                                                >
+                                                    ทั้งหมด
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div className="text-sm text-gray-700">
+                        น้ำหนักที่จะย้ายรวม: <span className="font-semibold">{totalSelectedWeight.toFixed(2)} kg</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                        <label className="flex flex-col gap-1">
+                            <span className="text-xs text-gray-600">ย้ายไปเที่ยว</span>
+                            <select
+                                className="border border-gray-300 rounded-md px-2 py-1"
+                                value={targetTripId}
+                                onChange={event => {
+                                    setFormError(null);
+                                    const value = event.target.value;
+                                    if (value === 'new') {
+                                        setTargetTripId('new');
+                                    } else if (value === '') {
+                                        setTargetTripId('');
+                                    } else {
+                                        setTargetTripId(Number(value));
+                                    }
+                                }}
+                            >
+                                <option value="">เลือกเที่ยว</option>
+                                <option value="new">สร้างเที่ยวใหม่</option>
+                                {trips.map(trip => (
+                                    <option key={trip.trip_id} value={trip.trip_id} disabled={trip.trip_id === currentTripId}>
+                                        เที่ยวที่ {trip.trip_number}
+                                    </option>
+                                ))}
+                            </select>
+                        </label>
+                        {targetTripId === 'new' && (
+                            <label className="flex flex-col gap-1">
+                                <span className="text-xs text-gray-600">ชื่อเที่ยวใหม่ (ไม่บังคับ)</span>
+                                <input
+                                    type="text"
+                                    value={newTripName}
+                                    onChange={event => setNewTripName(event.target.value)}
+                                    className="border border-gray-300 rounded-md px-2 py-1"
+                                    placeholder="ระบุชื่อเที่ยว..."
+                                />
+                            </label>
+                        )}
+                        <label className="flex flex-col gap-1">
+                            <span className="text-xs text-gray-600">เวลาบริการ (นาที)</span>
+                            <input
+                                type="number"
+                                min={0}
+                                step="1"
+                                value={serviceMinutes}
+                                onChange={event => setServiceMinutes(event.target.value)}
+                                className="border border-gray-300 rounded-md px-2 py-1"
+                            />
+                        </label>
+                    </div>
+
+                    <label className="flex flex-col gap-1 text-sm">
+                        <span className="text-xs text-gray-600">หมายเหตุ (ถ้ามี)</span>
+                        <textarea
+                            className="border border-gray-300 rounded-md px-2 py-1"
+                            rows={2}
+                            value={note}
+                            onChange={event => setNote(event.target.value)}
+                        />
+                    </label>
+
+                    <div className="flex justify-end gap-2">
+                        <Button variant="outline" onClick={onClose}>
+                            ยกเลิก
+                        </Button>
+                        <Button variant="primary" onClick={handleSubmit} disabled={totalSelectedWeight <= 0}>
+                            แยกออเดอร์
+                        </Button>
+                    </div>
+                </div>
+            )}
+        </Modal>
+    );
+}
+
+// --- Main Page Component ---
+
+const RoutesPage = () => {
+
+    const VRP_SETTINGS_STORAGE_KEY = 'vrp-settings';
+
+    const [searchTerm, setSearchTerm] = useState('');
+
+    const [selectedStatus, setSelectedStatus] = useState<string>('all');
+
+    const [startDate, setStartDate] = useState('');
+
+    const [endDate, setEndDate] = useState('');
+
+    // แก้ไข: ใช้ `keyof` เพื่อความปลอดภัยของ Type
+
+    const [sortField, setSortField] = useState<keyof RoutePlan | ''>( '');
+
+    const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+
+
+    const [routePlans, setRoutePlans] = useState<RoutePlan[]>([]);
+
+    const [draftOrders, setDraftOrders] = useState<DraftOrder[]>([]);
+
+    const [selectedOrders, setSelectedOrders] = useState<Set<number>>(new Set());
+
+    const [loading, setLoading] = useState(true);
+
+    const [showCreateModal, setShowCreateModal] = useState(false);
+
+    const [warehouses, setWarehouses] = useState<any[]>([]);
+
+
+
+    const [planForm, setPlanForm] = useState({
+
+        planName: '',
+
+        planDate: new Date().toISOString().split('T')[0],
+
+        warehouseId: ''
+
+    });
+
+
+
+    const [vrpSettings, setVrpSettings] = useState<OptimizationSettings>({
+
+        vehicleCapacityKg: 1000,
+
+        warehouseLat: 13.5838323,
+
+        warehouseLng: 100.7576916,
+
+        maxWorkingHours: 8,
+
+        startTime: '08:00',
+
+        endTime: '17:00',
+
+        maxStops: 20,
+
+        serviceTime: 15,
+
+        zoneMethod: 'kmeans',
+
+        numZones: 0,
+
+        maxStoresPerZone: 10,
+
+        consolidationEnabled: true,
+
+        distanceThreshold: 150,
+
+        detourFactor: 1.5,
+
+        routingAlgorithm: 'insertion',
+
+        localSearchMethod: '2opt',
+
+        stopOrderingMethod: 'optimized',
+
+        maxVehicles: 0,
+
+        enforceVehicleLimit: false,
+
+        avgSpeedKmh: 40,
+
+        respectTimeWindows: 'flexible',
+
+        ignoreSmallDeliveries: false,
+
+        smallDeliveryWeightThreshold: 5,
+
+        useMapboxApi: true,
+
+        costPerKm: 5,
+
+        costPerVehicle: 500,
+
+        driverHourlyRate: 100,
+
+        maxComputationTime: 60,
+
+        optimizationCriteria: 'distance'
+
+    });
+
+
+
+    const [statusMessage, setStatusMessage] = useState<string>('');
+    const [isSavingSettings, setIsSavingSettings] = useState(false);
+
+
+
+    useEffect(() => {
+
+        try {
+
+            const savedSettings = localStorage.getItem(VRP_SETTINGS_STORAGE_KEY);
+
+            if (savedSettings) {
+
+                const parsedSettings = JSON.parse(savedSettings);
+
+                setVrpSettings(prev => ({ ...prev, ...parsedSettings }));
+
+                setStatusMessage('โหลดการตั้งค่า VRP ที่บันทึกไว้ล่าสุด');
+
+                setTimeout(() => setStatusMessage(''), 3000);
+
+            }
+
+        } catch (error) {
+
+            console.error("Failed to load VRP settings from localStorage", error);
+
+        }
+
+    }, []);
+    const [isOptimizing, setIsOptimizing] = useState<boolean>(false);
+    const optimizeLockRef = React.useRef<boolean>(false);
+    const [isPreviewModalOpen, setIsPreviewModalOpen] = useState(false);
+    const [previewLoading, setPreviewLoading] = useState(false);
+    const [previewPlan, setPreviewPlan] = useState<any | null>(null);
+    const [previewTrips, setPreviewTrips] = useState<any[]>([]);
+    const [previewError, setPreviewError] = useState<string | null>(null);
+    const [isEditorOpen, setIsEditorOpen] = useState(false);
+    const [editorLoading, setEditorLoading] = useState(false);
+    const [editorError, setEditorError] = useState<string | null>(null);
+    const [editorPlanId, setEditorPlanId] = useState<number | null>(null);
+    const [editorWarehouse, setEditorWarehouse] =
+        useState<{ latitude: number; longitude: number; name?: string | null } | null>(null);
+    const [editorPlan, setEditorPlan] = useState<any | null>(null);
+    const [editorTrips, setEditorTrips] = useState<EditorTrip[]>([]);
+    const [selectedEditorTripId, setSelectedEditorTripId] = useState<number | null>(null);
+    const [selectedEditorStopId, setSelectedEditorStopId] = useState<number | null>(null);
+    const [selectedEditorOrderId, setSelectedEditorOrderId] = useState<number | null>(null);
+    const [isSplitModalOpen, setIsSplitModalOpen] = useState(false);
+    const [transferTripId, setTransferTripId] = useState<number | null>(null);
+    const [editingStatusPlanId, setEditingStatusPlanId] = useState<number | null>(null);
+    const [showPrintModal, setShowPrintModal] = useState(false);
+    const [selectedPlanIdForPrint, setSelectedPlanIdForPrint] = useState<number | null>(null);
+
+    const [showEditShippingCostModal, setShowEditShippingCostModal] = useState(false);
+    const [selectedPlanIdForShippingCost, setSelectedPlanIdForShippingCost] = useState<number | null>(null);
+    
+    const [showTransportContractModal, setShowTransportContractModal] = useState(false);
+    const [selectedPreviewTripIndex, setSelectedPreviewTripIndex] = useState<number | null>(null);
+    const [selectedPreviewTripIndices, setSelectedPreviewTripIndices] = useState<number[]>([]);
+    const [editorDraftOrders, setEditorDraftOrders] = useState<DraftOrder[]>([]);
+    const [editorDraftOrdersLoading, setEditorDraftOrdersLoading] = useState(false);
+
+    const fetchDraftOrders = useCallback(async (warehouseId: string, planDate: string) => {
+        try {
+            const res = await fetch(`/api/route-plans/draft-orders?warehouseId=${warehouseId}&planDate=${planDate}`);
+            const { data } = await res.json();
+            setDraftOrders(data || []);
+        } catch (error) {
+            console.error('Error fetching draft orders:', error);
+        }
+    }, [setDraftOrders]);
+
+    const fetchWarehouses = useCallback(async () => {
+        try {
+            const res = await fetch('/api/master-warehouse');
+            const data = await res.json();
+            const list = Array.isArray(data) ? data : data?.data || [];
+            setWarehouses(list);
+
+            if (list.length > 0) {
+                const defaultWarehouse =
+                    list.find((w: any) => w.warehouse_id === 'สินค้าสำเร็จรูป' || w.warehouse_name?.includes('สินค้าสำเร็จรูป')) ||
+                    list[0];
+
+                setPlanForm(prev => {
+                    if (prev.warehouseId) return prev;
+                    return { ...prev, warehouseId: defaultWarehouse.warehouse_id };
+                });
+
+                setVrpSettings(prev => {
+                    if (!defaultWarehouse.latitude || !defaultWarehouse.longitude) return prev;
+                    return {
+                        ...prev,
+                        warehouseLat: Number(defaultWarehouse.latitude),
+                        warehouseLng: Number(defaultWarehouse.longitude)
+                    };
+                });
+
+                await fetchDraftOrders(defaultWarehouse.warehouse_id, planForm.planDate);
+            } else {
+                setDraftOrders([]);
+            }
+        } catch (error) {
+            console.error('Error fetching warehouses:', error);
+        }
+    }, [fetchDraftOrders, planForm.planDate]);
+
+    const fetchRoutePlans = useCallback(async () => {
+        try {
+            setLoading(true);
+            const res = await fetch('/api/route-plans');
+            const { data, error } = await res.json();
+            
+            console.log('Fetched route plans:', { data, error, count: data?.length });
+            
+            if (error) {
+                console.error('Error from API:', error);
+            }
+            
+            setRoutePlans(data || []);
+        } catch (error) {
+            console.error('Error fetching route plans:', error);
+        } finally {
+            setLoading(false);
+        }
+    }, []);
+
+    const fetchEditorData = useCallback(async (planId: number) => {
+        try {
+            setEditorLoading(true);
+            setEditorError(null);
+            const res = await fetch(`/api/route-plans/${planId}/editor`);
+            const { data, error } = await res.json();
+            if (error) {
+                setEditorError(error);
+                return;
+            }
+
+            setEditorPlan(data.plan);
+            setEditorWarehouse(data.warehouse);
+
+            // Fetch draft orders for this plan
+            if (data.plan?.warehouse_id && data.plan?.plan_date) {
+                setEditorDraftOrdersLoading(true);
+                try {
+                    const draftRes = await fetch(
+                        `/api/route-plans/draft-orders?warehouseId=${data.plan.warehouse_id}&planDate=${data.plan.plan_date}`
+                    );
+                    const { data: draftData } = await draftRes.json();
+                    setEditorDraftOrders(draftData || []);
+                } catch (err) {
+                    console.error('Error fetching editor draft orders:', err);
+                    setEditorDraftOrders([]);
+                } finally {
+                    setEditorDraftOrdersLoading(false);
+                }
+            }
+
+            const tripsFromApi: EditorTrip[] = (data.trips || []).map((trip: any, index: number) => {
+                const normalizedStops: EditorStop[] = (trip.stops || []).map((stop: any) => {
+                    const normalizedOrders: StopOrderDetail[] = Array.isArray(stop.orders)
+                        ? stop.orders
+                            .map((order: any) => {
+                                const orderId = Number(order.order_id);
+                                if (!Number.isFinite(orderId)) return null;
+                                const orderNo =
+                                    typeof order.order_no === 'string'
+                                        ? order.order_no
+                                        : order.order_no != null
+                                            ? String(order.order_no)
+                                            : null;
+                                const customerName =
+                                    typeof order.customer_name === 'string' ? order.customer_name : order.customer_name ?? null;
+                                const allocatedWeight =
+                                    order.allocated_weight_kg != null && Number.isFinite(Number(order.allocated_weight_kg))
+                                        ? Number(order.allocated_weight_kg)
+                                        : null;
+                                const totalOrderWeight =
+                                    order.total_order_weight_kg != null && Number.isFinite(Number(order.total_order_weight_kg))
+                                        ? Number(order.total_order_weight_kg)
+                                        : null;
+
+                                return {
+                                    order_id: orderId,
+                                    order_no: orderNo,
+                                    customer_name: customerName,
+                                    allocated_weight_kg: allocatedWeight,
+                                    total_order_weight_kg: totalOrderWeight
+                                } as StopOrderDetail;
+                            })
+                            .filter((order: StopOrderDetail | null): order is StopOrderDetail => order !== null)
+                        : [];
+
+                    return {
+                        ...stop,
+                        order_ids: normalizedOrders.map(order => order.order_id),
+                        orders: normalizedOrders
+                    };
+                });
+
+                const normalizedTrip: EditorTrip = {
+                    ...trip,
+                    trip_number: trip.trip_number ?? trip.trip_sequence ?? index + 1,
+                    stops: normalizedStops
+                };
+
+                return normalizedTrip;
+            });
+
+            setEditorTrips(tripsFromApi);
+
+            const firstTrip = tripsFromApi[0];
+            setSelectedEditorTripId(firstTrip?.trip_id ?? null);
+            setSelectedEditorStopId(firstTrip?.stops?.[0]?.stop_id ?? null);
+            setTransferTripId(firstTrip?.trip_id ?? null);
+        } catch (error) {
+            console.error('Error loading editor data:', error);
+            setEditorError('เกิดข้อผิดพลาดในการโหลดข้อมูล');
+        } finally {
+            setEditorLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        const loadInitialData = async () => {
+            await fetchWarehouses();
+            await fetchRoutePlans();
+        };
+
+        loadInitialData();
+    }, [fetchWarehouses, fetchRoutePlans]);
+
+    const handleSelectOrder = (orderId: number) => {
+        const next = new Set(selectedOrders);
+        if (next.has(orderId)) {
+            next.delete(orderId);
+        } else {
+            next.add(orderId);
+        }
+        setSelectedOrders(next);
+    };
+
+    const handleSelectAll = () => {
+        if (selectedOrders.size === draftOrders.length) {
+            setSelectedOrders(new Set());
+        } else {
+            setSelectedOrders(new Set(draftOrders.map(order => order.order_id)));
+        }
+    };
+
+    const handleWarehouseChange = (warehouseId: string) => {
+        setPlanForm(prev => ({ ...prev, warehouseId }));
+        const warehouse = warehouses.find(w => w.warehouse_id === warehouseId);
+        if (warehouse) {
+            setVrpSettings(prev => ({
+                ...prev,
+                warehouseLat: warehouse.latitude ? Number(warehouse.latitude) : prev.warehouseLat,
+                warehouseLng: warehouse.longitude ? Number(warehouse.longitude) : prev.warehouseLng
+            }));
+        }
+        fetchDraftOrders(warehouseId, planForm.planDate);
+    };
+
+    const handleCreatePlan = () => {
+        setShowCreateModal(true);
+    };
+
+    const handleOpenEditor = async (planId: number) => {
+        setEditorPlanId(planId);
+        setIsEditorOpen(true);
+        await fetchEditorData(planId);
+    };
+
+    const handleSaveSettings = useCallback(() => {
+        setIsSavingSettings(true);
+        try {
+            // Simulate a short delay for better UX
+            setTimeout(() => {
+                localStorage.setItem(VRP_SETTINGS_STORAGE_KEY, JSON.stringify(vrpSettings));
+                setStatusMessage('บันทึกการตั้งค่า VRP เรียบร้อยแล้ว');
+                setIsSavingSettings(false);
+                setTimeout(() => setStatusMessage(''), 3000);
+            }, 500);
+        } catch (error) {
+            console.error("Failed to save VRP settings to localStorage", error);
+            setStatusMessage('เกิดข้อผิดพลาดในการบันทึกการตั้งค่า');
+            setIsSavingSettings(false);
+        }
+    }, [vrpSettings]);
+
+    const handleOptimize = async () => {
+        if (optimizeLockRef.current) {
+            return;
+        }
+
+        try {
+            if (selectedOrders.size === 0) {
+                alert('กรุณาเลือกออเดอร์อย่างน้อย 1 รายการ');
+                return;
+            }
+
+            if (!planForm.warehouseId) {
+                alert('กรุณาเลือกคลังสินค้า');
+                return;
+            }
+
+            optimizeLockRef.current = true;
+            setShowCreateModal(false);
+            setIsOptimizing(true);
+            setStatusMessage('กำลังเตรียมข้อมูลเพื่อส่งไปคำนวณ...');
+
+            const planCode = `RCV-PLAN-${new Date().toISOString().split('T')[0].replace(/-/g, '')}-${Math.floor(
+                Math.random() * 1000
+            )
+                .toString()
+                .padStart(3, '0')}`;
+
+            const planPayload = {
+                plan_code: planCode,
+                plan_name: planForm.planName || `แผนรับสินค้า ${new Date().toLocaleDateString('th-TH')}`,
+                plan_date: planForm.planDate,
+                warehouse_id: planForm.warehouseId,
+                settings: {
+                    vehicleCapacityKg: vrpSettings.vehicleCapacityKg,
+                    maxWorkingHours: vrpSettings.maxWorkingHours,
+                    startTime: vrpSettings.startTime,
+                    endTime: vrpSettings.endTime,
+                    serviceTime: vrpSettings.serviceTime,
+                    avgSpeedKmh: vrpSettings.avgSpeedKmh,
+                    zoneMethod: vrpSettings.zoneMethod,
+                    numZones: vrpSettings.numZones,
+                    maxStoresPerZone: vrpSettings.maxStoresPerZone,
+                    consolidationEnabled: vrpSettings.consolidationEnabled,
+                    distanceThreshold: vrpSettings.distanceThreshold,
+                    detourFactor: vrpSettings.detourFactor,
+                    routingAlgorithm: vrpSettings.routingAlgorithm,
+                    localSearchMethod: vrpSettings.localSearchMethod,
+                    stopOrderingMethod: vrpSettings.stopOrderingMethod,
+                    maxVehicles: vrpSettings.maxVehicles,
+                    enforceVehicleLimit: vrpSettings.enforceVehicleLimit,
+                    respectTimeWindows: vrpSettings.respectTimeWindows,
+                    avgSpeed: vrpSettings.avgSpeedKmh,
+                    ignoreSmallDeliveries: vrpSettings.ignoreSmallDeliveries,
+                    smallDeliveryWeightThreshold: vrpSettings.smallDeliveryWeightThreshold,
+                    useMapboxApi: vrpSettings.useMapboxApi,
+                    costPerKm: vrpSettings.costPerKm,
+                    costPerVehicle: vrpSettings.costPerVehicle,
+                    driverHourlyRate: vrpSettings.driverHourlyRate,
+                    maxComputationTime: vrpSettings.maxComputationTime,
+                    warehouseLat: vrpSettings.warehouseLat,
+                    warehouseLng: vrpSettings.warehouseLng,
+                    warehouseName:
+                        warehouses.find(w => w.warehouse_id === planForm.warehouseId)?.warehouse_name || planForm.warehouseId
+                },
+                status: 'optimizing'
+            };
+
+            setStatusMessage('กำลังสร้างแผนและบันทึกข้อมูล...');
+            const createRes = await fetch('/api/route-plans', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(planPayload)
+            });
+
+            const { data: createdPlan, error: createError } = await createRes.json();
+            if (createError || !createdPlan) {
+                throw new Error(createError || 'ไม่สามารถสร้างแผนเส้นทางได้');
+            }
+
+            const selectedOrderData = draftOrders.filter(o => selectedOrders.has(o.order_id));
+            const inputsPayload: any[] = selectedOrderData.map((order: DraftOrder) => ({
+                plan_id: createdPlan.plan_id,
+                order_id: order.order_id,
+                stop_name: order.customer?.customer_name || order.shop_name || order.customer_id,
+                contact_phone: order.phone,
+                address: order.address || order.province,
+                latitude: order.customer?.latitude,
+                longitude: order.customer?.longitude,
+                priority: 50,
+                service_duration_minutes: vrpSettings.serviceTime,
+                is_active: true,
+                demand_weight_kg: Number(order.total_weight || 0),
+                demand_units: 1
+            }));
+
+            await fetch('/api/route-plans/inputs', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(inputsPayload)
+            });
+
+            setStatusMessage('ส่งข้อมูลเข้าระบบคำนวณ VRP... กระบวนการนี้อาจใช้เวลาหลายนาที');
+            const optimizeRes = await fetch('/api/route-plans/optimize', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ planId: createdPlan.plan_id })
+            });
+
+            const { data: optimizeData, error: optimizeError } = await optimizeRes.json();
+            if (optimizeError) {
+                setStatusMessage('เกิดข้อผิดพลาดในการคำนวณเส้นทาง: ' + optimizeError);
+                alert('เกิดข้อผิดพลาดในการคำนวณเส้นทาง: ' + optimizeError);
+            } else {
+                const summary = optimizeData?.summary;
+                const vehicleText = summary ? `จำนวนเที่ยว ${summary.totalVehicles} เที่ยว` : '';
+                const distanceText = summary ? `ระยะทางรวม ${summary.totalDistance.toFixed(2)} กม.` : '';
+                const costText = summary ? `ค่าใช้จ่ายรวม ${summary.totalCost.toFixed(2)} บาท` : '';
+                const orderText = summary ? `ออเดอร์รวม ${summary.totalDeliveries} รายการ` : '';
+                const weightText = summary ? `น้ำหนักสินค้ารวม ${summary.totalWeight.toFixed(2)} กก.` : '';
+
+                const messageParts = [vehicleText, distanceText, costText].filter(Boolean);
+                const message = messageParts.join(' • ');
+                setStatusMessage(message || 'จัดเส้นทางสำเร็จ!');
+
+                // Create detailed notification message
+                const notificationParts = [
+                    'จัดเส้นทางสำเร็จ!',
+                    vehicleText,
+                    orderText,
+                    weightText,
+                    distanceText,
+                    costText
+                ].filter(Boolean);
+                alert(notificationParts.join('\n'));
+
+                // Open preview modal to show the map
+                await fetchRoutePlans();
+                if (createdPlan?.plan_id) {
+                    handlePreviewPlan(createdPlan.plan_id);
+                }
+            }
+
+            setSelectedOrders(new Set());
+            if (planForm.warehouseId) {
+                fetchDraftOrders(planForm.warehouseId, planForm.planDate);
+            }
+        } catch (error: any) {
+            console.error('Error optimizing plan:', error);
+            alert('เกิดข้อผิดพลาด: ' + error.message);
+            setStatusMessage('เกิดข้อผิดพลาด: ' + error.message);
+        } finally {
+            setIsOptimizing(false);
+            optimizeLockRef.current = false;
+        }
+    };
+
+    const handlePreviewPlan = useCallback(async (planId: number) => {
+        if (typeof planId !== 'number' || isNaN(planId)) {
+            console.error('Invalid planId provided to handlePreviewPlan:', planId);
+            setPreviewError('ไม่สามารถโหลดข้อมูลแผนได้: รหัสแผนไม่ถูกต้อง');
+            setIsPreviewModalOpen(true);
+            setPreviewLoading(false);
+            return;
+        }
+        setIsPreviewModalOpen(true);
+        setPreviewLoading(true);
+        setPreviewError(null);
+        setPreviewPlan(null);
+        setPreviewTrips([]);
+
+        try {
+            const [editorRes, metricsRes] = await Promise.all([
+                fetch(`/api/route-plans/${planId}/editor`),
+                fetch(`/api/route-plans/${planId}/metrics`)
+            ]);
+
+            const editorJson = await editorRes.json();
+            const metricsJson = await metricsRes.json();
+
+            console.log('🔍 Raw API response:', {
+                editorJson,
+                metricsJson
+            });
+
+            if (editorJson?.error) {
+                throw new Error(editorJson.error);
+            }
+
+            const editorData = editorJson?.data;
+            const planData = editorData?.plan;
+            if (!planData) {
+                throw new Error('ไม่พบข้อมูลแผนเส้นทาง');
+            }
+            const tripsData: any[] = editorData?.trips || [];
+            const warehouseData = editorData?.warehouse || null;
+            
+            console.log('📦 Extracted data:', {
+                planId: planData.plan_id,
+                tripsCount: tripsData.length,
+                warehouseData,
+                trips: tripsData
+            });
+
+            console.log('Preview data received:', {
+                planId,
+                tripsCount: tripsData.length,
+                warehouse: warehouseData,
+                firstTrip: tripsData[0] ? {
+                    trip_id: tripsData[0].trip_id,
+                    stopsCount: tripsData[0].stops?.length,
+                    firstStop: tripsData[0].stops?.[0] ? {
+                        stop_id: tripsData[0].stops[0].stop_id,
+                        stop_name: tripsData[0].stops[0].stop_name,
+                        latitude: tripsData[0].stops[0].latitude,
+                        longitude: tripsData[0].stops[0].longitude,
+                        lat_type: typeof tripsData[0].stops[0].latitude,
+                        lng_type: typeof tripsData[0].stops[0].longitude,
+                        lat_finite: Number.isFinite(Number(tripsData[0].stops[0].latitude)),
+                        lng_finite: Number.isFinite(Number(tripsData[0].stops[0].longitude))
+                    } : 'NO STOPS'
+                } : 'NO TRIPS'
+            });
+
+            // Check if we have valid coordinates in any stop
+            const hasAnyCoordinates = tripsData.some(trip =>
+                trip.stops?.some((stop: any) =>
+                    Number.isFinite(Number(stop.latitude)) &&
+                    Number.isFinite(Number(stop.longitude))
+                )
+            );
+
+            if (!hasAnyCoordinates && tripsData.length > 0) {
+                console.warn('⚠️ ไม่พบข้อมูลพิกัดในจุดส่งทั้งหมด - แผนที่จะไม่สามารถแสดงได้');
+            }
+
+            const tripsWithStops = tripsData.map((trip, index) => {
+                const sanitizedStops: any[] = (trip.stops || []).map((stop: any, stopIdx: number) => {
+                    const latitudeValue = Number(stop.latitude);
+                    const longitudeValue = Number(stop.longitude);
+                    const hasCoordinates = Number.isFinite(latitudeValue) && Number.isFinite(longitudeValue);
+
+                    const normalizedOrders: StopOrderDetail[] = Array.isArray(stop.orders)
+                        ? stop.orders
+                            .map((order: any) => {
+                                const allocatedWeight =
+                                    order?.allocated_weight_kg != null && Number.isFinite(Number(order.allocated_weight_kg))
+                                        ? Number(order.allocated_weight_kg)
+                                        : null;
+                                const totalWeight =
+                                    order?.total_order_weight_kg != null && Number.isFinite(Number(order.total_order_weight_kg))
+                                        ? Number(order.total_order_weight_kg)
+                                        : null;
+                                return {
+                                    order_id: Number.isFinite(Number(order?.order_id)) ? Number(order.order_id) : null,
+                                    order_no: order?.order_no ?? null,
+                                    customer_name: order?.customer_name ?? null,
+                                    allocated_weight_kg: allocatedWeight,
+                                    total_order_weight_kg: totalWeight
+                                } as StopOrderDetail;
+                            })
+                            .filter((order: StopOrderDetail | null): order is StopOrderDetail => Boolean(order))
+                        : [];
+
+                    const fallbackOrders = normalizedOrders.length > 0
+                        ? normalizedOrders
+                        : [{
+                            order_id: Number.isFinite(Number(stop.order_id)) ? Number(stop.order_id) : null,
+                            order_no: stop.order_no ?? null,
+                            customer_name: stop.stop_name ?? null,
+                            allocated_weight_kg: Number.isFinite(Number(stop.load_weight_kg)) ? Number(stop.load_weight_kg) : null,
+                            total_order_weight_kg: Number.isFinite(Number(stop.load_weight_kg)) ? Number(stop.load_weight_kg) : null
+                        } as StopOrderDetail];
+
+                    // Flatten first order data for easier access in popups
+                    const firstOrder = fallbackOrders[0];
+
+                    return {
+                        stop_id: stop.stop_id,
+                        trip_id: trip.trip_id, // Add trip_id for move functionality
+                        sequence_no: stop.sequence_no ?? stopIdx + 1,
+                        stop_name: stop.stop_name || stop.address || `จุดที่ ${stopIdx + 1}`,
+                        address: stop.address ?? null,
+                        latitude: hasCoordinates ? latitudeValue : null,
+                        longitude: hasCoordinates ? longitudeValue : null,
+                        service_duration_minutes: stop.service_duration_minutes ?? null,
+                        load_weight_kg: stop.load_weight_kg ?? null,
+                        load_volume_cbm: stop.load_volume_cbm ?? null,
+                        notes: stop.notes ?? null,
+                        orders: fallbackOrders,
+                        // Flatten first order for popup display
+                        order_id: firstOrder?.order_id ?? null,
+                        order_no: firstOrder?.order_no ?? null,
+                        order_weight: firstOrder?.total_order_weight_kg ?? firstOrder?.allocated_weight_kg ?? null
+                    };
+                });
+
+                const driverName = [trip.driver_first_name, trip.driver_last_name].filter(Boolean).join(' ') || null;
+
+                return {
+                    ...trip,
+                    driver_name: driverName,
+                    trip_number: trip.trip_number ?? trip.trip_sequence ?? index + 1,
+                    total_distance_km: Number(trip.total_distance_km ?? 0),
+                    warehouse: warehouseData,
+                    stops: sanitizedStops
+                };
+            });
+
+            const metricsData = metricsJson?.error ? null : metricsJson?.data;
+
+            setPreviewPlan({
+                ...planData,
+                warehouse: warehouseData,
+                metrics: metricsData
+            });
+            setPreviewTrips(tripsWithStops);
+        } catch (error: any) {
+            console.error('Error loading route plan preview:', error);
+            setPreviewError(error?.message || 'ไม่สามารถโหลดข้อมูลแผนได้');
+        } finally {
+            setPreviewLoading(false);
+        }
+    }, []);
+
+    const closePreviewModal = useCallback(() => {
+        setIsPreviewModalOpen(false);
+        setPreviewPlan(null);
+        setPreviewTrips([]);
+        setSelectedPreviewTripIndex(null);
+        setSelectedPreviewTripIndices([]);
+        setPreviewError(null);
+    }, []);
+
+    // ฟังก์ชันสำหรับจัดลำดับ stops ในโหมดดู (drag marker บนแผนที่)
+    const handleReorderStopsInPreview = useCallback(async (tripId: number, orderedStopIds: number[]) => {
+        if (!previewPlan?.plan_id) {
+            console.error('No preview plan ID available');
+            return;
+        }
+
+        // Check if we're in fallback mode
+        const tripIdStr = String(tripId);
+        if (tripIdStr.startsWith('fallback-')) {
+            alert('⚠️ ไม่สามารถจัดลำดับจุดส่งได้\n\nสาเหตุ: ข้อมูลเที่ยวยังไม่ได้บันทึกในฐานข้อมูล\n\nวิธีแก้ไข:\n1. เปิด Supabase Dashboard > SQL Editor\n2. รัน: ALTER TABLE receiving_route_trips ADD COLUMN IF NOT EXISTS is_overweight boolean DEFAULT false;\n3. จัดเส้นทางใหม่');
+            return;
+        }
+
+        try {
+            console.log('Reordering stops in preview:', { tripId, orderedStopIds });
+
+            const response = await fetch(`/api/route-plans/${previewPlan.plan_id}/reorder-stops`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ tripId, orderedStopIds }),
+            });
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.error || 'Failed to reorder stops');
+            }
+
+            console.log('✅ Stops reordered successfully in preview mode');
+
+            // รีเฟรชข้อมูล preview
+            await handlePreviewPlan(previewPlan.plan_id);
+        } catch (error: any) {
+            console.error('Error reordering stops in preview:', error);
+            alert(`เกิดข้อผิดพลาด: ${error.message || 'ไม่สามารถจัดลำดับจุดส่งได้'}`);
+        }
+    }, [previewPlan]);
+
+    const handleMoveOrder = useCallback(async (orderId: number, fromTripId: number, toTripId: number) => {
+        if (!previewPlan?.plan_id) {
+            console.error('No preview plan ID available');
+            return;
+        }
+
+        // Check if we're in fallback mode (trip_id is string like 'fallback-1')
+        const fromTripIdStr = String(fromTripId);
+        if (fromTripIdStr.startsWith('fallback-')) {
+            alert('⚠️ ไม่สามารถย้ายออเดอร์ได้\n\nสาเหตุ: ข้อมูลเที่ยวยังไม่ได้บันทึกในฐานข้อมูล\n\nวิธีแก้ไข:\n1. เปิด Supabase Dashboard > SQL Editor\n2. รัน: ALTER TABLE receiving_route_trips ADD COLUMN IF NOT EXISTS is_overweight boolean DEFAULT false;\n3. จัดเส้นทางใหม่\n\nดูรายละเอียดใน MIGRATION_INSTRUCTIONS.md');
+            return;
+        }
+
+        try {
+            console.log('Moving order:', { orderId, fromTripId, toTripId });
+
+            const response = await fetch(`/api/route-plans/${previewPlan.plan_id}/move-order`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ orderId, fromTripId, toTripId }),
+            });
+
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'Failed to move order');
+            }
+
+            console.log('Order moved successfully:', result);
+
+            // Reload the preview data to show updated trips
+            await handlePreviewPlan(previewPlan.plan_id);
+
+        } catch (error: any) {
+            console.error('Error moving order:', error);
+            setPreviewError(`ไม่สามารถย้ายออเดอร์ได้: ${error.message}`);
+        }
+    }, [previewPlan, handlePreviewPlan]);
+
+    const statuses = [
+        { value: 'all', label: 'ทั้งหมด' },
+        { value: 'draft', label: 'แบบร่าง' },
+        { value: 'optimizing', label: 'กำลังคำนวณ' },
+        { value: 'published', label: 'เผยแพร่แล้ว' },
+        { value: 'completed', label: 'เสร็จสิ้น' },
+        { value: 'cancelled', label: 'ยกเลิก' }
+    ];
+
+    const handleSort = (field: keyof RoutePlan) => {
+        if (sortField === field) {
+            setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+        } else {
+            setSortField(field);
+            setSortDirection('asc');
+        }
+    };
+
+    const resequenceTripStops = (stops: EditorStop[]) =>
+        stops.map((stop, index) => ({ ...stop, sequence_no: index + 1 }));
+
+    const updateTripState = (updater: (trips: EditorTrip[]) => EditorTrip[]) => {
+        setEditorTrips(prev => updater(prev.map(trip => ({ ...trip, stops: trip.stops.map(stop => ({ ...stop })) }))));
+    };
+
+    const handleSelectEditorStop = (tripId: number, stopId: number, orderId?: number | null) => {
+        setSelectedEditorTripId(tripId);
+        setSelectedEditorStopId(stopId);
+        setSelectedEditorOrderId(orderId ?? null);
+        setTransferTripId(tripId);
+    };
+
+    const handleMoveStop = (tripId: number, stopId: number, direction: 'up' | 'down') => {
+        setEditorError(null);
+        updateTripState(prevTrips => {
+            return prevTrips.map(trip => {
+                if (trip.trip_id !== tripId) return trip;
+                const stops = [...trip.stops];
+                const index = stops.findIndex(stop => stop.stop_id === stopId);
+                if (index < 0) return trip;
+                const newIndex = direction === 'up' ? index - 1 : index + 1;
+                if (newIndex < 0 || newIndex >= stops.length) return trip;
+                const [moved] = stops.splice(index, 1);
+                stops.splice(newIndex, 0, moved);
+                return { ...trip, stops: resequenceTripStops(stops) };
+            });
+        });
+    };
+
+    // ฟังก์ชันสำหรับจัดลำดับ stops ใหม่ (drag and drop)
+    const handleReorderStops = async (tripId: number, reorderedStops: EditorStop[]) => {
+        setEditorError(null);
+
+        // อัพเดท state ในหน้าจอทันที (optimistic update)
+        updateTripState(prevTrips => {
+            return prevTrips.map(trip => {
+                if (trip.trip_id !== tripId) return trip;
+                return { ...trip, stops: reorderedStops };
+            });
+        });
+
+        // เรียก API เพื่อบันทึกลงฐานข้อมูล
+        try {
+            const response = await fetch(`/api/route-plans/${editorPlanId}/reorder-stops`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    tripId,
+                    orderedStopIds: reorderedStops.map(s => s.stop_id)
+                })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.error || 'Failed to reorder stops');
+            }
+
+            // แสดงข้อความสำเร็จ (optional)
+            console.log('Stops reordered successfully:', result);
+
+            // รีเฟรชข้อมูลเพื่อให้แน่ใจว่าข้อมูลตรงกับฐานข้อมูล
+            await fetchEditorData(editorPlanId);
+        } catch (error: any) {
+            console.error('Error reordering stops:', error);
+            setEditorError(error.message || 'เกิดข้อผิดพลาดในการจัดลำดับจุดส่ง');
+
+            // ย้อนกลับ state ถ้ามี error
+            await fetchEditorData(editorPlanId);
+        }
+    };
+
+    const handleTransferOrder = (stopId: number, orderId: number | null, targetTripId: number) => {
+        if (!orderId) return;
+
+        setEditorError(null);
+        setEditorLoading(true);
+
+        updateTripState(prevTrips => {
+            let movingOrder: StopOrderDetail | null = null;
+            let sourceStop: EditorStop | null = null;
+
+            const updatedTrips = prevTrips.map(trip => {
+                if (trip.stops.some(stop => stop.stop_id === stopId)) {
+                    const newStops = trip.stops.map(stop => {
+                        if (stop.stop_id === stopId) {
+                            sourceStop = { ...stop };
+                            if (stop.orders && stop.orders.length > 1) {
+                                movingOrder = stop.orders.find(o => o.order_id === orderId) || null;
+                                const remainingOrders = stop.orders.filter(o => o.order_id !== orderId);
+                                return { ...stop, orders: remainingOrders };
+                            } else {
+                                return stop;
+                            }
+                        }
+                        return stop;
+                    }).filter(stop => {
+                        if (stop.stop_id === stopId && (!stop.orders || stop.orders.length === 0)) {
+                            movingOrder = stop.orders?.[0] || { order_id: stop.order_id, order_no: stop.order_no, customer_name: stop.stop_name } as StopOrderDetail;
+                            return false;
+                        }
+                        return true;
+                    });
+                    return { ...trip, stops: resequenceTripStops(newStops) };
+                }
+                return trip;
+            });
+
+            if (movingOrder && sourceStop) {
+                return updatedTrips.map(trip => {
+                    if (trip.trip_id === targetTripId) {
+                        const newStop: EditorStop = {
+                            stop_id: Date.now(),
+                            sequence_no: trip.stops.length + 1,
+                            stop_name: sourceStop!.stop_name,
+                            address: sourceStop!.address,
+                            latitude: sourceStop!.latitude,
+                            longitude: sourceStop!.longitude,
+                            service_duration_minutes: sourceStop!.service_duration_minutes,
+                            load_weight_kg: movingOrder!.allocated_weight_kg || movingOrder!.total_order_weight_kg,
+                            order_id: movingOrder!.order_id,
+                            order_no: movingOrder!.order_no,
+                            orders: movingOrder ? [movingOrder] : []
+                        };
+                        const stops = [...trip.stops, newStop];
+                        return { ...trip, stops: resequenceTripStops(stops) };
+                    }
+                    return trip;
+                });
+            }
+
+            return updatedTrips;
+        });
+
+        setSelectedEditorTripId(targetTripId);
+        setTransferTripId(targetTripId);
+        setEditorLoading(false);
+    };
+
+    const handleTransferStop = (stopId: number, targetTripId: number) => {
+        if (selectedEditorOrderId) {
+            handleTransferOrder(stopId, selectedEditorOrderId, targetTripId);
+            return;
+        }
+
+        setEditorError(null);
+        setEditorLoading(true);
+        updateTripState(prevTrips => {
+            let movingStop: EditorStop | null = null;
+            const updatedTrips = prevTrips.map(trip => {
+                if (trip.stops.some(stop => stop.stop_id === stopId)) {
+                    const remainingStops = trip.stops.filter(stop => {
+                        if (stop.stop_id === stopId) {
+                            movingStop = { ...stop };
+                            return false;
+                        }
+                        return true;
+                    });
+                    return { ...trip, stops: resequenceTripStops(remainingStops) };
+                }
+                return trip;
+            });
+
+            if (movingStop) {
+                return updatedTrips.map(trip => {
+                    if (trip.trip_id === targetTripId) {
+                        const stops = [...trip.stops, { ...movingStop!, sequence_no: trip.stops.length + 1 }];
+                        return { ...trip, stops: resequenceTripStops(stops) };
+                    }
+                    return trip;
+                });
+            }
+
+            return updatedTrips;
+        });
+
+        setSelectedEditorTripId(targetTripId);
+        setSelectedEditorStopId(stopId);
+        setTransferTripId(targetTripId);
+        setEditorLoading(false);
+    };
+
+    const handleSaveEditor = async () => {
+        if (!editorPlanId) return;
+        try {
+            setEditorLoading(true);
+            const payload = {
+                trips: editorTrips.map(trip => ({
+                    trip_id: trip.trip_id,
+                    stops: trip.stops.map((stop, index) => ({
+                        stop_id: stop.stop_id,
+                        sequence_no: index + 1
+                    }))
+                }))
+            };
+
+            const res = await fetch(`/api/route-plans/${editorPlanId}/resequence`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            const { error } = await res.json();
+            if (error) {
+                setEditorError(error);
+                return;
+            }
+
+            await fetchEditorData(editorPlanId);
+            await fetchRoutePlans();
+            setStatusMessage('บันทึกการแก้ไขเส้นทางเรียบร้อย');
+        } catch (error) {
+            console.error('Error saving manual route changes:', error);
+            setEditorError('ไม่สามารถบันทึกการเปลี่ยนแปลงได้');
+        } finally {
+            setEditorLoading(false);
+        }
+    };
+
+    const handleOpenSplitModal = () => {
+        setIsSplitModalOpen(true);
+    };
+
+    const handleSplitSubmit = async (payload: SplitFormPayload) => {
+        if (!editorPlanId || !payload.stopId) return;
+        try {
+            setEditorLoading(true);
+            setEditorError(null);
+            const res = await fetch(`/api/route-plans/${editorPlanId}/split-stop`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    sourceStopId: payload.stopId,
+                    targetTripId: payload.targetTripId ?? null,
+                    newTrip: payload.newTrip,
+                    items: payload.items.map(item => ({
+                        orderItemId: item.orderItemId,
+                        moveWeightKg: item.moveWeightKg,
+                        moveQuantity: item.moveQuantity,
+                        moveVolumeCbm: item.moveVolumeCbm,
+                        movePallets: item.movePallets
+                    })),
+                    serviceDurationMinutes: payload.serviceMinutes,
+                    note: payload.note
+                })
+            });
+
+            const { error } = await res.json();
+            if (error) {
+                setEditorError(error);
+                return;
+            }
+
+            setIsSplitModalOpen(false);
+            await fetchEditorData(editorPlanId);
+            await fetchRoutePlans();
+        } catch (error) {
+            console.error('Error splitting stop:', error);
+            setEditorError('ไม่สามารถแยกออเดอร์ได้');
+        } finally {
+            setEditorLoading(false);
+        }
+    };
+
+    const handleCancelStop = async (stop: EditorStop) => {
+        if (!editorPlanId || !stop) return;
+        const stopId = stop.stop_id;
+        const orderId = stop.order_id;
+
+        if (window.confirm('คุณแน่ใจหรือไม่ว่าต้องการยกเลิกจุดส่งนี้ออกจากแผน? การกระทำนี้จะเปลี่ยนสถานะออเดอร์กลับเป็น "แบบร่าง" และต้องมีการวางแผนใหม่')) {
+            try {
+                setEditorLoading(true);
+                setEditorError(null);
+
+                const res = await fetch(`/api/route-plans/stops/${stopId}/cancel`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ orderId: orderId })
+                });
+
+                const result = await res.json();
+
+                if (result.error) {
+                    throw new Error(result.error.message || 'Unknown error');
+                }
+
+                await fetchEditorData(editorPlanId);
+                await fetchRoutePlans();
+
+            } catch (error: any) {
+                console.error('Error cancelling stop:', error);
+                setEditorError(`เกิดข้อผิดพลาดในการยกเลิกจุดส่ง: ${error.message}`);
+            } finally {
+                setEditorLoading(false);
+            }
+        }
+    };
+
+    const handleCloseEditor = () => {
+        setIsEditorOpen(false);
+        setEditorPlanId(null);
+        setEditorPlan(null);
+        setEditorWarehouse(null);
+        setEditorTrips([]);
+        setSelectedEditorTripId(null);
+        setSelectedEditorStopId(null);
+        setEditorError(null);
+        setTransferTripId(null);
+        setEditorDraftOrders([]);
+    };
+
+    const handleAddOrderToEditor = async (orderId: number, tripId: number, sequence: number) => {
+        if (!editorPlanId) {
+            throw new Error('No plan is currently being edited');
+        }
+
+        try {
+            setEditorLoading(true);
+            const response = await fetch(`/api/route-plans/${editorPlanId}/add-order`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    orderId,
+                    tripId,
+                    sequencePosition: sequence
+                })
+            });
+
+            const result = await response.json();
+
+            if (!response.ok || !result.success) {
+                throw new Error(result.error || 'Failed to add order to plan');
+            }
+
+            // Refresh editor data and draft orders
+            await fetchEditorData(editorPlanId);
+            await fetchRoutePlans();
+        } catch (error) {
+            console.error('Error adding order to editor:', error);
+            throw error;
+        } finally {
+            setEditorLoading(false);
+        }
+    };
+
+    const handlePrintPlan = (planId: number) => {
+        // Open Transport Contract Modal instead
+        setShowTransportContractModal(true);
+    };
+
+    const editorActiveTrip = useMemo(() => {
+        if (!selectedEditorTripId) return null;
+        return editorTrips.find(trip => trip.trip_id === selectedEditorTripId) ?? null;
+    }, [editorTrips, selectedEditorTripId]);
+
+    const editorActiveStop = useMemo(() => {
+        if (!editorActiveTrip || !selectedEditorStopId) return null;
+        return editorActiveTrip.stops.find(stop => stop.stop_id === selectedEditorStopId) ?? null;
+    }, [editorActiveTrip, selectedEditorStopId]);
+
+    const editorActiveOrder = useMemo(() => {
+        if (!editorActiveStop || !selectedEditorOrderId) return null;
+        if (editorActiveStop.orders && editorActiveStop.orders.length > 0) {
+            return editorActiveStop.orders.find(o => o.order_id === selectedEditorOrderId) ?? null;
+        }
+        return null;
+    }, [editorActiveStop, selectedEditorOrderId]);
+
+    const editorTripsForMap = useMemo(() => {
+        return editorTrips.map(trip => ({
+            ...trip,
+            trip_id: String(trip.trip_id),
+            trip_number: trip.trip_number ?? trip.trip_sequence,
+            total_distance_km: trip.total_distance_km ?? 0,
+            total_drive_minutes: trip.total_drive_minutes ?? undefined,
+            total_service_minutes: trip.total_service_minutes ?? undefined,
+            total_weight_kg: trip.total_weight_kg ?? undefined,
+            total_volume_cbm: trip.total_volume_cbm ?? undefined,
+            stops: trip.stops
+                .filter(stop => stop.latitude != null && stop.longitude != null)
+                .map(stop => ({
+                    ...stop,
+                    stop_id: String(stop.stop_id),
+                    location_name: stop.stop_name,
+                    sequence_no: stop.sequence_no,
+                    latitude: stop.latitude as number,
+                    longitude: stop.longitude as number,
+                    service_duration_minutes: stop.service_duration_minutes ?? undefined,
+                    load_weight_kg: stop.load_weight_kg ?? undefined,
+                    load_volume_cbm: stop.load_volume_cbm ?? undefined
+                }))
+        }));
+    }, [editorTrips]);
+
+    const getSortIcon = (field: string) => {
+        if (sortField !== field) {
+            return <ArrowUpDown className="w-3 h-3 ml-1 text-gray-400" />;
+        }
+        return sortDirection === 'asc' ? (
+            <ArrowUp className="w-3 h-3 ml-1 text-blue-600" />
+        ) : (
+            <ArrowDown className="w-3 h-3 ml-1 text-blue-600" />
+        );
+    };
+
+    // แก้ไข: กำหนด Type สำหรับ variant ของ Badge
+    type BadgeVariant = 'default' | 'primary' | 'secondary' | 'success' | 'warning' | 'danger' | 'info';
+
+    const getStatusBadge = (status: string) => {
+        const map: Record<string, { label: string; variant: BadgeVariant }> = {
+            draft: { label: 'แบบร่าง', variant: 'default' },
+            optimizing: { label: 'กำลังคำนวณ', variant: 'warning' },
+            published: { label: 'เผยแพร่แล้ว', variant: 'success' },
+            completed: { label: 'เสร็จสิ้น', variant: 'info' },
+            cancelled: { label: 'ยกเลิก', variant: 'danger' }
+        };
+        const match = map[status] || map.draft;
+        return (
+            <Badge variant={match.variant} size="sm">
+                {match.label}
+            </Badge>
+        );
+    };
+
+    const filteredPlans = useMemo(() => {
+        return routePlans
+            .filter(plan => {
+                if (selectedStatus !== 'all' && plan.status !== selectedStatus) {
+                    return false;
+                }
+                if (startDate && new Date(plan.plan_date) < new Date(startDate)) {
+                    return false;
+                }
+                if (endDate && new Date(plan.plan_date) > new Date(endDate)) {
+                    return false;
+                }
+                if (searchTerm) {
+                    const term = searchTerm.toLowerCase();
+                    const matches = [plan.plan_code, plan.plan_name, plan.warehouse?.warehouse_name]
+                        .filter(Boolean)
+                        .some(value => String(value).toLowerCase().includes(term));
+                    if (!matches) return false;
+                }
+                return true;
+            })
+            .sort((a, b) => {
+                if (!sortField) return new Date(b.plan_date).getTime() - new Date(a.plan_date).getTime();
+                // แก้ไข: เข้าถึง property อย่างปลอดภัย
+                const aValue = a[sortField];
+                const bValue = b[sortField];
+                if (aValue === bValue) return 0;
+                if (aValue === null || aValue === undefined) return sortDirection === 'asc' ? -1 : 1;
+                if (bValue === null || bValue === undefined) return sortDirection === 'asc' ? 1 : -1;
+                if (sortDirection === 'asc') {
+                    return aValue > bValue ? 1 : -1;
+                }
+                return aValue < bValue ? 1 : -1;
+            });
+    }, [routePlans, searchTerm, selectedStatus, startDate, endDate, sortField, sortDirection]);
+
+    const metrics = useMemo(() => {
+        const totalTrips = routePlans.reduce((acc, plan) => acc + (plan.total_trips || 0), 0);
+        const totalDistance = routePlans.reduce((acc, plan) => acc + (plan.total_distance_km || 0), 0);
+        const totalOrdersSelected = selectedOrders.size;
+        return {
+            totalPlans: routePlans.length,
+            totalDraftOrders: draftOrders.length,
+            totalSelectedOrders: totalOrdersSelected,
+            totalTrips,
+            totalDistance
+        };
+    }, [routePlans, draftOrders, selectedOrders]);
+
+    const previewWarehouse = useMemo(() => {
+        if (!previewPlan) return null;
+        const latCandidate = Number(
+            previewPlan?.warehouse?.latitude ??
+            previewPlan?.settings?.warehouseLat ??
+            vrpSettings.warehouseLat
+        );
+        const lngCandidate = Number(
+            previewPlan?.warehouse?.longitude ??
+            previewPlan?.settings?.warehouseLng ??
+            vrpSettings.warehouseLng
+        );
+        const latitude = Number.isFinite(latCandidate) ? latCandidate : vrpSettings.warehouseLat;
+        const longitude = Number.isFinite(lngCandidate) ? lngCandidate : vrpSettings.warehouseLng;
+        return {
+            latitude,
+            longitude,
+            name: previewPlan?.warehouse?.warehouse_name || previewPlan?.plan_name || previewPlan?.plan_code
+        };
+    }, [previewPlan, vrpSettings]);
+
+    const previewTripsForMap = useMemo(() => {
+        return previewTrips.map(trip => {
+            const stopsForMap = (trip.stops || []).reduce((acc: any[], stop: any, idx: number) => {
+                const latitude = Number(stop.latitude);
+                const longitude = Number(stop.longitude);
+                if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
+                    console.log('Skipping stop due to invalid coordinates:', {
+                        stop_id: stop.stop_id,
+                        latitude: stop.latitude,
+                        longitude: stop.longitude,
+                        lat_finite: Number.isFinite(latitude),
+                        lng_finite: Number.isFinite(longitude)
+                    });
+                    return acc;
+                }
+                acc.push({
+                    ...stop,
+                    sequence_no: stop.sequence_no ?? idx + 1,
+                    location_name: stop.stop_name || stop.location_name || `จุดที่ ${idx + 1}`,
+                    latitude,
+                    longitude
+                });
+                return acc;
+            }, []);
+
+            return {
+                ...trip,
+                trip_id: String(trip.trip_id),
+                trip_number: trip.trip_number ?? trip.trip_sequence ?? 1,
+                total_distance_km: Number(trip.total_distance_km ?? 0),
+                stops: stopsForMap
+            };
+        });
+    }, [previewTrips]);
+
+    const hasPreviewMapData = useMemo(
+        () => previewTripsForMap.some(trip => (trip.stops || []).length > 0),
+        [previewTripsForMap]
+    );
+
+    const previewModalTitle = previewPlan
+        ? `แผนที่: ${previewPlan.plan_name || previewPlan.plan_code}`
+        : 'แผนที่เส้นทางรับสินค้า';
+
+    const previewSummaryMetrics = useMemo(() => {
+        if (!previewPlan) return null;
+        
+        // If a specific trip is selected, show only that trip's metrics
+        if (selectedPreviewTripIndex !== null && previewTripsForMap[selectedPreviewTripIndex]) {
+            const selectedTrip = previewTripsForMap[selectedPreviewTripIndex];
+            return {
+                totalTrips: 1,
+                totalDistance: Number(selectedTrip.total_distance_km || 0),
+                totalOrders: selectedTrip.stops?.length || 0,
+                totalDurationMinutes: Number(selectedTrip.total_drive_minutes || 0) + Number(selectedTrip.total_service_minutes || 0),
+                totalCost: null
+            };
+        }
+        
+        // Otherwise show all trips metrics
+        const metrics = previewPlan.metrics || {};
+        const totalTrips = metrics.total_trips ?? previewTripsForMap.length;
+        const totalDistance =
+            metrics.total_distance_km ??
+            previewTripsForMap.reduce((sum, trip) => sum + Number(trip.total_distance_km || 0), 0);
+        const totalOrders =
+            metrics.total_orders ?? previewTripsForMap.reduce((sum, trip) => sum + (trip.stops?.length || 0), 0);
+        const totalDurationMinutes = metrics.total_duration_minutes ?? null;
+        const totalCost = metrics.total_cost ?? null;
+        return {
+            totalTrips,
+            totalDistance,
+            totalOrders,
+            totalDurationMinutes,
+            totalCost
+        };
+    }, [previewPlan, previewTripsForMap, selectedPreviewTripIndex]);
+
+    const getSortCellProps = (field: keyof RoutePlan) => ({
+        onClick: () => handleSort(field),
+        className:
+            'px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200 cursor-pointer'
+    });
+
+    return (
+        <div className="h-screen bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
+            <div className="h-full flex flex-col space-y-2 pt-0 px-2 pb-2">
+                <div className="flex items-center justify-between gap-2 pt-1 flex-shrink-0">
+                    <div>
+                        <h1 className="text-xl font-bold text-thai-gray-900 font-thai m-0 p-0 leading-tight flex items-center gap-2">
+                            <Route className="w-6 h-6 text-blue-600" />
+                            จัดเส้นทางรับสินค้า
+                        </h1>
+                        <p className="text-xs text-gray-600 mt-0.5">Vehicle Routing Problem (VRP) Optimization</p>
+                    </div>
+                    <Button
+                        variant="primary"
+                        icon={Plus}
+                        onClick={handleCreatePlan}
+                        className="bg-blue-500 hover:bg-blue-600 shadow-lg"
+                    >
+                        สร้างแผนใหม่
+                    </Button>
+                </div>
+
+                <div className="flex flex-1 gap-4 overflow-hidden">
+                    <div className="flex-1 flex flex-col space-y-2 overflow-hidden">
+                        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm flex-shrink-0">
+                            <div className="flex items-center space-x-3">
+                                <div className="flex-1">
+                                    <div className="relative">
+                                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
+                                        <input
+                                            type="text"
+                                            placeholder="ค้นหาเลขเส้นทาง, ชื่อเส้นทาง, ทะเบียนรถ..."
+                                            className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm placeholder:text-thai-gray-400"
+                                            value={searchTerm}
+                                            onChange={event => setSearchTerm(event.target.value)}
+                                        />
+                                    </div>
+                                </div>
+                                <div className="flex space-x-2">
+                                    <input
+                                        type="date"
+                                        className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-28"
+                                        value={startDate}
+                                        onChange={event => setStartDate(event.target.value)}
+                                    />
+                                    <input
+                                        type="date"
+                                        className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-28"
+                                        value={endDate}
+                                        onChange={event => setEndDate(event.target.value)}
+                                    />
+                                    <select
+                                        className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-32"
+                                        value={selectedStatus}
+                                        onChange={event => setSelectedStatus(event.target.value)}
+                                    >
+                                        {statuses.map(status => (
+                                            <option key={status.value} value={status.value}>
+                                                {status.label}
+                                            </option>
+                                        ))}
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="flex-1 min-h-0">
+                            <div className="w-full h-[74vh] overflow-auto bg-white border border-gray-200 rounded-lg shadow-sm">
+                                {loading ? (
+                                    <div className="p-12 text-center text-gray-500">กำลังโหลด...</div>
+                                ) : filteredPlans.length === 0 ? (
+                                    <div className="p-12 text-center text-gray-500">ยังไม่มีแผนเส้นทาง</div>
+                                ) : (
+                                    <table className="min-w-full border-collapse text-sm">
+                                        <thead className="sticky top-0 z-10 bg-gray-100">
+                                            <tr className="bg-gray-100">
+                                                <th {...getSortCellProps('plan_code')}>รหัสแผน {getSortIcon('plan_code')}</th>
+                                                <th {...getSortCellProps('plan_name')}>ชื่อแผน {getSortIcon('plan_name')}</th>
+                                                <th {...getSortCellProps('plan_date')}>วันที่ {getSortIcon('plan_date')}</th>
+                                                <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">
+                                                    คลัง
+                                                </th>
+                                                <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">
+                                                    รถ
+                                                </th>
+                                                <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">
+                                                    ระยะทาง
+                                                </th>
+                                                <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">
+                                                    เวลา
+                                                </th>
+                                                <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">
+                                                    สถานะ
+                                                </th>
+                                                <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">
+                                                    <div className="flex items-center gap-1 justify-center">
+                                                        <Edit className="w-3 h-3" />
+                                                        <span>จัดการ</span>
+                                                    </div>
+                                                </th>
+                                            </tr>
+                                        </thead>
+                                        <tbody className="bg-white divide-y divide-gray-100">
+                                            {filteredPlans.map(plan => (
+                                                <tr key={plan.plan_id} className="hover:bg-gray-50/80 transition-colors duration-200">
+                                                    <td className="px-2 py-2 text-xs border-r border-gray-100">
+                                                        <div className="font-semibold text-blue-600 font-mono">{plan.plan_code}</div>
+                                                    </td>
+                                                    <td className="px-2 py-2 text-xs border-r border-gray-100">
+                                                        <div className="font-medium text-thai-gray-800">{plan.plan_name || '-'}</div>
+                                                    </td>
+                                                    <td className="px-2 py-2 text-xs border-r border-gray-100">
+                                                        <div className="font-medium text-gray-700">
+                                                            {new Date(plan.plan_date).toLocaleDateString('th-TH')}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-2 py-2 text-xs border-r border-gray-100">
+                                                        <div className="font-medium text-thai-gray-700">
+                                                            {plan.warehouse?.warehouse_name || '-'}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-2 py-2 text-xs border-r border-gray-100 text-center">
+                                                        <div className="font-bold text-blue-600">{plan.total_trips || 0}</div>
+                                                    </td>
+                                                    <td className="px-2 py-2 text-xs border-r border-gray-100 text-center">
+                                                        <div className="font-medium text-thai-gray-700">
+                                                            {plan.total_distance_km ? `${plan.total_distance_km.toFixed(1)} km` : '-'}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-2 py-2 text-xs border-r border-gray-100 text-center">
+                                                        <div className="font-medium text-thai-gray-700">
+                                                            {plan.total_drive_minutes
+                                                                ? `${Math.round((plan.total_drive_minutes || 0) / 60)} ชม.`
+                                                                : '-'}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-2 py-2 text-xs border-r border-gray-100">
+                                                        <div className="relative">
+                                                            <select
+                                                                className="w-full px-2 py-1 border border-gray-300 rounded text-xs font-thai text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+                                                                value={plan.status}
+                                                                disabled={editingStatusPlanId === plan.plan_id}
+                                                                data-plan-id={plan.plan_id}
+                                                                onChange={async event => {
+                                                                    const planId = event.currentTarget.dataset.planId;
+                                                                    const newStatus = event.target.value;
+
+                                                                    if (!planId || planId === 'undefined') {
+                                                                        alert('เกิดข้อผิดพลาด: ไม่สามารถอัปเดตสถานะได้เนื่องจากไม่พบรหัสแผน (ID is undefined)');
+                                                                        return;
+                                                                    }
+
+                                                                    try {
+                                                                        setEditingStatusPlanId(Number(planId));
+                                                                        const response = await fetch(`/api/route-plans/${planId}`, {
+                                                                            method: 'PATCH',
+                                                                            headers: { 'Content-Type': 'application/json' },
+                                                                            body: JSON.stringify({ status: newStatus })
+                                                                        });
+                                                                        const result = await response.json();
+                                                                        if (result.error) {
+                                                                            console.error('Error updating status:', result.error);
+                                                                            alert('เกิดข้อผิดพลาดในการอัปเดตสถานะ: ' + result.error);
+                                                                        } else {
+                                                                            await fetchRoutePlans();
+                                                                        }
+                                                                    } catch (error: any) {
+                                                                        console.error('Error updating status:', error);
+                                                                        alert('เกิดข้อผิดพลาดในการอัปเดตสถานะ: ' + error.message);
+                                                                    } finally {
+                                                                        setEditingStatusPlanId(null);
+                                                                    }
+                                                                }}
+                                                                onClick={(e) => e.stopPropagation()}
+                                                            >
+                                                                {statuses
+                                                                    .filter(s => s.value !== 'all')
+                                                                    .map(status => (
+                                                                        <option key={status.value} value={status.value}>
+                                                                            {status.label}
+                                                                        </option>
+                                                                    ))}
+                                                            </select>
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-2 py-2 text-xs">
+                                                        <div className="flex items-center space-x-1">
+                                                            <button
+                                                                className="p-1 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                                                                title="ดูแผนที่แผนงาน"
+                                                                onClick={() => handlePreviewPlan(plan.plan_id)}
+                                                            >
+                                                                <Eye className="w-3 h-3" />
+                                                            </button>
+                                                            <button
+                                                                className="p-1 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                                                                title="แก้ไขเส้นทาง"
+                                                                onClick={() => handleOpenEditor(plan.plan_id)}
+                                                            >
+                                                                <Edit className="w-3 h-3" />
+                                                            </button>
+                                                            <button
+                                                                className="p-1 rounded hover:bg-green-50 hover:text-green-600 transition-colors"
+                                                                title="แก้ไขราคาค่าขนส่ง"
+                                                                onClick={() => {
+                                                                    setSelectedPlanIdForShippingCost(plan.plan_id);
+                                                                    setShowEditShippingCostModal(true);
+                                                                }}
+                                                            >
+                                                                <DollarSign className="w-3 h-3" />
+                                                            </button>
+                                                            <button
+                                                                className="p-1 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                                                                title="พิมพ์ใบว่าจ้าง"
+                                                                onClick={() => handlePrintPlan(plan.plan_id)}
+                                                            >
+                                                                <Printer className="w-3 h-3" />
+                                                            </button>
+                                                        </div>
+                                                    </td>
+                                                </tr>
+                                            ))}
+                                        </tbody>
+                                    </table>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    <OptimizationSidebar
+                        settings={vrpSettings}
+                        onChange={changes => setVrpSettings(prev => ({ ...prev, ...changes }))}
+                        onSave={handleSaveSettings}
+                        disabled={isOptimizing}
+                        isSaving={isSavingSettings}
+                        statusMessage={statusMessage}
+                    />
+                </div>
+            </div>
+
+            <Modal
+                isOpen={showCreateModal}
+                onClose={() => {
+                    setShowCreateModal(false);
+                    setSelectedOrders(new Set());
+                }}
+                title="สร้างแผนเส้นทางใหม่"
+                size="xl"
+            >
+                <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">ชื่อแผน</label>
+                            <input
+                                type="text"
+                                value={planForm.planName}
+                                onChange={event => setPlanForm(prev => ({ ...prev, planName: event.target.value }))}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                                placeholder="แผนรับสินค้า..."
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">วันที่แผน</label>
+                            <input
+                                type="date"
+                                value={planForm.planDate}
+                                onChange={event => {
+                                    const newDate = event.target.value;
+                                    setPlanForm(prev => ({ ...prev, planDate: newDate }));
+                                    if (planForm.warehouseId) {
+                                        fetchDraftOrders(planForm.warehouseId, newDate);
+                                    }
+                                }}
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                            />
+                        </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">เลือกคลัง</label>
+                        <select
+                            value={planForm.warehouseId}
+                            onChange={event => handleWarehouseChange(event.target.value)}
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg"
+                        >
+                            {warehouses.map(warehouse => (
+                                <option key={warehouse.warehouse_id} value={warehouse.warehouse_id}>
+                                    {warehouse.warehouse_name}
+                                </option>
+                            ))}
+                        </select>
+                    </div>
+
+                    <div className="border-t pt-4">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="font-medium text-gray-900">ออเดอร์รอจัดเส้นทาง ({draftOrders.length} รายการ)</h3>
+                            <Button variant="outline" size="sm" onClick={handleSelectAll}>
+                                {selectedOrders.size === draftOrders.length ? 'ยกเลิกเลือกทั้งหมด' : 'เลือกทั้งหมด'}
+                            </Button>
+                        </div>
+
+                        <div className="max-h-96 overflow-y-auto border border-gray-200 rounded-lg">
+                            {draftOrders.length === 0 ? (
+                                <div className="p-8 text-center text-gray-500">ไม่มีออเดอร์รอจัดเส้นทาง</div>
+                            ) : (
+                                <table className="w-full text-sm">
+                                    <thead className="bg-gray-50 sticky top-0">
+                                        <tr>
+                                            <th className="px-4 py-2 text-left">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedOrders.size > 0 && selectedOrders.size === draftOrders.length}
+                                                    onChange={handleSelectAll}
+                                                />
+                                            </th>
+                                            <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">เลขที่</th>
+                                            <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">ลูกค้า</th>
+                                            <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">จังหวัด</th>
+                                            <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600">น้ำหนัก</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-200">
+                                        {draftOrders.map(order => (
+                                            <tr key={order.order_id} className="hover:bg-gray-50">
+                                                <td className="px-4 py-2">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={selectedOrders.has(order.order_id)}
+                                                        onChange={() => handleSelectOrder(order.order_id)}
+                                                    />
+                                                </td>
+                                                <td className="px-4 py-2">{order.order_no}</td>
+                                                <td className="px-4 py-2">{order.shop_name || '-'}</td>
+                                                <td className="px-4 py-2">{order.province || '-'}</td>
+                                                <td className="px-4 py-2 text-right">{order.total_weight || 0} kg</td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* VRP Settings Section */}
+                    <div className="border-t pt-4">
+                        <OptimizationSidebar
+                            isOpen={true}
+                            settings={vrpSettings}
+                            onChange={(changes) => setVrpSettings(prev => ({ ...prev, ...changes }))}
+                            onSave={handleSaveSettings}
+                            disabled={isOptimizing}
+                            isSaving={isSavingSettings}
+                            statusMessage={statusMessage}
+                        />
+                    </div>
+
+                    <div className="flex justify-end gap-3 pt-4 border-t">
+                        <Button variant="outline" onClick={() => setShowCreateModal(false)}>
+                            ยกเลิก
+                        </Button>
+                        <Button
+                            variant="primary"
+                            icon={Play}
+                            onClick={handleOptimize}
+                            disabled={selectedOrders.size === 0 || isOptimizing}
+                        >
+                            {isOptimizing ? 'กำลังคำนวณ...' : `เริ่มจัดเส้นทาง (${selectedOrders.size} ออเดอร์)`}
+                        </Button>
+                    </div>
+                </div>
+            </Modal>
+
+            <Modal
+                isOpen={isPreviewModalOpen}
+                onClose={closePreviewModal}
+                title={previewModalTitle}
+                size="4xl"
+                contentClassName="max-h-[92vh]"
+            >
+                {previewLoading ? (
+                    <div className="py-10 text-center text-gray-500">กำลังโหลดข้อมูลแผนที่...</div>
+                ) : previewError ? (
+                    <div className="py-6 text-center text-red-500">{previewError}</div>
+                ) : previewPlan ? (
+                    <div className="space-y-5">
+                        <div className="flex flex-col gap-2 md:flex-row md:items-start md:justify-between">
+                            <div>
+                                <div className="text-sm text-gray-500">{previewPlan.plan_code}</div>
+                                <div className="text-lg font-semibold text-gray-900">
+                                    {previewPlan.plan_name || 'แผนรับสินค้า'}
+                                </div>
+                                <div className="text-xs text-gray-500">
+                                    {previewPlan.plan_date ? new Date(previewPlan.plan_date).toLocaleDateString('th-TH') : '-'}
+                                </div>
+                            </div>
+                            <div className="flex flex-col gap-2 md:items-end">
+                                <div>{getStatusBadge(previewPlan.status)}</div>
+                                <div className="text-xs text-gray-500">
+                                    คลัง: {previewPlan.warehouse?.warehouse_name || previewPlan.warehouse_id || '-'}
+                                </div>
+                            </div>
+                        </div>
+
+                        {previewTrips.length > 0 && (() => {
+                            // Filter trips based on selection
+                            const displayTrips = selectedPreviewTripIndices.length > 0
+                                ? previewTrips.filter((_, index) => selectedPreviewTripIndices.includes(index))
+                                : previewTrips;
+
+                            // คำนวณข้อมูลสรุปของแต่ละเที่ยว
+                            const tripsSummary = displayTrips.map((trip, displayIndex) => {
+                                const originalIndex = previewTrips.indexOf(trip);
+                                const totalStops = trip.stops?.length || 0;
+                                const totalOrders = trip.stops?.reduce((sum: number, stop: any) => {
+                                    const orders = Array.isArray(stop.orders) && stop.orders.length > 0
+                                        ? stop.orders.length
+                                        : 1;
+                                    return sum + orders;
+                                }, 0) || 0;
+                                const totalWeight = trip.total_weight_kg || trip.stops?.reduce((sum: number, stop: any) => {
+                                    return sum + (Number(stop.load_weight_kg) || 0);
+                                }, 0) || 0;
+                                const totalUnits = trip.stops?.reduce((sum: number, stop: any) => {
+                                    return sum + (Number(stop.load_units) || 0);
+                                }, 0) || 0;
+                                const vehicleCapacity = previewPlan?.settings?.vehicleCapacityKg || vrpSettings.vehicleCapacityKg || 1000;
+                                const capacityPercent = vehicleCapacity > 0 ? (totalWeight / vehicleCapacity * 100) : 0;
+                                const isOverweight = trip.is_overweight || capacityPercent > 100;
+                                const distance = Number(trip.total_distance_km ?? 0);
+
+                                return {
+                                    tripNumber: trip.trip_number || originalIndex + 1,
+                                    distance,
+                                    totalStops,
+                                    totalOrders,
+                                    totalUnits,
+                                    totalWeight,
+                                    capacityPercent,
+                                    isOverweight
+                                };
+                            });
+
+                            return (
+                                <div className="bg-white border border-gray-200 rounded-lg overflow-hidden shadow-sm">
+                                    <div className="overflow-x-auto">
+                                        <table className="min-w-full divide-y divide-gray-200">
+                                            <thead className="bg-gray-50">
+                                                <tr>
+                                                    <th className="px-4 py-3 text-left text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                                        เที่ยวที่
+                                                    </th>
+                                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                                        ระยะทาง (km)
+                                                    </th>
+                                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                                        จุดส่ง
+                                                    </th>
+                                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                                        ออเดอร์
+                                                    </th>
+                                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                                        จำนวน (ชิ้น)
+                                                    </th>
+                                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                                        น้ำหนัก (kg)
+                                                    </th>
+                                                    <th className="px-4 py-3 text-right text-xs font-medium text-gray-600 uppercase tracking-wider">
+                                                        % การใช้รถ
+                                                    </th>
+                                                </tr>
+                                            </thead>
+                                            <tbody className="bg-white divide-y divide-gray-100">
+                                                {tripsSummary.map((trip, index) => (
+                                                    <tr
+                                                        key={index}
+                                                        className={`hover:bg-gray-50 transition-colors ${
+                                                            trip.isOverweight ? 'bg-red-50' : ''
+                                                        }`}
+                                                    >
+                                                        <td className="px-4 py-3 whitespace-nowrap">
+                                                            <div className="flex items-center gap-2">
+                                                                <span className="text-sm font-semibold text-gray-900">
+                                                                    เที่ยวที่ {trip.tripNumber}
+                                                                </span>
+                                                                {trip.isOverweight && (
+                                                                    <span className="text-xs font-medium text-red-600 bg-red-100 px-2 py-0.5 rounded">
+                                                                        ⚠️ เกิน
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                        </td>
+                                                        <td className="px-4 py-3 whitespace-nowrap text-right">
+                                                            <span className="text-sm font-medium text-blue-600">
+                                                                {trip.distance.toFixed(1)}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-4 py-3 whitespace-nowrap text-right">
+                                                            <span className="text-sm text-gray-900">
+                                                                {trip.totalStops}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-4 py-3 whitespace-nowrap text-right">
+                                                            <span className="text-sm text-gray-900">
+                                                                {trip.totalOrders}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-4 py-3 whitespace-nowrap text-right">
+                                                            <span className="text-sm text-gray-900">
+                                                                {trip.totalUnits}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-4 py-3 whitespace-nowrap text-right">
+                                                            <span className="text-sm font-medium text-gray-900">
+                                                                {trip.totalWeight.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+                                                            </span>
+                                                        </td>
+                                                        <td className="px-4 py-3 whitespace-nowrap text-right">
+                                                            <span className={`text-sm font-bold ${
+                                                                trip.capacityPercent > 100 ? 'text-red-600' :
+                                                                trip.capacityPercent > 90 ? 'text-orange-600' :
+                                                                'text-green-600'
+                                                            }`}>
+                                                                {trip.capacityPercent.toFixed(1)}%
+                                                            </span>
+                                                        </td>
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            );
+                        })()}
+
+                        {/* Trip Selector */}
+                        {previewTrips.length > 0 && (
+                            <div className="bg-white border border-gray-200 rounded-lg p-3">
+                                <div className="flex flex-wrap gap-2">
+                                    <button
+                                        onClick={() => {
+                                            const allIndices = previewTrips.map((_, idx) => idx);
+                                            const newSelection = selectedPreviewTripIndices.length === previewTrips.length ? [] : allIndices;
+                                            setSelectedPreviewTripIndices(newSelection);
+                                        }}
+                                        className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                                            selectedPreviewTripIndices.length === previewTrips.length
+                                                ? 'bg-blue-600 text-white'
+                                                : selectedPreviewTripIndices.length > 0
+                                                ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+                                                : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                                        }`}
+                                    >
+                                        {selectedPreviewTripIndices.length === previewTrips.length
+                                            ? `ยกเลิกทั้งหมด`
+                                            : selectedPreviewTripIndices.length > 0
+                                            ? `เลือกทั้งหมด (${selectedPreviewTripIndices.length}/${previewTrips.length})`
+                                            : `ทั้งหมด (${previewTrips.length} เที่ยว)`
+                                        }
+                                    </button>
+                                    {previewTrips.map((trip, index) => {
+                                        const isSelected = selectedPreviewTripIndices.includes(index);
+                                        // Use same colors as RouteMap (20 distinct colors)
+                                        const tripColor = [
+                                            '#FF6B6B', '#4ECDC4', '#FFD93D', '#6BCB77', '#4D96FF',
+                                            '#FF8C42', '#A78BFA', '#F472B6', '#34D399', '#FBBF24',
+                                            '#EF4444', '#3B82F6', '#10B981', '#F59E0B', '#8B5CF6',
+                                            '#EC4899', '#14B8A6', '#F97316', '#06B6D4', '#84CC16'
+                                        ][index % 20];
+                                        return (
+                                            <button
+                                                key={trip.trip_id || index}
+                                                onClick={() => {
+                                                    const newSelection = isSelected
+                                                        ? selectedPreviewTripIndices.filter(i => i !== index)
+                                                        : [...selectedPreviewTripIndices, index].sort((a, b) => a - b);
+                                                    setSelectedPreviewTripIndices(newSelection);
+                                                }}
+                                                className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-2 ${
+                                                    isSelected
+                                                        ? 'bg-white text-gray-900 ring-2 ring-offset-0'
+                                                        : 'bg-gray-50 text-gray-700 hover:bg-gray-100'
+                                                }`}
+                                                style={
+                                                    isSelected
+                                                        ? { borderColor: tripColor, borderWidth: '2px' }
+                                                        : undefined
+                                                }
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    onChange={() => {}} // Handled by button onClick
+                                                    className="w-4 h-4 rounded"
+                                                    style={{ accentColor: tripColor }}
+                                                />
+                                                <span
+                                                    className="w-3 h-3 rounded-full"
+                                                    style={{ backgroundColor: tripColor }}
+                                                />
+                                                เที่ยวที่ {trip.trip_number || index + 1}
+                                                <span className="text-xs text-gray-500">
+                                                    ({trip.stops?.length || 0} จุด)
+                                                </span>
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+
+                        {hasPreviewMapData && previewWarehouse ? (
+                            <RouteMap
+                                warehouse={previewWarehouse}
+                                trips={previewTripsForMap}
+                                height="700px"
+                                selectedTripIndices={selectedPreviewTripIndices}
+                                onTripSelectMulti={setSelectedPreviewTripIndices}
+                                onMoveOrder={handleMoveOrder}
+                                onReorderStops={handleReorderStopsInPreview}
+                            />
+                        ) : (
+                            <div className="h-72 flex flex-col items-center justify-center rounded-lg border border-dashed border-gray-300 text-gray-500 bg-gray-50">
+                                <MapPin className="w-12 h-12 text-gray-400 mb-3" />
+                                <div className="text-center">
+                                    <div className="font-medium text-gray-700 mb-1">ไม่มีข้อมูลพิกัดสำหรับแผนนี้</div>
+                                    <div className="text-sm text-gray-500">กรุณาตรวจสอบว่าลูกค้ามีข้อมูล Latitude และ Longitude ในระบบ</div>
+                                </div>
+                            </div>
+                        )}
+
+                        <div className="space-y-4">
+                            {previewTrips.map(trip => (
+                                <div key={`preview-trip-${trip.trip_id}`} className="border border-gray-200 rounded-lg overflow-hidden bg-white shadow-sm">
+                                    <div className={`px-4 py-3 border-b border-gray-200 flex flex-col md:flex-row md:items-center md:justify-between gap-2 ${
+                                        trip.is_overweight ? 'bg-red-50' : 'bg-gray-50'
+                                    }`}>
+                                        <div>
+                                            <div className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                                                เที่ยวที่ {trip.trip_number}
+                                                {trip.is_overweight && (
+                                                    <span className="text-xs font-medium text-red-600 bg-red-100 px-2 py-0.5 rounded">
+                                                        ⚠️ น้ำหนักเกิน
+                                                    </span>
+                                                )}
+                                            </div>
+                                            <div className="text-xs text-gray-500 space-x-2">
+                                                <span>รถ: {trip.vehicle_label || trip.vehicle_name || '-'}</span>
+                                                <span>| คนขับ: {trip.driver_label || trip.driver_name || '-'}</span>
+                                            </div>
+                                        </div>
+                                        <div className="text-xs text-gray-500">
+                                            {Number(trip.total_distance_km ?? 0).toFixed(1)} km • {trip.stops?.length || 0} จุด
+                                        </div>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        {trip.stops && trip.stops.length > 0 ? (
+                                            <table className="min-w-full text-xs">
+                                                <thead className="bg-gray-100">
+                                                    <tr>
+                                                        <th className="px-3 py-2 text-left font-medium text-gray-600">ลำดับ</th>
+                                                        <th className="px-3 py-2 text-left font-medium text-gray-600">เลขที่ออเดอร์</th>
+                                                        <th className="px-3 py-2 text-left font-medium text-gray-600">จุดแวะ</th>
+                                                        <th className="px-3 py-2 text-right font-medium text-gray-600">น้ำหนัก (kg)</th>
+                                                        <th className="px-3 py-2 text-right font-medium text-gray-600">เวลาบริการ (นาที)</th>
+                                                    </tr>
+                                                </thead>
+                                                <tbody className="divide-y divide-gray-100">
+                                                    {trip.stops.flatMap((stop: any, stopIndex: number) => {
+                                                        // Check if stop has orders array with data
+                                                        const hasOrders = Array.isArray(stop.orders) && stop.orders.length > 0;
+                                                        
+                                                        // Debug log for first stop
+                                                        if (stopIndex === 0) {
+                                                            console.log('🔍 Preview Stop Data:', {
+                                                                stop_id: stop.stop_id,
+                                                                stop_name: stop.stop_name,
+                                                                order_id: stop.order_id,
+                                                                order_no: stop.order_no,
+                                                                hasOrders,
+                                                                orders: stop.orders,
+                                                                load_weight_kg: stop.load_weight_kg
+                                                            });
+                                                        }
+                                                        
+                                                        const orderRows: StopOrderDetail[] = hasOrders
+                                                            ? stop.orders
+                                                            : [{
+                                                                order_id: stop.order_id ?? null,
+                                                                order_no: stop.order_no ?? null,
+                                                                customer_name: stop.stop_name ?? null,
+                                                                allocated_weight_kg: Number.isFinite(Number(stop.load_weight_kg)) ? Number(stop.load_weight_kg) : null,
+                                                                total_order_weight_kg: Number.isFinite(Number(stop.load_weight_kg)) ? Number(stop.load_weight_kg) : null
+                                                            }];
+
+                                                        return orderRows.map((order, index) => {
+                                                            const rowKey = `preview-stop-${stop.stop_id}-${order.order_id ?? index}`;
+                                                            const weightSource =
+                                                                (order.allocated_weight_kg != null && Number.isFinite(Number(order.allocated_weight_kg)))
+                                                                    ? Number(order.allocated_weight_kg)
+                                                                    : (order.total_order_weight_kg != null && Number.isFinite(Number(order.total_order_weight_kg)))
+                                                                        ? Number(order.total_order_weight_kg)
+                                                                        : Number.isFinite(Number(stop.load_weight_kg))
+                                                                            ? Number(stop.load_weight_kg)
+                                                                            : null;
+                                                            const formattedWeight = weightSource != null
+                                                                ? weightSource.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+                                                                : '-';
+                                                            const serviceDurationDisplay =
+                                                                stop.service_duration_minutes != null
+                                                                    ? stop.service_duration_minutes
+                                                                    : '-';
+
+                                                            return (
+                                                                <tr key={rowKey} className="hover:bg-gray-50">
+                                                                    <td className="px-3 py-2 font-mono text-gray-600">{stop.sequence_no}</td>
+                                                                    <td className="px-3 py-2 font-mono text-blue-600">{order.order_no || '-'}</td>
+                                                                    <td className="px-3 py-2">
+                                                                        <div className="font-semibold text-gray-800">{stop.stop_name || '-'}</div>
+                                                                        <div className="text-xs text-gray-500 truncate" style={{ maxWidth: '260px' }}>
+                                                                            {stop.address || '-'}
+                                                                        </div>
+                                                                    </td>
+                                                                    <td className="px-3 py-2 text-right font-mono text-gray-600">{formattedWeight}</td>
+                                                                    <td className="px-3 py-2 text-right font-mono text-gray-600">{serviceDurationDisplay}</td>
+                                                                </tr>
+                                                            );
+                                                        });
+                                                    })}
+                                                </tbody>
+                                                <tfoot className="bg-thai-blue-50 border-t-2 border-thai-blue-200">
+                                                    <tr>
+                                                        <td className="px-3 py-3 text-center font-bold text-thai-blue-900 font-mono">
+                                                            {trip.stops.length}
+                                                        </td>
+                                                        <td colSpan={2} className="px-3 py-3 text-right font-semibold text-thai-blue-900">
+                                                            รวมทั้งหมด:
+                                                        </td>
+                                                        <td className="px-3 py-3 text-right font-bold text-thai-blue-900 font-mono">
+                                                            {(() => {
+                                                                const totalWeight = trip.stops.reduce((sum: number, stop: any) => {
+                                                                    const orderRows: StopOrderDetail[] =
+                                                                        Array.isArray(stop.orders) && stop.orders.length > 0
+                                                                            ? stop.orders
+                                                                            : [{
+                                                                                order_id: stop.order_id ?? null,
+                                                                                order_no: stop.order_no ?? null,
+                                                                                customer_name: stop.stop_name ?? null,
+                                                                                allocated_weight_kg: Number.isFinite(Number(stop.load_weight_kg)) ? Number(stop.load_weight_kg) : null,
+                                                                                total_order_weight_kg: Number.isFinite(Number(stop.load_weight_kg)) ? Number(stop.load_weight_kg) : null
+                                                                            }];
+                                                                    
+                                                                    const stopWeight = orderRows.reduce((orderSum, order) => {
+                                                                        const weight = (order.allocated_weight_kg != null && Number.isFinite(Number(order.allocated_weight_kg)))
+                                                                            ? Number(order.allocated_weight_kg)
+                                                                            : (order.total_order_weight_kg != null && Number.isFinite(Number(order.total_order_weight_kg)))
+                                                                                ? Number(order.total_order_weight_kg)
+                                                                                : 0;
+                                                                        return orderSum + weight;
+                                                                    }, 0);
+                                                                    
+                                                                    return sum + stopWeight;
+                                                                }, 0);
+                                                                
+                                                                return totalWeight.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+                                                            })()}
+                                                        </td>
+                                                        <td className="px-3 py-3 text-right font-bold text-thai-blue-900 font-mono">
+                                                            {(() => {
+                                                                const totalServiceTime = trip.stops.reduce((sum: number, stop: any) => {
+                                                                    const serviceTime = stop.service_duration_minutes != null && Number.isFinite(Number(stop.service_duration_minutes))
+                                                                        ? Number(stop.service_duration_minutes)
+                                                                        : 0;
+                                                                    return sum + serviceTime;
+                                                                }, 0);
+                                                                
+                                                                return totalServiceTime;
+                                                            })()}
+                                                        </td>
+                                                    </tr>
+                                                </tfoot>
+                                            </table>
+                                        ) : (
+                                            <div className="px-4 py-3 text-xs text-gray-500">ไม่มีจุดในเที่ยวนี้</div>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="text-xs text-gray-400 text-right">
+                            อัปเดตล่าสุด:{' '}
+                            {previewPlan.updated_at ? new Date(previewPlan.updated_at).toLocaleString('th-TH') : '-'}
+                        </div>
+                    </div>
+                ) : (
+                    <div className="py-6 text-center text-gray-500">ไม่พบข้อมูลแผนเส้นทาง</div>
+                )}
+            </Modal>
+
+            <Modal
+                isOpen={isEditorOpen}
+                onClose={handleCloseEditor}
+                title={editorPlan ? `จัดการเส้นทาง: ${editorPlan.plan_name || editorPlan.plan_code}` : 'จัดการเส้นทาง'}
+                size="4xl"
+                contentClassName="max-h-[85vh]"
+            >
+                {editorLoading && editorTrips.length === 0 ? (
+                    <div className="py-10 text-center text-gray-500">กำลังโหลดข้อมูล...</div>
+                ) : editorError && editorTrips.length === 0 ? (
+                    <div className="py-10 text-center text-red-500">{editorError}</div>
+                ) : editorPlan ? (
+                    <div className="relative">
+                        {editorLoading && editorTrips.length > 0 && (
+                            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/70">
+                                <svg
+                                    className="animate-spin h-10 w-10 text-blue-600"
+                                    xmlns="http://www.w3.org/2000/svg"
+                                    fill="none"
+                                    viewBox="0 0 24 24"
+                                >
+                                    <circle
+                                        className="opacity-25"
+                                        cx="12"
+                                        cy="12"
+                                        r="10"
+                                        stroke="currentColor"
+                                        strokeWidth="4"
+                                    ></circle>
+                                    <path
+                                        className="opacity-75"
+                                        fill="currentColor"
+                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                                    ></path>
+                                </svg>
+                                <p className="mt-2 text-sm text-gray-600">กำลังประมวลผล...</p>
+                            </div>
+                        )}
+
+                        <div className="space-y-4">
+                            {editorError && (
+                                <div className="text-sm text-red-500 bg-red-50 border border-red-200 rounded-md px-3 py-2">
+                                    {editorError}
+                                </div>
+                            )}
+
+                            <div className="grid md:grid-cols-5 gap-4">
+                                <div className="md:col-span-3 space-y-3">
+                                    {editorTrips.length === 0 ? (
+                                        <div className="border border-dashed border-gray-300 rounded-lg p-6 text-center text-sm text-gray-500">
+                                            ไม่มีเที่ยวรถในแผนนี้
+                                        </div>
+                                    ) : (
+                                        editorTrips.map(trip => (
+                                            <div
+                                                key={trip.trip_id}
+                                                className={`border rounded-lg transition ${trip.trip_id === selectedEditorTripId
+                                                    ? 'border-blue-500 bg-blue-50/30'
+                                                    : trip.is_overweight
+                                                    ? 'border-red-300 bg-red-50/30'
+                                                    : 'border-gray-200 bg-white'
+                                                    }`}
+                                            >
+                                                <div className={`p-3 ${trip.is_overweight ? 'bg-red-50/50' : ''}`}>
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <div>
+                                                            <div className="text-sm font-semibold text-gray-800 flex items-center gap-2">
+                                                                เที่ยวที่ {trip.trip_number}
+                                                                {trip.is_overweight && (
+                                                                    <span className="text-xs font-medium text-red-600 bg-red-100 px-2 py-0.5 rounded">
+                                                                        ⚠️ น้ำหนักเกิน
+                                                                    </span>
+                                                                )}
+                                                            </div>
+                                                            <div className="text-xs text-gray-500 space-x-2">
+                                                                <span>รถ: {trip.vehicle_label || '-'}</span>
+                                                                <span>| คนขับ: {trip.driver_label || '-'}</span>
+                                                            </div>
+                                                        </div>
+                                                        <div className="text-xs text-gray-500 text-right">
+                                                            {trip.total_distance_km?.toFixed(1) || 0} km • {trip.stops.length} จุด
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                                <div className="overflow-x-auto">
+                                                    <DraggableStopList
+                                                        stops={trip.stops}
+                                                        selectedStopId={selectedEditorStopId}
+                                                        selectedOrderId={selectedEditorOrderId}
+                                                        onReorder={(reorderedStops) => handleReorderStops(trip.trip_id, reorderedStops)}
+                                                        onSelectStop={(stopId, orderId) => handleSelectEditorStop(trip.trip_id, stopId, orderId)}
+                                                    />
+                                                </div>
+                                            </div>
+                                        ))
+                                    )}
+                                </div>
+
+                                <div className="md:col-span-2 space-y-3">
+                                    <div className="sticky top-4 space-y-3">
+                                        {/* Draft Orders Panel */}
+                                        <EditorDraftOrdersPanel
+                                            draftOrders={editorDraftOrders}
+                                            trips={editorTrips}
+                                            loading={editorDraftOrdersLoading}
+                                            onAddOrder={handleAddOrderToEditor}
+                                        />
+
+                                        {/* Selected Stop Details */}
+                                        {editorActiveStop && editorActiveTrip ? (
+                                            <div className="border rounded-lg bg-white p-3 space-y-3">
+                                                <div>
+                                                    <h4 className="font-semibold text-gray-800">จุดที่ {editorActiveStop.sequence_no}</h4>
+                                                    <p className="text-sm text-gray-700">{editorActiveStop.stop_name}</p>
+                                                    <p className="text-xs text-gray-500">{editorActiveStop.address || '—'}</p>
+                                                    {editorActiveOrder && (
+                                                        <p className="text-xs font-mono text-blue-600 mt-1">เลขออเดอร์: {editorActiveOrder.order_no || '-'}</p>
+                                                    )}
+                                                </div>
+
+                                                <table className="w-full text-xs bg-gray-50 rounded-md overflow-hidden">
+                                                    <tbody>
+                                                        <tr>
+                                                            <th className="px-3 py-2 text-left text-gray-600">น้ำหนัก</th>
+                                                            <td className="px-3 py-2 text-gray-800">
+                                                                {editorActiveOrder
+                                                                    ? Number(editorActiveOrder.allocated_weight_kg ?? editorActiveOrder.total_order_weight_kg ?? 0).toFixed(2)
+                                                                    : Number(editorActiveStop.load_weight_kg ?? 0).toFixed(2)
+                                                                } kg
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                            <th className="px-3 py-2 text-left text-gray-600">หน่วย</th>
+                                                            <td className="px-3 py-2 text-gray-800">{editorActiveStop.load_units ?? 0}</td>
+                                                        </tr>
+                                                        <tr>
+                                                            <th className="px-3 py-2 text-left text-gray-600">ปริมาตร</th>
+                                                            <td className="px-3 py-2 text-gray-800">
+                                                                {Number(editorActiveStop.load_volume_cbm ?? 0).toFixed(2)} cbm
+                                                            </td>
+                                                        </tr>
+                                                        <tr>
+                                                            <th className="px-3 py-2 text-left text-gray-600">เวลาบริการ</th>
+                                                            <td className="px-3 py-2 text-gray-800">
+                                                                {editorActiveStop.service_duration_minutes ?? 0} นาที
+                                                            </td>
+                                                        </tr>
+                                                    </tbody>
+                                                </table>
+
+                                                <div className="space-y-3">
+                                                    <div className="flex gap-2">
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            onClick={() => handleMoveStop(editorActiveTrip.trip_id, editorActiveStop.stop_id, 'up')}
+                                                            disabled={editorActiveStop.sequence_no <= 1}
+                                                        >
+                                                            เลื่อนขึ้น
+                                                        </Button>
+                                                        <Button
+                                                            size="sm"
+                                                            variant="outline"
+                                                            onClick={() => handleMoveStop(editorActiveTrip.trip_id, editorActiveStop.stop_id, 'down')}
+                                                            disabled={editorActiveStop.sequence_no >= editorActiveTrip.stops.length}
+                                                        >
+                                                            เลื่อนลง
+                                                        </Button>
+                                                    </div>
+
+                                                    <div className="space-y-1">
+                                                        <label className="text-xs text-gray-600">ย้ายไปคันอื่น</label>
+                                                        <div className="flex items-center gap-2">
+                                                            <select
+                                                                className="flex-1 border border-gray-300 rounded-md px-2 py-1 text-sm"
+                                                                value={transferTripId ?? ''}
+                                                                onChange={event => {
+                                                                    const value = event.target.value;
+                                                                    setTransferTripId(value === '' ? null : Number(value));
+                                                                }}
+                                                            >
+                                                                <option value="">เลือกเที่ยว</option>
+                                                                {editorTrips.map(trip => (
+                                                                    <option key={trip.trip_id} value={trip.trip_id}>
+                                                                        เที่ยวที่ {trip.trip_number}
+                                                                    </option>
+                                                                ))}
+                                                            </select>
+                                                            <Button
+                                                                size="sm"
+                                                                variant="outline"
+                                                                disabled={!transferTripId || transferTripId === editorActiveTrip.trip_id}
+                                                                onClick={() =>
+                                                                    transferTripId && handleTransferStop(editorActiveStop.stop_id, transferTripId)
+                                                                }
+                                                            >
+                                                                ย้ายคัน
+                                                            </Button>
+                                                        </div>
+                                                    </div>
+
+                                                    <Button size="sm" variant="outline" onClick={handleOpenSplitModal}>
+                                                        แบ่งออเดอร์ไปคันอื่น
+                                                    </Button>
+
+                                                    <div className="border-t border-gray-200 pt-3 mt-3">
+                                                        <Button
+                                                            size="sm"
+                                                            variant="danger"
+                                                            icon={Trash2}
+                                                            onClick={() => handleCancelStop(editorActiveStop)}
+                                                        >
+                                                            ยกเลิกจุดส่งนี้
+                                                        </Button>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ) : (
+                                            <div className="border border-dashed border-gray-300 rounded-lg p-4 text-sm text-gray-500 bg-white">
+                                                เลือกจุดในรายการเพื่อดูรายละเอียดและแก้ไข
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div className="border rounded-lg bg-white p-3">
+                                <h4 className="font-semibold text-gray-800 mb-3">แผนที่ตัวอย่าง (อัปเดตหลังบันทึก)</h4>
+                                {editorWarehouse ? (
+                                    <RouteMap
+                                        warehouse={{ ...editorWarehouse, name: editorWarehouse.name || undefined }}
+                                        trips={editorTripsForMap as any}
+                                        height="360px"
+                                    />
+                                ) : (
+                                    <div className="h-60 flex items-center justify-center text-sm text-gray-500">
+                                        ไม่มีข้อมูลพิกัดคลังสินค้า
+                                    </div>
+                                )}
+                            </div>
+
+                            <div className="flex justify-end gap-3">
+                                <Button variant="outline" onClick={handleCloseEditor} disabled={editorLoading}>
+                                    ปิด
+                                </Button>
+                                <Button
+                                    variant="primary"
+                                    onClick={handleSaveEditor}
+                                    disabled={editorLoading || editorTrips.length === 0}
+                                >
+                                    บันทึกการแก้ไข
+                                </Button>
+                            </div>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="py-6 text-center text-gray-500">เลือกแผนเพื่อจัดการเส้นทาง</div>
+                )}
+            </Modal>
+
+            <SplitStopModal
+                isOpen={isSplitModalOpen}
+                stop={editorActiveStop}
+                orderId={selectedEditorOrderId}
+                trips={editorTrips}
+                currentTripId={editorActiveTrip?.trip_id ?? null}
+                onClose={() => setIsSplitModalOpen(false)}
+                onSubmit={handleSplitSubmit}
+            />
+
+            <Modal isOpen={isOptimizing} onClose={() => { }} title="กำลังคำนวณเส้นทาง" size="sm" hideCloseButton>
+                <div className="flex flex-col items-center justify-center p-8">
+                    <svg
+                        className="animate-spin h-12 w-12 text-blue-600"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                    >
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path
+                            className="opacity-75"
+                            fill="currentColor"
+                            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                        ></path>
+                    </svg>
+                    <p className="mt-4 text-lg font-medium text-gray-800">กำลังประมวลผล...</p>
+                    <p className="mt-2 text-sm text-gray-600 text-center">{statusMessage}</p>
+                    <p className="mt-1 text-xs text-gray-500">กรุณารอสักครู่ ระบบอาจใช้เวลาหลายนาที</p>
+                </div>
+            </Modal>
+
+            <PrintRoutePlanModal
+                isOpen={showPrintModal}
+                onClose={() => setShowPrintModal(false)}
+                planId={selectedPlanIdForPrint}
+            />
+            <EditShippingCostModal
+                isOpen={showEditShippingCostModal}
+                onClose={() => {
+                    setShowEditShippingCostModal(false);
+                    setSelectedPlanIdForShippingCost(null);
+                    fetchRoutePlans(); // Refresh data after potential save
+                }}
+                planId={selectedPlanIdForShippingCost}
+            />
+            <TransportContractModal
+                isOpen={showTransportContractModal}
+                onClose={() => setShowTransportContractModal(false)}
+            />
+        </div>
+    );
+};
+
+export default RoutesPage;

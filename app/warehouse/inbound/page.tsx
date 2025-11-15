@@ -1,0 +1,768 @@
+﻿'use client';
+import React, { useState, useMemo, useEffect } from 'react';
+import { useReceives, useReceiveDashboard } from '@/hooks/useReceive';
+import { ReceiveHeader, ReceiveItem, ReceiveFilters, ReceiveType, ReceiveStatus, PalletScanStatus, ReceiveRecord } from '@/lib/database/receive';
+import {
+  TruckIcon,
+  Plus,
+  Search,
+  Filter,
+  CheckCircle,
+  Clock,
+  AlertTriangle,
+  Package,
+  User,
+  Calendar,
+  Edit,
+  Eye,
+  MapPin,
+  ChevronDown,
+  ChevronRight,
+  QrCode,
+  Save,
+  ChevronUp as ChevronUpIcon,
+  ChevronsUpDown
+} from 'lucide-react';
+import Button from '@/components/ui/Button';
+import Badge from '@/components/ui/Badge';
+import Modal from '@/components/ui/Modal';
+import AddReceiveForm from '@/components/forms/AddReceiveForm';
+// Define a more accurate type for the data received from the hook
+type ReceiveWithItems = ReceiveHeader & {
+  wms_receive_items: (ReceiveItem & {
+    master_sku?: { sku_name: string; barcode: string; } | null;
+    master_location?: { location_code: string; location_name?: string | null } | null;
+  })[];
+  master_supplier: { supplier_name: string } | null;
+  master_customer: { customer_name: string } | null;
+  master_employee: { first_name: string; last_name: string } | null;
+};
+const InboundPage = () => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedType, setSelectedType] = useState<ReceiveType | 'all'>('all');
+  const [selectedStatus, setSelectedStatus] = useState<ReceiveStatus | 'all'>('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedReceive, setSelectedReceive] = useState<ReceiveWithItems | null>(null);
+  const [expandedRows, setExpandedRows] = useState<Record<number, boolean>>({});
+  const [externalPalletIds, setExternalPalletIds] = useState<Record<string, string>>({});
+  const [savingPalletIds, setSavingPalletIds] = useState<Record<string, boolean>>({});
+  const [sortField, setSortField] = useState<string>('');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  // Build filters object
+  const filters: ReceiveFilters = useMemo(() => ({
+    ...(selectedType !== 'all' && { receive_type: selectedType as ReceiveType }),
+    ...(selectedStatus !== 'all' && { status: selectedStatus as ReceiveStatus }),
+    ...(searchTerm && { searchTerm }),
+    ...(startDate && { startDate }),
+    ...(endDate && { endDate }),
+  }), [selectedType, selectedStatus, searchTerm, startDate, endDate]);
+  // Fetch data using hooks
+  const { data: receives, loading: receivesLoading, error: receivesError, refetch } = useReceives(filters);
+  const { data: dashboardData, loading: dashboardLoading } = useReceiveDashboard();
+
+
+  // Sort function
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  // Sort icon component
+  const getSortIcon = (field: string) => {
+    if (sortField !== field) {
+      return <ChevronsUpDown className="w-3 h-3 ml-1 inline-block" />;
+    }
+    return sortDirection === 'asc' ? (
+      <ChevronUpIcon className="w-3 h-3 ml-1 inline-block" />
+    ) : (
+      <ChevronDown className="w-3 h-3 ml-1 inline-block" />
+    );
+  };
+
+  // Sorted data
+  const sortedReceives = useMemo(() => {
+    if (!receives || !sortField) return receives as ReceiveWithItems[];
+    
+    return [...(receives as ReceiveWithItems[])].sort((a, b) => {
+      let aValue: any = '';
+      let bValue: any = '';
+      
+      switch (sortField) {
+        case 'receive_no':
+          aValue = a.receive_no;
+          bValue = b.receive_no;
+          break;
+        case 'reference_doc':
+          aValue = a.reference_doc || '';
+          bValue = b.reference_doc || '';
+          break;
+        case 'receive_type':
+          aValue = a.receive_type;
+          bValue = b.receive_type;
+          break;
+        case 'product_name':
+          aValue = a.wms_receive_items[0]?.master_sku?.sku_name || a.wms_receive_items[0]?.product_name || '';
+          bValue = b.wms_receive_items[0]?.master_sku?.sku_name || b.wms_receive_items[0]?.product_name || '';
+          break;
+        case 'sku_id':
+          aValue = a.wms_receive_items[0]?.sku_id || '';
+          bValue = b.wms_receive_items[0]?.sku_id || '';
+          break;
+        case 'barcode':
+          aValue = a.wms_receive_items[0]?.master_sku?.barcode || a.wms_receive_items[0]?.barcode || '';
+          bValue = b.wms_receive_items[0]?.master_sku?.barcode || b.wms_receive_items[0]?.barcode || '';
+          break;
+        case 'piece_quantity':
+          aValue = a.wms_receive_items.reduce((sum, item) => sum + (item.piece_quantity ?? 0), 0);
+          bValue = b.wms_receive_items.reduce((sum, item) => sum + (item.piece_quantity ?? 0), 0);
+          break;
+        case 'pack_quantity':
+          aValue = a.wms_receive_items.reduce((sum, item) => sum + (item.pack_quantity ?? 0), 0);
+          bValue = b.wms_receive_items.reduce((sum, item) => sum + (item.pack_quantity ?? 0), 0);
+          break;
+        case 'supplier_name':
+          aValue = a.master_supplier?.supplier_name || '';
+          bValue = b.master_supplier?.supplier_name || '';
+          break;
+        case 'customer_name':
+          aValue = a.master_customer?.customer_name || '';
+          bValue = b.master_customer?.customer_name || '';
+          break;
+        case 'receive_date':
+          aValue = new Date(a.receive_date || 0);
+          bValue = new Date(b.receive_date || 0);
+          break;
+        case 'status':
+          aValue = a.status;
+          bValue = b.status;
+          break;
+        case 'employee_name':
+          aValue = a.master_employee ? `${a.master_employee.first_name} ${a.master_employee.last_name}` : '';
+          bValue = b.master_employee ? `${b.master_employee.first_name} ${b.master_employee.last_name}` : '';
+          break;
+        default:
+          return 0;
+      }
+      
+      if (typeof aValue === 'number' && typeof bValue === 'number') {
+        return sortDirection === 'asc' ? aValue - bValue : bValue - aValue;
+      }
+      
+      const aStr = String(aValue).toLowerCase();
+      const bStr = String(bValue).toLowerCase();
+      
+      if (sortDirection === 'asc') {
+        return aStr.localeCompare(bStr);
+      } else {
+        return bStr.localeCompare(aStr);
+      }
+    });
+  }, [receives, sortField, sortDirection]);
+
+
+  const handleEdit = (receive: ReceiveWithItems) => {
+    setSelectedReceive(receive);
+    setShowEditModal(true);
+  };
+  const toggleRow = (receiveId: number) => {
+    setExpandedRows((prev) => ({
+      ...prev,
+      [receiveId]: !prev[receiveId],
+    }));
+  };
+
+  const handleExternalPalletIdChange = (itemId: number, value: string) => {
+    setExternalPalletIds((prev) => ({
+      ...prev,
+      [itemId]: value,
+    }));
+  };
+
+  const saveExternalPalletId = async (itemId: number) => {
+    const externalId = externalPalletIds[itemId];
+    if (!externalId || !externalId.trim()) {
+      alert('กรุณากรอกรหัสพาเลทภายนอก');
+      return;
+    }
+
+    setSavingPalletIds((prev) => ({ ...prev, [itemId]: true }));
+
+    try {
+      const response = await fetch('/api/receive/update-external-pallet', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          itemId,
+          externalPalletId: externalId.trim(),
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.error) {
+        alert(`เกิดข้อผิดพลาด: ${result.error}`);
+        return;
+      }
+
+      // Success - refresh data and update UI
+      refetch();
+      alert('บันทึกรหัสพาเลทภายนอกสำเร็จ');
+    } catch (error) {
+      console.error('Error saving external pallet ID:', error);
+      alert('เกิดข้อผิดพลาดในการบันทึก');
+    } finally {
+      setSavingPalletIds((prev) => ({ ...prev, [itemId]: false }));
+    }
+  };
+  // Receive types for dropdown
+  const receiveTypes: { value: ReceiveType | 'all'; label: string }[] = [
+    { value: 'all', label: 'ทั้งหมด' },
+    { value: 'รับสินค้าปกติ', label: 'รับสินค้าปกติ' },
+    { value: 'รับสินค้าชำรุด', label: 'รับสินค้าชำรุด' },
+    { value: 'รับสินค้าหมดอายุ', label: 'รับสินค้าหมดอายุ' },
+    { value: 'รับสินค้าคืน', label: 'รับสินค้าคืน' },
+    { value: 'รับสินค้าตีกลับ', label: 'รับสินค้าตีกลับ' }
+  ];
+  // Status types for dropdown
+  const statuses: { value: ReceiveStatus | 'all'; label: string }[] = [
+    { value: 'all', label: 'ทั้งหมด' },
+    { value: 'รอรับเข้า', label: 'รอรับเข้า' },
+    { value: 'รับเข้าแล้ว', label: 'รับเข้าแล้ว' },
+    { value: 'กำลังตรวจสอบ', label: 'กำลังตรวจสอบ' },
+    { value: 'สำเร็จ', label: 'สำเร็จ' }
+  ];
+  const formatThaiDate = (dateString?: string | null) => {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return '-';
+    return date.toLocaleDateString('th-TH');
+  };
+  const getStatusBadge = (status: ReceiveStatus) => {
+    switch (status) {
+      case 'รอรับเข้า':
+        return <Badge variant="default" size="sm" className="whitespace-nowrap"><span className="text-[10px]">รอรับเข้า</span></Badge>;
+      case 'รับเข้าแล้ว':
+        return <Badge variant="info" size="sm" className="whitespace-nowrap"><span className="text-[10px]">รับเข้าแล้ว</span></Badge>;
+      case 'กำลังตรวจสอบ':
+        return <Badge variant="warning" size="sm" className="whitespace-nowrap"><span className="text-[10px]">กำลังตรวจสอบ</span></Badge>;
+      case 'สำเร็จ':
+        return <Badge variant="success" size="sm" className="whitespace-nowrap"><span className="text-[10px]">สำเร็จ</span></Badge>;
+      default:
+        return <Badge variant="default" size="sm" className="whitespace-nowrap"><span className="text-[10px]">ไม่ระบุ</span></Badge>;
+    }
+  };
+  const getReceiveTypeBadge = (type: ReceiveType) => {
+    switch (type) {
+      case 'รับสินค้าปกติ':
+        return <Badge variant="info" size="sm" className="whitespace-nowrap"><span className="text-[10px]">รับสินค้าปกติ</span></Badge>;
+      case 'รับสินค้าชำรุด':
+        return <Badge variant="danger" size="sm" className="whitespace-nowrap"><span className="text-[10px]">รับสินค้าชำรุด</span></Badge>;
+      case 'รับสินค้าหมดอายุ':
+        return <Badge variant="warning" size="sm" className="whitespace-nowrap"><span className="text-[10px]">รับสินค้าหมดอายุ</span></Badge>;
+      case 'รับสินค้าคืน':
+        return <Badge variant="warning" size="sm" className="whitespace-nowrap"><span className="text-[10px]">รับสินค้าคืน</span></Badge>;
+      case 'รับสินค้าตีกลับ':
+        return <Badge variant="default" size="sm" className="whitespace-nowrap"><span className="text-[10px]">รับสินค้าตีกลับ</span></Badge>;
+      default:
+        return <Badge variant="default" size="sm" className="whitespace-nowrap"><span className="text-[10px]">{type}</span></Badge>;
+    }
+  };
+  const getPalletScanBadge = (status: PalletScanStatus) => {
+    switch (status) {
+      case 'สแกนแล้ว':
+        return <Badge variant="success" size="sm"><span className="text-[10px]">สแกนแล้ว</span></Badge>;
+      case 'รอดำเนินการ':
+        return <Badge variant="warning" size="sm"><span className="text-[10px]">รอดำเนินการ</span></Badge>;
+      default:
+        return <Badge variant="secondary" size="sm"><span className="text-[10px]">ไม่จำเป็น</span></Badge>;
+    }
+  };
+  // Handle loading and error states
+  if (receivesLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-thai-gray-25 to-white">
+        <div className="space-y-3">
+          <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-6 shadow-sm">
+            <div className="animate-pulse flex space-x-4">
+              <div className="rounded-full bg-gray-200 h-12 w-12"></div>
+              <div className="flex-1 space-y-2 py-1">
+                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
+                <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if (receivesError) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-thai-gray-25 to-white">
+        <div className="space-y-3">
+          <div className="bg-red-50/80 backdrop-blur-sm border border-red-200/50 rounded-xl p-6 shadow-sm">
+            <div className="text-red-600 font-thai">
+              เกิดข้อผิดพลาด: {receivesError}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="h-screen bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
+      <div className="h-full flex flex-col space-y-2 pt-0 px-2 pb-2">
+        {/* Header */}
+        <div className="flex items-center justify-between gap-2 pt-1 flex-shrink-0">
+          <h1 className="text-xl font-bold text-thai-gray-900 font-thai m-0 p-0 leading-tight">รับสินค้าเข้าคลัง (Inbound)</h1>
+          <div className="flex gap-2">
+            <Button 
+              variant="primary" 
+              icon={Plus}
+              className="bg-blue-500 hover:bg-blue-600 shadow-lg"
+              onClick={() => setShowAddModal(true)}
+            >
+              สร้างใบรับใหม่
+            </Button>
+          </div>
+        </div>
+
+        {/* Search and Filters */}
+        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm flex-shrink-0">
+          <div className="flex items-center space-x-3">
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
+                <input
+                  type="text"
+                  placeholder="ค้นหาเลข PO, ผู้จำหน่าย, คลังสินค้า หรือ รหัสรับ..."
+                  className="
+                    w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
+                    focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
+                    text-sm font-thai transition-all duration-300 backdrop-blur-sm
+                    placeholder:text-thai-gray-400
+                  "
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="flex space-x-2">
+              <input
+                type="date"
+                className="
+                  px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
+                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
+                  text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-28
+                "
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+              <input
+                type="date"
+                className="
+                  px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
+                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
+                  text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-28
+                "
+                value={endDate}
+                onChange={(e) => setEndDate(e.target.value)}
+              />
+              <select
+                className="
+                  px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
+                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
+                  text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-24
+                "
+                value={selectedType}
+                onChange={(e) => setSelectedType(e.target.value as ReceiveType | 'all')}
+              >
+                {receiveTypes.map((type) => (
+                  <option key={type.value} value={type.value}>
+                    {type.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                className="
+                  px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
+                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
+                  text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-24
+                "
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value as ReceiveStatus | 'all')}
+              >
+                {statuses.map((status) => (
+                  <option key={status.value} value={status.value}>
+                    {status.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+        
+        {/* Table */}
+        <div className="flex-1 min-h-0">
+          {sortedReceives.length > 0 ? (
+            <div className="w-full h-[74vh] overflow-y-auto force-horizontal-scrollbar bg-white border border-gray-200 rounded-lg shadow-sm">
+              <table className="w-auto border-collapse text-sm">
+                <thead className="sticky top-0 z-10 bg-gray-100">
+                  <tr>
+                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('receive_no')}>
+                      รหัสรับ{getSortIcon('receive_no')}
+                    </th>
+                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('reference_doc')}>
+                      อ้างอิง{getSortIcon('reference_doc')}
+                    </th>
+                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('receive_type')}>
+                      ประเภท{getSortIcon('receive_type')}
+                    </th>
+                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('product_name')}>
+                      ชื่อสินค้า{getSortIcon('product_name')}
+                    </th>
+                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('sku_id')}>
+                      SKU{getSortIcon('sku_id')}
+                    </th>
+                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('barcode')}>
+                      บาร์โค้ด{getSortIcon('barcode')}
+                    </th>
+                    <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('piece_quantity')}>
+                      ชิ้น{getSortIcon('piece_quantity')}
+                    </th>
+                    <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('pack_quantity')}>
+                      แพ็ค{getSortIcon('pack_quantity')}
+                    </th>
+                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('supplier_name')}>
+                      ผู้ส่ง{getSortIcon('supplier_name')}
+                    </th>
+                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('customer_name')}>
+                      ลูกค้า{getSortIcon('customer_name')}
+                    </th>
+                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('receive_date')}>
+                      วันรับ{getSortIcon('receive_date')}
+                    </th>
+                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('status')}>
+                      สถานะ{getSortIcon('status')}
+                    </th>
+                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('employee_name')}>
+                      ผู้รับ{getSortIcon('employee_name')}
+                    </th>
+                    <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap">
+                      การดำเนินการ
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
+                {sortedReceives.map((receive) => {
+                  const items = receive.wms_receive_items || [];
+                  const firstItem = items[0];
+                  const isExpanded = !!expandedRows[receive.receive_id];
+                  const totalPieceQty = items.reduce((sum, item) => sum + (item.piece_quantity ?? 0), 0);
+                  const totalPackQty = items.reduce((sum, item) => sum + (item.pack_quantity ?? 0), 0);
+                  const uniquePallets = Array.from(
+                    new Set(
+                      items
+                        .map((item) => item.pallet_id)
+                        .filter((id): id is string => Boolean(id))
+                    )
+                  );
+                  
+                  // Check if there are pending external pallet scans
+                  const hasPendingScans = items.some(item => item.pallet_scan_status === 'รอดำเนินการ');
+                  return (
+                    <React.Fragment key={receive.receive_id}>
+                      <tr
+                        className={`hover:bg-blue-50/30 transition-colors duration-150 cursor-pointer ${
+                          isExpanded
+                            ? 'bg-gray-50'
+                            : hasPendingScans
+                              ? 'bg-amber-50/30 border-l-2 border-amber-400'
+                              : ''
+                        }`}
+                        onClick={() => toggleRow(receive.receive_id)}
+                      >
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <div className="flex items-center gap-2">
+                            <div className="text-thai-gray-400 cursor-pointer">
+                              {isExpanded ? (
+                                <ChevronDown className="w-4 h-4" />
+                              ) : (
+                                <ChevronRight className="w-4 h-4" />
+                              )}
+                            </div>
+                            <div className="font-semibold text-blue-600 font-mono">{receive.receive_no}</div>
+                            {hasPendingScans && (
+                              <span className="inline-flex items-center px-1 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700">
+                                รอสแกน
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <div className="font-mono text-thai-gray-600">
+                            {receive.reference_doc || <span className="text-thai-gray-400">-</span>}
+                          </div>
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          {getReceiveTypeBadge(receive.receive_type)}
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <div className="font-semibold text-thai-gray-800" title={`${firstItem?.master_sku?.sku_name || firstItem?.product_name || '-'}${items.length > 1 ? ` (${items.length} รายการ)` : ''}`}>
+                            {firstItem?.master_sku?.sku_name || firstItem?.product_name || '-'}
+                            {items.length > 1 && <span className="text-thai-gray-500 ml-1">({items.length})</span>}
+                          </div>
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <div className="font-mono font-semibold text-thai-gray-700">
+                            {firstItem?.sku_id || 'N/A'}
+                          </div>
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <div className="font-mono font-semibold text-thai-gray-700">
+                            {firstItem?.master_sku?.barcode || firstItem?.barcode || '-'}
+                          </div>
+                        </td>
+                        <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
+                          <div className="font-bold text-blue-600">
+                            {totalPieceQty.toLocaleString()}
+                          </div>
+                        </td>
+                        <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
+                          <div className="font-bold text-green-600">
+                            {totalPackQty.toLocaleString()}
+                          </div>
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <div className="font-medium text-thai-gray-700" title={receive.master_supplier?.supplier_name || '-'}>
+                            {receive.master_supplier?.supplier_name || '-'}
+                          </div>
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <div className="font-medium text-thai-gray-700" title={receive.master_customer?.customer_name || '-'}>
+                            {receive.master_customer?.customer_name || '-'}
+                          </div>
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <div className="font-medium text-gray-900">
+                            {formatThaiDate(receive.receive_date)}
+                          </div>
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          {getStatusBadge(receive.status)}
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          {receive.master_employee ? (
+                            <div className="font-medium text-gray-900">
+                              {receive.master_employee.first_name} {receive.master_employee.last_name}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-2 py-0.5 text-center whitespace-nowrap">
+                          <div className="flex items-center space-x-0.5">
+                            <button 
+                              className="p-1 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                              title="ดูรายละเอียด"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleRow(receive.receive_id);
+                              }}
+                            >
+                              <Eye className="w-3 h-3" />
+                            </button>
+                            <button 
+                              className="p-1 rounded hover:bg-green-50 hover:text-green-600 transition-colors"
+                              title="แก้ไข"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleEdit(receive);
+                              }}
+                            >
+                              <Edit className="w-3 h-3" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                      {isExpanded && (
+                        <tr className="bg-gray-50">
+                          <td colSpan={14} className="px-4 py-3 border border-gray-100">
+                            <div className="space-y-4">
+                              <div className="flex flex-wrap justify-between gap-3">
+                                <div className="text-sm font-semibold text-thai-gray-700 font-thai">
+                                  รายละเอียดสินค้าทั้งหมด ({items.length} รายการ)
+                                </div>
+                                <div className="flex flex-wrap gap-3 text-sm text-gray-600">
+                                  <span>พาเลท {uniquePallets.length || 0}</span>
+                                  <span>แพ็ค {totalPackQty.toLocaleString()}</span>
+                                  <span>ชิ้น {totalPieceQty.toLocaleString()}</span>
+                                </div>
+                              </div>
+                              {items.length > 0 ? (
+                                <div className="overflow-x-auto border border-gray-200 rounded-lg bg-white">
+                                  <table className="min-w-full divide-y divide-gray-200">
+                                    <thead className="sticky top-0 bg-gray-50 z-10">
+                                      <tr className="text-sm text-gray-700">
+                                        <th className="px-3 py-1.5 text-left font-medium">#</th>
+                                        <th className="px-3 py-1.5 text-left font-medium">ชื่อสินค้า</th>
+                                        <th className="px-3 py-1.5 text-left font-medium">SKU</th>
+                                        <th className="px-3 py-1.5 text-left font-medium">บาร์โค้ด</th>
+                                        <th className="px-3 py-1.5 text-center font-medium">จำนวนชิ้น</th>
+                                        <th className="px-3 py-1.5 text-center font-medium">จำนวนแพ็ค</th>
+                                        <th className="px-3 py-1.5 text-left font-medium">รหัสพาเลท</th>
+                                        <th className="px-3 py-1.5 text-left font-medium">วันที่ผลิต</th>
+                                        <th className="px-3 py-1.5 text-left font-medium">วันหมดอายุ</th>
+                                        <th className="px-3 py-1.5 text-left font-medium">สถานะสแกน</th>
+                                        <th className="px-3 py-1.5 text-left font-medium">พาเลทภายนอก</th>
+                                        <th className="px-3 py-1.5 text-left font-medium">ที่จัดเก็บ</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-gray-200 text-sm text-gray-700">
+                                      {items.map((item, index) => (
+                                        <tr key={item.item_id ?? index} className="align-top hover:bg-gray-50">
+                                          <td className="px-3 py-1.5 text-sm font-mono text-gray-500">{index + 1}</td>
+                                          <td className="px-3 py-1.5">
+                                            <div className="font-medium text-thai-gray-800">{item.master_sku?.sku_name || item.product_name || '-'}</div>
+                                          </td>
+                                          <td className="px-3 py-1.5">
+                                            <div className="text-sm font-mono text-thai-gray-600">{item.sku_id || 'N/A'}</div>
+                                          </td>
+                                          <td className="px-3 py-1.5">
+                                            <div className="text-sm font-mono text-thai-gray-600">{item.master_sku?.barcode || item.barcode || '-'}</div>
+                                          </td>
+                                          <td className="px-3 py-1.5 text-center">
+                                            <div className="font-semibold text-blue-600">
+                                              {(item.piece_quantity ?? 0).toLocaleString()}
+                                              <span className="ml-1 text-sm text-thai-gray-500">ชิ้น</span>
+                                            </div>
+                                          </td>
+                                          <td className="px-3 py-1.5 text-center">
+                                            <div className="font-semibold text-green-600">
+                                              {(item.pack_quantity ?? 0).toLocaleString()}
+                                              <span className="ml-1 text-sm text-thai-gray-500">แพ็ค</span>
+                                            </div>
+                                          </td>
+                                          <td className="px-3 py-1.5">
+                                            <div className="font-mono text-sm text-blue-600">{item.pallet_id || '-'}</div>
+                                          </td>
+                                          <td className="px-3 py-1.5">
+                                            <div className="text-sm">{item.production_date || '-'}</div>
+                                          </td>
+                                          <td className="px-3 py-1.5">
+                                            <div className="text-sm">{formatThaiDate(item.expiry_date)}</div>
+                                          </td>
+                                          <td className="px-3 py-1.5">
+                                            {getPalletScanBadge(item.pallet_scan_status)}
+                                          </td>
+                                          <td className="px-3 py-1.5">
+                                            {item.pallet_scan_status === 'รอดำเนินการ' ? (
+                                              <div className="flex items-center gap-2">
+                                                <div className="flex items-center gap-1">
+                                                  <QrCode className="w-4 h-4 text-blue-500" />
+                                                  <input
+                                                    type="text"
+                                                    placeholder="สแกนรหัสภายนอก"
+                                                    className="w-32 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                    value={externalPalletIds[item.item_id] || item.pallet_id_external || ''}
+                                                    onChange={(e) => handleExternalPalletIdChange(item.item_id, e.target.value)}
+                                                    disabled={savingPalletIds[item.item_id]}
+                                                  />
+                                                </div>
+                                                <Button
+                                                  variant="primary"
+                                                  size="sm"
+                                                  icon={Save}
+                                                  loading={savingPalletIds[item.item_id]}
+                                                  disabled={!externalPalletIds[item.item_id]?.trim() || savingPalletIds[item.item_id]}
+                                                  onClick={() => saveExternalPalletId(item.item_id)}
+                                                  className="text-sm"
+                                                >
+                                                  บันทึก
+                                                </Button>
+                                              </div>
+                                            ) : (
+                                              <span className="text-sm font-mono text-gray-600">
+                                                {item.pallet_id_external || '-'}
+                                              </span>
+                                            )}
+                                          </td>
+                                          <td className="px-3 py-1.5">
+                                            {item.location_id ? (
+                                              <span className="text-sm">{item.location_id}</span>
+                                            ) : (
+                                              <span className="text-gray-400">-</span>
+                                            )}
+                                          </td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                              ) : (
+                                <div className="border border-dashed border-thai-gray-300 rounded-xl bg-white py-6 text-center text-sm text-thai-gray-500">
+                                  ไม่มีรายละเอียดรับสินค้าระดับพาเลทสำหรับเอกสารนี้
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  );
+                })}
+                </tbody>
+              </table>
+            </div>
+        ) : (
+          <div className="text-center py-8 flex-grow">
+            <Package className="w-12 h-12 text-thai-gray-400 mx-auto mb-4" />
+            <p className="text-thai-gray-500 font-thai">ไม่พบรายการรับสินค้า</p>
+            <p className="text-thai-gray-400 font-thai text-sm mt-2">เริ่มต้นโดยการกดปุ่ม 'สร้างใบรับใหม่'</p>
+          </div>
+        )}
+        </div>
+      </div>
+    </div>
+      
+      
+      {/* Add Receive Modal */}
+      {showAddModal && (
+        <AddReceiveForm
+          isOpen={showAddModal}
+          onClose={() => setShowAddModal(false)}
+          onSuccess={() => {
+            setShowAddModal(false);
+            refetch();
+          }}
+        />
+      )}
+      {/* Edit modal */}
+      {showEditModal && selectedReceive && (
+        <AddReceiveForm
+          isOpen={showEditModal}
+          onClose={() => setShowEditModal(false)}
+          onSuccess={() => {
+            setShowEditModal(false);
+            refetch();
+          }}
+          editData={selectedReceive}
+          isEditMode={true}
+        />
+      )}
+      
+    </>
+  );
+};
+export default InboundPage;
+

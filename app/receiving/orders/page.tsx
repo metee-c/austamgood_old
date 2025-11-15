@@ -1,0 +1,925 @@
+'use client';
+import React, { useState, useMemo } from 'react';
+import {
+  ShoppingCart,
+  Plus,
+  Search,
+  Filter,
+  Package,
+  User,
+  Calendar,
+  Edit,
+  Eye,
+  Truck,
+  CheckCircle,
+  Clock,
+  AlertTriangle,
+  XCircle,
+  FileText,
+  MapPin,
+  ChevronUp,
+  ChevronDown,
+  ChevronsUpDown,
+  RotateCcw
+} from 'lucide-react';
+import Button from '@/components/ui/Button';
+import Badge from '@/components/ui/Badge';
+import Card from '@/components/ui/Card';
+import StatsCard from '@/components/ui/StatsCard';
+import Table from '@/components/ui/Table';
+import ImportOrderModal from '@/components/orders/ImportOrderModal';
+import { useOrders, useOrderDashboard, OrderType, OrderStatus, OrderPriority, OrderFilters } from '@/hooks/useOrders';
+import useSWR from 'swr';
+
+// Re-export types for local use
+type Order = {
+  order_id: string;
+  order_no: string;
+  order_type: OrderType;
+  customer_id: string;
+  customer_name?: string;
+  order_date: string;
+  delivery_date: string;
+  status: OrderStatus;
+  text_field_long_1?: string;
+  text_field_additional_4?: string;
+  items?: any[];
+};
+
+const OrdersPage = () => {
+  const [searchTerm, setSearchTerm] = useState('');
+  const [expandedOrders, setExpandedOrders] = useState<Set<number>>(new Set());
+  const [selectedType, setSelectedType] = useState<OrderType | 'all'>('all');
+  const [selectedStatus, setSelectedStatus] = useState<OrderStatus | 'all'>('all');
+  const [selectedPriority, setSelectedPriority] = useState<OrderPriority | 'all'>('all');
+  const [startDate, setStartDate] = useState('');
+  const [endDate, setEndDate] = useState('');
+  const [sortField, setSortField] = useState<string>('order_date');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [showRollbackModal, setShowRollbackModal] = useState(false);
+  const [selectedOrderForRollback, setSelectedOrderForRollback] = useState<any>(null);
+
+  // Fetcher function for SWR
+  const fetcher = async (url: string) => {
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error('Failed to fetch orders');
+    }
+    const result = await response.json();
+    return result.data;
+  };
+
+  // Build query parameters
+  const queryParams = useMemo(() => {
+    const params = new URLSearchParams();
+    if (selectedType !== 'all') params.append('order_type', selectedType);
+    if (selectedStatus !== 'all') params.append('status', selectedStatus);
+    if (selectedPriority !== 'all') params.append('priority', selectedPriority);
+    if (searchTerm) params.append('searchTerm', searchTerm);
+    if (startDate) params.append('startDate', startDate);
+    if (endDate) params.append('endDate', endDate);
+    return params.toString();
+  }, [selectedType, selectedStatus, selectedPriority, searchTerm, startDate, endDate]);
+
+  // Fetch orders with items using SWR
+  const { data: orders, error: ordersError, mutate: refetch } = useSWR(
+    `/api/orders/with-items?${queryParams}`,
+    fetcher
+  );
+
+  const { data: dashboardData, error: dashboardError } = useSWR('/api/orders/dashboard', fetcher);
+
+  const ordersLoading = !orders && !ordersError;
+  const dashboardLoading = !dashboardData && !dashboardError;
+
+  // Use dashboard data or defaults
+  const dashboardStats = dashboardData || {
+    total_orders: 0,
+    pending_orders: 0,
+    in_progress: 0,
+    completed_today: 0,
+    total_value: 0
+  };
+
+  // Sort orders
+  const sortedOrders = useMemo(() => {
+    if (!orders || !sortField) return orders || [];
+
+    return [...orders].sort((a, b) => {
+      let aValue: any = '';
+      let bValue: any = '';
+
+      switch (sortField) {
+        case 'order_no':
+          aValue = a.order_no;
+          bValue = b.order_no;
+          break;
+        case 'customer':
+          aValue = a.customer_name || '';
+          bValue = b.customer_name || '';
+          break;
+        case 'order_date':
+          aValue = new Date(a.order_date);
+          bValue = new Date(b.order_date);
+          break;
+        case 'delivery_date':
+          aValue = new Date(a.delivery_date);
+          bValue = new Date(b.delivery_date);
+          break;
+        default:
+          return 0;
+      }
+
+      if (sortDirection === 'asc') {
+        return aValue > bValue ? 1 : -1;
+      } else {
+        return aValue < bValue ? 1 : -1;
+      }
+    });
+  }, [orders, sortField, sortDirection]);
+
+  // Sort handler
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
+    }
+  };
+
+  // Get sort icon
+  const getSortIcon = (field: string) => {
+    if (sortField !== field) {
+      return <ChevronsUpDown className="w-3 h-3 ml-1 inline-block" />;
+    }
+    return sortDirection === 'asc' ? (
+      <ChevronUp className="w-3 h-3 ml-1 inline-block" />
+    ) : (
+      <ChevronDown className="w-3 h-3 ml-1 inline-block" />
+    );
+  };
+
+  // Toggle expanded row
+  const toggleRow = (orderId: string) => {
+    setExpandedRows(prev => ({
+      ...prev,
+      [orderId]: !prev[orderId]
+    }));
+  };
+
+  // Get status badge variant
+  const getStatusVariant = (status: OrderStatus): 'default' | 'primary' | 'success' | 'warning' | 'danger' | 'info' => {
+    switch (status) {
+      case 'draft': return 'default';
+      case 'confirmed': return 'info';
+      case 'in_picking': return 'warning';
+      case 'picked': return 'primary';
+      case 'loaded': return 'primary';
+      case 'in_transit': return 'primary';
+      case 'delivered': return 'success';
+      case 'cancelled': return 'danger';
+      default: return 'default';
+    }
+  };
+
+  // Get priority badge variant
+  const getPriorityVariant = (priority: OrderPriority): 'default' | 'success' | 'warning' | 'danger' => {
+    switch (priority) {
+      case 'low': return 'default';
+      case 'normal': return 'success';
+      case 'high': return 'warning';
+      case 'urgent': return 'danger';
+      default: return 'default';
+    }
+  };
+
+  // Get type badge text
+  const getTypeText = (type: OrderType): string => {
+    switch (type) {
+      case 'route_planning': return 'จัดเส้นทาง';
+      case 'express': return 'ส่งรายชิ้น';
+      case 'special': return 'สินค้าพิเศษ';
+      default: return type;
+    }
+  };
+
+  // Get type badge variant
+  const getTypeVariant = (type: OrderType): string => {
+    switch (type) {
+      case 'route_planning': return 'bg-blue-100 text-blue-700';
+      case 'express': return 'bg-orange-100 text-orange-700';
+      case 'special': return 'bg-purple-100 text-purple-700';
+      default: return 'bg-gray-100 text-gray-700';
+    }
+  };
+
+  // Get status text
+  const getStatusText = (status: OrderStatus): string => {
+    switch (status) {
+      case 'draft': return 'ร่าง';
+      case 'confirmed': return 'ยืนยันแล้ว';
+      case 'in_picking': return 'กำลังหยิบ';
+      case 'picked': return 'หยิบเสร็จแล้ว';
+      case 'loaded': return 'ขึ้นรถแล้ว';
+      case 'in_transit': return 'กำลังจัดส่ง';
+      case 'delivered': return 'ส่งถึงแล้ว';
+      case 'cancelled': return 'ยกเลิก';
+      default: return status;
+    }
+  };
+
+  // Get priority text
+  const getPriorityText = (priority: OrderPriority): string => {
+    switch (priority) {
+      case 'low': return 'ต่ำ';
+      case 'normal': return 'ปกติ';
+      case 'high': return 'สูง';
+      case 'urgent': return 'ด่วนมาก';
+      default: return priority;
+    }
+  };
+
+  // Format currency
+  const formatCurrency = (amount: number): string => {
+    return new Intl.NumberFormat('th-TH', {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2
+    }).format(amount);
+  };
+
+  // Format date
+  const formatDate = (dateString: string | null | undefined): string => {
+    if (!dateString) return '-';
+
+    const date = new Date(dateString);
+
+    // ตรวจสอบว่า date ถูกต้องหรือไม่
+    if (isNaN(date.getTime())) return '-';
+
+    return new Intl.DateTimeFormat('th-TH', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit'
+    }).format(date);
+  };
+
+  // Toggle expanded order
+  const toggleExpandOrder = (orderId: number) => {
+    setExpandedOrders(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(orderId)) {
+        newSet.delete(orderId);
+      } else {
+        newSet.add(orderId);
+      }
+      return newSet;
+    });
+  };
+
+  // Handle status change
+  const handleStatusChange = async (orderId: string, newStatus: OrderStatus) => {
+    try {
+      const response = await fetch(`/api/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ status: newStatus }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update order status');
+      }
+
+      // Refresh the orders list
+      refetch();
+    } catch (error) {
+      console.error('Error updating status:', error);
+      alert('เกิดข้อผิดพลาดในการอัพเดทสถานะ');
+    }
+  };
+
+  // Handle type change
+  const handleTypeChange = async (orderId: string, newType: OrderType) => {
+    try {
+      const response = await fetch(`/api/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ order_type: newType }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update order type');
+      }
+
+      // Refresh the orders list
+      refetch();
+    } catch (error) {
+      console.error('Error updating type:', error);
+      alert('เกิดข้อผิดพลาดในการอัพเดทประเภทคำสั่งซื้อ');
+    }
+  };
+
+  // Handle required date change
+  const handleRequiredDateChange = async (orderId: string, newDate: string) => {
+    try {
+      const response = await fetch(`/api/orders/${orderId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ delivery_date: newDate }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update required date');
+      }
+
+      // Refresh the orders list
+      refetch();
+    } catch (error) {
+      console.error('Error updating required date:', error);
+      alert('เกิดข้อผิดพลาดในการอัพเดทวันที่แผนส่ง');
+    }
+  };
+
+  // Handle rollback order status
+  const handleRollback = async (orderId: string) => {
+    try {
+      const response = await fetch(`/api/orders/${orderId}/rollback`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to rollback order');
+      }
+
+      alert(result.message || 'ถอยสถานะออเดอร์สำเร็จ');
+
+      // Close modal and refresh orders list
+      setShowRollbackModal(false);
+      setSelectedOrderForRollback(null);
+      refetch();
+    } catch (error: any) {
+      console.error('Error rolling back order:', error);
+      alert(`เกิดข้อผิดพลาด: ${error.message || 'ไม่สามารถถอยสถานะได้'}`);
+    }
+  };
+
+  // Open rollback confirmation modal
+  const openRollbackModal = (order: any) => {
+    setSelectedOrderForRollback(order);
+    setShowRollbackModal(true);
+  };
+
+  // Handle import - ถูกเรียกเฉพาะเมื่อไม่มี conflicts เท่านั้น
+  const handleImport = async (type: string, file: File, warehouse: string, orderDate: string): Promise<void> => {
+    // ฟังก์ชันนี้จะถูกเรียกจาก ImportOrderModal เมื่อไม่มี conflicts
+    // กรณีมี conflicts จะไม่เรียกฟังก์ชันนี้
+    refetch(); // Refresh the list
+  };
+
+  return (
+    <div className="h-screen overflow-hidden flex flex-col bg-gradient-to-br from-thai-gray-25 to-white">
+      {/* Header */}
+      <div className="pt-0 px-2 pb-2 space-y-2">
+        {/* Title */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-lg bg-blue-500 flex items-center justify-center shadow-lg">
+              <ShoppingCart className="w-6 h-6 text-white" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold text-thai-gray-900 font-thai">
+                คำสั่งซื้อ / ใบสั่งจ่าย (Orders)
+              </h1>
+              <p className="text-xs text-thai-gray-600 font-thai">
+                จัดการคำสั่งซื้อและการจัดส่ง
+              </p>
+            </div>
+          </div>
+          <Button
+            variant="primary"
+            size="md"
+            icon={Plus}
+            onClick={() => setShowImportModal(true)}
+            className="bg-blue-500 hover:bg-blue-600 shadow-lg"
+          >
+            สร้างคำสั่งซื้อใหม่
+          </Button>
+        </div>
+
+        {/* Filters */}
+        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm">
+          <div className="flex items-center space-x-3">
+            {/* Search */}
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
+              <input
+                type="text"
+                placeholder="ค้นหาเลขที่คำสั่งซื้อ, ลูกค้า..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai
+                         focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
+                         transition-all duration-300"
+              />
+            </div>
+
+            {/* Order Type Filter */}
+            <select
+              value={selectedType}
+              onChange={(e) => setSelectedType(e.target.value as OrderType | 'all')}
+              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-24
+                       focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50"
+            >
+              <option value="all">ทุกประเภท</option>
+              <option value="sales" className="text-gray-900">ขายสินค้า</option>
+              <option value="transfer" className="text-gray-900">โอนย้าย</option>
+              <option value="production" className="text-gray-900">ผลิต</option>
+            </select>
+
+            {/* Status Filter */}
+            <select
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value as OrderStatus | 'all')}
+              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-24
+                       focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50"
+            >
+              <option value="all">ทุกสถานะ</option>
+              <option value="draft" className="text-gray-900">ร่าง</option>
+              <option value="confirmed" className="text-gray-900">ยืนยันแล้ว</option>
+              <option value="in_picking" className="text-gray-900">กำลังหยิบ</option>
+              <option value="picked" className="text-gray-900">หยิบเสร็จแล้ว</option>
+              <option value="loaded" className="text-gray-900">ขึ้นรถแล้ว</option>
+              <option value="in_transit" className="text-gray-900">กำลังจัดส่ง</option>
+              <option value="delivered" className="text-gray-900">ส่งถึงแล้ว</option>
+              <option value="cancelled" className="text-gray-900">ยกเลิก</option>
+            </select>
+
+            {/* Priority Filter */}
+            <select
+              value={selectedPriority}
+              onChange={(e) => setSelectedPriority(e.target.value as OrderPriority | 'all')}
+              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-24
+                       focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50"
+            >
+              <option value="all">ทุกความสำคัญ</option>
+              <option value="low" className="text-gray-900">ต่ำ</option>
+              <option value="normal" className="text-gray-900">ปกติ</option>
+              <option value="high" className="text-gray-900">สูง</option>
+              <option value="urgent" className="text-gray-900">ด่วนมาก</option>
+            </select>
+
+            {/* Date Range */}
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-28
+                       focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+            />
+            <span className="text-thai-gray-400 text-sm">-</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-28
+                       focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Table Container */}
+      <div className="h-[74vh] bg-white border border-gray-200 rounded-lg shadow-sm overflow-auto">
+        {ordersLoading ? (
+          <div className="flex flex-col items-center justify-center h-full text-thai-gray-400">
+            <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
+            <p className="text-sm font-thai">กำลังโหลดข้อมูล...</p>
+          </div>
+        ) : (
+          <Table>
+            <Table.Header>
+              <tr>
+                <Table.Head>ดู</Table.Head>
+                <Table.Head onClick={() => handleSort('order_no')}>เลขที่คำสั่งซื้อ{getSortIcon('order_no')}</Table.Head>
+                <Table.Head width="180px" onClick={() => handleSort('order_type')}>ประเภทคำสั่งซื้อ{getSortIcon('order_type')}</Table.Head>
+                <Table.Head width="120px">สถานะ</Table.Head>
+                <Table.Head onClick={() => handleSort('customer')}>รหัสลูกค้า{getSortIcon('customer')}</Table.Head>
+                <Table.Head>ชื่อลูกค้า</Table.Head>
+                <Table.Head>จังหวัด</Table.Head>
+                <Table.Head onClick={() => handleSort('order_date')}>วันที่สั่ง{getSortIcon('order_date')}</Table.Head>
+                <Table.Head onClick={() => handleSort('delivery_date')}>วันที่แผนส่ง{getSortIcon('delivery_date')}</Table.Head>
+                <Table.Head>ที่อยู่จัดส่ง</Table.Head>
+                <Table.Head>คำแนะนำการจัดส่ง</Table.Head>
+                <Table.Head>จำนวนรายการ</Table.Head>
+                <Table.Head onClick={() => handleSort('total_qty')}>จำนวนรวม{getSortIcon('total_qty')}</Table.Head>
+                <Table.Head onClick={() => handleSort('total_weight')}>น้ำหนักรวม (กก.){getSortIcon('total_weight')}</Table.Head>
+                <Table.Head>การดำเนินการ</Table.Head>
+              </tr>
+            </Table.Header>
+            <Table.Body>
+              {ordersLoading ? (
+                <tr>
+                  <Table.Cell colSpan={15} className="px-4 py-8 text-center">
+                    <div className="flex flex-col items-center justify-center text-thai-gray-400">
+                      <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
+                      <p className="text-sm font-thai">กำลังโหลดข้อมูล...</p>
+                    </div>
+                  </Table.Cell>
+                </tr>
+              ) : ordersError ? (
+                <tr>
+                  <Table.Cell colSpan={15} className="px-4 py-8 text-center">
+                    <div className="flex flex-col items-center justify-center text-red-500">
+                      <AlertTriangle className="w-12 h-12 mb-2" />
+                      <p className="text-sm font-thai">เกิดข้อผิดพลาด: {ordersError}</p>
+                      <button
+                        onClick={() => refetch()}
+                        className="mt-2 px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600"
+                      >
+                        ลองอีกครั้ง
+                      </button>
+                    </div>
+                  </Table.Cell>
+                </tr>
+              ) : sortedOrders.length === 0 ? (
+                <tr>
+                  <Table.Cell colSpan={15} className="px-4 py-8 text-center">
+                    <div className="flex flex-col items-center justify-center text-thai-gray-400">
+                      <ShoppingCart className="w-12 h-12 mb-2" />
+                      <p className="text-sm font-thai">ไม่พบข้อมูลคำสั่งซื้อ</p>
+                    </div>
+                  </Table.Cell>
+                </tr>
+              ) : (
+                  sortedOrders.map((order: any) => (
+                    <React.Fragment key={order.order_id}>
+                      {/* Main Row */}
+                      <Table.Row>
+                        <Table.Cell>
+                          <button
+                            onClick={() => toggleExpandOrder(order.order_id)}
+                            className="text-thai-gray-500 hover:text-thai-gray-700 p-0.5"
+                          >
+                            {expandedOrders.has(order.order_id) ? (
+                              <ChevronDown className="w-3 h-3" />
+                            ) : (
+                              <ChevronUp className="w-3 h-3" />
+                            )}
+                          </button>
+                        </Table.Cell>
+                        <Table.Cell>
+                          <span className="font-mono text-blue-600 font-semibold">{order.order_no}</span>
+                        </Table.Cell>
+                        <Table.Cell width="180px">
+                          <div className="relative">
+                            <select
+                              value={order.order_type || ''}
+                              onChange={(e) => handleTypeChange(order.order_id, e.target.value as OrderType)}
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-xs font-thai appearance-none focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+                              style={{ color: 'transparent' }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <option value="route_planning" className="text-gray-900">จัดเส้นทาง</option>
+                              <option value="express" className="text-gray-900">ส่งรายชิ้น</option>
+                              <option value="special" className="text-gray-900">สินค้าพิเศษ</option>
+                            </select>
+                            <div className="pointer-events-none absolute inset-y-0 left-0 right-6 flex items-center px-2">
+                              <span className="text-xs font-thai text-gray-900 truncate">
+                                {getTypeText(order.order_type)}
+                              </span>
+                            </div>
+                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                              <ChevronDown className="w-3.5 h-3.5 text-gray-600" />
+                            </div>
+                          </div>
+                        </Table.Cell>
+                        <Table.Cell width="120px" className="min-w-[120px]">
+                          <div className="relative">
+                            <select
+                              value={order.status || ''}
+                              onChange={(e) => handleStatusChange(order.order_id, e.target.value as OrderStatus)}
+                              className="w-full px-2 py-1 border border-gray-300 rounded text-xs font-thai appearance-none focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+                              style={{ color: 'transparent' }}
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <option value="" className="text-gray-900">-- เลือกสถานะ --</option>
+                              <option value="draft" className="text-gray-900">ร่าง</option>
+                              <option value="confirmed" className="text-gray-900">ยืนยันแล้ว</option>
+                              <option value="in_picking" className="text-gray-900">กำลังหยิบ</option>
+                              <option value="picked" className="text-gray-900">หยิบเสร็จแล้ว</option>
+                              <option value="loaded" className="text-gray-900">ขึ้นรถแล้ว</option>
+                              <option value="in_transit" className="text-gray-900">กำลังจัดส่ง</option>
+                              <option value="delivered" className="text-gray-900">ส่งถึงแล้ว</option>
+                              <option value="cancelled" className="text-gray-900">ยกเลิก</option>
+                            </select>
+                            <div className="pointer-events-none absolute inset-y-0 left-0 right-6 flex items-center px-2">
+                              <span className="text-xs font-thai text-gray-900 truncate">
+                                {order.status ? getStatusText(order.status) : '-- เลือกสถานะ --'}
+                              </span>
+                            </div>
+                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
+                              <ChevronDown className="w-3.5 h-3.5 text-gray-600" />
+                            </div>
+                          </div>
+                        </Table.Cell>
+                        <Table.Cell>
+                          <span className="font-mono text-gray-600">{order.customer_id}</span>
+                        </Table.Cell>
+                        <Table.Cell>{order.shop_name || '-'}</Table.Cell>
+                        <Table.Cell>{order.province || '-'}</Table.Cell>
+                        <Table.Cell>
+                          <span className="font-mono">{formatDate(order.order_date)}</span>
+                        </Table.Cell>
+                        <Table.Cell>
+                          <input
+                            type="date"
+                            value={order.delivery_date || ''}
+                            onChange={(e) => handleRequiredDateChange(order.order_id, e.target.value)}
+                            className="px-2 py-1 border border-gray-300 rounded text-xs font-mono
+                                     focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+                            onClick={(e) => e.stopPropagation()}
+                          />
+                        </Table.Cell>
+                        <Table.Cell>{order.text_field_long_1 || '-'}</Table.Cell>
+                        <Table.Cell>{order.text_field_additional_4 || '-'}</Table.Cell>
+                        <Table.Cell className="text-center">
+                          <span className="font-mono">{order.items?.length || 0}</span>
+                        </Table.Cell>
+                        <Table.Cell className="text-center">
+                          <span className="font-mono font-semibold text-gray-900">{order.total_qty || 0}</span>
+                        </Table.Cell>
+                        <Table.Cell className="text-center">
+                          <span className="font-mono">{order.total_weight || 0}</span>
+                        </Table.Cell>
+                        <Table.Cell className="text-center">
+                          <div className="flex items-center justify-center space-x-1">
+                            <button
+                              className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                              title="ดูรายละเอียด"
+                            >
+                              <Eye className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              className="p-1 text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                              title="แก้ไข"
+                            >
+                              <Edit className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors"
+                              title="จัดส่ง"
+                            >
+                              <Truck className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              className="p-1 text-purple-600 hover:bg-purple-50 rounded transition-colors"
+                              title="ที่อยู่จัดส่ง"
+                            >
+                              <MapPin className="w-3.5 h-3.5" />
+                            </button>
+                            {order.status !== 'draft' && order.status !== 'cancelled' && (
+                              <button
+                                className="p-1 text-orange-600 hover:bg-orange-50 rounded transition-colors"
+                                title="ถอยสถานะไปร่าง"
+                                onClick={() => openRollbackModal(order)}
+                              >
+                                <RotateCcw className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        </Table.Cell>
+                      </Table.Row>
+
+                      {/* Expanded Row - Order Items */}
+                      {expandedOrders.has(order.order_id) && (
+                        <tr className="bg-gray-50">
+                          <td colSpan={15} className="px-4 py-3 border border-gray-100">
+                            <div className="space-y-2">
+                              <div className="flex items-center justify-between">
+                                <h4 className="text-sm font-semibold text-thai-gray-900 font-thai">
+                                  รายละเอียดคำสั่งซื้อ {order.order_no}
+                                </h4>
+                              </div>
+
+                              {/* Order Items Table */}
+                              <div className="bg-white rounded-lg border border-gray-200 overflow-auto inline-block">
+                                <table className="table-auto divide-y divide-gray-200">
+                                  <thead className="bg-gray-50">
+                                    <tr>
+                                      <th className="px-2 py-1 text-xs font-semibold text-gray-700 uppercase text-left whitespace-nowrap">
+                                        SKU
+                                      </th>
+                                      <th className="px-2 py-1 text-xs font-semibold text-gray-700 uppercase text-left">
+                                        ชื่อสินค้า
+                                      </th>
+                                      <th className="px-2 py-1 text-xs font-semibold text-gray-700 uppercase text-center whitespace-nowrap">
+                                        จำนวนสั่ง
+                                      </th>
+                                      <th className="px-2 py-1 text-xs font-semibold text-gray-700 uppercase text-center whitespace-nowrap">
+                                        น้ำหนัก (กก.)
+                                      </th>
+                                      <th className="px-2 py-1 text-xs font-semibold text-gray-700 uppercase text-center whitespace-nowrap">
+                                        แพ็ครวม
+                                      </th>
+                                      <th className="px-2 py-1 text-xs font-semibold text-gray-700 uppercase text-center whitespace-nowrap">
+                                        12ถุง
+                                      </th>
+                                      <th className="px-2 py-1 text-xs font-semibold text-gray-700 uppercase text-center whitespace-nowrap">
+                                        4กก.
+                                      </th>
+                                      <th className="px-2 py-1 text-xs font-semibold text-gray-700 uppercase text-center whitespace-nowrap">
+                                        6กก.
+                                      </th>
+                                      <th className="px-2 py-1 text-xs font-semibold text-gray-700 uppercase text-center whitespace-nowrap">
+                                        2กก.
+                                      </th>
+                                      <th className="px-2 py-1 text-xs font-semibold text-gray-700 uppercase text-center whitespace-nowrap">
+                                        1กก.
+                                      </th>
+                                      <th className="px-2 py-1 text-xs font-semibold text-gray-700 uppercase text-center whitespace-nowrap">
+                                        หยิบแล้ว
+                                      </th>
+                                    </tr>
+                                  </thead>
+                                  <tbody className="divide-y divide-gray-200">
+                                    {order.items?.map((item: any) => (
+                                      <tr key={item.order_item_id} className="hover:bg-gray-50">
+                                        <td className="px-2 py-1 text-xs font-mono text-thai-gray-600 whitespace-nowrap">
+                                          {item.sku_id}
+                                        </td>
+                                        <td className="px-2 py-1 text-xs font-thai text-thai-gray-900">
+                                          {item.sku_name || '-'}
+                                        </td>
+                                        <td className="px-2 py-1 text-xs font-mono text-center text-thai-gray-600 whitespace-nowrap">
+                                          {item.order_qty}
+                                        </td>
+                                        <td className="px-2 py-1 text-xs font-mono text-center text-thai-gray-600 whitespace-nowrap">
+                                          {item.order_weight || '-'}
+                                        </td>
+                                        <td className="px-2 py-1 text-xs font-mono text-center text-thai-gray-600 whitespace-nowrap">
+                                          {isNaN(item.pack_all) ? 0 : item.pack_all}
+                                        </td>
+                                        <td className="px-2 py-1 text-xs font-mono text-center text-thai-gray-600 whitespace-nowrap">
+                                          {isNaN(item.pack_12_bags) ? 0 : item.pack_12_bags}
+                                        </td>
+                                        <td className="px-2 py-1 text-xs font-mono text-center text-thai-gray-600 whitespace-nowrap">
+                                          {isNaN(item.pack_4) ? 0 : item.pack_4}
+                                        </td>
+                                        <td className="px-2 py-1 text-xs font-mono text-center text-thai-gray-600 whitespace-nowrap">
+                                          {isNaN(item.pack_6) ? 0 : item.pack_6}
+                                        </td>
+                                        <td className="px-2 py-1 text-xs font-mono text-center text-thai-gray-600 whitespace-nowrap">
+                                          {isNaN(item.pack_2) ? 0 : item.pack_2}
+                                        </td>
+                                        <td className="px-2 py-1 text-xs font-mono text-center text-thai-gray-600 whitespace-nowrap">
+                                          {isNaN(item.pack_1) ? 0 : item.pack_1}
+                                        </td>
+                                        <td className="px-2 py-1 text-xs font-mono text-center text-thai-gray-600 whitespace-nowrap">
+                                          <span className={item.picked_qty === item.order_qty ? 'text-green-600 font-semibold' : ''}>
+                                            {isNaN(item.picked_qty) ? 0 : item.picked_qty}
+                                          </span>
+                                        </td>
+                                      </tr>
+                                    ))}
+                                  </tbody>
+                                </table>
+                              </div>
+
+                              {/* Additional Info */}
+                              {(order.text_field_long_1 || order.text_field_additional_4) && (
+                                <div className="grid grid-cols-2 gap-4 pt-2">
+                                  {order.text_field_long_1 && (
+                                    <div className="bg-white p-3 rounded-lg border border-gray-200">
+                                      <p className="text-xs font-semibold text-thai-gray-700 font-thai mb-1 flex items-center">
+                                        <MapPin className="w-3 h-3 mr-1" />
+                                        ที่อยู่จัดส่ง
+                                      </p>
+                                      <p className="text-xs text-thai-gray-600 font-thai">
+                                        {order.text_field_long_1}
+                                      </p>
+                                    </div>
+                                  )}
+                                  {order.text_field_additional_4 && (
+                                    <div className="bg-white p-3 rounded-lg border border-gray-200">
+                                      <p className="text-xs font-semibold text-thai-gray-700 font-thai mb-1 flex items-center">
+                                        <FileText className="w-3 h-3 mr-1" />
+                                        หมายเหตุการจัดส่ง
+                                      </p>
+                                      <p className="text-xs text-thai-gray-600 font-thai">
+                                        {order.text_field_additional_4}
+                                      </p>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+                      )}
+                    </React.Fragment>
+                  ))
+                )}
+            </Table.Body>
+          </Table>
+        )}
+
+
+      </div>
+
+      {/* Import Modal */}
+      <ImportOrderModal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        onImport={handleImport}
+        onRefresh={refetch}
+      />
+
+      {/* Rollback Confirmation Modal */}
+      {showRollbackModal && selectedOrderForRollback && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 space-y-4">
+            {/* Header */}
+            <div className="flex items-center space-x-3 pb-4 border-b border-gray-200">
+              <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center">
+                <RotateCcw className="w-6 h-6 text-orange-600" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 font-thai">
+                  ยืนยันการถอยสถานะออเดอร์
+                </h3>
+                <p className="text-sm text-gray-600 font-thai">
+                  โปรดตรวจสอบข้อมูลก่อนดำเนินการ
+                </p>
+              </div>
+            </div>
+
+            {/* Order Info */}
+            <div className="space-y-3 py-2">
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                <p className="text-sm font-semibold text-gray-900 font-thai mb-2">
+                  ข้อมูลออเดอร์ที่จะถอยสถานะ:
+                </p>
+                <div className="space-y-1 text-sm text-gray-700 font-thai">
+                  <p><span className="font-semibold">เลขที่:</span> {selectedOrderForRollback.order_no}</p>
+                  <p><span className="font-semibold">ลูกค้า:</span> {selectedOrderForRollback.shop_name || selectedOrderForRollback.customer_id}</p>
+                  <p><span className="font-semibold">สถานะปัจจุบัน:</span> <span className="text-orange-600 font-semibold">{getStatusText(selectedOrderForRollback.status)}</span></p>
+                  {selectedOrderForRollback.delivery_date && (
+                    <p><span className="font-semibold">วันที่แผนส่ง:</span> {formatDate(selectedOrderForRollback.delivery_date)}</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+                <p className="text-sm font-semibold text-yellow-800 font-thai mb-2 flex items-center">
+                  <AlertTriangle className="w-4 h-4 mr-2" />
+                  การดำเนินการจะมีผลดังนี้:
+                </p>
+                <ul className="list-disc list-inside space-y-1 text-sm text-yellow-900 font-thai">
+                  <li>เปลี่ยนสถานะเป็น "ร่าง"</li>
+                  <li>ล้างวันที่แผนส่ง</li>
+                  <li>ถอดออกจากแผนเส้นทางทั้งหมด</li>
+                  <li>สามารถกำหนดวันแผนส่งใหม่ได้ในภายหลัง</li>
+                </ul>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-200">
+              <button
+                onClick={() => {
+                  setShowRollbackModal(false);
+                  setSelectedOrderForRollback(null);
+                }}
+                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-thai transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={() => handleRollback(selectedOrderForRollback.order_id)}
+                className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-thai transition-colors flex items-center space-x-2"
+              >
+                <RotateCcw className="w-4 h-4" />
+                <span>ยืนยันถอยสถานะ</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default OrdersPage;
