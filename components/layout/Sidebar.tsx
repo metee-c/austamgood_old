@@ -41,7 +41,8 @@ import {
   Layers,
   Warehouse,
   PackageOpen,
-  Move
+  Move,
+  Gift
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -127,6 +128,12 @@ const menuItems = [
         icon: PackageSearch,
         label: 'สร้างใบปะหน้าสินค้า',
         englishLabel: 'Face Sheets'
+      },
+      {
+        path: '/receiving/picklists/bonus-face-sheets',
+        icon: Gift,
+        label: 'สร้างใบปะหน้าของแถม',
+        englishLabel: 'Bonus Face Sheets'
       },
       {
         path: '/receiving/loadlists',

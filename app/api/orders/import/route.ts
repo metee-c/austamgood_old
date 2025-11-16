@@ -236,28 +236,40 @@ export async function POST(request: NextRequest) {
           pack_1: parseInt(row[16]) || 0
         });
       } else if (fileType === 'special') {
-        // Special CSV Format: 13 columns
-        // 0: วันที่, 1: คลัง, 2: เลขที่ออเดอร์, 3: รหัสลูกค้า,
-        // 4: ชื่อร้าน, 5: จังหวัด, 6: วันที่ส่ง, 7: รหัสสินค้า,
-        // 8: ชื่อสินค้า, 9: จำนวน, 10: น้ำหนัก, 11: แพ็ครวม, 12: หมายเหตุ
-        const orderNo = row[2]?.trim();
+        // Special CSV Format: 23 columns (เพิ่มเขตการขายเป็นคอลัมน์สุดท้าย)
+        // 0: วันที่, 1: คลัง, 2: เครดิต/เงินสด, 3: เลขที่ใบสั่งส่ง, 
+        // 4: รหัสลูกค้า/ผู้ขาย, 5: ชื่อร้านค้า, 6: จังหวัด, 7: รหัสสินค้า,
+        // 8: ชื่อสินค้า, 9: ฟิลด์เพิ่มเติมประเภทตัวเลข 1, 10: จำนวน, 11: น้ำหนัก, 
+        // 12: จำนวนแพ็ครวม, 13: แพ็ค 12 ถุง, 14: แพ็ค 4, 15: แพ็ค 6, 16: แพ็ค 1,
+        // 17: ประเภทข้อความแบบยาว 1 (ที่อยู่), 18: ประเภทข้อความเพิ่มเติม 4 (ข้อมูลติดต่อ),
+        // 19: วัน เวลารับสินค้า, 20: หมายเหตุ (เพิ่มเติม), 21: หมายเหตุ (จัดส่ง), 22: เขตการขาย
+        const orderNo = row[3]?.trim();
         if (!orderNo) continue;
 
         if (!ordersByOrderNo[orderNo]) {
-          const customerId = row[3]?.trim() || 'CUST-DEFAULT';
-          const warehouseId = row[1]?.trim() || defaultWarehouseId || 'WH01';
+          const customerId = row[4]?.trim() || 'CUST-DEFAULT';
+          // ใช้ warehouse_id จากฟอร์มที่ผู้ใช้เลือก ไม่ใช้จากไฟล์
+          const warehouseId = defaultWarehouseId || 'WH01';
+          const paymentType = row[2]?.toLowerCase().includes('เครดิต') ? 'credit' : 'cash';
 
           ordersByOrderNo[orderNo] = {
             order_no: orderNo,
             order_type: 'special',
             order_date: parseDate(row[0]?.trim()) || new Date().toISOString().split('T')[0],
-            delivery_date: parseDate(row[6]?.trim()) || deliveryDate || new Date().toISOString().split('T')[0],
+            delivery_date: deliveryDate || new Date().toISOString().split('T')[0],
+            sequence_no: row[0]?.trim(),
             warehouse_id: warehouseId,
-            payment_type: 'cash',
+            payment_type: paymentType,
             customer_id: customerId,
-            shop_name: row[4]?.trim(),
-            province: row[5]?.trim(),
-            notes: row[12]?.trim(),
+            shop_name: row[5]?.trim(),
+            province: row[6]?.trim(),
+            phone: row[18]?.trim() || '', // จากคอลัมน์ ข้อมูลติดต่อ
+            notes: row[20]?.trim() || '', // หมายเหตุ (เพิ่มเติม)
+            notes_additional: row[21]?.trim() || '', // หมายเหตุ (จัดส่ง)
+            sales_territory: row[22]?.trim() || '', // เขตการขาย (คอลัมน์ใหม่)
+            text_field_long_1: row[17]?.trim() || '', // ที่อยู่
+            text_field_additional_1: row[18]?.trim() || '', // ข้อมูลติดต่อ
+            text_field_additional_4: row[19]?.trim() || '', // วัน เวลารับสินค้า
             status: 'draft',
             import_file_name: file.name,
             import_file_type: 'special',
@@ -269,14 +281,15 @@ export async function POST(request: NextRequest) {
           line_no: ordersByOrderNo[orderNo].items.length + 1,
           sku_id: row[7]?.trim() || null,
           sku_name: row[8]?.trim(),
-          order_qty: parseFloat(row[9]) || 0,
-          order_weight: parseFloat(row[10]) || 0,
-          pack_all: parseInt(row[11]) || 0,
-          pack_12_bags: 0,
-          pack_4: 0,
-          pack_6: 0,
+          number_field_additional_1: parseFloat(row[9]) || 0,
+          order_qty: parseFloat(row[10]) || 0,
+          order_weight: parseFloat(row[11]) || 0,
+          pack_all: parseInt(row[12]) || 0,
+          pack_12_bags: parseInt(row[13]) || 0,
+          pack_4: parseInt(row[14]) || 0,
+          pack_6: parseInt(row[15]) || 0,
           pack_2: 0,
-          pack_1: 0
+          pack_1: parseInt(row[16]) || 0
         });
       }
     }

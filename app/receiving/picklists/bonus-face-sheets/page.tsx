@@ -1,0 +1,885 @@
+'use client';
+
+import React, { useState, useMemo, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import {
+  Gift,
+  Search,
+  Calendar,
+  Filter,
+  Download,
+  Eye,
+  CheckCircle,
+  Clock,
+  XCircle,
+  FileText,
+  Printer,
+  AlertCircle,
+  Loader2,
+  Package
+} from 'lucide-react';
+import Button from '@/components/ui/Button';
+import Badge from '@/components/ui/Badge';
+import Modal from '@/components/ui/Modal';
+import BonusFaceSheetLabelDocument from '@/components/receiving/BonusFaceSheetLabelDocument';
+
+interface BonusFaceSheet {
+  id: number;
+  face_sheet_no: string;
+  status: string;
+  created_date: string;
+  created_by: string;
+  total_packages: number;
+  total_items: number;
+  total_orders: number;
+  warehouse_id: string;
+  notes?: string;
+}
+
+interface PreviewOrder {
+  order_id: number;
+  order_no: string;
+  customer_id: string;
+  customer_code: string;
+  shop_name: string;
+  province?: string | null;
+  delivery_date: string;
+  address: string;
+  contact_info: string;
+  phone: string;
+  hub: string;
+  remark: string;
+  delivery_type: string;
+  trip_number: string;
+  matched_trip_id?: number | null;
+  total_items: number;
+  total_qty: number;
+  items: Array<{
+    order_item_id: number;
+    product_code: string;
+    product_name: string;
+    quantity: number;
+    weight?: number;
+  }>;
+}
+
+const BonusFaceSheetsPage = () => {
+  const router = useRouter();
+  const [searchTerm, setSearchTerm] = useState('');
+  const [selectedDate, setSelectedDate] = useState('');
+  const [selectedStatus, setSelectedStatus] = useState('all');
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [creationDate, setCreationDate] = useState('');
+  const [previewOrders, setPreviewOrders] = useState<PreviewOrder[]>([]);
+  const [selectedOrderIds, setSelectedOrderIds] = useState<number[]>([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [bonusFaceSheets, setBonusFaceSheets] = useState<BonusFaceSheet[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<React.ReactNode | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
+  const [printingId, setPrintingId] = useState<number | null>(null);
+  const [showMatchingStep, setShowMatchingStep] = useState(false);
+
+  const statuses = [
+    { value: 'all', label: 'ทั้งหมด' },
+    { value: 'draft', label: 'แบบร่าง' },
+    { value: 'generated', label: 'สร้างแล้ว' },
+    { value: 'printed', label: 'พิมพ์แล้ว' },
+    { value: 'completed', label: 'เสร็จสิ้น' }
+  ];
+
+  useEffect(() => {
+    fetchBonusFaceSheets();
+  }, []);
+
+  const fetchBonusFaceSheets = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      
+      // Build query params
+      const params = new URLSearchParams();
+      if (selectedStatus !== 'all') {
+        params.append('status', selectedStatus);
+      }
+      if (selectedDate) {
+        params.append('created_date', selectedDate);
+      }
+      
+      const response = await fetch(`/api/bonus-face-sheets?${params.toString()}`);
+      const result = await response.json();
+      
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'ไม่สามารถโหลดข้อมูลได้');
+      }
+      
+      setBonusFaceSheets(result.data || []);
+    } catch (err: any) {
+      setError(err?.message || 'เกิดข้อผิดพลาดในการโหลดข้อมูล');
+      console.error('Error fetching bonus face sheets:', err);
+      setBonusFaceSheets([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchBonusFaceSheets();
+  }, [selectedStatus, selectedDate]);
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'draft': return <Badge variant="default" size="sm">แบบร่าง</Badge>;
+      case 'printed': return <Badge variant="info" size="sm">พิมพ์แล้ว</Badge>;
+      case 'completed': return <Badge variant="success" size="sm">เสร็จสิ้น</Badge>;
+      default: return <Badge variant="default" size="sm">{status}</Badge>;
+    }
+  };
+
+  const filteredBonusFaceSheets = useMemo(() => {
+    let filtered = [...bonusFaceSheets];
+    if (searchTerm) {
+      const term = searchTerm.toLowerCase();
+      filtered = filtered.filter(sheet => 
+        sheet.face_sheet_no.toLowerCase().includes(term) ||
+        sheet.warehouse_id.toLowerCase().includes(term)
+      );
+    }
+    if (selectedStatus !== 'all') {
+      filtered = filtered.filter(sheet => sheet.status === selectedStatus);
+    }
+    if (selectedDate) {
+      filtered = filtered.filter(sheet => sheet.created_date === selectedDate);
+    }
+    return filtered;
+  }, [bonusFaceSheets, searchTerm, selectedStatus, selectedDate]);
+
+  const handleOpenCreateModal = () => {
+    setError(null);
+    setSuccess(null);
+    setCreationDate('');
+    setPreviewOrders([]);
+    setSelectedOrderIds([]);
+    setPreviewError(null);
+    setShowCreateModal(true);
+  };
+
+  const handleCloseCreateModal = () => {
+    setShowCreateModal(false);
+    setCreationDate('');
+    setPreviewOrders([]);
+    setSelectedOrderIds([]);
+    setPreviewError(null);
+  };
+
+  const formatThaiDate = (date: string) => {
+    if (!date) return '';
+    const parsed = new Date(date);
+    if (Number.isNaN(parsed.getTime())) {
+      return date;
+    }
+    return parsed.toLocaleDateString('th-TH');
+  };
+
+  const fetchPreviewOrders = async (date: string) => {
+    try {
+      setPreviewLoading(true);
+      setPreviewError(null);
+      
+      const response = await fetch(`/api/bonus-face-sheets/orders?delivery_date=${date}`);
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'ไม่สามารถโหลดออเดอร์ได้');
+      }
+
+      const orders: PreviewOrder[] = result.data || [];
+      setPreviewOrders(orders);
+
+      if (orders.length === 0) {
+        setPreviewError('ไม่พบออเดอร์สินค้าของแถมสำหรับวันที่เลือก');
+      }
+    } catch (err: any) {
+      console.error('Error fetching preview orders:', err);
+      setPreviewOrders([]);
+      setPreviewError(err?.message || 'เกิดข้อผิดพลาดในการโหลดออเดอร์');
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const handleDeliveryDateChange = (value: string) => {
+    setCreationDate(value);
+    setPreviewOrders([]);
+    setSelectedOrderIds([]);
+    setPreviewError(null);
+
+    if (value) {
+      fetchPreviewOrders(value);
+    }
+  };
+
+  const handleToggleOrder = (orderId: number) => {
+    setSelectedOrderIds(prev => {
+      if (prev.includes(orderId)) {
+        return prev.filter(id => id !== orderId);
+      } else {
+        return [...prev, orderId];
+      }
+    });
+  };
+
+  const handleToggleAllOrders = () => {
+    if (selectedOrderIds.length === previewOrders.length) {
+      setSelectedOrderIds([]);
+    } else {
+      setSelectedOrderIds(previewOrders.map(order => order.order_id));
+    }
+  };
+
+  const isAllSelected = previewOrders.length > 0 && selectedOrderIds.length === previewOrders.length;
+
+  const handleCreateBonusFaceSheet = () => {
+    if (!creationDate) {
+      setError('กรุณาเลือกวันส่งของก่อนสร้างใบปะหน้าของแถม');
+      return;
+    }
+
+    if (previewLoading) {
+      setError('กรุณารอให้ระบบโหลดรายการออเดอร์เสร็จก่อน');
+      return;
+    }
+
+    if (previewOrders.length === 0) {
+      setError('ไม่พบออเดอร์สำหรับวันที่เลือก ไม่สามารถสร้างใบปะหน้าได้');
+      return;
+    }
+
+    if (selectedOrderIds.length === 0) {
+      setError('กรุณาเลือกอย่างน้อย 1 ออเดอร์เพื่อสร้างใบปะหน้าของแถม');
+      return;
+    }
+
+    // ปิด modal แรกและแสดงขั้นตอนตรวจสอบแผนการจัดส่ง
+    setShowCreateModal(false);
+    setShowMatchingStep(true);
+  };
+
+  const handleProceedToPackForm = () => {
+    // ไปหน้ากรอกแพ็ค
+    router.push(`/receiving/picklists/bonus-face-sheets/pack-form?delivery_date=${creationDate}&order_ids=${selectedOrderIds.join(',')}`);
+  };
+
+
+
+  const isCreateDisabled = loading || !creationDate || previewLoading || previewOrders.length === 0 || selectedOrderIds.length === 0;
+
+  const handlePrintBonusFaceSheet = async (id: number) => {
+    setPrintingId(id);
+    setError(null);
+
+    let printWindow: Window | null = null;
+    let cleanup: (() => void) | null = null;
+
+    try {
+      const response = await fetch(`/api/bonus-face-sheets/${id}`);
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || `HTTP error! status: ${response.status}`);
+      }
+
+      const details = result.data;
+
+      printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        throw new Error('กรุณาอนุญาตป๊อปอัพเพื่อใช้งานการพิมพ์');
+      }
+
+      const tempContainer = document.createElement('div');
+      document.body.appendChild(tempContainer);
+
+      const { createRoot } = await import('react-dom/client');
+      const root = createRoot(tempContainer);
+      root.render(<BonusFaceSheetLabelDocument details={details} />);
+
+      cleanup = () => {
+        try {
+          root.unmount();
+        } catch (unmountError) {
+          console.warn('Unmount bonus face sheet print container error:', unmountError);
+        }
+        if (tempContainer.parentNode) {
+          tempContainer.parentNode.removeChild(tempContainer);
+        }
+      };
+
+      window.setTimeout(() => {
+        const printContent = tempContainer.innerHTML;
+        const cssContent = `
+          @page {
+            size: 148mm 210mm;
+            margin: 0;
+          }
+          * {
+            box-sizing: border-box;
+          }
+          html, body {
+            margin: 0;
+            padding: 0;
+            width: 148mm;
+            height: 210mm;
+            background: #ffffff;
+            font-family: 'Sarabun', 'Noto Sans Thai', sans-serif;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+            color-adjust: exact;
+          }
+          @media print {
+            html, body {
+              width: 148mm;
+              height: 210mm;
+              margin: 0;
+              padding: 0;
+            }
+            @page {
+              size: 148mm 210mm;
+              margin: 0;
+            }
+          }
+        `;
+
+        printWindow?.document.write(`
+          <!DOCTYPE html>
+          <html lang="th">
+            <head>
+              <meta charset="UTF-8" />
+              <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+              <title>Bonus Face Sheet ${details.face_sheet_no}</title>
+              <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+              <style>${cssContent}</style>
+            </head>
+            <body>${printContent}</body>
+          </html>
+        `);
+        printWindow?.document.close();
+        printWindow?.focus();
+
+        setTimeout(() => {
+          printWindow?.print();
+        }, 1000);
+
+        cleanup?.();
+        cleanup = null;
+      }, 500);
+    } catch (err: any) {
+      console.error('Error printing bonus face sheet:', err);
+      setError(err.message || 'ไม่สามารถพิมพ์ใบปะหน้าของแถมได้');
+      if (printWindow && !printWindow.closed) {
+        printWindow.close();
+      }
+      cleanup?.();
+      cleanup = null;
+    } finally {
+      setPrintingId(null);
+    }
+  };
+
+  return (
+    <div className="h-screen bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
+      <div className="h-full flex flex-col space-y-2 pt-0 px-2 pb-2">
+        {/* Header */}
+        <div className="flex items-center justify-between gap-2 pt-1 flex-shrink-0">
+          <h1 className="text-xl font-bold text-thai-gray-900 font-thai m-0 p-0 leading-tight">
+            สร้างใบปะหน้าของแถม (Bonus Face Sheets)
+          </h1>
+          <div className="flex gap-2">
+            <Button
+              variant="primary"
+              className="bg-purple-500 hover:bg-purple-600 shadow-lg"
+              onClick={handleOpenCreateModal}
+              disabled={loading}
+            >
+              {loading && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+              สร้างใบปะหน้าของแถม
+            </Button>
+          </div>
+        </div>
+
+        {/* Alerts */}
+        {error && !showCreateModal && (
+          <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start space-x-2 flex-shrink-0">
+            <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+            <div className="flex-1">
+              <span className="text-sm text-red-700 font-thai">{error}</span>
+            </div>
+            <button onClick={() => setError(null)} className="text-red-600 hover:text-red-800 flex-shrink-0">
+              <XCircle className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+        {success && (
+          <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center space-x-2 flex-shrink-0">
+            <CheckCircle className="w-5 h-5 text-green-600" />
+            <span className="text-sm text-green-700">{success}</span>
+            <button onClick={() => setSuccess(null)} className="ml-auto text-green-600 hover:text-green-800">
+              <XCircle className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
+        {/* Filters */}
+        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm flex-shrink-0">
+          <div className="flex items-center space-x-3">
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
+                <input
+                  type="text"
+                  placeholder="ค้นหาเลขที่ใบปะหน้าของแถม..."
+                  className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm placeholder:text-thai-gray-400"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="flex space-x-2">
+              <input
+                type="date"
+                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-28"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+              />
+              <select
+                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-32"
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+              >
+                {statuses.map((status) => (
+                  <option key={status.value} value={status.value}>{status.label}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        {/* Table */}
+        <div className="flex-1 min-h-0">
+          <div className="w-full h-[74vh] overflow-auto bg-white border border-gray-200 rounded-lg shadow-sm">
+            <table className="min-w-full border-collapse text-sm">
+              <thead className="sticky top-0 z-10 bg-gray-100">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">เลขที่ใบปะหน้า</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">คลังสินค้า</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">สถานะ</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">วันที่สร้าง</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">แพ็คทั้งหมด</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">รายการสินค้า</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">จำนวนออเดอร์</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">จัดการ</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-100">
+                {loading ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-500">
+                      <div className="flex items-center justify-center space-x-2">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>กำลังโหลดข้อมูล...</span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : filteredBonusFaceSheets.length === 0 ? (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-12 text-center">
+                      <div className="flex flex-col items-center justify-center">
+                        <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mb-4">
+                          <Gift className="w-8 h-8 text-purple-600" />
+                        </div>
+                        <p className="text-sm text-gray-600 mb-2">ยังไม่มีข้อมูลใบปะหน้าของแถม</p>
+                        <p className="text-xs text-gray-500">คลิกปุ่ม &quot;สร้างใบปะหน้าของแถม&quot; เพื่อเริ่มต้น</p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredBonusFaceSheets.map((sheet) => (
+                    <tr key={sheet.id} className="hover:bg-gray-50/80 transition-colors duration-200">
+                      <td className="px-4 py-3 text-xs whitespace-nowrap">
+                        <div className="font-semibold text-purple-600 font-mono">{sheet.face_sheet_no}</div>
+                      </td>
+                      <td className="px-4 py-3 text-xs whitespace-nowrap">
+                        <Badge variant="secondary" size="sm">{sheet.warehouse_id}</Badge>
+                      </td>
+                      <td className="px-4 py-3 text-xs whitespace-nowrap">{getStatusBadge(sheet.status)}</td>
+                      <td className="px-4 py-3 text-xs whitespace-nowrap">
+                        {new Date(sheet.created_date).toLocaleDateString('th-TH', { year: '2-digit', month: '2-digit', day: '2-digit' })}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-center whitespace-nowrap">
+                        <div className="font-bold text-purple-600">{sheet.total_packages}</div>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-center whitespace-nowrap">
+                        <div className="font-bold text-blue-600">{sheet.total_items}</div>
+                      </td>
+                      <td className="px-4 py-3 text-xs text-center whitespace-nowrap">
+                        <div className="font-bold text-gray-700">{sheet.total_orders}</div>
+                      </td>
+                      <td className="px-4 py-3 text-xs whitespace-nowrap">
+                        <div className="flex items-center space-x-1">
+                          <button 
+                            className="p-1 rounded hover:bg-purple-50 hover:text-purple-600 transition-colors" 
+                            title="ดูและแก้ไข"
+                            onClick={() => router.push(`/receiving/picklists/bonus-face-sheets/pack-form?id=${sheet.id}`)}
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                          <button
+                            className="p-1 rounded hover:bg-green-50 hover:text-green-600 transition-colors disabled:opacity-60"
+                            title="พิมพ์ใบปะหน้า"
+                            onClick={() => handlePrintBonusFaceSheet(sheet.id)}
+                            disabled={printingId === sheet.id}
+                          >
+                            {printingId === sheet.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Printer className="w-4 h-4" />
+                            )}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* Create Modal */}
+      <Modal
+        isOpen={showCreateModal}
+        onClose={handleCloseCreateModal}
+        title="สร้างใบปะหน้าของแถม"
+        size="lg"
+      >
+        <div className="space-y-4">
+          {/* Error Alert inside Modal */}
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start space-x-2">
+              <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <span className="text-sm text-red-700 font-thai">{error}</span>
+              </div>
+              <button onClick={() => setError(null)} className="text-red-600 hover:text-red-800 flex-shrink-0">
+                <XCircle className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-4">
+            <div className="flex items-start space-x-3">
+              <Gift className="w-5 h-5 text-purple-600 mt-0.5" />
+              <div>
+                <h3 className="font-semibold text-purple-900 mb-1">สร้างใบปะหน้าของแถม</h3>
+                <p className="text-sm text-purple-700">ระบบจะดึงข้อมูลออเดอร์ที่มีสินค้าของแถมเพื่อสร้างใบปะหน้า</p>
+                <p className="text-sm text-purple-700 mt-1">สินค้าของแถมจะถูกจัดกลุ่มตามร้านค้าและประเภทสินค้า</p>
+              </div>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">คลังสินค้า</label>
+              <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500" defaultValue="WH01" disabled>
+                <option value="WH01">WH01 - คลังหลัก</option>
+                <option value="WH02">WH02 - คลังรอง</option>
+              </select>
+              <p className="text-xs text-gray-500 mt-1">คลังสินค้าจะถูกกำหนดตามค่าเริ่มต้น</p>
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 mb-1">แหล่งที่มีข้อมูล</label>
+              <div className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg">
+                <span className="text-sm text-gray-700">ออเดอร์ที่มีสินค้าของแถม</span>
+              </div>
+              <p className="text-xs text-gray-500 mt-1">ดึงข้อมูลจากหน้ารายการออเดอร์</p>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">เลือกวันส่งของ (จำเป็น)</label>
+            <div className="relative">
+              <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
+              <input
+                type="date"
+                className="w-full pl-10 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-purple-500 text-sm"
+                value={creationDate}
+                onChange={(e) => handleDeliveryDateChange(e.target.value)}
+                max="9999-12-31"
+              />
+            </div>
+            <p className="text-xs text-gray-500 mt-1">ระบบจะพิจารณาเฉพาะออเดอร์ที่มีสินค้าของแถมและมีวันส่งของตรงกับวันที่เลือก</p>
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-3">
+              <div>
+                <h4 className="font-semibold text-gray-800 text-sm">ออเดอร์สำหรับ {creationDate ? `วันที่ ${formatThaiDate(creationDate)}` : 'วันที่ที่เลือก'}</h4>
+                <p className="text-xs text-gray-500 mt-1">เลือกออเดอร์ที่ต้องการสร้างใบปะหน้าของแถม</p>
+              </div>
+              {creationDate && !previewLoading && previewOrders.length > 0 && (
+                <span className="text-xs font-medium text-purple-600">
+                  เลือก {selectedOrderIds.length} จาก {previewOrders.length} ออเดอร์
+                </span>
+              )}
+            </div>
+
+            {previewLoading ? (
+              <div className="flex items-center justify-center py-6 text-sm text-gray-500">
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                กำลังโหลดออเดอร์สำหรับวันที่เลือก...
+              </div>
+            ) : !creationDate ? (
+              <div className="py-4 text-sm text-gray-500">กรุณาเลือกวันส่งของเพื่อดูรายการออเดอร์</div>
+            ) : previewError ? (
+              <div className="py-4 text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-lg p-3">
+                <div className="flex items-start space-x-2">
+                  <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                  <span>{previewError}</span>
+                </div>
+              </div>
+            ) : previewOrders.length === 0 ? (
+              <div className="py-4 text-sm text-gray-500">ไม่พบออเดอร์สำหรับวันที่เลือก</div>
+            ) : (
+              <div className="max-h-56 overflow-auto border border-gray-100 rounded-md">
+                <table className="min-w-full text-xs">
+                  <thead className="bg-gray-50 sticky top-0">
+                    <tr className="text-gray-600">
+                      <th className="px-3 py-2 text-center font-semibold w-12">
+                        <input
+                          type="checkbox"
+                          checked={isAllSelected}
+                          onChange={handleToggleAllOrders}
+                          className="w-4 h-4 text-purple-600 bg-gray-100 border-gray-300 rounded focus:ring-purple-500 cursor-pointer"
+                          title={isAllSelected ? 'ยกเลิกเลือกทั้งหมด' : 'เลือกทั้งหมด'}
+                        />
+                      </th>
+                      <th className="px-3 py-2 text-left font-semibold">เลขที่ออเดอร์</th>
+                      <th className="px-3 py-2 text-left font-semibold">ลูกค้า</th>
+                      <th className="px-3 py-2 text-left font-semibold">จังหวัด</th>
+                      <th className="px-3 py-2 text-left font-semibold">สายรถ/คันที่</th>
+                      <th className="px-3 py-2 text-right font-semibold whitespace-nowrap">จำนวนของแถม</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {previewOrders.map((order) => (
+                      <tr key={order.order_id} className="hover:bg-gray-50">
+                        <td className="px-3 py-2 text-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedOrderIds.includes(order.order_id)}
+                            onChange={() => handleToggleOrder(order.order_id)}
+                            className="w-4 h-4 text-purple-600 bg-gray-100 border-gray-300 rounded focus:ring-purple-500 cursor-pointer"
+                          />
+                        </td>
+                        <td className="px-3 py-2 font-mono text-purple-600">{order.order_no}</td>
+                        <td className="px-3 py-2">
+                          <div className="font-medium text-gray-800">{order.shop_name || '-'}</div>
+                          <div className="text-[11px] text-gray-500">{order.customer_id || '-'}</div>
+                        </td>
+                        <td className="px-3 py-2 text-gray-600">{order.province || '-'}</td>
+                        <td className="px-3 py-2">
+                          {order.trip_number ? (
+                            <span className="inline-flex items-center px-2 py-1 rounded-md bg-blue-50 text-blue-700 text-xs font-medium">
+                              {order.trip_number}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 text-xs">-</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-right font-semibold text-purple-700">{order.total_items}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+            <div className="flex items-start space-x-3">
+              <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5" />
+              <div>
+                <h4 className="font-semibold text-amber-900 mb-1">ข้อมูลที่จะถูกประมวลผล</h4>
+                <ul className="text-sm text-amber-700 space-y-1">
+                  <li>• จัดกลุ่มสินค้าของแถมตามประเภทและขนาด</li>
+                  <li>• สร้างแพ็คสินค้าของแถมแยกจากสินค้าหลัก</li>
+                  <li>• สร้างบาร์โค้ดสำหรับแต่ละแพ็คของแถม</li>
+                  <li>• จัดเรียงตามรหัสลูกค้าและประเภทสินค้า</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-end space-x-3 pt-4">
+            <Button variant="outline" onClick={handleCloseCreateModal} disabled={loading}>
+              ยกเลิก
+            </Button>
+            <Button 
+              variant="primary" 
+              onClick={handleCreateBonusFaceSheet} 
+              disabled={isCreateDisabled}
+              className="bg-purple-500 hover:bg-purple-600"
+            >
+              ถัดไป: ตรวจสอบแผนการจัดส่ง
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Matching Step Modal */}
+      <Modal
+        isOpen={showMatchingStep}
+        onClose={() => {
+          setShowMatchingStep(false);
+          setShowCreateModal(true);
+        }}
+        title="🚚 ขั้นตอนที่ 2: ตรวจสอบแผนการจัดส่ง"
+        size="lg"
+      >
+        <div className="space-y-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <div className="flex items-start space-x-3">
+              <Package className="w-5 h-5 text-blue-600 mt-0.5" />
+              <div>
+                <h3 className="font-semibold text-blue-900 mb-1">📌 คำอธิบาย:</h3>
+                <p className="text-sm text-blue-700">
+                  ระบบตรวจสอบร้านค้าที่นำเข้ากับแผนการจัดส่ง (Shipping_plan) โดยเช็คจาก &quot;รหัสลูกค้า/ผู้ขาย&quot;
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Summary */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+              <div className="text-center">
+                <div className="text-3xl font-bold text-green-600">
+                  {previewOrders.filter(o => selectedOrderIds.includes(o.order_id) && o.trip_number).length}
+                </div>
+                <div className="text-sm text-green-700 mt-1">ออเดอร์ที่มีสายรถ</div>
+              </div>
+            </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <div className="text-center">
+                <div className="text-3xl font-bold text-amber-600">
+                  {previewOrders.filter(o => selectedOrderIds.includes(o.order_id) && !o.trip_number).length}
+                </div>
+                <div className="text-sm text-amber-700 mt-1">ออเดอร์ที่ไม่มีสายรถ</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Shop Lists - แยกตามสถานะ */}
+          <div className="grid grid-cols-2 gap-4">
+            {/* Matched Shops */}
+            <div className="bg-white border border-gray-200 rounded-lg p-4">
+              <h3 className="font-semibold text-green-700 mb-3 flex items-center gap-2">
+                <CheckCircle className="w-5 h-5" />
+                ✅ ร้านค้าที่แมพเจอ (เลือกอัตโนมัติ)
+              </h3>
+              <div className="max-h-64 overflow-y-auto space-y-2">
+                {previewOrders
+                  .filter(o => selectedOrderIds.includes(o.order_id) && o.trip_number)
+                  .length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-4">ไม่มีร้านค้าที่แมพเจอ</p>
+                ) : (
+                  previewOrders
+                    .filter(o => selectedOrderIds.includes(o.order_id) && o.trip_number)
+                    .map((order) => (
+                      <div
+                        key={order.order_id}
+                        className="bg-green-50 border border-green-200 rounded-lg p-3"
+                      >
+                        <div className="flex items-start gap-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedOrderIds.includes(order.order_id)}
+                            onChange={() => handleToggleOrder(order.order_id)}
+                            className="w-4 h-4 text-green-600 bg-gray-100 border-gray-300 rounded focus:ring-green-500 cursor-pointer mt-0.5"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-gray-900 text-sm truncate">
+                              {order.shop_name}
+                            </div>
+                            <div className="text-xs text-gray-600 mt-1">
+                              รหัส: {order.customer_code} | เลขที่: {order.order_no}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                )}
+              </div>
+            </div>
+
+            {/* Unmatched Shops */}
+            <div className="bg-white border border-gray-200 rounded-lg p-4">
+              <h3 className="font-semibold text-amber-700 mb-3 flex items-center gap-2">
+                <AlertCircle className="w-5 h-5" />
+                ❌ ร้านค้าที่แมพไม่เจอ (เลือกเอง)
+              </h3>
+              <div className="max-h-64 overflow-y-auto space-y-2">
+                {previewOrders
+                  .filter(o => selectedOrderIds.includes(o.order_id) && !o.trip_number)
+                  .length === 0 ? (
+                  <p className="text-sm text-gray-500 text-center py-4">ไม่มีร้านค้าที่แมพไม่เจอ</p>
+                ) : (
+                  previewOrders
+                    .filter(o => selectedOrderIds.includes(o.order_id) && !o.trip_number)
+                    .map((order) => (
+                      <div
+                        key={order.order_id}
+                        className="bg-amber-50 border border-amber-200 rounded-lg p-3"
+                      >
+                        <div className="flex items-start gap-2">
+                          <input
+                            type="checkbox"
+                            checked={selectedOrderIds.includes(order.order_id)}
+                            onChange={() => handleToggleOrder(order.order_id)}
+                            className="w-4 h-4 text-amber-600 bg-gray-100 border-gray-300 rounded focus:ring-amber-500 cursor-pointer mt-0.5"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-gray-900 text-sm truncate">
+                              {order.shop_name}
+                            </div>
+                            <div className="text-xs text-gray-600 mt-1">
+                              รหัส: {order.customer_code} | เลขที่: {order.order_no}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex justify-center">
+            <Button 
+              variant="primary" 
+              onClick={handleProceedToPackForm}
+              disabled={selectedOrderIds.length === 0}
+              className="bg-purple-500 hover:bg-purple-600 min-w-64"
+              size="lg"
+            >
+              ▶ ถัดไป: ไปกรอกข้อมูลแพ็ค
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+};
+
+export default BonusFaceSheetsPage;
