@@ -224,6 +224,12 @@ export const useLocations = (warehouseId: string) => {
         
         const locationsData = result.data || result; // Handle both {data} and direct array responses
 
+        console.log('📍 Locations loaded:', {
+          warehouseId,
+          count: locationsData?.length || 0,
+          sample: locationsData?.slice(0, 3)
+        });
+
         setLocations(locationsData || []);
         setError(null);
       } catch (err) {
@@ -242,7 +248,7 @@ export const useLocations = (warehouseId: string) => {
   return { locations, loading, error };
 };
 
-// Hook for employees
+// Hook for employees (from master_employee table - legacy)
 export const useEmployees = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -277,6 +283,43 @@ export const useEmployees = () => {
   }, []);
 
   return { employees, loading, error };
+};
+
+// Hook for system users (from master_system_user table)
+export const useSystemUsers = () => {
+  const [users, setUsers] = useState<Employee[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchUsers = async () => {
+      try {
+        const response = await fetch('/api/system-users');
+        if (!response.ok) {
+          throw new Error('Failed to fetch system users');
+        }
+        const result = await response.json();
+
+        if (result.error) {
+          throw new Error(result.error);
+        }
+
+        // API returns { data: [...] }, already filtered for active users
+        setUsers(result.data || []);
+        setError(null);
+      } catch (err) {
+        const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
+        console.error("Error fetching system users:", errorMessage);
+        setError('ไม่สามารถโหลดข้อมูลผู้ใช้งานได้');
+        setUsers([]);
+      }
+      setLoading(false);
+    };
+
+    fetchUsers();
+  }, []);
+
+  return { users, loading, error };
 };
 
 // Hook for storage strategies

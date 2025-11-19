@@ -11,7 +11,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AustamGood WMS is a Warehouse Management System built with Next.js 15, TypeScript, Tailwind CSS, and Supabase. The application is designed for mid-to-large-sized businesses to manage warehouse operations including inventory tracking, receiving, shipping, order processing, route planning (VRP), and reporting. The UI is in Thai language.
+AustamGood WMS is a Warehouse Management System built with Next.js 15, TypeScript, Tailwind CSS, and Supabase. The application is designed for mid-to-large-sized businesses to manage warehouse operations including inventory tracking, receiving, shipping, order processing, route planning (VRP), online packing, and reporting. The UI is in Thai language.
 
 ## Key Technologies
 
@@ -65,11 +65,37 @@ npm run db:generate-types
 
 # 3. Before committing
 npm run typecheck
-npm run lint
+npm run build
 
 # 4. Build for production
 npm run build
 ```
+
+### Database Migration Workflow
+When making database schema changes:
+```bash
+# 1. Create migration file in supabase/migrations/
+# Follow naming: XXX_descriptive_name.sql
+
+# 2. Test migration locally
+npm run db:migrate
+
+# 3. Regenerate TypeScript types
+npm run db:generate-types
+
+# 4. Update affected services in lib/database/
+
+# 5. Test the changes
+npm run dev
+
+# 6. Verify build
+npm run build
+```
+
+**Migration File Examples:**
+- `007_add_receive_to_ledger_trigger.sql` - Add database trigger
+- `010_add_reference_doc_type_to_ledger.sql` - Add column to existing table
+- `012_fix_date_type_casting.sql` - Fix data type issues
 
 ## Environment Setup
 
@@ -98,12 +124,44 @@ The application uses Next.js 15 App Router with the following main sections:
 - `/reports` - Reporting interface
 - `/production` - Production order management
 - `/mobile` - Mobile-optimized interfaces for warehouse operations
+- `/online-packing` - **NEW**: E-commerce order packing system (9 sub-pages)
+- `/stock-management` - Stock transfer, count, and adjustment
+
+### Online Packing Module (New)
+A comprehensive e-commerce packing system migrated from external POS_FULL system:
+
+**Pages:**
+- `/online-packing` - Main packing interface with barcode scanning
+- `/online-packing/dashboard` - Packing statistics and productivity metrics
+- `/online-packing/import` - Multi-platform order import (Shopee, TikTok, Lazada)
+- `/online-packing/products` - Product master data management
+- `/online-packing/promotions` - Freebie and promotion management
+- `/online-packing/returns` - Return request handling with image upload
+- `/online-packing/settings` - Box configuration and packing rules
+- `/online-packing/users` - User management with role-based permissions
+- `/online-packing/erp` - ERP export with bundle expansion
+
+**Database Tables:** All tables use `packing_*` prefix (15 tables total)
+**Type Definitions:** `types/online-packing.ts` (11 interfaces)
+**Key Features:** Barcode scanning, bundle product expansion, audio feedback, multi-platform support
+
+**Audio Feedback Pattern:**
+The online packing module uses audio files for user feedback during packing operations:
+- Audio files stored in `public/audio/` (success.mp3, error.mp3, etc.)
+- Played via `new Audio('/audio/file.mp3').play()` for instant feedback
+- Used for scan confirmations, errors, and completion events
+
+### Stock Management Module
+Inventory management operations for stock movements and adjustments:
+- `/stock-management/transfer` - Stock transfers between locations
+- `/stock-management/count` - Stock counting and cycle counts
+- `/stock-management/adjustment` - Inventory adjustments and corrections
 
 ### Component Organization
 
 - `components/ui/` - Reusable UI components (Button, Card, Table, Modal, Badge, etc.)
 - `components/forms/` - Form components for data entry (Add/Edit/Import forms)
-- `components/layout/` - Layout components (Sidebar, Header, MainLayout, MobileLayout)
+- `components/layout/` - Layout components (Sidebar, Header, MainLayout, MobileLayout, MobileBottomNav)
 - `components/warehouse/` - Warehouse-specific components (GoodsReceiptForm, ZoneLocationSelect)
 - `components/receiving/` - Receiving-specific components (LoadlistPrintDocument, FaceSheetDetailModal)
 - `components/mobile/` - Mobile UI components (ScannerInput, MobileButton, QuantityInput)
@@ -111,6 +169,23 @@ The application uses Next.js 15 App Router with the following main sections:
 - `components/maps/` - Map components (RouteMap with Mapbox)
 - `components/vrp/` - Vehicle Routing Problem optimization components
 - `components/orders/` - Order-related components (ImportOrderModal)
+
+### Layout System
+
+The application uses two distinct layout systems:
+
+**Desktop Layout:**
+- Root layout in `app/layout.tsx` provides global styles and fonts
+- `MainLayout` component includes Sidebar navigation
+- Full-featured navigation with collapsible sections
+- Optimized for large screens
+
+**Mobile Layout:**
+- Separate layout in `app/mobile/layout.tsx` for mobile routes
+- `MobileLayout` component with bottom navigation
+- `MobileBottomNav` component for touch-optimized navigation
+- Larger tap targets and simplified UI
+- Mobile routes must be under `/mobile/*` path to use mobile layout
 
 ### Data Layer
 
@@ -151,6 +226,7 @@ Services in `lib/database/` provide abstraction for database operations:
 - `types/database/` - Database entity types
 - `types/*-schema.ts` - Zod schemas for form validation
 - `types/*.ts` - Application-specific type definitions
+- `types/online-packing.ts` - **NEW**: Online packing module types (11 interfaces)
 
 ### API Routes
 API routes in `app/api/` follow REST patterns with standard HTTP methods:
@@ -165,6 +241,7 @@ API routes in `app/api/` follow REST patterns with standard HTTP methods:
 - `/api/moves/*` - Inventory movement operations and status updates
 - `/api/preparation-areas/*` - Preparation area management with import/export
 - `/api/storage-strategies/*` - Storage strategy configuration
+- `/api/system-users/*` - **NEW**: System user management endpoints
 
 ### Route Planning & VRP (Vehicle Routing Problem)
 The system includes advanced route optimization capabilities. See `README_VRP.md` for detailed documentation.
@@ -289,6 +366,16 @@ The app is configured as a Progressive Web App with:
 
 ## Common Workflows
 
+### Adding a New Module/Feature
+1. Create database tables in Supabase (with appropriate prefix if module-specific)
+2. Run `npm run db:generate-types`
+3. Create type definitions in `types/` (e.g., `types/module-name.ts`)
+4. Create Zod schema in `types/module-schema.ts` if forms are needed
+5. Create database service in `lib/database/` if needed
+6. Create API routes in `app/api/`
+7. Create pages in `app/module-name/`
+8. Add menu item to Sidebar component (`components/layout/Sidebar.tsx`)
+
 ### Adding a New Master Data Entity
 1. Create database table in Supabase
 2. Run `npm run db:generate-types`
@@ -385,16 +472,23 @@ const { count, error } = await supabase
 
 ## Database Schema Overview
 
-The system has **48 tables** across 5 main modules:
+The system has **78+ tables** across 6 main modules:
 1. **Master Data** (11 tables) - Products, customers, suppliers, locations, vehicles, employees, etc.
 2. **Warehouse Operations** (14 tables) - Receiving, inventory, movements, locations
 3. **Order & Logistics** (9 tables) - Orders, picklists, loadlists, route plans, face sheets
 4. **Production** (4 tables) - Production orders, BOM, material issues
 5. **File & User Management** (10 tables) - Files, import/export jobs, users, roles, permissions
+6. **Online Packing** (15 tables) - E-commerce packing system with `packing_*` prefix
+7. **Inventory Ledger** (15 tables) - Complete inventory tracking with ledger system
 
 **Important**: If `supabase/DATABASE_DOCUMENTATION.md` exists, always refer to it for complete schema details including all tables, relationships, and constraints.
 
----
+### Recent Schema Additions
+The system includes recent migrations that add:
+- Inventory ledger system with triggers (migrations 007-013)
+- `receive_to_ledger` trigger that auto-creates ledger entries
+- `reference_doc_type` field for tracking document origins
+- Date type casting fixes for production dates
 
 ## Common Gotchas & Troubleshooting
 
@@ -463,7 +557,21 @@ npm run db:generate-types
 2. Get token from https://mapbox.com if needed
 3. Restart dev server after adding token
 
----
+### 9. Build Errors After Migration
+**Problem**: Type errors or module not found after adding new modules
+**Solution**:
+1. Clear Next.js cache: `rm -rf .next`
+2. Regenerate database types: `npm run db:generate-types`
+3. Run typecheck: `npm run typecheck`
+4. Rebuild: `npm run build`
+
+### 10. Mobile Layout Not Rendering Correctly
+**Problem**: Mobile pages show desktop layout or have layout issues
+**Solution**:
+1. Ensure mobile pages use `MobileLayout` component from `components/layout/MobileLayout.tsx`
+2. Check that `app/mobile/layout.tsx` exists and wraps mobile routes
+3. Mobile routes should be under `/mobile/*` path
+4. Use mobile-specific components from `components/mobile/`
 
 ## Performance Considerations
 
@@ -482,8 +590,6 @@ npm run db:generate-types
 - Use `React.memo()` for components that render frequently with same props
 - Lazy load heavy components with `next/dynamic`
 - Optimize images with `next/image`
-
----
 
 ## Security Best Practices
 

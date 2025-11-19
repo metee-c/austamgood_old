@@ -11,7 +11,7 @@ import Modal from '@/components/ui/Modal';
 import ComboBox from '@/components/ui/ComboBox';
 import AddSupplierForm from '@/components/forms/AddSupplierForm';
 import { useCreateReceive, useGeneratePalletId, useUpdateReceive } from '@/hooks/useReceive';
-import { useSuppliers, useSkus, useWarehouses, useLocations, useCustomers, useEmployees } from '@/hooks/useFormOptions';
+import { useSuppliers, useSkus, useWarehouses, useLocations, useCustomers, useSystemUsers } from '@/hooks/useFormOptions';
 import { ReceiveType, ReceiveStatus, CreateReceivePayload, PalletScanStatus } from '@/lib/database/receive';
 
 // Validation schema for a single item
@@ -165,7 +165,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
   const { skus } = useSkus();
   const { warehouses } = useWarehouses();
   const { customers } = useCustomers();
-  const { employees } = useEmployees();
+  const { users: systemUsers } = useSystemUsers();
   const watchedWarehouseId = watch('warehouse_id');
   const warehouseIdString = typeof watchedWarehouseId === 'string' ? watchedWarehouseId : '';
   
@@ -567,7 +567,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
         ...item,
         location_id: item.location_id || undefined
       })) as any,
-      created_by: 1,
+      created_by: data.received_by || 11, // Use received_by from form, fallback to 11 if not specified
     };
 
     console.log('📦 Payload ที่ส่งไป API:', JSON.stringify(payload, null, 2));
@@ -743,9 +743,9 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
               <label className="block text-xs font-medium text-thai-gray-700 font-thai mb-1">ผู้รับสินค้า</label>
               <select {...register('received_by', { valueAsNumber: true })} className="w-full p-2 border border-thai-gray-200 rounded-md text-sm">
                 <option value="">กรุณาเลือกผู้รับสินค้า</option>
-                {Array.isArray(employees) && employees.map(emp => (
-                  <option key={emp.employee_id} value={emp.employee_id}>
-                    {emp.first_name} {emp.last_name}
+                {Array.isArray(systemUsers) && systemUsers.map(user => (
+                  <option key={user.employee_id} value={user.employee_id}>
+                    {user.first_name} {user.last_name}
                   </option>
                 ))}
               </select>
@@ -984,6 +984,64 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
                       <input type="date" {...register(`items.${index}.expiry_date`)} className="w-full p-2 border border-gray-300 rounded-md text-sm" />
                     </div>
                   </div>
+
+                  {/* ช่องเลือกสถานที่รับสินค้า (Location) */}
+                  <div className="mt-2">
+                    <label className="block text-xs font-medium text-thai-gray-700 mb-1">
+                      สถานที่รับสินค้า
+                      {locations && locations.length > 0 && (
+                        <span className="ml-2 text-xs text-gray-500 font-normal">
+                          ({locations.length.toLocaleString()} ตำแหน่ง)
+                        </span>
+                      )}
+                    </label>
+                    <ComboBox
+                      name={`items.${index}.location_id`}
+                      value={(() => {
+                        const locationId = watch(`items.${index}.location_id`);
+                        if (!locationId) return '';
+                        const location = locations?.find(loc => loc.location_id === locationId);
+                        return location ? `${location.location_code}${location.location_name ? ' - ' + location.location_name : ''}` : locationId;
+                      })()}
+                      onChange={(e) => {
+                        const inputValue = e.target.value;
+                        // Find location by label or value
+                        const location = locations?.find(loc => 
+                          loc.location_id === inputValue || 
+                          `${loc.location_code}${loc.location_name ? ' - ' + loc.location_name : ''}` === inputValue
+                        );
+                        setValue(`items.${index}.location_id`, location?.location_id || inputValue);
+                      }}
+                      options={(locations || []).map(loc => ({
+                        value: loc.location_id,
+                        label: `${loc.location_code}${loc.location_name ? ' - ' + loc.location_name : ''}`
+                      }))}
+                      placeholder={watch('warehouse_id') ? "พิมพ์เพื่อค้นหาสถานที่รับสินค้า..." : "เลือกคลังสินค้าก่อน"}
+                      className="w-full p-2 border border-gray-300 rounded-md text-sm"
+                      disabled={!watch('warehouse_id')}
+                    />
+                    {!watch('warehouse_id') ? (
+                      <div className="text-xs text-orange-600 mt-1">
+                        ⚠️ กรุณาเลือกคลังสินค้าก่อนเพื่อโหลดสถานที่รับสินค้า
+                      </div>
+                    ) : locationsLoading ? (
+                      <div className="text-xs text-gray-500 mt-1">
+                        ⏳ กำลังโหลดข้อมูลสถานที่...
+                      </div>
+                    ) : locationsError ? (
+                      <div className="text-xs text-red-600 mt-1">
+                        ❌ เกิดข้อผิดพลาด: {locationsError}
+                      </div>
+                    ) : locations && locations.length > 0 ? (
+                      <div className="text-xs text-blue-600 mt-1">
+                        💡 พิมพ์รหัสหรือชื่อเพื่อกรองตำแหน่งที่ต้องการ (มีทั้งหมด {locations.length.toLocaleString()} ตำแหน่ง)
+                      </div>
+                    ) : watch('warehouse_id') ? (
+                      <div className="text-xs text-orange-600 mt-1">
+                        ⚠️ ไม่พบข้อมูลสถานที่ในคลังนี้
+                      </div>
+                    ) : null}
+                  </div>
                   
                   
                   {/* แสดงข้อความเมื่อเลือกไม่สร้าง Pallet */}
@@ -1090,7 +1148,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
                               {item.location_id ? (locations?.find(loc => loc.location_id === item.location_id)?.location_code || item.location_id) : '-'}
                             </td>
                             <td className="px-4 py-2 text-sm whitespace-nowrap" style={{minWidth: '150px'}}>
-                              {watch('received_by') ? employees.find(emp => emp.employee_id === watch('received_by'))?.first_name + ' ' + employees.find(emp => emp.employee_id === watch('received_by'))?.last_name : '-'}
+                              {watch('received_by') ? systemUsers.find(user => user.employee_id === watch('received_by'))?.first_name + ' ' + systemUsers.find(user => user.employee_id === watch('received_by'))?.last_name : '-'}
                             </td>
                             <td className="px-4 py-2 text-sm whitespace-nowrap" style={{minWidth: '120px'}}>
                               <span className={`px-2 py-1 rounded-full text-xs font-medium ${
@@ -1125,7 +1183,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
                                   {item.location_id ? (locations?.find(loc => loc.location_id === item.location_id)?.location_code || item.location_id) : '-'}
                                 </td>
                                 <td className="px-4 py-2 text-sm whitespace-nowrap" style={{minWidth: '150px'}}>
-                                  {watch('received_by') ? employees.find(emp => emp.employee_id === watch('received_by'))?.first_name + ' ' + employees.find(emp => emp.employee_id === watch('received_by'))?.last_name : '-'}
+                                  {watch('received_by') ? systemUsers.find(user => user.employee_id === watch('received_by'))?.first_name + ' ' + systemUsers.find(user => user.employee_id === watch('received_by'))?.last_name : '-'}
                                 </td>
                                 <td className="px-4 py-2 text-sm whitespace-nowrap" style={{minWidth: '120px'}}>
                                   <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">

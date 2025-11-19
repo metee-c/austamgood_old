@@ -9,6 +9,7 @@ interface ComboBoxProps {
   placeholder?: string;
   className?: string;
   required?: boolean;
+  disabled?: boolean;
 }
 
 const ComboBox: React.FC<ComboBoxProps> = ({
@@ -18,7 +19,8 @@ const ComboBox: React.FC<ComboBoxProps> = ({
   options,
   placeholder,
   className,
-  required
+  required,
+  disabled = false
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [filteredOptions, setFilteredOptions] = useState<typeof options>(options);
@@ -47,14 +49,14 @@ const ComboBox: React.FC<ComboBoxProps> = ({
     const inputValue = e.target.value;
     onChange(e);
 
-    // Filter options based on input
+    // Filter options based on input - limit to 10000 results for performance
     const filtered = memoizedOptions.filter(option =>
       typeof option === 'string'
         ? option.toLowerCase().includes(inputValue.toLowerCase())
         : option.label.toLowerCase().includes(inputValue.toLowerCase())
-    );
+    ).slice(0, 10000);
     setFilteredOptions(filtered as typeof options);
-    
+
     if (!isOpen && inputValue) {
       setIsOpen(true);
     }
@@ -95,19 +97,26 @@ const ComboBox: React.FC<ComboBoxProps> = ({
           className={className}
           placeholder={placeholder}
           required={required}
+          disabled={disabled}
           autoComplete="off"
         />
         <button
           type="button"
           onClick={() => setIsOpen(!isOpen)}
-          className="absolute right-2 top-1/2 transform -translate-y-1/2 text-thai-gray-400 hover:text-thai-gray-600"
+          disabled={disabled}
+          className="absolute right-2 top-1/2 transform -translate-y-1/2 text-thai-gray-400 hover:text-thai-gray-600 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <ChevronDown className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
         </button>
       </div>
 
       {isOpen && filteredOptions.length > 0 && (
-        <div className="absolute z-10 w-full mt-1 bg-white border border-thai-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+        <div className="absolute z-10 w-full mt-1 bg-white border border-thai-gray-300 rounded-lg shadow-lg max-h-80 overflow-y-auto">
+          {filteredOptions.length >= 10000 && (
+            <div className="sticky top-0 bg-yellow-50 border-b border-yellow-200 px-3 py-2 text-xs text-yellow-800">
+              ⚠️ แสดง 10,000 รายการแรก - พิมพ์เพื่อกรองเพิ่มเติม
+            </div>
+          )}
           {filteredOptions.map((option, index) => (
             <button
               key={index}

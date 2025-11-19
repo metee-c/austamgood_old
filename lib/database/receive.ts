@@ -258,6 +258,10 @@ export class ReceiveService {
       ...item,
       receive_id: header.receive_id, // Link to the new header
       created_by: payload.created_by, // Add created_by to items
+      // Convert empty strings to null for date fields (PostgreSQL requires null, not empty string)
+      production_date: item.production_date && item.production_date.trim() !== '' ? item.production_date : null,
+      expiry_date: item.expiry_date && item.expiry_date.trim() !== '' ? item.expiry_date : null,
+      received_date: item.received_date && item.received_date.trim() !== '' ? item.received_date : null,
     }));
 
     const { error: itemsError } = await this.supabase

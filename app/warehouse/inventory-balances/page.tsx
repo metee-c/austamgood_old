@@ -85,7 +85,18 @@ const InventoryBalancesPage = () => {
 
       const { data, error } = await supabase
         .from('wms_inventory_balances')
-        .select('*')
+        .select(`
+          *,
+          master_location!location_id (
+            location_name
+          ),
+          master_warehouse!warehouse_id (
+            warehouse_name
+          ),
+          master_sku!sku_id (
+            sku_name
+          )
+        `)
         .order('updated_at', { ascending: false })
         .limit(1000);
 
@@ -142,11 +153,11 @@ const InventoryBalancesPage = () => {
   const expiringSoonItems = filteredData.filter(item => isExpiringSoon(item.expiry_date)).length;
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-thai-gray-25 to-white">
-      <div className="flex flex-col space-y-2 pt-0 px-2 pb-2">
+    <div className="h-screen bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
+      <div className="h-full flex flex-col space-y-2 pt-0 px-2 pb-2">
         {/* Page Header */}
         <div className="flex items-center justify-between gap-2 pt-1 flex-shrink-0">
-          <h1 className="text-xl font-bold text-thai-gray-900 font-thai">ยอดสต็อกคงเหลือ</h1>
+          <h1 className="text-xl font-bold text-thai-gray-900 font-thai m-0 p-0 leading-tight">ยอดสต็อกคงเหลือ</h1>
           <div className="flex gap-2">
             <Button variant="outline" icon={Download}>
               ส่งออก Excel
@@ -159,8 +170,8 @@ const InventoryBalancesPage = () => {
 
         {/* Filters */}
         <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm flex-shrink-0">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex-1 min-w-[220px]">
+          <div className="flex items-center space-x-3">
+            <div className="flex-1">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
                 <input
@@ -168,15 +179,15 @@ const InventoryBalancesPage = () => {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="ค้นหาด้วย SKU, Lot No, Pallet ID, Location..."
-                  className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 text-sm font-thai transition-all duration-300"
+                  className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm placeholder:text-thai-gray-400"
                 />
               </div>
             </div>
-            <div>
+            <div className="flex space-x-2">
               <select
                 value={selectedWarehouse}
                 onChange={(e) => setSelectedWarehouse(e.target.value)}
-                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai"
+                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-24"
               >
                 <option value="all">ทุกคลัง</option>
                 {warehouses.map(warehouse => (
@@ -185,10 +196,7 @@ const InventoryBalancesPage = () => {
                   </option>
                 ))}
               </select>
-            </div>
-
-            <div>
-              <label className="flex items-center cursor-pointer text-sm font-thai">
+              <label className="flex items-center cursor-pointer text-sm font-thai px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg hover:bg-white/80 transition-all">
                 <input
                   type="checkbox"
                   className="mr-2"
@@ -197,9 +205,7 @@ const InventoryBalancesPage = () => {
                 />
                 สต็อกต่ำ
               </label>
-            </div>
-            <div>
-              <label className="flex items-center cursor-pointer text-sm font-thai">
+              <label className="flex items-center cursor-pointer text-sm font-thai px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg hover:bg-white/80 transition-all">
                 <input
                   type="checkbox"
                   className="mr-2"
@@ -212,24 +218,11 @@ const InventoryBalancesPage = () => {
           </div>
         </div>
 
-        {/* Alerts */}
-        {expiringSoonItems > 0 && (
-          <div className="bg-orange-50 border-l-4 border-orange-500 rounded-lg p-3 flex items-center gap-3">
-            <AlertTriangle className="w-5 h-5 text-orange-500 flex-shrink-0" />
-            <div>
-              <p className="text-sm font-medium text-orange-800 font-thai">
-                มีสินค้าใกล้หมดอายุ {expiringSoonItems} รายการ
-              </p>
-              <p className="text-xs text-orange-600 font-thai mt-0.5">
-                กรุณาตรวจสอบและจัดการสินค้าที่ใกล้หมดอายุภายใน 30 วัน
-              </p>
-            </div>
-          </div>
-        )}
+
 
         {/* Data Table */}
         <div className="flex-1 min-h-0">
-          <div className="w-full h-[74vh] overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-sm">
+          <div className="w-full h-[74vh] bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col">
             {loading ? (
               <div className="h-full flex flex-col items-center justify-center text-thai-gray-500 gap-2">
                 <Loader2 className="w-6 h-6 animate-spin" />
@@ -248,47 +241,56 @@ const InventoryBalancesPage = () => {
                 </div>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
+              <div className="flex-1 overflow-auto thin-scrollbar">
+                <table className="w-full border-collapse text-sm">
+                  <thead className="sticky top-0 z-10 bg-gray-100">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider font-thai">รหัสสินค้า</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider font-thai">รหัสพาเลท</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider font-thai">คลัง</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider font-thai">ตำแหน่ง</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider font-thai">แพ็ครวม</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider font-thai">ชิ้นรวม</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider font-thai">แพ็คจอง</th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider font-thai">ชิ้นจอง</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider font-thai">วันผลิต</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider font-thai">วันหมดอายุ</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider font-thai">เคลื่อนไหวล่าสุด</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider font-thai">จัดการ</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ID</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสสินค้า</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชื่อสินค้า</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสพาเลท</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">คลัง</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ตำแหน่ง</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">Lot No</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">แพ็ครวม</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชิ้นรวม</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">แพ็คจอง</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชิ้นจอง</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันผลิต</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันหมดอายุ</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">Last Move ID</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">เคลื่อนไหวล่าสุด</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">สร้างเมื่อ</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">อัปเดตเมื่อ</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap">จัดการ</th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
                     {(
                       filteredData.map((balance) => (
                         <tr
                           key={balance.balance_id}
-                          className={`hover:bg-gray-50 transition-colors ${
+                          className={`hover:bg-blue-50/30 transition-colors duration-150 ${
                             isExpired(balance.expiry_date) ? 'bg-red-50' :
                             isExpiringSoon(balance.expiry_date) ? 'bg-orange-50' :
                             (balance.total_piece_qty - balance.reserved_piece_qty) <= 10 ? 'bg-yellow-50' : ''
                           }`}
                         >
-                          <td className="px-4 py-3">
-                            <div>
-                              <span className="font-mono text-xs font-medium block">{balance.sku_id}</span>
-                              {balance.sku_name && (
-                                <span className="text-[10px] text-thai-gray-500 font-thai">{balance.sku_name}</span>
-                              )}
-                            </div>
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                            <span className="font-mono text-thai-gray-700">{balance.balance_id}</span>
                           </td>
-                          <td className="px-4 py-3">
-                            <div className="text-xs">
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                            <span className="font-mono font-semibold text-thai-gray-700">{balance.sku_id}</span>
+                          </td>
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                            <span className="text-thai-gray-700 font-thai text-[11px]">
+                              {(balance as any).master_sku?.sku_name || '-'}
+                            </span>
+                          </td>
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                            <div>
                               {balance.pallet_id_external && (
-                                <div className="font-mono text-gray-900">{balance.pallet_id_external}</div>
+                                <div className="font-mono text-thai-gray-700">{balance.pallet_id_external}</div>
                               )}
                               {balance.pallet_id && (
                                 <div className="font-mono text-[10px] text-gray-500">{balance.pallet_id}</div>
@@ -298,59 +300,67 @@ const InventoryBalancesPage = () => {
                               )}
                             </div>
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            <span className="font-thai text-xs">{balance.warehouse_name || balance.warehouse_id}</span>
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                            <span className="font-medium text-thai-gray-700 font-thai">{balance.warehouse_id}</span>
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            <span className="font-mono text-xs">{balance.location_name || balance.location_id || '-'}</span>
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                            <span className="font-mono text-thai-gray-700">
+                              {(balance as any).master_location?.location_name || balance.location_id || '-'}
+                            </span>
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-right">
-                            <span className="font-thai text-xs font-medium text-green-600">
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                            <span className="font-mono text-thai-gray-700">{balance.lot_no || '-'}</span>
+                          </td>
+                          <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
+                            <span className="font-bold text-green-600">
                               {balance.total_pack_qty?.toLocaleString()}
                             </span>
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-right">
-                            <span className="font-thai text-xs font-medium text-green-600">
+                          <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
+                            <span className="font-bold text-green-600">
                               {balance.total_piece_qty?.toLocaleString()}
                             </span>
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-right">
-                            <span className="font-thai text-xs text-orange-600">
+                          <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
+                            <span className="font-bold text-orange-600">
                               {balance.reserved_pack_qty?.toLocaleString()}
                             </span>
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap text-right">
-                            <span className="font-thai text-xs text-orange-600">
+                          <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
+                            <span className="font-bold text-orange-600">
                               {balance.reserved_piece_qty?.toLocaleString()}
                             </span>
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            <span className="text-xs text-gray-900 font-thai">
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                            <span className="font-medium text-gray-900 font-thai">
                               {balance.production_date ? new Date(balance.production_date).toLocaleDateString('th-TH') : '-'}
                             </span>
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                             {balance.expiry_date ? (
-                              <div>
-                                <span className={`font-thai text-xs ${
+                              <div className="flex items-center gap-1">
+                                <span className={`font-thai ${
                                   isExpired(balance.expiry_date) ? 'text-red-600 font-bold' :
-                                  isExpiringSoon(balance.expiry_date) ? 'text-orange-600 font-medium' : ''
+                                  isExpiringSoon(balance.expiry_date) ? 'text-orange-600 font-medium' : 'text-gray-900'
                                 }`}>
                                   {new Date(balance.expiry_date).toLocaleDateString('th-TH')}
                                 </span>
                                 {isExpired(balance.expiry_date) && (
-                                  <Badge variant="danger" size="sm" className="ml-1">หมดอายุ</Badge>
+                                  <Badge variant="danger" size="sm" className="whitespace-nowrap"><span className="text-[10px]">หมดอายุ</span></Badge>
                                 )}
                                 {isExpiringSoon(balance.expiry_date) && !isExpired(balance.expiry_date) && (
-                                  <Badge variant="warning" size="sm" className="ml-1">ใกล้หมดอายุ</Badge>
+                                  <Badge variant="warning" size="sm" className="whitespace-nowrap"><span className="text-[10px]">ใกล้หมดอายุ</span></Badge>
                                 )}
                               </div>
                             ) : (
-                              <span className="text-thai-gray-400 font-thai text-xs">-</span>
+                              <span className="text-thai-gray-400 font-thai">-</span>
                             )}
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            <span className="text-xs text-gray-900 font-thai">
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                            <span className="font-mono text-thai-gray-700">{balance.last_move_id || '-'}</span>
+                          </td>
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                            <span className="text-thai-gray-600 font-thai">
                               {balance.last_movement_at ? new Date(balance.last_movement_at).toLocaleString('th-TH', {
                                 year: 'numeric',
                                 month: '2-digit',
@@ -360,16 +370,36 @@ const InventoryBalancesPage = () => {
                               }) : '-'}
                             </span>
                           </td>
-                          <td className="px-4 py-3 whitespace-nowrap">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              icon={Eye}
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                            <span className="text-thai-gray-600 font-thai">
+                              {balance.created_at ? new Date(balance.created_at).toLocaleString('th-TH', {
+                                year: 'numeric',
+                                month: '2-digit',
+                                day: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              }) : '-'}
+                            </span>
+                          </td>
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                            <span className="text-thai-gray-600 font-thai">
+                              {balance.updated_at ? new Date(balance.updated_at).toLocaleString('th-TH', {
+                                year: 'numeric',
+                                month: '2-digit',
+                                day: '2-digit',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              }) : '-'}
+                            </span>
+                          </td>
+                          <td className="px-2 py-0.5 text-center whitespace-nowrap">
+                            <button 
+                              className="p-1 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                              title="ดูรายละเอียด"
                               onClick={() => handleViewBalance(balance)}
-                              className="text-blue-600 hover:text-blue-700 text-xs px-2 py-0.5"
                             >
-                              ดู
-                            </Button>
+                              <Eye className="w-3 h-3" />
+                            </button>
                           </td>
                         </tr>
                       ))
@@ -439,11 +469,13 @@ const InventoryBalancesPage = () => {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
                   <span className="text-sm text-thai-gray-600 font-thai">คลัง:</span>
-                  <p className="text-sm font-thai font-medium">{selectedBalance.warehouse_name || selectedBalance.warehouse_id}</p>
+                  <p className="text-sm font-thai font-medium">{selectedBalance.warehouse_id}</p>
                 </div>
                 <div>
                   <span className="text-sm text-thai-gray-600 font-thai">ตำแหน่ง:</span>
-                  <p className="text-sm font-thai font-medium">{selectedBalance.location_name || selectedBalance.location_id || '-'}</p>
+                  <p className="text-sm font-thai font-medium">
+                    {(selectedBalance as any).master_location?.location_name || selectedBalance.location_id || '-'}
+                  </p>
                 </div>
               </div>
             </div>

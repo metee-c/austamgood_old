@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
+import MobileBottomNav from '@/components/layout/MobileBottomNav';
 
 interface LoadlistTask {
   loadlist_id: number;
@@ -249,7 +250,7 @@ const MobileLoadingPageContent = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gray-50 pb-20">
       <div className="bg-green-500 text-white shadow-lg">
         <div className="px-4 py-4">
           <div className="flex items-center space-x-3">
@@ -479,6 +480,9 @@ const MobileLoadingPageContent = () => {
           </div>
         </div>
       )}
+
+      {/* Bottom Navigation */}
+      <MobileBottomNav />
     </div>
   );
 };

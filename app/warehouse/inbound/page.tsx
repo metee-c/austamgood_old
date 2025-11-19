@@ -428,11 +428,11 @@ const InboundPage = () => {
                     <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('receive_type')}>
                       ประเภท{getSortIcon('receive_type')}
                     </th>
-                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('product_name')}>
-                      ชื่อสินค้า{getSortIcon('product_name')}
-                    </th>
                     <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('sku_id')}>
                       SKU{getSortIcon('sku_id')}
+                    </th>
+                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('product_name')}>
+                      ชื่อสินค้า{getSortIcon('product_name')}
                     </th>
                     <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('barcode')}>
                       บาร์โค้ด{getSortIcon('barcode')}
@@ -518,14 +518,14 @@ const InboundPage = () => {
                           {getReceiveTypeBadge(receive.receive_type)}
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          <div className="font-semibold text-thai-gray-800" title={`${firstItem?.master_sku?.sku_name || firstItem?.product_name || '-'}${items.length > 1 ? ` (${items.length} รายการ)` : ''}`}>
-                            {firstItem?.master_sku?.sku_name || firstItem?.product_name || '-'}
-                            {items.length > 1 && <span className="text-thai-gray-500 ml-1">({items.length})</span>}
+                          <div className="font-mono font-semibold text-thai-gray-700">
+                            {firstItem?.sku_id || 'N/A'}
                           </div>
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          <div className="font-mono font-semibold text-thai-gray-700">
-                            {firstItem?.sku_id || 'N/A'}
+                          <div className="font-semibold text-thai-gray-800" title={`${firstItem?.master_sku?.sku_name || firstItem?.product_name || '-'}${items.length > 1 ? ` (${items.length} รายการ)` : ''}`}>
+                            {firstItem?.master_sku?.sku_name || firstItem?.product_name || '-'}
+                            {items.length > 1 && <span className="text-thai-gray-500 ml-1">({items.length})</span>}
                           </div>
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
@@ -600,10 +600,10 @@ const InboundPage = () => {
                           <td colSpan={14} className="px-4 py-3 border border-gray-100">
                             <div className="space-y-4">
                               <div className="flex flex-wrap justify-between gap-3">
-                                <div className="text-sm font-semibold text-thai-gray-700 font-thai">
+                                <div className="text-[11px] font-semibold text-thai-gray-700 font-thai">
                                   รายละเอียดสินค้าทั้งหมด ({items.length} รายการ)
                                 </div>
-                                <div className="flex flex-wrap gap-3 text-sm text-gray-600">
+                                <div className="flex flex-wrap gap-3 text-[11px] text-gray-600">
                                   <span>พาเลท {uniquePallets.length || 0}</span>
                                   <span>แพ็ค {totalPackQty.toLocaleString()}</span>
                                   <span>ชิ้น {totalPieceQty.toLocaleString()}</span>
@@ -613,59 +613,59 @@ const InboundPage = () => {
                                 <div className="overflow-x-auto border border-gray-200 rounded-lg bg-white">
                                   <table className="min-w-full divide-y divide-gray-200">
                                     <thead className="sticky top-0 bg-gray-50 z-10">
-                                      <tr className="text-sm text-gray-700">
-                                        <th className="px-3 py-1.5 text-left font-medium">#</th>
-                                        <th className="px-3 py-1.5 text-left font-medium">ชื่อสินค้า</th>
-                                        <th className="px-3 py-1.5 text-left font-medium">SKU</th>
-                                        <th className="px-3 py-1.5 text-left font-medium">บาร์โค้ด</th>
-                                        <th className="px-3 py-1.5 text-center font-medium">จำนวนชิ้น</th>
-                                        <th className="px-3 py-1.5 text-center font-medium">จำนวนแพ็ค</th>
-                                        <th className="px-3 py-1.5 text-left font-medium">รหัสพาเลท</th>
-                                        <th className="px-3 py-1.5 text-left font-medium">วันที่ผลิต</th>
-                                        <th className="px-3 py-1.5 text-left font-medium">วันหมดอายุ</th>
-                                        <th className="px-3 py-1.5 text-left font-medium">สถานะสแกน</th>
-                                        <th className="px-3 py-1.5 text-left font-medium">พาเลทภายนอก</th>
-                                        <th className="px-3 py-1.5 text-left font-medium">ที่จัดเก็บ</th>
+                                      <tr className="text-[11px] text-gray-700">
+                                        <th className="px-2 py-0.5 text-left font-medium">#</th>
+                                        <th className="px-2 py-0.5 text-left font-medium">SKU</th>
+                                        <th className="px-2 py-0.5 text-left font-medium">ชื่อสินค้า</th>
+                                        <th className="px-2 py-0.5 text-left font-medium">บาร์โค้ด</th>
+                                        <th className="px-2 py-0.5 text-center font-medium">จำนวนชิ้น</th>
+                                        <th className="px-2 py-0.5 text-center font-medium">จำนวนแพ็ค</th>
+                                        <th className="px-2 py-0.5 text-left font-medium">รหัสพาเลท</th>
+                                        <th className="px-2 py-0.5 text-left font-medium">วันที่ผลิต</th>
+                                        <th className="px-2 py-0.5 text-left font-medium">วันหมดอายุ</th>
+                                        <th className="px-2 py-0.5 text-left font-medium">สถานะสแกน</th>
+                                        <th className="px-2 py-0.5 text-left font-medium">พาเลทภายนอก</th>
+                                        <th className="px-2 py-0.5 text-left font-medium">ที่จัดเก็บ</th>
                                       </tr>
                                     </thead>
-                                    <tbody className="divide-y divide-gray-200 text-sm text-gray-700">
+                                    <tbody className="divide-y divide-gray-200 text-[11px] text-gray-700">
                                       {items.map((item, index) => (
                                         <tr key={item.item_id ?? index} className="align-top hover:bg-gray-50">
-                                          <td className="px-3 py-1.5 text-sm font-mono text-gray-500">{index + 1}</td>
-                                          <td className="px-3 py-1.5">
+                                          <td className="px-2 py-0.5 text-[11px] font-mono text-gray-500">{index + 1}</td>
+                                          <td className="px-2 py-0.5">
+                                            <div className="text-[11px] font-mono text-thai-gray-600">{item.sku_id || 'N/A'}</div>
+                                          </td>
+                                          <td className="px-2 py-0.5">
                                             <div className="font-medium text-thai-gray-800">{item.master_sku?.sku_name || item.product_name || '-'}</div>
                                           </td>
-                                          <td className="px-3 py-1.5">
-                                            <div className="text-sm font-mono text-thai-gray-600">{item.sku_id || 'N/A'}</div>
+                                          <td className="px-2 py-0.5">
+                                            <div className="text-[11px] font-mono text-thai-gray-600">{item.master_sku?.barcode || item.barcode || '-'}</div>
                                           </td>
-                                          <td className="px-3 py-1.5">
-                                            <div className="text-sm font-mono text-thai-gray-600">{item.master_sku?.barcode || item.barcode || '-'}</div>
-                                          </td>
-                                          <td className="px-3 py-1.5 text-center">
+                                          <td className="px-2 py-0.5 text-center">
                                             <div className="font-semibold text-blue-600">
                                               {(item.piece_quantity ?? 0).toLocaleString()}
-                                              <span className="ml-1 text-sm text-thai-gray-500">ชิ้น</span>
+                                              <span className="ml-1 text-[11px] text-thai-gray-500">ชิ้น</span>
                                             </div>
                                           </td>
-                                          <td className="px-3 py-1.5 text-center">
+                                          <td className="px-2 py-0.5 text-center">
                                             <div className="font-semibold text-green-600">
                                               {(item.pack_quantity ?? 0).toLocaleString()}
-                                              <span className="ml-1 text-sm text-thai-gray-500">แพ็ค</span>
+                                              <span className="ml-1 text-[11px] text-thai-gray-500">แพ็ค</span>
                                             </div>
                                           </td>
-                                          <td className="px-3 py-1.5">
-                                            <div className="font-mono text-sm text-blue-600">{item.pallet_id || '-'}</div>
+                                          <td className="px-2 py-0.5">
+                                            <div className="font-mono text-[11px] text-blue-600">{item.pallet_id || '-'}</div>
                                           </td>
-                                          <td className="px-3 py-1.5">
-                                            <div className="text-sm">{item.production_date || '-'}</div>
+                                          <td className="px-2 py-0.5">
+                                            <div className="text-[11px]">{item.production_date || '-'}</div>
                                           </td>
-                                          <td className="px-3 py-1.5">
-                                            <div className="text-sm">{formatThaiDate(item.expiry_date)}</div>
+                                          <td className="px-2 py-0.5">
+                                            <div className="text-[11px]">{formatThaiDate(item.expiry_date)}</div>
                                           </td>
-                                          <td className="px-3 py-1.5">
+                                          <td className="px-2 py-0.5">
                                             {getPalletScanBadge(item.pallet_scan_status)}
                                           </td>
-                                          <td className="px-3 py-1.5">
+                                          <td className="px-2 py-0.5">
                                             {item.pallet_scan_status === 'รอดำเนินการ' ? (
                                               <div className="flex items-center gap-2">
                                                 <div className="flex items-center gap-1">
@@ -673,7 +673,7 @@ const InboundPage = () => {
                                                   <input
                                                     type="text"
                                                     placeholder="สแกนรหัสภายนอก"
-                                                    className="w-32 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                    className="w-32 px-2 py-1 text-[11px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
                                                     value={externalPalletIds[item.item_id] || item.pallet_id_external || ''}
                                                     onChange={(e) => handleExternalPalletIdChange(item.item_id, e.target.value)}
                                                     disabled={savingPalletIds[item.item_id]}
@@ -686,20 +686,20 @@ const InboundPage = () => {
                                                   loading={savingPalletIds[item.item_id]}
                                                   disabled={!externalPalletIds[item.item_id]?.trim() || savingPalletIds[item.item_id]}
                                                   onClick={() => saveExternalPalletId(item.item_id)}
-                                                  className="text-sm"
+                                                  className="text-[11px]"
                                                 >
                                                   บันทึก
                                                 </Button>
                                               </div>
                                             ) : (
-                                              <span className="text-sm font-mono text-gray-600">
+                                              <span className="text-[11px] font-mono text-gray-600">
                                                 {item.pallet_id_external || '-'}
                                               </span>
                                             )}
                                           </td>
-                                          <td className="px-3 py-1.5">
+                                          <td className="px-2 py-0.5">
                                             {item.location_id ? (
-                                              <span className="text-sm">{item.location_id}</span>
+                                              <span className="text-[11px]">{item.location_id}</span>
                                             ) : (
                                               <span className="text-gray-400">-</span>
                                             )}
@@ -710,7 +710,7 @@ const InboundPage = () => {
                                   </table>
                                 </div>
                               ) : (
-                                <div className="border border-dashed border-thai-gray-300 rounded-xl bg-white py-6 text-center text-sm text-thai-gray-500">
+                                <div className="border border-dashed border-thai-gray-300 rounded-xl bg-white py-6 text-center text-[11px] text-thai-gray-500">
                                   ไม่มีรายละเอียดรับสินค้าระดับพาเลทสำหรับเอกสารนี้
                                 </div>
                               )}

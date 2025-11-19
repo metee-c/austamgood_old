@@ -42,7 +42,12 @@ import {
   Warehouse,
   PackageOpen,
   Move,
-  Gift
+  Gift,
+  Smartphone,
+  Factory,
+  ClipboardCheck,
+  PackageCheck,
+  Upload
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -60,10 +65,19 @@ const menuItems = [
     englishLabel: 'Dashboard'
   },
   {
-    path: '/inventory',
-    icon: Package,
-    label: 'จัดการสินค้า',
-    englishLabel: 'Inventory'
+    path: '/production',
+    icon: Factory,
+    label: 'จัดการผลิต',
+    englishLabel: 'Production',
+    hasSubmenu: true,
+    submenu: [
+      {
+        path: '/production/orders',
+        icon: Package,
+        label: 'ใบสั่งผลิต',
+        englishLabel: 'Production Orders'
+      }
+    ]
   },
   {
     path: '/warehouse',
@@ -160,6 +174,108 @@ const menuItems = [
     icon: BarChart3,
     label: 'รายงาน',
     englishLabel: 'Reports'
+  },
+  {
+    path: '/stock-management',
+    icon: Package,
+    label: 'ระบบจัดการสต็อก',
+    englishLabel: 'Stock Management',
+    hasSubmenu: true,
+    submenu: [
+      {
+        path: '/stock-management/transfer',
+        icon: ArrowRightLeft,
+        label: 'ย้ายสต็อก',
+        englishLabel: 'Stock Transfer'
+      },
+      {
+        path: '/stock-management/count',
+        icon: ClipboardCheck,
+        label: 'นับสต็อก',
+        englishLabel: 'Stock Count'
+      },
+      {
+        path: '/stock-management/adjustment',
+        icon: Settings,
+        label: 'ปรับสต็อก',
+        englishLabel: 'Stock Adjustment'
+      },
+      {
+        path: '/stock-management/import',
+        icon: Upload,
+        label: 'นำเข้าสต็อกจากระบบเก่า',
+        englishLabel: 'Stock Import'
+      }
+    ]
+  },
+  {
+    path: '/online-packing',
+    icon: PackageCheck,
+    label: 'แพ็คสินค้าออนไลน์',
+    englishLabel: 'Online Packing',
+    hasSubmenu: true,
+    submenu: [
+      {
+        path: '/online-packing',
+        icon: PackageCheck,
+        label: 'แพ็คสินค้า',
+        englishLabel: 'Packing'
+      },
+      {
+        path: '/online-packing/dashboard',
+        icon: BarChart3,
+        label: 'แดชบอร์ด',
+        englishLabel: 'Dashboard'
+      },
+      {
+        path: '/online-packing/import',
+        icon: FileCheck,
+        label: 'นำเข้าออเดอร์',
+        englishLabel: 'Import Orders'
+      },
+      {
+        path: '/online-packing/products',
+        icon: Box,
+        label: 'จัดการสินค้า',
+        englishLabel: 'Products'
+      },
+      {
+        path: '/online-packing/promotions',
+        icon: Gift,
+        label: 'จัดการโปรโมชั่น',
+        englishLabel: 'Promotions'
+      },
+      {
+        path: '/online-packing/returns',
+        icon: RefreshCcw,
+        label: 'สินค้าตีกลับ',
+        englishLabel: 'Returns'
+      },
+      {
+        path: '/online-packing/settings',
+        icon: Settings,
+        label: 'ตั้งค่ากล่อง',
+        englishLabel: 'Box Settings'
+      },
+      {
+        path: '/online-packing/users',
+        icon: Users,
+        label: 'จัดการผู้ใช้',
+        englishLabel: 'User Management'
+      },
+      {
+        path: '/online-packing/erp',
+        icon: Activity,
+        label: 'ส่งออก ERP',
+        englishLabel: 'ERP Export'
+      }
+    ]
+  },
+  {
+    path: '/mobile',
+    icon: Smartphone,
+    label: 'อุปกรณ์เครื่องมือ',
+    englishLabel: 'Mobile Tools'
   },
   {
     path: '/master-data',

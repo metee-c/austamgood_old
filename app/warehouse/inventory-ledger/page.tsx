@@ -77,7 +77,15 @@ const InventoryLedgerPage = () => {
 
       const { data, error } = await supabase
         .from('wms_inventory_ledger')
-        .select('*')
+        .select(`
+          *,
+          master_location!location_id (
+            location_name
+          ),
+          master_sku!sku_id (
+            sku_name
+          )
+        `)
         .order('movement_at', { ascending: false })
         .limit(1000);
 
@@ -98,29 +106,29 @@ const InventoryLedgerPage = () => {
   const getTransactionTypeBadge = (type: string) => {
     switch (type) {
       case 'receive':
-        return <Badge variant="success" size="sm">รับเข้า</Badge>;
+        return <Badge variant="success" size="sm" className="whitespace-nowrap"><span className="text-[10px]">รับเข้า</span></Badge>;
       case 'issue':
-        return <Badge variant="danger" size="sm">เบิกออก</Badge>;
+        return <Badge variant="danger" size="sm" className="whitespace-nowrap"><span className="text-[10px]">เบิกออก</span></Badge>;
       case 'move':
-        return <Badge variant="info" size="sm">ย้าย</Badge>;
+        return <Badge variant="info" size="sm" className="whitespace-nowrap"><span className="text-[10px]">ย้าย</span></Badge>;
       case 'adjust':
-        return <Badge variant="warning" size="sm">ปรับปรุง</Badge>;
+        return <Badge variant="warning" size="sm" className="whitespace-nowrap"><span className="text-[10px]">ปรับปรุง</span></Badge>;
       case 'return':
-        return <Badge variant="default" size="sm">คืน</Badge>;
+        return <Badge variant="default" size="sm" className="whitespace-nowrap"><span className="text-[10px]">คืน</span></Badge>;
       case 'pick':
-        return <Badge variant="info" size="sm">เบิก</Badge>;
+        return <Badge variant="info" size="sm" className="whitespace-nowrap"><span className="text-[10px]">เบิก</span></Badge>;
       default:
-        return <Badge variant="default" size="sm">{type}</Badge>;
+        return <Badge variant="default" size="sm" className="whitespace-nowrap"><span className="text-[10px]">{type}</span></Badge>;
     }
   };
 
   const getDirectionBadge = (direction: string) => {
     if (direction === 'in') {
-      return <Badge variant="success" size="sm">เข้า</Badge>;
+      return <Badge variant="success" size="sm" className="whitespace-nowrap"><span className="text-[10px]">เข้า</span></Badge>;
     } else if (direction === 'out') {
-      return <Badge variant="danger" size="sm">ออก</Badge>;
+      return <Badge variant="danger" size="sm" className="whitespace-nowrap"><span className="text-[10px]">ออก</span></Badge>;
     }
-    return <Badge variant="default" size="sm">{direction}</Badge>;
+    return <Badge variant="default" size="sm" className="whitespace-nowrap"><span className="text-[10px]">{direction}</span></Badge>;
   };
 
   const filteredData = ledgerData.filter(item => {
@@ -141,11 +149,11 @@ const InventoryLedgerPage = () => {
   });
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-thai-gray-25 to-white">
-      <div className="flex flex-col space-y-2 pt-0 px-2 pb-2">
+    <div className="h-screen bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
+      <div className="h-full flex flex-col space-y-2 pt-0 px-2 pb-2">
         {/* Page Header */}
         <div className="flex items-center justify-between gap-2 pt-1 flex-shrink-0">
-          <h1 className="text-xl font-bold text-thai-gray-900 font-thai">บันทึกธุรกรรมสต็อก</h1>
+          <h1 className="text-xl font-bold text-thai-gray-900 font-thai m-0 p-0 leading-tight">บันทึกธุรกรรมสต็อก</h1>
           <div className="flex gap-2">
             <Button variant="outline" icon={Download}>
               ส่งออก Excel
@@ -158,8 +166,8 @@ const InventoryLedgerPage = () => {
 
         {/* Filters */}
         <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm flex-shrink-0">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex-1 min-w-[220px]">
+          <div className="flex items-center space-x-3">
+            <div className="flex-1">
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
                 <input
@@ -167,15 +175,27 @@ const InventoryLedgerPage = () => {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   placeholder="ค้นหาด้วย Reference No, SKU, Pallet ID..."
-                  className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 text-sm font-thai transition-all duration-300"
+                  className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm placeholder:text-thai-gray-400"
                 />
               </div>
             </div>
-            <div>
+            <div className="flex space-x-2">
+              <input
+                type="date"
+                value={dateFrom}
+                onChange={(e) => setDateFrom(e.target.value)}
+                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-28"
+              />
+              <input
+                type="date"
+                value={dateTo}
+                onChange={(e) => setDateTo(e.target.value)}
+                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-28"
+              />
               <select
                 value={selectedWarehouse}
                 onChange={(e) => setSelectedWarehouse(e.target.value)}
-                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai"
+                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-24"
               >
                 <option value="all">ทุกคลัง</option>
                 {warehouses.map(warehouse => (
@@ -184,12 +204,10 @@ const InventoryLedgerPage = () => {
                   </option>
                 ))}
               </select>
-            </div>
-            <div>
               <select
                 value={selectedTransactionType}
                 onChange={(e) => setSelectedTransactionType(e.target.value)}
-                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai"
+                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-24"
               >
                 <option value="all">ทุกประเภท</option>
                 <option value="receive">รับเข้า</option>
@@ -199,39 +217,22 @@ const InventoryLedgerPage = () => {
                 <option value="pick">เบิก</option>
                 <option value="return">คืน</option>
               </select>
-            </div>
-            <div>
               <select
                 value={selectedDirection}
                 onChange={(e) => setSelectedDirection(e.target.value)}
-                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai"
+                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-24"
               >
                 <option value="all">ทุกทิศทาง</option>
                 <option value="in">เข้า</option>
                 <option value="out">ออก</option>
               </select>
             </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai"
-              />
-              <span className="text-thai-gray-400 text-xs">ถึง</span>
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai"
-              />
-            </div>
           </div>
         </div>
 
         {/* Data Table */}
         <div className="flex-1 min-h-0">
-          <div className="w-full h-[74vh] overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-sm">
+          <div className="w-full h-[74vh] bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col">
             {loading ? (
               <div className="h-full flex flex-col items-center justify-center text-thai-gray-500 gap-2">
                 <Loader2 className="w-6 h-6 animate-spin" />
@@ -250,56 +251,38 @@ const InventoryLedgerPage = () => {
                 </div>
               </div>
             ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
+              <div className="flex-1 overflow-auto thin-scrollbar">
+                <table className="w-full border-collapse text-sm">
+                  <thead className="sticky top-0 z-10 bg-gray-100">
                     <tr>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider font-thai">
-                        วันที่/เวลา
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider font-thai">
-                        ประเภท
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider font-thai">
-                        ทิศทาง
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider font-thai">
-                        รหัสสินค้า
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider font-thai">
-                        รหัสพาเลท
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider font-thai">
-                        คลัง
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider font-thai">
-                        ตำแหน่ง
-                      </th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider font-thai">
-                        แพ็ค
-                      </th>
-                      <th className="px-4 py-3 text-right text-xs font-semibold text-gray-700 uppercase tracking-wider font-thai">
-                        ชิ้น
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider font-thai">
-                        วันผลิต
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider font-thai">
-                        วันหมดอายุ
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider font-thai">
-                        เลขที่อ้างอิง
-                      </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider font-thai">
-                        หมายเหตุ
-                      </th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ID</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันที่/เวลา</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ประเภท</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ทิศทาง</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">Move ID</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">Receive ID</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสสินค้า</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชื่อสินค้า</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสพาเลท</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">คลัง</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ตำแหน่ง</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">แพ็ค</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชิ้น</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันผลิต</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันหมดอายุ</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">เลขที่อ้างอิง</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">หมายเหตุ</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b whitespace-nowrap">สร้างโดย</th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
+                  <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
                     {filteredData.map((ledger) => (
-                      <tr key={ledger.ledger_id} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <span className="text-xs text-gray-900 font-thai">
+                      <tr key={ledger.ledger_id} className="hover:bg-blue-50/30 transition-colors duration-150">
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <span className="font-mono text-thai-gray-700">{ledger.ledger_id}</span>
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <span className="text-thai-gray-600 font-thai">
                             {new Date(ledger.movement_at).toLocaleString('th-TH', {
                               year: 'numeric',
                               month: '2-digit',
@@ -309,19 +292,30 @@ const InventoryLedgerPage = () => {
                             })}
                           </span>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                           {getTransactionTypeBadge(ledger.transaction_type)}
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                           {getDirectionBadge(ledger.direction)}
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <span className="text-xs font-medium text-gray-900 font-mono">{ledger.sku_id}</span>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <span className="font-mono text-thai-gray-700">{ledger.move_item_id || '-'}</span>
                         </td>
-                        <td className="px-4 py-3">
-                          <div className="text-xs">
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <span className="font-mono text-thai-gray-700">{ledger.receive_item_id || '-'}</span>
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <span className="font-mono font-semibold text-thai-gray-700">{ledger.sku_id}</span>
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <span className="text-thai-gray-700 font-thai text-[11px]">
+                            {(ledger as any).master_sku?.sku_name || '-'}
+                          </span>
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <div>
                             {ledger.pallet_id_external && (
-                              <div className="font-mono text-gray-900">{ledger.pallet_id_external}</div>
+                              <div className="font-mono text-thai-gray-700">{ledger.pallet_id_external}</div>
                             )}
                             {ledger.pallet_id && (
                               <div className="font-mono text-[10px] text-gray-500">{ledger.pallet_id}</div>
@@ -331,41 +325,46 @@ const InventoryLedgerPage = () => {
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <span className="text-xs text-gray-900 font-thai">{ledger.warehouse_id}</span>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <span className="font-medium text-thai-gray-700 font-thai">{ledger.warehouse_id}</span>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <span className="text-xs text-gray-900 font-mono">{ledger.location_id || '-'}</span>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <span className="font-mono text-thai-gray-700">
+                            {(ledger as any).master_location?.location_name || ledger.location_id || '-'}
+                          </span>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-right">
-                          <span className={`text-xs font-semibold ${
+                        <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
+                          <span className={`font-bold ${
                             ledger.direction === 'in' ? 'text-green-600' : 'text-red-600'
                           }`}>
                             {ledger.direction === 'in' ? '+' : '-'}{ledger.pack_qty?.toLocaleString()}
                           </span>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap text-right">
-                          <span className={`text-xs font-semibold ${
+                        <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
+                          <span className={`font-bold ${
                             ledger.direction === 'in' ? 'text-green-600' : 'text-red-600'
                           }`}>
                             {ledger.direction === 'in' ? '+' : '-'}{ledger.piece_qty?.toLocaleString()}
                           </span>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <span className="text-xs text-gray-900 font-thai">
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <span className="font-medium text-gray-900 font-thai">
                             {ledger.production_date ? new Date(ledger.production_date).toLocaleDateString('th-TH') : '-'}
                           </span>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <span className="text-xs text-gray-900 font-thai">
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <span className="font-medium text-gray-900 font-thai">
                             {ledger.expiry_date ? new Date(ledger.expiry_date).toLocaleDateString('th-TH') : '-'}
                           </span>
                         </td>
-                        <td className="px-4 py-3 whitespace-nowrap">
-                          <span className="text-xs text-gray-900 font-mono">{ledger.reference_no || '-'}</span>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <span className="font-mono text-thai-gray-700">{ledger.reference_no || '-'}</span>
                         </td>
-                        <td className="px-4 py-3">
-                          <span className="text-xs text-gray-700 font-thai">{ledger.remarks || '-'}</span>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <span className="text-gray-700 font-thai">{ledger.remarks || '-'}</span>
+                        </td>
+                        <td className="px-2 py-0.5 whitespace-nowrap">
+                          <span className="font-mono text-thai-gray-700">{ledger.created_by || '-'}</span>
                         </td>
                       </tr>
                     ))}
