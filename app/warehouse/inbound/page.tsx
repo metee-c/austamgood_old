@@ -27,6 +27,7 @@ import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
 import AddReceiveForm from '@/components/forms/AddReceiveForm';
+import PalletLabelPrint from '@/components/warehouse/PalletLabelPrint';
 // Define a more accurate type for the data received from the hook
 type ReceiveWithItems = ReceiveHeader & {
   wms_receive_items: (ReceiveItem & {
@@ -36,6 +37,7 @@ type ReceiveWithItems = ReceiveHeader & {
   master_supplier: { supplier_name: string } | null;
   master_customer: { customer_name: string } | null;
   master_employee: { first_name: string; last_name: string } | null;
+  received_by_employee: { first_name: string; last_name: string } | null;
 };
 const InboundPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -626,6 +628,7 @@ const InboundPage = () => {
                                         <th className="px-2 py-0.5 text-left font-medium">สถานะสแกน</th>
                                         <th className="px-2 py-0.5 text-left font-medium">พาเลทภายนอก</th>
                                         <th className="px-2 py-0.5 text-left font-medium">ที่จัดเก็บ</th>
+                                        <th className="px-2 py-0.5 text-center font-medium">พิมพ์ลาเบล</th>
                                       </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-200 text-[11px] text-gray-700">
@@ -705,6 +708,23 @@ const InboundPage = () => {
                                             ) : (
                                               <span className="text-gray-400">-</span>
                                             )}
+                                          </td>
+                                          <td className="px-2 py-0.5 text-center">
+                                            <PalletLabelPrint
+                                              data={{
+                                                barcode: item.pallet_id_external || item.pallet_id || item.master_sku?.barcode || 'N/A',
+                                                sku_id: item.sku_id || '',
+                                                product_name: item.master_sku?.sku_name || item.product_name || '',
+                                                pack_quantity: item.pack_quantity ?? 0,
+                                                piece_quantity: item.piece_quantity ?? 0,
+                                                expiry_date: item.expiry_date || undefined,
+                                                production_date: new Date().toISOString().split('T')[0],
+                                                manufacture_date: item.production_date || undefined,
+                                                pallet_id_external: item.pallet_id_external || undefined,
+                                                receiver_name: receive.received_by_employee ? `${receive.received_by_employee.first_name} ${receive.received_by_employee.last_name}` : undefined
+                                              }}
+                                              size="sm"
+                                            />
                                           </td>
                                         </tr>
                                       ))}

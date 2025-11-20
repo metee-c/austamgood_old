@@ -298,8 +298,49 @@
   .backdrop-blur-sm {
     backdrop-filter: blur(4px);
   }
-  
+
   .backdrop-blur {
     backdrop-filter: blur(8px);
+  }
+
+  /* Mobile-specific utilities */
+  .active\:scale-98:active {
+    transform: scale(0.98);
+  }
+
+  .active\:scale-95:active {
+    transform: scale(0.95);
+  }
+
+  /* Safe area for mobile */
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+
+  /* Touch feedback */
+  .touch-feedback {
+    -webkit-tap-highlight-color: rgba(0, 0, 0, 0.1);
+  }
+
+  /* Force horizontal scrollbar visibility */
+  .force-horizontal-scrollbar::-webkit-scrollbar {
+    height: 8px;
+  }
+
+  .force-horizontal-scrollbar::-webkit-scrollbar-track {
+    background: #f1f5f9;
+  }
+
+  .force-horizontal-scrollbar::-webkit-scrollbar-thumb {
+    background: #cbd5e1;
+    border-radius: 4px;
+  }
+
+  .force-horizontal-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: #94a3b8;
   }
 }
