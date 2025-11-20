@@ -27,14 +27,22 @@ export async function POST(request: NextRequest) {
     const body: CreateMovePayload = await request.json();
     
     // --- Basic Validation ---
-    const requiredHeaderFields = ['move_type', 'warehouse_id'];
-    const missingHeaderFields = requiredHeaderFields.filter(field => !body[field as keyof typeof body]);
-    
-    if (missingHeaderFields.length > 0) {
+    if (!body.move_type) {
       return NextResponse.json(
-        { 
-          data: null, 
-          error: `Missing required header fields: ${missingHeaderFields.join(', ')}` 
+        {
+          data: null,
+          error: 'Missing required header fields: move_type'
+        },
+        { status: 400 }
+      );
+    }
+
+    // Check that at least one warehouse ID is provided
+    if (!body.from_warehouse_id && !body.to_warehouse_id) {
+      return NextResponse.json(
+        {
+          data: null,
+          error: 'At least one of from_warehouse_id or to_warehouse_id must be provided'
         },
         { status: 400 }
       );
@@ -50,14 +58,32 @@ export async function POST(request: NextRequest) {
         );
     }
 
-    const requiredItemFields = ['sku_id', 'quantity'];
+    // Validate that each item has required fields
     for (const item of body.items) {
-        const missingItemFields = requiredItemFields.filter(field => item[field as keyof typeof item] === undefined);
-        if (missingItemFields.length > 0) {
+        if (!item.sku_id) {
             return NextResponse.json(
-                { 
-                  data: null, 
-                  error: `Missing required fields in one or more items: ${missingItemFields.join(', ')}` 
+                {
+                  data: null,
+                  error: 'Missing required field in one or more items: sku_id'
+                },
+                { status: 400 }
+            );
+        }
+        if (!item.move_method) {
+            return NextResponse.json(
+                {
+                  data: null,
+                  error: 'Missing required field in one or more items: move_method'
+                },
+                { status: 400 }
+            );
+        }
+        // requested_piece_qty is required per the interface
+        if (item.requested_piece_qty === undefined || item.requested_piece_qty === null) {
+            return NextResponse.json(
+                {
+                  data: null,
+                  error: 'Missing required field in one or more items: requested_piece_qty'
                 },
                 { status: 400 }
             );

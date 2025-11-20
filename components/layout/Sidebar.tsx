@@ -183,12 +183,6 @@ const menuItems = [
     hasSubmenu: true,
     submenu: [
       {
-        path: '/stock-management/transfer',
-        icon: ArrowRightLeft,
-        label: 'ย้ายสต็อก',
-        englishLabel: 'Stock Transfer'
-      },
-      {
         path: '/stock-management/count',
         icon: ClipboardCheck,
         label: 'นับสต็อก',

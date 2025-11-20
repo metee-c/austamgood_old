@@ -14,16 +14,6 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
 
-    // ตรวจสอบ authentication
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     // รับ query parameters
     const searchParams = request.nextUrl.searchParams;
     const warehouseId = searchParams.get('warehouse_id') || undefined;
@@ -54,16 +44,6 @@ export async function GET(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   try {
     const supabase = await createClient();
-
-    // ตรวจสอบ authentication
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
 
     // รับ batch_id
     const searchParams = request.nextUrl.searchParams;

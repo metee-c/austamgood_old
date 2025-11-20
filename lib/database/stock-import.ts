@@ -371,24 +371,18 @@ export class StockImportService {
           continue;
         }
 
-        // 1. สร้าง/อัพเดท Location
-        const locationResult = await this.upsertLocation(record);
+        // 1. สร้าง/อัพเดท Location (ส่ง supabase client ไปด้วย)
+        const locationResult = await this.upsertLocation(record, supabase);
         if (locationResult.created) {
           locationsCreated++;
+          console.log(`Created location: ${record.location_id}`);
         } else {
           locationsUpdated++;
         }
 
-        // 2. สร้าง/อัพเดท Inventory Balance
-        const balanceResult = await this.upsertInventoryBalance(record);
-        if (balanceResult.created) {
-          balancesCreated++;
-        } else {
-          balancesUpdated++;
-        }
-
-        // 3. สร้าง Inventory Ledger
-        const ledgerId = await this.insertInventoryLedger(record, batchId, userId);
+        // 2. สร้าง Inventory Ledger (ส่ง supabase client และ location_id ที่ถูกต้อง)
+        // Trigger จะสร้าง/อัพเดท Balance อัตโนมัติ
+        const ledgerId = await this.insertInventoryLedger(record, batchId, userId, supabase, locationResult.location_id);
         ledgerEntriesCreated++;
 
         // อัพเดท staging
@@ -397,7 +391,6 @@ export class StockImportService {
           .update({
             processing_status: 'processed' as StockImportStagingStatus,
             processed_at: new Date().toISOString(),
-            processed_balance_id: balanceResult.balance_id,
             processed_ledger_id: ledgerId,
           })
           .eq('staging_id', record.staging_id);
@@ -456,62 +449,102 @@ export class StockImportService {
   // Helper Methods
   // ============================================================================
 
-  private async upsertLocation(record: StockImportStaging): Promise<{ created: boolean }> {
-    const supabase = await createClient();
+  private async upsertLocation(record: StockImportStaging, supabase: any): Promise<{ created: boolean; location_id: string }> {
+    // record.location_id จากไฟล์นำเข้าเป็น location_code (เช่น A01-02-008)
+    const locationCode = record.location_id!;
 
+    // ค้นหา location จาก location_code
     const { data: existing } = await supabase
       .from('master_location')
       .select('location_id, current_qty, current_weight_kg')
-      .eq('location_id', record.location_id!)
-      .single();
+      .eq('location_code', locationCode)
+      .maybeSingle();
 
     if (existing) {
-      // อัพเดท
-      await supabase
+      // อัพเดท location ที่มีอยู่แล้ว
+      const { error: updateError } = await supabase
         .from('master_location')
         .update({
           current_qty: (existing.current_qty || 0) + Number(record.piece_qty || 0),
           current_weight_kg: (existing.current_weight_kg || 0) + Number(record.weight_kg || 0),
           updated_at: new Date().toISOString(),
         })
-        .eq('location_id', record.location_id!);
+        .eq('location_id', existing.location_id);
 
-      return { created: false };
+      if (updateError) {
+        console.error('Error updating location:', updateError);
+        throw new Error(`ไม่สามารถอัพเดท Location ได้: ${updateError.message}`);
+      }
+
+      return { created: false, location_id: existing.location_id };
     } else {
-      // สร้างใหม่
-      await supabase.from('master_location').insert({
-        location_id: record.location_id!,
-        warehouse_id: record.warehouse_id!,
-        location_code: record.location_id!,
-        location_name: record.location_id!,
-        location_type: 'rack',
-        zone: record.zone,
-        aisle: record.row_code,
-        shelf: record.level_code,
-        bin: record.loc_code,
-        max_capacity_weight_kg: record.max_weight,
-        current_qty: Number(record.piece_qty || 0),
-        current_weight_kg: Number(record.weight_kg || 0),
-        active_status: 'active',
-        created_by: 'system',
-        remarks: record.max_high ? `Max Height: ${record.max_high}mm` : null,
-      });
+      // สร้าง location ใหม่ (ให้ database สร้าง UUID ให้)
+      const { data: newLocation, error: insertError } = await supabase
+        .from('master_location')
+        .insert({
+          warehouse_id: record.warehouse_id!,
+          location_code: locationCode,
+          location_name: locationCode,
+          location_type: 'rack',
+          zone: record.zone,
+          aisle: record.row_code,
+          shelf: record.level_code,
+          bin: record.loc_code,
+          max_capacity_weight_kg: record.max_weight,
+          current_qty: Number(record.piece_qty || 0),
+          current_weight_kg: Number(record.weight_kg || 0),
+          active_status: 'active',
+          created_by: 'system',
+          remarks: record.max_high ? `Max Height: ${record.max_high}mm` : null,
+        })
+        .select('location_id')
+        .single();
 
-      return { created: true };
+      if (insertError) {
+        // ถ้าเกิด duplicate error แสดงว่ามี location อยู่แล้ว (race condition)
+        if (insertError.code === '23505') {
+          console.log(`Location ${locationCode} already exists, fetching existing...`);
+          // ดึง location ที่มีอยู่แล้ว
+          const { data: existingLocation } = await supabase
+            .from('master_location')
+            .select('location_id')
+            .eq('location_code', locationCode)
+            .single();
+          
+          if (existingLocation) {
+            return { created: false, location_id: existingLocation.location_id };
+          }
+        }
+        console.error('Error inserting location:', insertError);
+        throw new Error(`ไม่สามารถสร้าง Location ได้: ${insertError.message}`);
+      }
+
+      if (!newLocation) {
+        throw new Error(`ไม่สามารถสร้าง Location ${locationCode} ได้`);
+      }
+
+      console.log(`Successfully created location: ${locationCode} (${newLocation.location_id})`);
+      return { created: true, location_id: newLocation.location_id };
     }
   }
 
-  private async upsertInventoryBalance(record: StockImportStaging): Promise<{ created: boolean; balance_id: number }> {
-    const supabase = await createClient();
-
-    const { data: existing } = await supabase
+  private async upsertInventoryBalance(record: StockImportStaging, supabase: any, locationId: string): Promise<{ created: boolean; balance_id: number }> {
+    // ใช้ location_id ที่ถูกต้องจากฟังก์ชัน upsertLocation
+    let query = supabase
       .from('wms_inventory_balances')
       .select('balance_id, total_pack_qty, total_piece_qty')
       .eq('warehouse_id', record.warehouse_id!)
-      .eq('location_id', record.location_id!)
-      .eq('sku_id', record.sku_id!)
-      .eq('pallet_id_external', record.pallet_id_external || '')
-      .single();
+      .eq('location_id', locationId)
+      .eq('sku_id', record.sku_id!);
+
+    // Handle pallet_id_external - null vs value
+    if (record.pallet_id_external === null || record.pallet_id_external === undefined || record.pallet_id_external === '') {
+      query = query.is('pallet_id_external', null);
+    } else {
+      query = query.eq('pallet_id_external', record.pallet_id_external);
+    }
+
+    const { data: existing } = await query.maybeSingle();
 
     if (existing) {
       // อัพเดท (เพิ่มจำนวน)
@@ -528,11 +561,11 @@ export class StockImportService {
       return { created: false, balance_id: existing.balance_id };
     } else {
       // สร้างใหม่
-      const { data: newBalance } = await supabase
+      const { data: newBalance, error: insertError } = await supabase
         .from('wms_inventory_balances')
         .insert({
           warehouse_id: record.warehouse_id!,
-          location_id: record.location_id!,
+          location_id: locationId,
           sku_id: record.sku_id!,
           pallet_id_external: record.pallet_id_external,
           lot_no: record.lot_no,
@@ -547,21 +580,24 @@ export class StockImportService {
         .select('balance_id')
         .single();
 
-      return { created: true, balance_id: newBalance!.balance_id };
+      if (insertError || !newBalance) {
+        console.error('Error inserting inventory balance:', insertError);
+        throw new Error(`ไม่สามารถสร้าง Inventory Balance ได้: ${insertError?.message || 'Unknown error'}`);
+      }
+
+      return { created: true, balance_id: newBalance.balance_id };
     }
   }
 
-  private async insertInventoryLedger(record: StockImportStaging, batchId: string, userId: number): Promise<number> {
-    const supabase = await createClient();
-
-    const { data } = await supabase
+  private async insertInventoryLedger(record: StockImportStaging, batchId: string, userId: number, supabase: any, locationId: string): Promise<number> {
+    const { data, error } = await supabase
       .from('wms_inventory_ledger')
       .insert({
         movement_at: new Date().toISOString(),
         transaction_type: 'import',
         direction: 'in',
         warehouse_id: record.warehouse_id!,
-        location_id: record.location_id!,
+        location_id: locationId,
         sku_id: record.sku_id!,
         pallet_id_external: record.pallet_id_external,
         production_date: record.parsed_received_date,
@@ -569,15 +605,28 @@ export class StockImportService {
         pack_qty: Number(record.pack_qty || 0),
         piece_qty: Number(record.piece_qty || 0),
         reference_no: batchId,
-        remarks: [record.remarks, record.pallet_color ? `สีพาเลท: ${record.pallet_color}` : null, record.name_edit ? `แก้ไขโดย: ${record.name_edit}` : null]
+        reference_doc_type: 'stock_import',
+        remarks: [
+          'นำเข้าจากระบบเก่า',
+          record.lot_no ? `Lot: ${record.lot_no}` : null,
+          record.remarks,
+          record.pallet_color ? `สีพาเลท: ${record.pallet_color}` : null,
+          record.name_edit ? `แก้ไขโดย: ${record.name_edit}` : null,
+          record.stock_status ? `สถานะ: ${record.stock_status}` : null
+        ]
           .filter(Boolean)
           .join(' | '),
-        created_by: userId,
+        created_by: null, // ตั้งเป็น null เพราะ userId จาก session อาจไม่มีใน master_employee
       })
       .select('ledger_id')
       .single();
 
-    return data!.ledger_id;
+    if (error || !data) {
+      console.error('Error inserting inventory ledger:', error);
+      throw new Error(`ไม่สามารถสร้าง Inventory Ledger ได้: ${error?.message || 'Unknown error'}`);
+    }
+
+    return data.ledger_id;
   }
 
   private async updateStagingStatus(stagingId: number, status: StockImportStagingStatus): Promise<void> {

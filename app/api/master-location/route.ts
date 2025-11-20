@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
     const location_type = searchParams.get('location_type');
     const zone = searchParams.get('zone');
     const search = searchParams.get('search');
-    
+
     // Build base query
     let baseQuery = supabase
       .from('master_location')
@@ -54,19 +54,19 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fetch all data using pagination
+    // Fetch all data using pagination (Supabase max is 1000 per request)
     const pageSize = 1000;
     let allData: any[] = [];
     let page = 0;
     let hasMore = true;
     let totalCount = 0;
 
-    while (hasMore && page < 50) { // Max 50 pages = 50,000 rows
+    while (hasMore && page < 10) { // Max 10 pages = 10,000 rows
       const from = page * pageSize;
       const to = from + pageSize - 1;
-      
+
       const { data, error, count } = await baseQuery.range(from, to);
-      
+
       if (error) {
         console.error('Error fetching locations:', error);
         return NextResponse.json({ data: null, error: error.message }, { status: 500 });
@@ -87,6 +87,7 @@ export async function GET(request: NextRequest) {
 
     console.log('📍 API master-location:', {
       warehouse_id,
+      search,
       totalCount,
       returnedRows: allData.length,
       pages: page,

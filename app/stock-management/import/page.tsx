@@ -25,7 +25,7 @@ export default function StockImportPage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
-  const [expandedRows, setExpandedRows] = useState<Record<number, boolean>>({});
+  const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
   const [sortField, setSortField] = useState<string>('');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [isDragging, setIsDragging] = useState(false);
@@ -298,7 +298,7 @@ export default function StockImportPage() {
     }
   };
 
-  const handleValidate = async (batchId: number) => {
+  const handleValidate = async (batchId: string) => {
     setIsValidating(true);
     try {
       const response = await fetch('/api/stock-import/validate', {
@@ -322,8 +322,8 @@ export default function StockImportPage() {
     }
   };
 
-  const handleProcess = async (batchId: number) => {
-    if (!confirm('Confirm import?')) return;
+  const handleProcess = async (batchId: string) => {
+    if (!confirm('ยืนยันการนำเข้าข้อมูล?')) return;
 
     setIsProcessing(true);
     try {
@@ -349,7 +349,7 @@ export default function StockImportPage() {
   };
 
   // Toggle row expansion
-  const toggleRow = (batchId: number) => {
+  const toggleRow = (batchId: string) => {
     setExpandedRows((prev) => ({
       ...prev,
       [batchId]: !prev[batchId],
@@ -545,14 +545,14 @@ export default function StockImportPage() {
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
                       {sortedBatches.map((batch) => {
-                        const isExpanded = !!expandedRows[Number(batch.batch_id)];
+                        const isExpanded = !!expandedRows[batch.batch_id];
                         return (
                           <React.Fragment key={batch.batch_id}>
                             <tr
                               className={`hover:bg-blue-50/30 transition-colors duration-150 cursor-pointer ${
                                 isExpanded ? 'bg-gray-50' : ''
                               }`}
-                              onClick={() => toggleRow(Number(batch.batch_id))}
+                              onClick={() => toggleRow(batch.batch_id)}
                             >
                               <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                                 <div className="flex items-center gap-2">
@@ -596,7 +596,7 @@ export default function StockImportPage() {
                                 <div className="flex gap-1 justify-center">
                                   {batch.status === 'validating' && (
                                     <button
-                                      onClick={() => handleValidate(Number(batch.batch_id))}
+                                      onClick={() => handleValidate(batch.batch_id)}
                                       disabled={isValidating}
                                       className="px-2 py-1 text-[10px] bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50 font-thai"
                                     >
@@ -605,7 +605,7 @@ export default function StockImportPage() {
                                   )}
                                   {batch.status === 'validated' && (
                                     <button
-                                      onClick={() => handleProcess(Number(batch.batch_id))}
+                                      onClick={() => handleProcess(batch.batch_id)}
                                       disabled={isProcessing}
                                       className="px-2 py-1 text-[10px] bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50 font-thai"
                                     >

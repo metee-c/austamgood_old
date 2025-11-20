@@ -25,9 +25,16 @@
       "Bash(curl:*)",
       "Bash(python:*)",
       "Bash(npx supabase:*)",
-      "Bash(npm run db:migrate:*)"
+      "Bash(npm run db:migrate:*)",
+      "Bash(find:*)",
+      "Bash(powershell -c \"irm https://deno.land/install.ps1 | iex\")",
+      "Bash(C:UsersUser.denobindeno.exe --version)",
+      "Bash(powershell -c \"Test-Path ''C:\\Users\\User\\.deno\\bin\\deno.exe''\")",
+      "Bash(powershell -c \"winget install DenoLand.Deno\")",
+      "Bash(git checkout:*)"
     ],
     "deny": [],
     "ask": []
-  }
+  },
+  "enableAllProjectMcpServers": true
 }

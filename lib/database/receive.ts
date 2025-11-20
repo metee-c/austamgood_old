@@ -286,7 +286,7 @@ export class ReceiveService {
         .from('wms_receives')
         .select(`
           *,
-          wms_receive_items(*, master_sku(sku_name, barcode)),
+          wms_receive_items(*, master_sku(sku_name, barcode), master_location(location_code, location_name)),
           master_supplier(supplier_name),
           master_customer(customer_name),
           master_warehouse(warehouse_name),

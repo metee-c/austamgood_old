@@ -13,16 +13,6 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
 
-    // ตรวจสอบ authentication
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     // รับข้อมูลจาก FormData
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -70,6 +60,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'ไฟล์ว่างเปล่า' }, { status: 400 });
     }
 
+    // Use a default user ID (1) since there's no authentication
+    const userId = 1;
+
     // สร้าง Import Batch
     const batch = await stockImportService.createImportBatch(
       warehouseId,
@@ -77,7 +70,7 @@ export async function POST(request: NextRequest) {
       file.size,
       fileType,
       rows.length,
-      parseInt(user.id),
+      userId,
       batchName || undefined
     );
 
@@ -86,7 +79,7 @@ export async function POST(request: NextRequest) {
       batch.batch_id,
       rows,
       warehouseId,
-      parseInt(user.id)
+      userId
     );
 
     // อัพเดทสถานะเป็น validating

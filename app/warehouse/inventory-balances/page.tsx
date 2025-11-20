@@ -54,6 +54,7 @@ const InventoryBalancesPage = () => {
 
   const [showLowStock, setShowLowStock] = useState(false);
   const [showExpiringSoon, setShowExpiringSoon] = useState(false);
+  const [showZeroBalance, setShowZeroBalance] = useState(true); // แสดงยอด 0 ตามค่าเริ่มต้น
 
   // Warehouses for filter
   const [warehouses, setWarehouses] = useState<any[]>([]);
@@ -94,7 +95,8 @@ const InventoryBalancesPage = () => {
             warehouse_name
           ),
           master_sku!sku_id (
-            sku_name
+            sku_name,
+            weight_per_piece_kg
           )
         `)
         .order('updated_at', { ascending: false })
@@ -146,7 +148,18 @@ const InventoryBalancesPage = () => {
     const matchesLowStock = !showLowStock || (item.total_piece_qty - item.reserved_piece_qty) <= 10;
     const matchesExpiring = !showExpiringSoon || isExpiringSoon(item.expiry_date);
 
-    return matchesSearch && matchesWarehouse && matchesLowStock && matchesExpiring;
+    // กรอง Receiving/Shipping location ที่เป็น 0 ออกเสมอ (เพราะเป็น temporary zone)
+    const isTemporaryZeroBalance =
+      (item.location_name === 'Receiving' ||
+       item.location_name === 'Shipping' ||
+       item.location_id?.includes('Receiving') ||
+       item.location_id === 'RCV' ||
+       item.location_id === 'SHIP') &&
+      item.total_piece_qty === 0;
+
+    const matchesZeroBalance = showZeroBalance || item.total_piece_qty > 0; // ถ้า showZeroBalance = true แสดงทุกอัน, ถ้า false กรองเฉพาะที่มากกว่า 0
+
+    return matchesSearch && matchesWarehouse && matchesLowStock && matchesExpiring && matchesZeroBalance && !isTemporaryZeroBalance;
   });
 
   // Calculate statistics
@@ -214,6 +227,15 @@ const InventoryBalancesPage = () => {
                 />
                 ใกล้หมดอายุ
               </label>
+              <label className="flex items-center cursor-pointer text-sm font-thai px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg hover:bg-white/80 transition-all">
+                <input
+                  type="checkbox"
+                  className="mr-2"
+                  checked={showZeroBalance}
+                  onChange={(e) => setShowZeroBalance(e.target.checked)}
+                />
+                แสดงยอดคงเหลือ 0
+              </label>
             </div>
           </div>
         </div>
@@ -254,6 +276,7 @@ const InventoryBalancesPage = () => {
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">Lot No</th>
                       <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">แพ็ครวม</th>
                       <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชิ้นรวม</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">น้ำหนัก (กก.)</th>
                       <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">แพ็คจอง</th>
                       <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชิ้นจอง</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันผลิต</th>
@@ -320,6 +343,19 @@ const InventoryBalancesPage = () => {
                             <span className="font-bold text-green-600">
                               {balance.total_piece_qty?.toLocaleString()}
                             </span>
+                          </td>
+                          <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
+                            {(() => {
+                              const weightPerPiece = (balance as any).master_sku?.weight_per_piece_kg || 0;
+                              const totalWeight = (balance.total_piece_qty || 0) * weightPerPiece;
+                              if (totalWeight === 0) return <span className="text-gray-400">-</span>;
+
+                              return (
+                                <span className="font-bold text-blue-600">
+                                  {totalWeight.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              );
+                            })()}
                           </td>
                           <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
                             <span className="font-bold text-orange-600">

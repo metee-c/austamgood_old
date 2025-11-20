@@ -13,16 +13,6 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
 
-    // ตรวจสอบ authentication
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     // รับข้อมูล
     const body = await request.json();
     const { batch_id } = body;

@@ -1616,7 +1616,7 @@ const TransferPage: React.FC = () => {
             />
           </div>
 
-          <div className="border border-thai-gray-200 rounded-lg flex flex-col min-h-0">
+          <div className="border border-thai-gray-200 rounded-lg flex flex-col min-h-0 resize-y overflow-auto" style={{ minHeight: '400px', maxHeight: '800px' }}>
             <div className="px-4 py-3 border-b border-thai-gray-200 bg-thai-gray-50 flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold text-thai-gray-900">
@@ -2097,36 +2097,44 @@ const TransferPage: React.FC = () => {
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {(employees || []).map((employee) => (
-                        <tr 
-                          key={employee.employee_id} 
-                          className={`cursor-pointer hover:bg-gray-50 ${
-                            selectedEmployeeId === employee.employee_id ? 'bg-blue-50' : ''
-                          }`}
-                          onClick={() => setSelectedEmployeeId(employee.employee_id)}
-                        >
-                          <td className="px-3 py-2">
-                            <input
-                              type="radio"
-                              name="employee"
-                              checked={selectedEmployeeId === employee.employee_id}
-                              onChange={() => setSelectedEmployeeId(employee.employee_id)}
-                              className="w-4 h-4 text-blue-600"
-                            />
-                          </td>
-                          <td className="px-3 py-2 font-medium text-gray-900">
-                            {employee.first_name} {employee.last_name}
-                          </td>
-                          <td className="px-3 py-2 text-gray-600">
-                            <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-gray-100">
-                              {employee.wms_role || 'ไม่ระบุ'}
-                            </span>
-                          </td>
-                          <td className="px-3 py-2 text-gray-600">
-                            {employee.email || '-'}
+                      {(employees || []).length === 0 ? (
+                        <tr>
+                          <td colSpan={4} className="px-3 py-8 text-center text-gray-500">
+                            ไม่พบข้อมูลพนักงาน
                           </td>
                         </tr>
-                      ))}
+                      ) : (
+                        (employees || []).map((employee) => (
+                          <tr
+                            key={employee.employee_id}
+                            className={`cursor-pointer hover:bg-gray-50 ${
+                              selectedEmployeeId === employee.employee_id ? 'bg-blue-50' : ''
+                            }`}
+                            onClick={() => setSelectedEmployeeId(employee.employee_id)}
+                          >
+                            <td className="px-3 py-2">
+                              <input
+                                type="radio"
+                                name="employee"
+                                checked={selectedEmployeeId === employee.employee_id}
+                                onChange={() => setSelectedEmployeeId(employee.employee_id)}
+                                className="w-4 h-4 text-blue-600"
+                              />
+                            </td>
+                            <td className="px-3 py-2 font-medium text-gray-900">
+                              {employee.first_name} {employee.last_name}
+                            </td>
+                            <td className="px-3 py-2 text-gray-600">
+                              <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-gray-100">
+                                {employee.wms_role || 'ไม่ระบุ'}
+                              </span>
+                            </td>
+                            <td className="px-3 py-2 text-gray-600">
+                              {employee.email || '-'}
+                            </td>
+                          </tr>
+                        ))
+                      )}
                     </tbody>
                   </table>
                 </div>

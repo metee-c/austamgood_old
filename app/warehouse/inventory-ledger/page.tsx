@@ -83,7 +83,8 @@ const InventoryLedgerPage = () => {
             location_name
           ),
           master_sku!sku_id (
-            sku_name
+            sku_name,
+            weight_per_piece_kg
           )
         `)
         .order('movement_at', { ascending: false })
@@ -107,8 +108,12 @@ const InventoryLedgerPage = () => {
     switch (type) {
       case 'receive':
         return <Badge variant="success" size="sm" className="whitespace-nowrap"><span className="text-[10px]">รับเข้า</span></Badge>;
+      case 'import':
+        return <Badge variant="success" size="sm" className="whitespace-nowrap"><span className="text-[10px]">นำเข้าข้อมูล</span></Badge>;
       case 'issue':
         return <Badge variant="danger" size="sm" className="whitespace-nowrap"><span className="text-[10px]">เบิกออก</span></Badge>;
+      case 'putaway':
+        return <Badge variant="info" size="sm" className="whitespace-nowrap"><span className="text-[10px]">เก็บเข้า</span></Badge>;
       case 'move':
         return <Badge variant="info" size="sm" className="whitespace-nowrap"><span className="text-[10px]">ย้าย</span></Badge>;
       case 'adjust':
@@ -147,6 +152,50 @@ const InventoryLedgerPage = () => {
 
     return matchesSearch && matchesWarehouse && matchesTransactionType && matchesDirection && matchesDateFrom && matchesDateTo;
   });
+
+  // รวม in/out entries ที่มี move_item_id เดียวกันให้เป็นแถวเดียว
+  const consolidatedData = [];
+  const processedIds = new Set<number>();
+
+  for (const item of filteredData) {
+    // ถ้า entry นี้ถูก process ไปแล้ว ให้ข้าม
+    if (processedIds.has(item.ledger_id)) continue;
+
+    // ถ้าเป็นธุรกรรมย้าย (putaway, move, etc.) และมี move_item_id
+    if (item.move_item_id && (item.transaction_type === 'putaway' || item.transaction_type === 'move' || item.transaction_type === 'transfer')) {
+      // หาคู่ของมัน (in/out)
+      const pair = filteredData.find(
+        other =>
+          other.ledger_id !== item.ledger_id &&
+          other.move_item_id === item.move_item_id &&
+          other.direction !== item.direction
+      );
+
+      if (pair) {
+        // รวมเป็นแถวเดียว
+        const outEntry = item.direction === 'out' ? item : pair;
+        const inEntry = item.direction === 'in' ? item : pair;
+
+        consolidatedData.push({
+          ...item,
+          _isConsolidated: true,
+          _outEntry: outEntry,
+          _inEntry: inEntry,
+        });
+
+        processedIds.add(item.ledger_id);
+        processedIds.add(pair.ledger_id);
+      } else {
+        // ไม่มีคู่ แสดงปกติ
+        consolidatedData.push(item);
+        processedIds.add(item.ledger_id);
+      }
+    } else {
+      // ธุรกรรมอื่นๆ ที่ไม่ใช่การย้าย แสดงปกติ
+      consolidatedData.push(item);
+      processedIds.add(item.ledger_id);
+    }
+  }
 
   return (
     <div className="h-screen bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
@@ -265,9 +314,10 @@ const InventoryLedgerPage = () => {
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชื่อสินค้า</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสพาเลท</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">คลัง</th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ตำแหน่ง</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap min-w-[200px]">ตำแหน่ง</th>
                       <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">แพ็ค</th>
                       <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชิ้น</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">น้ำหนัก (กก.)</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันผลิต</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันหมดอายุ</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">เลขที่อ้างอิง</th>
@@ -276,8 +326,15 @@ const InventoryLedgerPage = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
-                    {filteredData.map((ledger) => (
-                      <tr key={ledger.ledger_id} className="hover:bg-blue-50/30 transition-colors duration-150">
+                    {consolidatedData.map((ledger: any) => (
+                      <tr
+                        key={ledger.ledger_id}
+                        className={`transition-colors duration-150 ${
+                          ledger._isConsolidated
+                            ? 'hover:bg-blue-50/50 bg-blue-50/20'
+                            : 'hover:bg-blue-50/30'
+                        }`}
+                      >
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                           <span className="font-mono text-thai-gray-700">{ledger.ledger_id}</span>
                         </td>
@@ -296,7 +353,13 @@ const InventoryLedgerPage = () => {
                           {getTransactionTypeBadge(ledger.transaction_type)}
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          {getDirectionBadge(ledger.direction)}
+                          {ledger._isConsolidated ? (
+                            <Badge variant="info" size="sm" className="whitespace-nowrap">
+                              <span className="text-[10px]">ย้าย</span>
+                            </Badge>
+                          ) : (
+                            getDirectionBadge(ledger.direction)
+                          )}
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                           <span className="font-mono text-thai-gray-700">{ledger.move_item_id || '-'}</span>
@@ -328,24 +391,67 @@ const InventoryLedgerPage = () => {
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                           <span className="font-medium text-thai-gray-700 font-thai">{ledger.warehouse_id}</span>
                         </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          <span className="font-mono text-thai-gray-700">
-                            {(ledger as any).master_location?.location_name || ledger.location_id || '-'}
-                          </span>
+                        <td className="px-2 py-0.5 border-r border-gray-100 min-w-[200px]">
+                          {ledger._isConsolidated ? (
+                            <div className="flex items-center gap-1 text-[11px] whitespace-nowrap">
+                              <span className="font-mono text-thai-gray-700">
+                                {(ledger._outEntry as any).master_location?.location_name || ledger._outEntry.location_id || '-'}
+                              </span>
+                              <span className="text-gray-400">→</span>
+                              <span className="font-mono text-thai-gray-700">
+                                {(ledger._inEntry as any).master_location?.location_name || ledger._inEntry.location_id || '-'}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="font-mono text-thai-gray-700">
+                              {(ledger as any).master_location?.location_name || ledger.location_id || '-'}
+                            </span>
+                          )}
                         </td>
                         <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
-                          <span className={`font-bold ${
-                            ledger.direction === 'in' ? 'text-green-600' : 'text-red-600'
-                          }`}>
-                            {ledger.direction === 'in' ? '+' : '-'}{ledger.pack_qty?.toLocaleString()}
-                          </span>
+                          {ledger._isConsolidated ? (
+                            <span className="font-bold text-blue-600">
+                              {ledger.pack_qty?.toLocaleString()}
+                            </span>
+                          ) : (
+                            <span className={`font-bold ${
+                              ledger.direction === 'in' ? 'text-green-600' : 'text-red-600'
+                            }`}>
+                              {ledger.direction === 'in' ? '+' : '-'}{ledger.pack_qty?.toLocaleString()}
+                            </span>
+                          )}
                         </td>
                         <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
-                          <span className={`font-bold ${
-                            ledger.direction === 'in' ? 'text-green-600' : 'text-red-600'
-                          }`}>
-                            {ledger.direction === 'in' ? '+' : '-'}{ledger.piece_qty?.toLocaleString()}
-                          </span>
+                          {ledger._isConsolidated ? (
+                            <span className="font-bold text-blue-600">
+                              {ledger.piece_qty?.toLocaleString()}
+                            </span>
+                          ) : (
+                            <span className={`font-bold ${
+                              ledger.direction === 'in' ? 'text-green-600' : 'text-red-600'
+                            }`}>
+                              {ledger.direction === 'in' ? '+' : '-'}{ledger.piece_qty?.toLocaleString()}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
+                          {(() => {
+                            const weightPerPiece = (ledger as any).master_sku?.weight_per_piece_kg || 0;
+                            const totalWeight = (ledger.piece_qty || 0) * weightPerPiece;
+                            if (totalWeight === 0) return <span className="text-gray-400">-</span>;
+
+                            return ledger._isConsolidated ? (
+                              <span className="font-bold text-blue-600">
+                                {totalWeight.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                            ) : (
+                              <span className={`font-bold ${
+                                ledger.direction === 'in' ? 'text-green-600' : 'text-red-600'
+                              }`}>
+                                {ledger.direction === 'in' ? '+' : '-'}{totalWeight.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                              </span>
+                            );
+                          })()}
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                           <span className="font-medium text-gray-900 font-thai">

@@ -28,13 +28,24 @@ const ZoneLocationSelect: React.FC<ZoneLocationSelectProps> = ({
 }) => {
   const [selectedZone, setSelectedZone] = useState<string>('');
   const [searchTerm, setSearchTerm] = useState<string>('');
+  const [debouncedSearch, setDebouncedSearch] = useState<string>('');
   const [expandedZones, setExpandedZones] = useState<Set<string>>(new Set());
   const [isDropdownOpen, setIsDropdownOpen] = useState<boolean>(false);
+
+  // Debounce search term to prevent too many API calls
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(searchTerm);
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
 
   // Fetch all locations for the warehouse
   const { locations: allLocations, loading } = useLocations({
     warehouse_id: warehouseId,
-    status: 'active'
+    status: 'active',
+    search: debouncedSearch || undefined
   });
 
   // Group locations by zone
@@ -69,23 +80,23 @@ const ZoneLocationSelect: React.FC<ZoneLocationSelectProps> = ({
     return zones;
   }, [allLocations, expandedZones]);
 
-  // Filter zones and locations based on search term
+  // Filter zones and locations based on search term (client-side filtering for immediate feedback)
   const filteredZones = useMemo(() => {
     if (!searchTerm.trim()) return zonesData;
 
     const searchLower = searchTerm.toLowerCase();
-    
+
     return zonesData
       .map(zoneData => ({
         ...zoneData,
-        locations: zoneData.locations.filter(location => 
+        locations: zoneData.locations.filter(location =>
           (location.location_code || '').toLowerCase().includes(searchLower) ||
           (location.location_name || '').toLowerCase().includes(searchLower) ||
           (location.zone || '').toLowerCase().includes(searchLower)
         )
       }))
-      .filter(zoneData => 
-        zoneData.zone.toLowerCase().includes(searchLower) || 
+      .filter(zoneData =>
+        zoneData.zone.toLowerCase().includes(searchLower) ||
         zoneData.locations.length > 0
       );
   }, [zonesData, searchTerm]);
@@ -98,12 +109,11 @@ const ZoneLocationSelect: React.FC<ZoneLocationSelectProps> = ({
 
   // Auto-expand first zone if none selected
   useEffect(() => {
-    if (filteredZones.length > 0 && expandedZones.size === 0 && !searchTerm) {
+    if (filteredZones.length > 0 && expandedZones.size === 0 && !debouncedSearch) {
       const firstZone = filteredZones[0];
       setExpandedZones(new Set([firstZone.zone]));
-      setExpandedZones(prev => new Set(prev).add(firstZone.zone));
     }
-  }, [filteredZones, expandedZones, searchTerm]);
+  }, [filteredZones, expandedZones, debouncedSearch]);
 
   const toggleZone = useCallback((zone: string) => {
     setExpandedZones(prev => {
@@ -196,6 +206,15 @@ const ZoneLocationSelect: React.FC<ZoneLocationSelectProps> = ({
               />
             </div>
           </div>
+
+          {/* Info message showing total locations */}
+          {!searchTerm && allLocations && allLocations.length > 0 && (
+            <div className="px-3 py-2 bg-blue-50 border-b border-blue-100">
+              <p className="text-xs text-blue-700">
+                📍 พบ {allLocations.length.toLocaleString()} ตำแหน่งทั้งหมด - ใช้การค้นหาเพื่อกรองผลลัพธ์
+              </p>
+            </div>
+          )}
 
           {/* Zones List */}
           <div className="max-h-80 overflow-y-auto">

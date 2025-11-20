@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 
 export interface Location {
   location_id: string;
@@ -26,9 +26,8 @@ export interface Location {
 }
 
 interface LocationsResponse {
-  locations: Location[];
-  count: number;
-  error?: string;
+  data: Location[] | null;
+  error: string | null;
 }
 
 interface UseLocationsParams {
@@ -37,6 +36,7 @@ interface UseLocationsParams {
   location_type?: 'rack' | 'floor' | 'bulk' | 'other' | 'apf_zone' | 'pf_zone' | 'receiving' | 'shipping';
   zone?: string;
   status?: 'active' | 'inactive';
+  limit?: number; // Add limit parameter
 }
 
 export const useLocations = (params: UseLocationsParams = {}) => {
@@ -44,60 +44,86 @@ export const useLocations = (params: UseLocationsParams = {}) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Use ref to track if fetch is in progress to prevent duplicate calls
+  const fetchingRef = useRef(false);
+
+  // Memoize params to prevent unnecessary re-fetches
+  const stableParams = useMemo(() => JSON.stringify(params), [
+    params.search,
+    params.warehouse_id,
+    params.location_type,
+    params.zone,
+    params.status,
+    params.limit
+  ]);
+
   const fetchLocations = useCallback(async () => {
+    // Prevent duplicate fetches
+    if (fetchingRef.current) {
+      console.log('🏠 Fetch already in progress, skipping duplicate call');
+      return;
+    }
+
     try {
+      fetchingRef.current = true;
       setLoading(true);
       setError(null);
-      
-      // Debug logging  
-      console.log('🏠 useLocations fetchLocations called with params:', params);
-      
+
+      const parsedParams = JSON.parse(stableParams);
+
+      // Debug logging
+      console.log('🏠 useLocations fetchLocations called with params:', parsedParams);
+
       // Skip API call if no warehouse_id provided
-      if (!params.warehouse_id || params.warehouse_id.trim() === '') {
+      if (!parsedParams.warehouse_id || parsedParams.warehouse_id.trim() === '') {
         console.log('🏠 Skipping API call - no warehouse_id provided');
         setLocations([]);
         setLoading(false);
+        fetchingRef.current = false;
         return;
       }
-      
+
       const searchParams = new URLSearchParams();
-      if (params.search) searchParams.append('search', params.search);
-      if (params.warehouse_id) searchParams.append('warehouse_id', params.warehouse_id);
-      if (params.location_type) searchParams.append('location_type', params.location_type);
-      if (params.zone) searchParams.append('zone', params.zone);
-      if (params.status) searchParams.append('status', params.status);
-      
+      if (parsedParams.search) searchParams.append('search', parsedParams.search);
+      if (parsedParams.warehouse_id) searchParams.append('warehouse_id', parsedParams.warehouse_id);
+      if (parsedParams.location_type) searchParams.append('location_type', parsedParams.location_type);
+      if (parsedParams.zone) searchParams.append('zone', parsedParams.zone);
+      if (parsedParams.status) searchParams.append('status', parsedParams.status);
+      if (parsedParams.limit) searchParams.append('limit', parsedParams.limit.toString());
+
       const url = `/api/master-location?${searchParams.toString()}`;
       console.log('🏠 Fetching from URL:', url);
-      
+
       const response = await fetch(url);
-      const data: LocationsResponse = await response.json();
-      
-      console.log('🏠 API Response:', { ok: response.ok, status: response.status, locationsCount: data.locations?.length || 0, error: data.error });
-      
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to fetch locations');
+      const result: LocationsResponse = await response.json();
+
+      console.log('🏠 API Response:', { ok: response.ok, status: response.status, locationsCount: result.data?.length || 0, error: result.error });
+
+      if (!response.ok || result.error) {
+        throw new Error(result.error || 'Failed to fetch locations');
       }
-      
-      setLocations(data.locations);
+
+      setLocations(result.data || []);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to fetch locations');
       console.error('Error fetching locations:', err);
     } finally {
       setLoading(false);
+      fetchingRef.current = false;
     }
-  }, [params]); // Add params as dependency for useCallback
+  }, [stableParams]);
 
   useEffect(() => {
-    console.log('🔄 useEffect triggered with params:', params);
+    console.log('🔄 useEffect triggered with stableParams:', stableParams);
     fetchLocations();
-  }, [fetchLocations]); // Use fetchLocations as dependency
+  }, [stableParams, fetchLocations]);
 
-  // Add manual trigger for testing with useCallback
+  // Add manual trigger for testing
   const testFetch = useCallback(() => {
     console.log('🧪 Manual test fetch triggered');
+    fetchingRef.current = false; // Reset the flag
     fetchLocations();
-  }, [fetchLocations]); // Depend on fetchLocations
+  }, [fetchLocations]);
 
   return {
     locations,

@@ -13,16 +13,6 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
 
-    // ตรวจสอบ authentication
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     // รับข้อมูล
     const body = await request.json();
     const { batch_id, skip_errors = true } = body;
@@ -46,10 +36,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Use default user ID (1) since there's no authentication
+    const userId = 1;
+
     // ประมวลผลการนำเข้า
     const processingSummary = await stockImportService.processImport(
       batch_id,
-      parseInt(user.id),
+      userId,
       skip_errors
     );
 

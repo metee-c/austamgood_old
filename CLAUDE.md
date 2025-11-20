@@ -156,6 +156,12 @@ Inventory management operations for stock movements and adjustments:
 - `/stock-management/transfer` - Stock transfers between locations
 - `/stock-management/count` - Stock counting and cycle counts
 - `/stock-management/adjustment` - Inventory adjustments and corrections
+- `/stock-management/import` - **NEW**: Bulk stock import from legacy systems
+
+**Database Tables:** `wms_stock_import_batches`, `wms_stock_import_staging`
+**Type Definitions:** `types/stock-import.ts`
+**Database Service:** `lib/database/stock-import.ts`
+**Key Features:** Batch processing, validation, error tracking, multi-warehouse support
 
 ### Component Organization
 
@@ -220,6 +226,7 @@ Services in `lib/database/` provide abstraction for database operations:
 - `wms-receive-new.ts` - New receiving workflow
 - `orders.service.ts` - Order management
 - `file-management.ts` - File upload/management
+- `stock-import.ts` - **NEW**: Stock import batch processing
 
 #### Type Definitions
 - `types/database/supabase.ts` - Auto-generated from Supabase schema
@@ -227,6 +234,7 @@ Services in `lib/database/` provide abstraction for database operations:
 - `types/*-schema.ts` - Zod schemas for form validation
 - `types/*.ts` - Application-specific type definitions
 - `types/online-packing.ts` - **NEW**: Online packing module types (11 interfaces)
+- `types/stock-import.ts` - **NEW**: Stock import batch and staging types
 
 ### API Routes
 API routes in `app/api/` follow REST patterns with standard HTTP methods:
@@ -242,6 +250,7 @@ API routes in `app/api/` follow REST patterns with standard HTTP methods:
 - `/api/preparation-areas/*` - Preparation area management with import/export
 - `/api/storage-strategies/*` - Storage strategy configuration
 - `/api/system-users/*` - **NEW**: System user management endpoints
+- `/api/stock-import/*` - **NEW**: Stock import batch processing (upload, validate, process)
 
 ### Route Planning & VRP (Vehicle Routing Problem)
 The system includes advanced route optimization capabilities. See `README_VRP.md` for detailed documentation.
@@ -472,7 +481,7 @@ const { count, error } = await supabase
 
 ## Database Schema Overview
 
-The system has **78+ tables** across 6 main modules:
+The system has **80+ tables** across 7 main modules:
 1. **Master Data** (11 tables) - Products, customers, suppliers, locations, vehicles, employees, etc.
 2. **Warehouse Operations** (14 tables) - Receiving, inventory, movements, locations
 3. **Order & Logistics** (9 tables) - Orders, picklists, loadlists, route plans, face sheets
@@ -480,6 +489,7 @@ The system has **78+ tables** across 6 main modules:
 5. **File & User Management** (10 tables) - Files, import/export jobs, users, roles, permissions
 6. **Online Packing** (15 tables) - E-commerce packing system with `packing_*` prefix
 7. **Inventory Ledger** (15 tables) - Complete inventory tracking with ledger system
+8. **Stock Import** (2 tables) - Legacy system data import with `wms_stock_import_*` prefix
 
 **Important**: If `supabase/DATABASE_DOCUMENTATION.md` exists, always refer to it for complete schema details including all tables, relationships, and constraints.
 
@@ -489,6 +499,7 @@ The system includes recent migrations that add:
 - `receive_to_ledger` trigger that auto-creates ledger entries
 - `reference_doc_type` field for tracking document origins
 - Date type casting fixes for production dates
+- Stock import tables for legacy system migration (migration 014)
 
 ## Common Gotchas & Troubleshooting
 
@@ -572,6 +583,20 @@ npm run db:generate-types
 2. Check that `app/mobile/layout.tsx` exists and wraps mobile routes
 3. Mobile routes should be under `/mobile/*` path
 4. Use mobile-specific components from `components/mobile/`
+
+### 11. Location Dropdown Performance Issues
+**Problem**: Location dropdowns freeze or load slowly with thousands of locations
+**Solution**: The system now implements a search-first approach:
+- API defaults to 100 locations when no search term is provided
+- Search increases limit to 500 locations
+- 300ms debounce prevents excessive API calls while typing
+- Duplicate API calls are prevented with ref-based locking
+- Users are prompted to use search for specific locations
+
+**Related Files:**
+- [app/api/master-location/route.ts](app/api/master-location/route.ts) - API with limit parameter
+- [hooks/useLocations.ts](hooks/useLocations.ts) - Hook with debouncing and duplicate prevention
+- [components/warehouse/ZoneLocationSelect.tsx](components/warehouse/ZoneLocationSelect.tsx) - Search-optimized dropdown
 
 ## Performance Considerations
 

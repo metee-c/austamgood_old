@@ -118,8 +118,6 @@ export interface CreateMovePayload {
   approved_by?: number | null;
   scheduled_at?: string | null;
   notes?: string | null;
-  height?: number | null;
-  width?: number | null;
   created_by?: number | null;
   items: CreateMoveItemInput[];
 }
@@ -317,8 +315,6 @@ class MoveService {
           approved_by: payload.approved_by ?? null,
           scheduled_at: payload.scheduled_at ?? null,
           notes: payload.notes ?? null,
-          height: payload.height ?? null,
-          width: payload.width ?? null,
           created_by: payload.created_by ?? null,
         })
         .select('move_id')
@@ -556,18 +552,28 @@ class MoveService {
       }
 
       if (moveItem.from_location_id) {
+        // ตรวจสอบ location type ของ from_location
+        // ใช้ทั้ง location_id และ location_code เพื่อรองรับทั้งสองกรณี
         const { data: fromLoc, error: locError } = await this.supabase
           .from('master_location')
-          .select('location_type')
-          .eq('location_id', moveItem.from_location_id)
-          .single();
+          .select('location_type, location_id, location_code, zone')
+          .or(`location_id.eq.${moveItem.from_location_id},location_code.eq.${moveItem.from_location_id}`)
+          .maybeSingle();
 
-        const isReceivingLocation = fromLoc?.location_type === 'receiving';
+        // ถ้าเป็น receiving location ให้ข้ามการลดยอด inventory
+        // เพราะ receiving zone ไม่มีการ track inventory balance
+        // ตรวจสอบทั้ง location_type, location_code และ zone
+        const isReceivingLocation =
+          fromLoc?.location_type === 'receiving' ||
+          fromLoc?.location_code === 'Receiving' ||
+          fromLoc?.location_code === 'RCV' ||
+          fromLoc?.zone === 'Zone Receiving' ||
+          fromLoc?.zone === 'Receiving';
 
-        if (!isReceivingLocation) {
+        if (!isReceivingLocation && fromLoc) {
           const updateResult = await this.updateInventoryBalance(
             warehouseId,
-            moveItem.from_location_id,
+            fromLoc.location_id, // ใช้ location_id ที่แท้จริงแทน
             moveItem.sku_id,
             moveItem.pallet_id ?? null,
             moveItem.pallet_id_external ?? null,
@@ -584,9 +590,18 @@ class MoveService {
       }
 
       if (moveItem.to_location_id) {
+        // ตรวจสอบและแปลง location code เป็น location_id ถ้าจำเป็น
+        const { data: toLoc } = await this.supabase
+          .from('master_location')
+          .select('location_id')
+          .or(`location_id.eq.${moveItem.to_location_id},location_code.eq.${moveItem.to_location_id}`)
+          .maybeSingle();
+
+        const actualToLocationId = toLoc?.location_id || moveItem.to_location_id;
+
         const updateResult = await this.updateInventoryBalance(
           warehouseId,
-          moveItem.to_location_id,
+          actualToLocationId,
           moveItem.sku_id,
           moveItem.pallet_id ?? null,
           moveItem.pallet_id_external ?? null,
@@ -602,7 +617,7 @@ class MoveService {
 
         // อัพเดตข้อมูลปริมาณปัจจุบันใน master_location
         const locationUpdateResult = await this.updateLocationCurrentData(
-          moveItem.to_location_id,
+          actualToLocationId,
           pieceQty,
           packQty
         );
@@ -783,14 +798,20 @@ class MoveService {
         }
       } else {
         if (packQtyDelta < 0 || pieceQtyDelta < 0) {
-          const { data: nullLocBalance } = await this.supabase
+          let nullLocQuery = this.supabase
             .from('wms_inventory_balances')
             .select('*')
             .eq('warehouse_id', warehouseId)
             .is('location_id', null)
-            .eq('sku_id', skuId)
-            .eq('pallet_id', palletId || '')
-            .maybeSingle();
+            .eq('sku_id', skuId);
+
+          if (palletId === null) {
+            nullLocQuery = nullLocQuery.is('pallet_id', null);
+          } else {
+            nullLocQuery = nullLocQuery.eq('pallet_id', palletId);
+          }
+
+          const { data: nullLocBalance } = await nullLocQuery.maybeSingle();
 
           if (nullLocBalance) {
             const newPackQty = (nullLocBalance.total_pack_qty || 0) + packQtyDelta;

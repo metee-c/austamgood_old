@@ -16,16 +16,6 @@ export async function GET(
   try {
     const supabase = await createClient();
 
-    // ตรวจสอบ authentication
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const resolvedParams = await params;
     const batchId = resolvedParams.id;
 
