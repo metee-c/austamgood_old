@@ -35,8 +35,10 @@ const itemSchema = z.object({
 // Validation schema for the entire form
 const receiveFormSchema = z.object({
   receive_type: z.enum(['รับสินค้าปกติ', 'รับสินค้าชำรุด', 'รับสินค้าหมดอายุ', 'รับสินค้าคืน', 'รับสินค้าตีกลับ'] as const),
-  pallet_box_option: z.enum(['ไม่สร้าง_Pallet_ID', 'สร้าง_Pallet_ID', 'สร้าง_Pallet_ID_และ_Box_ID', 'สร้าง_Pallet_ID_และ_สแกน_Pallet_ID_ภายนอก'] as const),
+  pallet_box_option: z.enum(['ไม่สร้าง_Pallet_ID', 'สร้าง_Pallet_ID', 'สร้าง_Pallet_ID_รวม', 'สร้าง_Pallet_ID_และ_Box_ID', 'สร้าง_Pallet_ID_และ_สแกน_Pallet_ID_ภายนอก'] as const),
   pallet_calculation_method: z.enum(['ใช้จำนวนจากมาสเตอร์สินค้า', 'กำหนดจำนวนเอง'] as const),
+  mixed_pallet_mode: z.boolean().default(false), // เพิ่มตัวเลือก Mixed Pallet
+  shared_pallet_id: z.string().optional(), // Pallet ID ที่ใช้ร่วมกัน
   reference_doc: z.string().optional(),
   supplier_id: z.string().optional(),
   customer_id: z.string().optional(),
@@ -70,6 +72,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
   const [selectedSupplierName, setSelectedSupplierName] = useState('');
   const [uploadedImages, setUploadedImages] = useState<{url: string, name: string}[]>([]);
   const [uploading, setUploading] = useState(false);
+  const [latestPalletId, setLatestPalletId] = useState<string>(''); // เก็บเลขพาเลทล่าสุด
 
   // Form setup
   const {
@@ -157,7 +160,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
   // Hooks
   const { createReceive, loading: creating, error: createError } = useCreateReceive();
   const { updateReceive, loading: updating, error: updateError } = useUpdateReceive();
-  const { generateMultiplePalletIds } = useGeneratePalletId();
+  const { generateMultiplePalletIds, getLatestPalletId } = useGeneratePalletId();
 
   // Form options hooks
   const { suppliers, refetch: refetchSuppliers } = useSuppliers();
@@ -202,6 +205,23 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
       setUploadedImages(images);
     }
   }, [isEditMode, editData]);
+
+  // Fetch latest pallet ID when form opens or pallet option changes to Mixed Pallet
+  useEffect(() => {
+    const fetchLatestPalletId = async () => {
+      if (watchedPalletBoxOption === 'สร้าง_Pallet_ID_รวม') {
+        try {
+          const { data: latestId } = await getLatestPalletId();
+          if (latestId) {
+            setLatestPalletId(latestId);
+          }
+        } catch (error) {
+          console.error('Error fetching latest pallet ID:', error);
+        }
+      }
+    };
+    fetchLatestPalletId();
+  }, [watchedPalletBoxOption, getLatestPalletId]);
 
   // Handle image upload
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -409,6 +429,16 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
     // Process items
     const processedItems = [];
     
+    // สำหรับโหมด Mixed Pallet - ไม่ต้องสร้าง Pallet ID อัตโนมัติ ให้ผู้ใช้ใส่เอง
+    // Validation: ตรวจสอบว่าผู้ใช้ใส่ Pallet ID แล้วหรือยัง
+    if (data.pallet_box_option === 'สร้าง_Pallet_ID_รวม') {
+      const missingPalletIds = data.items.filter(item => item.sku_id && item.piece_quantity > 0 && !item.pallet_id);
+      if (missingPalletIds.length > 0) {
+        alert('❌ กรุณาใส่รหัสพาเลทในตารางสำหรับทุก SKU');
+        return;
+      }
+    }
+    
     for (const [index, item] of data.items.entries()) {
       const selectedSku = skus.find(s => s.sku_id === item.sku_id);
       if (!selectedSku) continue;
@@ -476,7 +506,10 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
         
         // Generate pallet IDs from database if needed
         let palletIds: string[] = [];
-        if (data.pallet_box_option !== 'ไม่สร้าง_Pallet_ID' && numPallets > 0) {
+        if (data.pallet_box_option === 'สร้าง_Pallet_ID_รวม') {
+          // ใช้ pallet ID ที่ผู้ใช้ใส่เอง
+          palletIds = item.pallet_id ? [item.pallet_id] : [];
+        } else if (data.pallet_box_option !== 'ไม่สร้าง_Pallet_ID' && numPallets > 0) {
           try {
             setGeneratingPallets(true);
             const { data: generatedPalletIds, error: palletError } = await generateMultiplePalletIds(numPallets);
@@ -494,12 +527,16 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
           }
         }
 
+        // สำหรับ Mixed Pallet ไม่ต้องแบ่ง - ใช้ทั้งหมดใน 1 pallet
+        const effectiveNumPallets = data.pallet_box_option === 'สร้าง_Pallet_ID_รวม' ? 1 : numPallets;
+        
         // Create separate items for each pallet (and boxes if needed)
-        for (let palletIndex = 0; palletIndex < numPallets; palletIndex++) {
-          const remainingPieces = item.piece_quantity - (palletIndex * piecesPerPallet);
-          const piecesInThisPallet = Math.min(piecesPerPallet, remainingPieces);
+        for (let palletIndex = 0; palletIndex < effectiveNumPallets; palletIndex++) {
+          const piecesInThisPallet = data.pallet_box_option === 'สร้าง_Pallet_ID_รวม' 
+            ? item.piece_quantity  // Mixed Pallet: ใช้ทั้งหมด
+            : Math.min(piecesPerPallet, item.piece_quantity - (palletIndex * piecesPerPallet));
           
-          const palletId = palletIds[palletIndex] || undefined;
+          const palletId = palletIds[palletIndex] || palletIds[0] || undefined;
           
           // ถ้าเลือก "สร้าง Pallet ID + Box ID" ให้สร้าง record สำหรับแต่ละ Box
           if (data.pallet_box_option === 'สร้าง_Pallet_ID_และ_Box_ID') {
@@ -673,7 +710,8 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
               <label className="block text-xs font-medium text-thai-gray-700 font-thai mb-1">เงื่อนไขการสร้าง Pallet/Box</label>
               <select {...register('pallet_box_option')} className="w-full p-2 border border-thai-gray-200 rounded-md text-sm">
                 <option value="ไม่สร้าง_Pallet_ID">ไม่สร้าง Pallet ID</option>
-                <option value="สร้าง_Pallet_ID">สร้าง Pallet ID</option>
+                <option value="สร้าง_Pallet_ID">สร้าง Pallet ID (แยก Pallet แต่ละ SKU)</option>
+                <option value="สร้าง_Pallet_ID_รวม">สร้าง Pallet ID (1 Pallet {'>'} หลาย SKUs - Mixed Pallet)</option>
                 <option value="สร้าง_Pallet_ID_และ_Box_ID">สร้าง Pallet ID + Box ID</option>
                 <option value="สร้าง_Pallet_ID_และ_สแกน_Pallet_ID_ภายนอก">สร้าง Pallet ID + สแกน Pallet ID ภายนอก</option>
               </select>
@@ -922,7 +960,8 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
                       <div className="text-xs text-gray-500 mt-1">สามารถแก้ไขได้</div>
                     </div>
                   </div>
-                  
+
+
                   {/* Optional Details - ซ่อนในกรณีพิเศษ */}
                   {watchedPalletBoxOption !== 'ไม่สร้าง_Pallet_ID' && 
                    !(watchedType === 'รับสินค้าปกติ' && watchedPalletBoxOption === 'สร้าง_Pallet_ID_และ_Box_ID') &&
@@ -951,10 +990,6 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
                             <option value="ดำ">ดำ</option>
                             <option value="ขาว">ขาว</option>
                           </select>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-medium text-thai-gray-700 mb-1">รหัสพาเลทภายนอก</label>
-                          <input {...register(`items.${index}.pallet_id_external`)} placeholder="EXT-P001" className="w-full p-2 border border-gray-300 rounded-md text-sm" />
                         </div>
                         <div>
                           <label className="block text-xs font-medium text-thai-gray-700 mb-1">สถานะการสแกนพาเลท</label>
@@ -1098,6 +1133,11 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
               <div className="bg-gray-50 px-4 py-2 border-b">
                 <h4 className="text-sm font-medium text-gray-700">ตารางแสดงการแบ่งพาเลทแต่ละรายการ</h4>
                 <p className="text-xs text-gray-500 mt-1">💡 เลื่อนตารางซ้าย-ขวาเพื่อดูคอลัมทั้งหมด</p>
+                {watchedPalletBoxOption === 'สร้าง_Pallet_ID_รวม' && latestPalletId && (
+                  <p className="text-xs text-blue-600 mt-1 font-thai">
+                    📦 เลขพาเลทล่าสุด: <span className="font-mono font-semibold">{latestPalletId}</span>
+                  </p>
+                )}
               </div>
               <div className="overflow-x-auto max-w-full scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-gray-100">
                 <table className="min-w-max divide-y divide-gray-200 table-auto w-full">
@@ -1118,7 +1158,38 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
                       const selectedSku = skus.find(s => s.sku_id === item.sku_id);
                       if (!selectedSku || !item.piece_quantity) return null;
                       
-                      // คำนวณจำนวนพาเลท
+                      // สำหรับ Mixed Pallet - แสดงแค่ 1 แถวต่อ SKU และให้ผู้ใช้ใส่ Pallet ID เอง
+                      if (watchedPalletBoxOption === 'สร้าง_Pallet_ID_รวม') {
+                        return (
+                          <tr key={`${itemIndex}-mixed-pallet`} className="hover:bg-gray-50 bg-purple-25">
+                            <td className="px-4 py-2 text-sm font-semibold text-purple-700 whitespace-nowrap" style={{minWidth: '80px'}}>📦 Pallet</td>
+                            <td className="px-4 py-2 text-sm font-mono text-purple-600 whitespace-nowrap" style={{minWidth: '120px'}}>{item.sku_id}</td>
+                            <td className="px-4 py-2 text-sm whitespace-nowrap" style={{minWidth: '200px'}}>{selectedSku.sku_name}</td>
+                            <td className="px-4 py-2 text-sm font-mono bg-purple-50 whitespace-nowrap" style={{minWidth: '200px'}}>
+                              <input
+                                type="text"
+                                {...register(`items.${itemIndex}.pallet_id`)}
+                                placeholder="ใส่รหัสพาเลท"
+                                className="w-full p-1 border border-purple-300 rounded text-sm font-mono focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
+                              />
+                            </td>
+                            <td className="px-4 py-2 text-sm text-center font-semibold whitespace-nowrap" style={{minWidth: '100px'}}>{item.piece_quantity}</td>
+                            <td className="px-4 py-2 text-sm whitespace-nowrap" style={{minWidth: '120px'}}>
+                              {item.location_id ? (locations?.find(loc => loc.location_id === item.location_id)?.location_code || item.location_id) : '-'}
+                            </td>
+                            <td className="px-4 py-2 text-sm whitespace-nowrap" style={{minWidth: '150px'}}>
+                              {watch('received_by') ? systemUsers.find(user => user.employee_id === watch('received_by'))?.first_name + ' ' + systemUsers.find(user => user.employee_id === watch('received_by'))?.last_name : '-'}
+                            </td>
+                            <td className="px-4 py-2 text-sm whitespace-nowrap" style={{minWidth: '120px'}}>
+                              <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                                ไม่จำเป็น
+                              </span>
+                            </td>
+                          </tr>
+                        );
+                      }
+                      
+                      // คำนวณจำนวนพาเลท (สำหรับโหมดอื่นๆ)
                       const piecesPerPallet = watchedPalletCalculationMethod === 'กำหนดจำนวนเอง' 
                         ? (watch('custom_pieces_per_pallet') || selectedSku.qty_per_pallet || 100)
                         : (selectedSku.qty_per_pallet || 100);

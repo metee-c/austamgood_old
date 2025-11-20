@@ -698,8 +698,10 @@ const InboundPage = () => {
                                             )}
                                           </td>
                                           <td className="px-2 py-0.5">
-                                            {item.location_id ? (
-                                              <span className="text-[11px]">{item.location_id}</span>
+                                            {item.master_location?.location_code ? (
+                                              <span className="text-[11px] font-mono">{item.master_location.location_code}</span>
+                                            ) : item.location_id ? (
+                                              <span className="text-[11px] text-gray-500">{item.location_id}</span>
                                             ) : (
                                               <span className="text-gray-400">-</span>
                                             )}

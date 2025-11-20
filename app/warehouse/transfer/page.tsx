@@ -268,24 +268,32 @@ const TransferPage: React.FC = () => {
     return Object.values(draftItems).filter((state) => state.selected).length;
   }, [draftItems]);
 
-  // Calculate location usage to detect duplicates
+  // Calculate location usage to detect duplicates (excluding items with same pallet_id)
   const locationUsage = useMemo(() => {
-    const usage: Record<string, { count: number; items: string[] }> = {};
+    const usage: Record<string, { count: number; items: string[]; pallets: Set<string> }> = {};
     
     Object.entries(draftItems).forEach(([itemId, state]) => {
       if (state.selected && state.toLocationId) {
+        const item = selectedReceive?.wms_receive_items?.find(i => i.item_id === Number(itemId));
+        const palletId = item?.pallet_id || `no-pallet-${itemId}`;
+        
         if (!usage[state.toLocationId]) {
-          usage[state.toLocationId] = { count: 0, items: [] };
+          usage[state.toLocationId] = { count: 0, items: [], pallets: new Set() };
         }
-        usage[state.toLocationId].count++;
+        
+        // Only count as separate if it's a different pallet
+        if (!usage[state.toLocationId].pallets.has(palletId)) {
+          usage[state.toLocationId].count++;
+          usage[state.toLocationId].pallets.add(palletId);
+        }
         usage[state.toLocationId].items.push(itemId);
       }
     });
     
     return usage;
-  }, [draftItems]);
+  }, [draftItems, selectedReceive]);
 
-  // Find locations with multiple assignments
+  // Find locations with multiple assignments (different pallets)
   const duplicateLocations = useMemo(() => {
     return Object.entries(locationUsage)
       .filter(([locationId, usage]) => usage.count > 1)
@@ -315,24 +323,73 @@ const TransferPage: React.FC = () => {
     }
   }, [selectedReceive, selectedToWarehouse]);
 
-  const handleToggleItem = (item: ReceiveItem) => {
-    setDraftItems((prev) => ({
-      ...prev,
-      [item.item_id]: {
-        selected: !prev[item.item_id]?.selected,
-        pieceQty: prev[item.item_id]?.pieceQty ?? item.piece_quantity,
-        toLocationId: prev[item.item_id]?.toLocationId ?? '',
-        moveMethod: prev[item.item_id]?.moveMethod ?? (item.pallet_id ? 'pallet' : 'sku')
-      }
-    }));
+  const handleToggleItem = (item: ReceiveItem, groupItems?: ReceiveItem[]) => {
+    if (groupItems && groupItems.length > 1) {
+      // Toggle all items in the group
+      const isSelected = !draftItems[item.item_id]?.selected;
+      setDraftItems((prev) => {
+        const updates: any = {};
+        groupItems.forEach(groupItem => {
+          updates[groupItem.item_id] = {
+            selected: isSelected,
+            pieceQty: prev[groupItem.item_id]?.pieceQty ?? groupItem.piece_quantity,
+            toLocationId: prev[groupItem.item_id]?.toLocationId ?? prev[item.item_id]?.toLocationId ?? '',
+            moveMethod: prev[groupItem.item_id]?.moveMethod ?? (groupItem.pallet_id ? 'pallet' : 'sku')
+          };
+        });
+        return { ...prev, ...updates };
+      });
+    } else {
+      setDraftItems((prev) => ({
+        ...prev,
+        [item.item_id]: {
+          selected: !prev[item.item_id]?.selected,
+          pieceQty: prev[item.item_id]?.pieceQty ?? item.piece_quantity,
+          toLocationId: prev[item.item_id]?.toLocationId ?? '',
+          moveMethod: prev[item.item_id]?.moveMethod ?? (item.pallet_id ? 'pallet' : 'sku')
+        }
+      }));
+    }
   };
 
   const handleItemChange = (
     item: ReceiveItem,
     field: keyof DraftMoveItemState,
-    value: string | number | boolean
+    value: string | number | boolean,
+    groupItems?: ReceiveItem[]
   ) => {
     setDraftItems((prev) => {
+      // If this is a grouped item and changing location/method, apply to all items in group
+      if (groupItems && groupItems.length > 1 && (field === 'toLocationId' || field === 'moveMethod')) {
+        const updates: any = {};
+        groupItems.forEach(groupItem => {
+          const previous = prev[groupItem.item_id] ?? {
+            selected: false,
+            pieceQty: groupItem.piece_quantity,
+            toLocationId: '',
+            moveMethod: groupItem.pallet_id ? 'pallet' : 'sku'
+          };
+
+          const next: DraftMoveItemState = { ...previous };
+
+          if (field === 'toLocationId') {
+            next.toLocationId = String(value);
+          }
+
+          if (field === 'moveMethod') {
+            const method = value as DraftMoveItemState['moveMethod'];
+            next.moveMethod = method;
+            if (method === 'pallet') {
+              next.pieceQty = groupItem.piece_quantity;
+            }
+          }
+
+          updates[groupItem.item_id] = next;
+        });
+        return { ...prev, ...updates };
+      }
+
+      // Single item change
       const previous = prev[item.item_id] ?? {
         selected: false,
         pieceQty: item.piece_quantity,
@@ -775,26 +832,60 @@ const TransferPage: React.FC = () => {
       setIsCompletingScan(true);
       setScanError(null);
 
-      // Update move item with all timestamps - from start to completion
-      const now = new Date().toISOString();
-      const response = await fetch(`/api/moves/items/${scanningMoveItem.move_item_id}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          status: 'completed',
-          started_at: now,
-          pallet_scanned_at: now,
-          location_scanned_at: now,
-          completed_at: now,
-          executed_by: null // TODO: Replace with actual user ID from auth context
-        }),
-      });
+      // Find all move items with the same pallet_id in the same move
+      const currentMove = moves.find(m => 
+        m.wms_move_items?.some(item => item.move_item_id === scanningMoveItem.move_item_id)
+      );
+      
+      const itemsToComplete = currentMove?.wms_move_items?.filter(item =>
+        item.pallet_id === scanningMoveItem.pallet_id &&
+        item.from_location_id === scanningMoveItem.from_location_id &&
+        item.to_location_id === scanningMoveItem.to_location_id &&
+        (item.status === 'in_progress' || item.status === 'assigned')
+      ) || [scanningMoveItem];
 
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to complete scanning');
+      // Update all move items in the same pallet
+      const now = new Date().toISOString();
+      const updatePromises = itemsToComplete.map(item =>
+        fetch(`/api/moves/items/${item.move_item_id}`, {
+          method: 'PATCH',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            status: 'completed',
+            started_at: now,
+            pallet_scanned_at: now,
+            location_scanned_at: now,
+            completed_at: now,
+            executed_by: null // TODO: Replace with actual user ID from auth context
+          }),
+        })
+      );
+
+      const responses = await Promise.all(updatePromises);
+      
+      if (!responses || responses.length === 0) {
+        throw new Error('No items to update');
+      }
+
+      const failedResponse = responses.find(r => r && !r.ok);
+      
+      if (failedResponse) {
+        const errorData = await failedResponse.json();
+        throw new Error(errorData.error || 'Failed to complete move');
+      }
+
+      // Use the first response for backward compatibility
+      const response = responses[0];
+
+      if (!response || !response.ok) {
+        if (response) {
+          const errorData = await response.json();
+          throw new Error(errorData.error || 'Failed to complete scanning');
+        } else {
+          throw new Error('Invalid response from server');
+        }
       }
 
       setIsScanModalOpen(false);
@@ -1089,105 +1180,252 @@ const TransferPage: React.FC = () => {
             </tr>
           </thead>
           <tbody>
-            {items.map((item) => (
-              <tr key={item.move_item_id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                <td className="px-1.5 py-1 align-top">
-                  <div>
-                    <p className="font-semibold text-gray-900 text-xs leading-tight truncate" title={item.master_sku?.sku_name || item.sku_id}>
-                      {item.master_sku?.sku_name || item.sku_id}
-                    </p>
-                  </div>
-                </td>
-                <td className="px-1.5 py-1 align-top">
-                  <div className="text-xs text-gray-700 leading-tight truncate">
-                    {item.from_location?.location_name || item.from_location?.location_code || item.from_location_id || '-'}
-                  </div>
-                </td>
-                <td className="px-1.5 py-1 align-top">
-                  <div className="text-xs text-gray-700 leading-tight truncate">
-                    {item.to_location?.location_name || item.to_location?.location_code || item.to_location_id || '-'}
-                  </div>
-                </td>
-                <td className="px-1.5 py-1 align-top">
-                  <div className="text-xs font-bold text-gray-900 leading-tight">
-                    {item.requested_piece_qty.toLocaleString()}
-                  </div>
-                </td>
-                <td className="px-1.5 py-1 align-top">
-                  <div className="text-xs text-gray-700 leading-tight">
-                    {item.requested_pack_qty > 0 ? item.requested_pack_qty.toLocaleString() : '-'}
-                  </div>
-                </td>
-                <td className="px-1.5 py-1 align-top">
-                  <div className="text-xs text-gray-700 leading-tight">
-                    {item.move_method === 'pallet' ? 'ทั้งพาเลท' : 'ตามจำนวน'}
-                  </div>
-                </td>
-                <td className="px-1.5 py-1 align-top">
-                  <div className="font-mono text-xs text-gray-700 leading-tight truncate">
-                    {item.pallet_id || '-'}
-                  </div>
-                </td>
-                <td className="px-1.5 py-1 align-top">
-                  <Badge 
-                    variant={getItemStatusVariant(item.status)} 
-                    size="sm" 
-                    className="whitespace-nowrap text-xs"
-                  >
-                    {MOVE_ITEM_STATUS_LABELS[item.status]}
-                  </Badge>
-                </td>
-                <td className="px-1.5 py-1 align-top">
-                  <div className="flex items-center gap-1">
-                    {item.status === 'pending' && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() =>
-                          openAssignmentDialog(
-                            [item.move_item_id],
-                            {
-                              mode: 'single',
-                              moveNo: move.move_no,
-                              description: item.master_sku?.sku_name || item.sku_id
+            {(() => {
+              // Group items by pallet_id
+              const groupedItems: any[] = [];
+              const processedIds = new Set<number>();
+
+              for (const item of items) {
+                if (processedIds.has(item.move_item_id)) continue;
+
+                if (!item.pallet_id) {
+                  processedIds.add(item.move_item_id);
+                  groupedItems.push(item);
+                  continue;
+                }
+
+                const sameGroup = items.filter(other =>
+                  !processedIds.has(other.move_item_id) &&
+                  other.pallet_id === item.pallet_id &&
+                  other.from_location_id === item.from_location_id &&
+                  other.to_location_id === item.to_location_id
+                );
+
+                if (sameGroup.length > 1) {
+                  sameGroup.forEach(g => processedIds.add(g.move_item_id));
+                  groupedItems.push({
+                    ...item,
+                    _isGrouped: true,
+                    _groupItems: sameGroup
+                  });
+                } else {
+                  processedIds.add(item.move_item_id);
+                  groupedItems.push(item);
+                }
+              }
+
+              return groupedItems.map((item: any) => {
+                if (item._isGrouped && item._groupItems) {
+                  return item._groupItems.map((subItem: any, idx: number) => (
+                    <tr key={`${item.move_item_id}-${idx}`} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                      <td className="px-1.5 py-1 align-top">
+                        <div>
+                          <p className="font-semibold text-gray-900 text-xs leading-tight truncate" title={subItem.master_sku?.sku_name || subItem.sku_id}>
+                            {subItem.master_sku?.sku_name || subItem.sku_id}
+                          </p>
+                        </div>
+                      </td>
+                      {idx === 0 && (
+                        <>
+                          <td className="px-1.5 py-1 align-middle" rowSpan={item._groupItems.length}>
+                            <div className="text-xs text-gray-700 leading-tight truncate">
+                              {subItem.from_location?.location_name || subItem.from_location?.location_code || subItem.from_location_id || '-'}
+                            </div>
+                          </td>
+                          <td className="px-1.5 py-1 align-middle" rowSpan={item._groupItems.length}>
+                            <div className="text-xs text-gray-700 leading-tight truncate">
+                              {subItem.to_location?.location_name || subItem.to_location?.location_code || subItem.to_location_id || '-'}
+                            </div>
+                          </td>
+                        </>
+                      )}
+                      <td className="px-1.5 py-1 align-top">
+                        <div className="text-xs font-bold text-gray-900 leading-tight">
+                          {subItem.requested_piece_qty.toLocaleString()}
+                        </div>
+                      </td>
+                      <td className="px-1.5 py-1 align-top">
+                        <div className="text-xs text-gray-700 leading-tight">
+                          {subItem.requested_pack_qty > 0 ? subItem.requested_pack_qty.toLocaleString() : '-'}
+                        </div>
+                      </td>
+                      {idx === 0 && (
+                        <>
+                          <td className="px-1.5 py-1 align-middle" rowSpan={item._groupItems.length}>
+                            <div className="text-xs text-gray-700 leading-tight">
+                              {subItem.move_method === 'pallet' ? 'ทั้งพาเลท' : 'ตามจำนวน'}
+                            </div>
+                          </td>
+                          <td className="px-1.5 py-1 align-middle" rowSpan={item._groupItems.length}>
+                            <div className="font-mono text-xs text-gray-700 leading-tight truncate">
+                              {subItem.pallet_id || '-'}
+                            </div>
+                          </td>
+                          <td className="px-1.5 py-1 align-middle" rowSpan={item._groupItems.length}>
+                            <Badge 
+                              variant={getItemStatusVariant(subItem.status)} 
+                              size="sm" 
+                              className="whitespace-nowrap text-xs"
+                            >
+                              {MOVE_ITEM_STATUS_LABELS[subItem.status]}
+                            </Badge>
+                          </td>
+                          <td className="px-1.5 py-1 align-middle" rowSpan={item._groupItems.length}>
+                            <div className="flex items-center gap-1">
+                              {subItem.status === 'pending' && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() =>
+                                    openAssignmentDialog(
+                                      item._groupItems.map((g: any) => g.move_item_id),
+                                      {
+                                        mode: 'single',
+                                        moveNo: move.move_no,
+                                        description: `Pallet ${subItem.pallet_id}`
+                                      }
+                                    )
+                                  }
+                                  disabled={updatingItemStatus}
+                                  className="text-xs py-0.5 px-2 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300"
+                                >
+                                  มอบหมาย
+                                </Button>
+                              )}
+                              {subItem.status === 'assigned' && (
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  onClick={() => handleStartWork(subItem)}
+                                  disabled={updatingItemStatus}
+                                  className="text-xs py-0.5 px-2 hover:bg-yellow-50 hover:text-yellow-700 hover:border-yellow-300"
+                                >
+                                  เริ่มงาน
+                                </Button>
+                              )}
+                              {subItem.status === 'in_progress' && (
+                                <Button
+                                  variant="primary"
+                                  size="sm"
+                                  onClick={() => handleStartScanning(subItem)}
+                                  disabled={updatingItemStatus}
+                                  className="text-xs py-0.5 px-2 bg-green-600 hover:bg-green-700"
+                                >
+                                  สแกนเพื่อเสร็จงาน
+                                </Button>
+                              )}
+                              {subItem.status === 'completed' && (
+                                <span className="text-xs text-green-600 font-medium">เสร็จสิ้น</span>
+                              )}
+                            </div>
+                          </td>
+                        </>
+                      )}
+                    </tr>
+                  ));
+                }
+
+                return (
+                  <tr key={item.move_item_id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                    <td className="px-1.5 py-1 align-top">
+                      <div>
+                        <p className="font-semibold text-gray-900 text-xs leading-tight truncate" title={item.master_sku?.sku_name || item.sku_id}>
+                          {item.master_sku?.sku_name || item.sku_id}
+                        </p>
+                      </div>
+                    </td>
+                    <td className="px-1.5 py-1 align-top">
+                      <div className="text-xs text-gray-700 leading-tight truncate">
+                        {item.from_location?.location_name || item.from_location?.location_code || item.from_location_id || '-'}
+                      </div>
+                    </td>
+                    <td className="px-1.5 py-1 align-top">
+                      <div className="text-xs text-gray-700 leading-tight truncate">
+                        {item.to_location?.location_name || item.to_location?.location_code || item.to_location_id || '-'}
+                      </div>
+                    </td>
+                    <td className="px-1.5 py-1 align-top">
+                      <div className="text-xs font-bold text-gray-900 leading-tight">
+                        {item.requested_piece_qty.toLocaleString()}
+                      </div>
+                    </td>
+                    <td className="px-1.5 py-1 align-top">
+                      <div className="text-xs text-gray-700 leading-tight">
+                        {item.requested_pack_qty > 0 ? item.requested_pack_qty.toLocaleString() : '-'}
+                      </div>
+                    </td>
+                    <td className="px-1.5 py-1 align-top">
+                      <div className="text-xs text-gray-700 leading-tight">
+                        {item.move_method === 'pallet' ? 'ทั้งพาเลท' : 'ตามจำนวน'}
+                      </div>
+                    </td>
+                    <td className="px-1.5 py-1 align-top">
+                      <div className="font-mono text-xs text-gray-700 leading-tight truncate">
+                        {item.pallet_id || '-'}
+                      </div>
+                    </td>
+                    <td className="px-1.5 py-1 align-top">
+                      <Badge 
+                        variant={getItemStatusVariant(item.status)} 
+                        size="sm" 
+                        className="whitespace-nowrap text-xs"
+                      >
+                        {MOVE_ITEM_STATUS_LABELS[item.status]}
+                      </Badge>
+                    </td>
+                    <td className="px-1.5 py-1 align-top">
+                      <div className="flex items-center gap-1">
+                        {item.status === 'pending' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() =>
+                              openAssignmentDialog(
+                                [item.move_item_id],
+                                {
+                                  mode: 'single',
+                                  moveNo: move.move_no,
+                                  description: item.master_sku?.sku_name || item.sku_id
+                                }
+                              )
                             }
-                          )
-                        }
-                        disabled={updatingItemStatus}
-                        className="text-xs py-0.5 px-2 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300"
-                      >
-                        มอบหมาย
-                      </Button>
-                    )}
-                    {item.status === 'assigned' && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleStartWork(item)}
-                        disabled={updatingItemStatus}
-                        className="text-xs py-0.5 px-2 hover:bg-yellow-50 hover:text-yellow-700 hover:border-yellow-300"
-                      >
-                        เริ่มงาน
-                      </Button>
-                    )}
-                    {item.status === 'in_progress' && (
-                      <Button
-                        variant="primary"
-                        size="sm"
-                        onClick={() => handleStartScanning(item)}
-                        disabled={updatingItemStatus}
-                        className="text-xs py-0.5 px-2 bg-green-600 hover:bg-green-700"
-                      >
-                        สแกนเพื่อเสร็จงาน
-                      </Button>
-                    )}
-                    {item.status === 'completed' && (
-                      <span className="text-xs text-green-600 font-medium">เสร็จสิ้น</span>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
+                            disabled={updatingItemStatus}
+                            className="text-xs py-0.5 px-2 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300"
+                          >
+                            มอบหมาย
+                          </Button>
+                        )}
+                        {item.status === 'assigned' && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => handleStartWork(item)}
+                            disabled={updatingItemStatus}
+                            className="text-xs py-0.5 px-2 hover:bg-yellow-50 hover:text-yellow-700 hover:border-yellow-300"
+                          >
+                            เริ่มงาน
+                          </Button>
+                        )}
+                        {item.status === 'in_progress' && (
+                          <Button
+                            variant="primary"
+                            size="sm"
+                            onClick={() => handleStartScanning(item)}
+                            disabled={updatingItemStatus}
+                            className="text-xs py-0.5 px-2 bg-green-600 hover:bg-green-700"
+                          >
+                            สแกนเพื่อเสร็จงาน
+                          </Button>
+                        )}
+                        {item.status === 'completed' && (
+                          <span className="text-xs text-green-600 font-medium">เสร็จสิ้น</span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              });
+            })()}
           </tbody>
           </table>
         </div>
@@ -1668,19 +1906,143 @@ const TransferPage: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-thai-gray-100">
-                    {(selectedReceive.wms_receive_items || []).map((item) => {
-                      const draft = draftItems[item.item_id] || {
-                        selected: false,
-                        pieceQty: item.piece_quantity,
-                        toLocationId: '',
-                        moveMethod: item.pallet_id ? 'pallet' : 'sku'
-                      };
+                    {(() => {
+                      const items = selectedReceive.wms_receive_items || [];
+                      const groupedItems: any[] = [];
+                      const processedIds = new Set<number>();
 
-                      const availableText = `${item.piece_quantity.toLocaleString()} ชิ้น` + (item.pack_quantity ? ` / ${item.pack_quantity.toLocaleString()} แพ็ค` : '');
-                      const isPalletMethod = draft.moveMethod === 'pallet';
+                      for (const item of items) {
+                        if (processedIds.has(item.item_id)) continue;
 
-                      return (
-                        <tr key={item.item_id} className={`bg-white ${isPalletMethod ? 'bg-primary-50/40' : ''}`}>
+                        if (!item.pallet_id) {
+                          processedIds.add(item.item_id);
+                          groupedItems.push(item);
+                          continue;
+                        }
+
+                        const sameGroup = items.filter(other =>
+                          !processedIds.has(other.item_id) &&
+                          other.pallet_id === item.pallet_id
+                        );
+
+                        if (sameGroup.length > 1) {
+                          sameGroup.forEach(g => processedIds.add(g.item_id));
+                          groupedItems.push({
+                            ...item,
+                            _isGrouped: true,
+                            _groupItems: sameGroup
+                          });
+                        } else {
+                          processedIds.add(item.item_id);
+                          groupedItems.push(item);
+                        }
+                      }
+
+                      return groupedItems.map((item: any) => {
+                        if (item._isGrouped && item._groupItems) {
+                          return item._groupItems.map((subItem: any, idx: number) => {
+                            const draft = draftItems[subItem.item_id] || {
+                              selected: false,
+                              pieceQty: subItem.piece_quantity,
+                              toLocationId: '',
+                              moveMethod: subItem.pallet_id ? 'pallet' : 'sku'
+                            };
+
+                            const availableText = `${subItem.piece_quantity.toLocaleString()} ชิ้น` + (subItem.pack_quantity ? ` / ${subItem.pack_quantity.toLocaleString()} แพ็ค` : '');
+                            const isPalletMethod = draft.moveMethod === 'pallet';
+
+                            return (
+                              <tr key={`${item.item_id}-${idx}`} className={`bg-white ${isPalletMethod ? 'bg-primary-50/40' : ''}`}>
+                                {idx === 0 && (
+                                  <td className="px-3 py-2 align-middle" rowSpan={item._groupItems.length}>
+                                    <input
+                                      type="checkbox"
+                                      checked={draft.selected}
+                                      onChange={() => handleToggleItem(subItem, item._groupItems)}
+                                      className="w-4 h-4 text-primary-600 border-thai-gray-300 rounded"
+                                    />
+                                  </td>
+                                )}
+                                <td className="px-2 py-2 align-top font-semibold text-thai-gray-900 truncate" title={subItem.product_name || subItem.sku_id}>
+                                  <div>{subItem.product_name || subItem.sku_id}</div>
+                                  <div className="text-thai-gray-500 text-[11px] mt-1">SKU: {subItem.sku_id}</div>
+                                </td>
+                                {idx === 0 && (
+                                  <td className="px-2 py-2 align-middle text-thai-gray-600" rowSpan={item._groupItems.length}>{subItem.pallet_id || '-'}</td>
+                                )}
+                                <td className="px-2 py-2 align-top text-thai-gray-700">{availableText}</td>
+                                <td className="px-2 py-2 align-top">
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    value={draft.pieceQty}
+                                    onChange={(e) => handleItemChange(subItem, 'pieceQty', Number(e.target.value))}
+                                    className={`w-full px-3 py-1.5 border border-thai-gray-200 rounded-lg text-sm ${isPalletMethod ? 'bg-thai-gray-100 cursor-not-allowed' : ''}`}
+                                    disabled={!draft.selected || isPalletMethod}
+                                    readOnly={isPalletMethod}
+                                  />
+                                  <p className="text-[11px] text-thai-gray-400 mt-1">
+                                    {isPalletMethod ? 'ย้ายทั้งพาเลท - ระบบจะใช้จำนวนที่รับทั้งหมด' : `สูงสุด ${subItem.piece_quantity.toLocaleString()} ชิ้น`}
+                                  </p>
+                                </td>
+                                {idx === 0 && (
+                                  <>
+                                    <td className="px-2 py-2 align-middle text-thai-gray-600" rowSpan={item._groupItems.length}>
+                                      {subItem.location_id ? (
+                                        <span className="inline-flex items-center gap-2">
+                                          <MapPin className="w-4 h-4 text-thai-gray-400" />
+                                          <span>{subItem.location_id}</span>
+                                        </span>
+                                      ) : (
+                                        <span className="text-thai-gray-400">-</span>
+                                      )}
+                                    </td>
+                                    <td className="px-2 py-2 align-middle w-64" rowSpan={item._groupItems.length}>
+                                      <div className="space-y-1">
+                                        <ZoneLocationSelect
+                                          warehouseId={selectedToWarehouse || selectedReceive?.warehouse_id || ''}
+                                          value={draft.toLocationId}
+                                          onChange={(locationId) => handleItemChange(subItem, 'toLocationId', locationId, item._groupItems)}
+                                          disabled={!draft.selected}
+                                          placeholder="Addรหัสตำแหน่งปลายทาง"
+                                        />
+                                        {draft.selected && draft.toLocationId && duplicateLocations.includes(draft.toLocationId) && (
+                                          <div className="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded border border-orange-200">
+                                            ⚠️ โลเคชั่นนี้ถูกAddซ้ำ ({locationUsage[draft.toLocationId]?.count || 0} รายการ)
+                                          </div>
+                                        )}
+                                      </div>
+                                    </td>
+                                    <td className="px-2 py-2 align-middle" rowSpan={item._groupItems.length}>
+                                      <select
+                                        value={draft.moveMethod}
+                                        onChange={(e) => handleItemChange(subItem, 'moveMethod', e.target.value, item._groupItems)}
+                                        className="w-full px-3 py-1.5 border border-thai-gray-200 rounded-lg text-sm"
+                                        disabled={!draft.selected}
+                                      >
+                                        <option value="sku">ย้ายตามจำนวน</option>
+                                        <option value="pallet">ย้ายทั้งพาเลท</option>
+                                      </select>
+                                    </td>
+                                  </>
+                                )}
+                              </tr>
+                            );
+                          });
+                        }
+
+                        const draft = draftItems[item.item_id] || {
+                          selected: false,
+                          pieceQty: item.piece_quantity,
+                          toLocationId: '',
+                          moveMethod: item.pallet_id ? 'pallet' : 'sku'
+                        };
+
+                        const availableText = `${item.piece_quantity.toLocaleString()} ชิ้น` + (item.pack_quantity ? ` / ${item.pack_quantity.toLocaleString()} แพ็ค` : '');
+                        const isPalletMethod = draft.moveMethod === 'pallet';
+
+                        return (
+                          <tr key={item.item_id} className={`bg-white ${isPalletMethod ? 'bg-primary-50/40' : ''}`}>
                           <td className="px-3 py-2 align-top">
                             <input
                               type="checkbox"
@@ -1747,8 +2109,9 @@ const TransferPage: React.FC = () => {
                             </select>
                           </td>
                         </tr>
-                      );
-                    })}
+                        );
+                      });
+                    })()}
                   </tbody>
                   </table>
                 </div>

@@ -484,6 +484,26 @@ class MoveService {
         return { data: null, error: 'Quantity must be greater than zero' };
       }
 
+      // ดึงข้อมูล production_date และ expiry_date จาก balance ต้นทาง (ถ้ามี)
+      let productionDate = moveItem.production_date;
+      let expiryDate = moveItem.expiry_date;
+
+      if (moveItem.from_location_id && !productionDate && !expiryDate) {
+        const { data: sourceBalance } = await this.supabase
+          .from('wms_inventory_balances')
+          .select('production_date, expiry_date, lot_no')
+          .eq('warehouse_id', warehouseId)
+          .eq('location_id', moveItem.from_location_id)
+          .eq('sku_id', moveItem.sku_id)
+          .eq('pallet_id_external', moveItem.pallet_id_external || '')
+          .maybeSingle();
+
+        if (sourceBalance) {
+          productionDate = sourceBalance.production_date;
+          expiryDate = sourceBalance.expiry_date;
+        }
+      }
+
       // ตรวจสอบสถานะโลเคชั่นปลายทางก่อนทำการย้าย
       if (moveItem.to_location_id) {
         const locationCheck = await this.validateDestinationLocation(moveItem.to_location_id, pieceQty);
@@ -506,8 +526,8 @@ class MoveService {
           sku_id: moveItem.sku_id,
           pallet_id: moveItem.pallet_id,
           pallet_id_external: moveItem.pallet_id_external,
-          production_date: moveItem.production_date,
-          expiry_date: moveItem.expiry_date,
+          production_date: productionDate,
+          expiry_date: expiryDate,
           pack_qty: packQty,
           piece_qty: pieceQty,
           reference_no: moveHeader.move_no,
@@ -528,8 +548,8 @@ class MoveService {
           sku_id: moveItem.sku_id,
           pallet_id: moveItem.pallet_id,
           pallet_id_external: moveItem.pallet_id_external,
-          production_date: moveItem.production_date,
-          expiry_date: moveItem.expiry_date,
+          production_date: productionDate,
+          expiry_date: expiryDate,
           pack_qty: packQty,
           piece_qty: pieceQty,
           reference_no: moveHeader.move_no,
@@ -605,8 +625,8 @@ class MoveService {
           moveItem.sku_id,
           moveItem.pallet_id ?? null,
           moveItem.pallet_id_external ?? null,
-          moveItem.production_date ?? null,
-          moveItem.expiry_date ?? null,
+          productionDate ?? null,
+          expiryDate ?? null,
           packQty,
           pieceQty,
           moveHeader.move_id

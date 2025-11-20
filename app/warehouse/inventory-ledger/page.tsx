@@ -197,6 +197,51 @@ const InventoryLedgerPage = () => {
     }
   }
 
+  // รวมแถวที่มี pallet_id เดียวกันและค่าคอลัมน์หลักเหมือนกัน
+  const groupedData = [];
+  const processedForGrouping = new Set<number>();
+
+  for (const item of consolidatedData) {
+    if (processedForGrouping.has(item.ledger_id)) continue;
+
+    // ต้องมี pallet_id จึงจะรวมกลุ่ม
+    if (!item.pallet_id) {
+      processedForGrouping.add(item.ledger_id);
+      groupedData.push(item);
+      continue;
+    }
+
+    // หา items ทั้งหมดที่มี pallet_id เดียวกันและมาจากธุรกรรมเดียวกัน
+    const sameGroup = consolidatedData.filter(other =>
+      !processedForGrouping.has(other.ledger_id) &&
+      other.pallet_id === item.pallet_id && // pallet_id เดียวกัน
+      other.transaction_type === item.transaction_type && // ประเภทธุรกรรมเดียวกัน
+      other.direction === item.direction && // ทิศทางเดียวกัน
+      other.warehouse_id === item.warehouse_id && // คลังเดียวกัน
+      // เช็คว่ามาจากธุรกรรมเดียวกัน (receive_item_id หรือ move_item_id)
+      (
+        (item.receive_item_id && other.receive_item_id && 
+         Math.abs(item.receive_item_id - other.receive_item_id) <= 10) || // receive ใกล้เคียงกัน
+        (item.move_item_id && other.move_item_id && item.move_item_id === other.move_item_id)
+      ) &&
+      Math.abs(new Date(item.movement_at).getTime() - new Date(other.movement_at).getTime()) < 5000 // ภายใน 5 วินาที
+    );
+
+    if (sameGroup.length > 1) {
+      // มีมากกว่า 1 รายการ - รวมเป็นกลุ่ม
+      sameGroup.forEach(g => processedForGrouping.add(g.ledger_id));
+      groupedData.push({
+        ...item,
+        _isGrouped: true,
+        _groupItems: sameGroup
+      });
+    } else {
+      // มีแค่รายการเดียว - แสดงปกติ
+      processedForGrouping.add(item.ledger_id);
+      groupedData.push(item);
+    }
+  }
+
   return (
     <div className="h-screen bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
       <div className="h-full flex flex-col space-y-2 pt-0 px-2 pb-2">
@@ -308,13 +353,14 @@ const InventoryLedgerPage = () => {
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันที่/เวลา</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ประเภท</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ทิศทาง</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">คลัง</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap min-w-[120px]">ตำแหน่งต้นทาง</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap min-w-[120px]">ตำแหน่งปลายทาง</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">Move ID</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">Receive ID</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสสินค้า</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชื่อสินค้า</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสพาเลท</th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">คลัง</th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap min-w-[200px]">ตำแหน่ง</th>
                       <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">แพ็ค</th>
                       <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชิ้น</th>
                       <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">น้ำหนัก (กก.)</th>
@@ -326,7 +372,187 @@ const InventoryLedgerPage = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
-                    {consolidatedData.map((ledger: any) => (
+                    {groupedData.map((ledger: any) => {
+                      // ถ้าเป็นกลุ่ม ให้สร้างหลายแถวโดยใช้ rowspan สำหรับคอลัมน์ที่เหมือนกัน
+                      if (ledger._isGrouped && ledger._groupItems) {
+                        return ledger._groupItems.map((item: any, idx: number) => (
+                          <tr
+                            key={`${ledger.ledger_id}-${idx}`}
+                            className={`transition-colors duration-150 ${
+                              ledger._isConsolidated
+                                ? 'hover:bg-blue-50/50 bg-blue-50/20'
+                                : 'hover:bg-blue-50/30'
+                            }`}
+                          >
+                            {/* คอลัมน์ที่ใช้ rowspan - แสดงเฉพาะแถวแรก */}
+                            {idx === 0 && (
+                              <>
+                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-middle" rowSpan={ledger._groupItems.length}>
+                                  <span className="font-mono text-thai-gray-700">{ledger.ledger_id}</span>
+                                </td>
+                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-middle" rowSpan={ledger._groupItems.length}>
+                                  <span className="text-thai-gray-600 font-thai">
+                                    {new Date(ledger.movement_at).toLocaleString('th-TH', {
+                                      year: 'numeric',
+                                      month: '2-digit',
+                                      day: '2-digit',
+                                      hour: '2-digit',
+                                      minute: '2-digit'
+                                    })}
+                                  </span>
+                                </td>
+                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-middle" rowSpan={ledger._groupItems.length}>
+                                  {getTransactionTypeBadge(ledger.transaction_type)}
+                                </td>
+                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-middle" rowSpan={ledger._groupItems.length}>
+                                  {ledger._isConsolidated ? (
+                                    <Badge variant="info" size="sm" className="whitespace-nowrap">
+                                      <span className="text-[10px]">ย้าย</span>
+                                    </Badge>
+                                  ) : (
+                                    getDirectionBadge(ledger.direction)
+                                  )}
+                                </td>
+                                <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap align-middle" rowSpan={ledger._groupItems.length}>
+                                  <span className="font-medium text-thai-gray-700 font-thai">{ledger.warehouse_id}</span>
+                                </td>
+                                <td className="px-2 py-0.5 text-center border-r border-gray-100 min-w-[120px] align-middle" rowSpan={ledger._groupItems.length}>
+                                  {ledger._isConsolidated ? (
+                                    <span className="font-mono text-thai-gray-700 text-xs">
+                                      {(ledger._outEntry as any).master_location?.location_name || ledger._outEntry.location_id || '-'}
+                                    </span>
+                                  ) : ledger.direction === 'out' ? (
+                                    <span className="font-mono text-thai-gray-700 text-xs">
+                                      {(ledger as any).master_location?.location_name || ledger.location_id || '-'}
+                                    </span>
+                                  ) : (
+                                    <span className="text-gray-400">-</span>
+                                  )}
+                                </td>
+                                <td className="px-2 py-0.5 text-center border-r border-gray-100 min-w-[120px] align-middle" rowSpan={ledger._groupItems.length}>
+                                  {ledger._isConsolidated ? (
+                                    <span className="font-mono text-thai-gray-700 text-xs">
+                                      {(ledger._inEntry as any).master_location?.location_name || ledger._inEntry.location_id || '-'}
+                                    </span>
+                                  ) : ledger.direction === 'in' ? (
+                                    <span className="font-mono text-thai-gray-700 text-xs">
+                                      {(ledger as any).master_location?.location_name || ledger.location_id || '-'}
+                                    </span>
+                                  ) : (
+                                    <span className="text-gray-400">-</span>
+                                  )}
+                                </td>
+                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-middle" rowSpan={ledger._groupItems.length}>
+                                  <span className="font-mono text-thai-gray-700">{ledger.move_item_id || '-'}</span>
+                                </td>
+                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-middle" rowSpan={ledger._groupItems.length}>
+                                  <span className="font-mono text-thai-gray-700">{ledger.receive_item_id || '-'}</span>
+                                </td>
+                              </>
+                            )}
+                            
+                            {/* คอลัมน์ที่แตกต่างกันในแต่ละ SKU */}
+                            <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                              <span className="font-mono font-semibold text-thai-gray-700">{item.sku_id}</span>
+                            </td>
+                            <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                              <span className="text-thai-gray-700 font-thai text-[11px]">
+                                {item.master_sku?.sku_name || '-'}
+                              </span>
+                            </td>
+                            
+                            {/* คอลัมน์ที่ใช้ rowspan - แสดงเฉพาะแถวแรก */}
+                            {idx === 0 && (
+                              <>
+                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-middle" rowSpan={ledger._groupItems.length}>
+                                  <div>
+                                    {ledger.pallet_id_external && (
+                                      <div className="font-mono text-thai-gray-700">{ledger.pallet_id_external}</div>
+                                    )}
+                                    {ledger.pallet_id && (
+                                      <div className="font-mono text-[10px] text-gray-500">{ledger.pallet_id}</div>
+                                    )}
+                                    {!ledger.pallet_id && !ledger.pallet_id_external && (
+                                      <span className="text-gray-400">-</span>
+                                    )}
+                                  </div>
+                                </td>
+                              </>
+                            )}
+                            
+                            {/* จำนวนแพ็ค */}
+                            <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
+                              <span className={`font-bold ${
+                                item._isConsolidated ? 'text-blue-600' :
+                                item.direction === 'in' ? 'text-green-600' : 'text-red-600'
+                              }`}>
+                                {item._isConsolidated ? '' : (item.direction === 'in' ? '+' : '-')}
+                                {item.pack_qty?.toLocaleString()}
+                              </span>
+                            </td>
+                            
+                            {/* จำนวนชิ้น */}
+                            <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
+                              <span className={`font-bold ${
+                                item._isConsolidated ? 'text-blue-600' :
+                                item.direction === 'in' ? 'text-green-600' : 'text-red-600'
+                              }`}>
+                                {item._isConsolidated ? '' : (item.direction === 'in' ? '+' : '-')}
+                                {item.piece_qty?.toLocaleString()}
+                              </span>
+                            </td>
+                            
+                            {/* น้ำหนัก */}
+                            <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
+                              {(() => {
+                                const weightPerPiece = item.master_sku?.weight_per_piece_kg || 0;
+                                const totalWeight = (item.piece_qty || 0) * weightPerPiece;
+                                if (totalWeight === 0) return <span className="text-gray-400">-</span>;
+
+                                return (
+                                  <span className={`font-bold ${
+                                    item._isConsolidated ? 'text-blue-600' :
+                                    item.direction === 'in' ? 'text-green-600' : 'text-red-600'
+                                  }`}>
+                                    {item._isConsolidated ? '' : (item.direction === 'in' ? '+' : '-')}
+                                    {totalWeight.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  </span>
+                                );
+                              })()}
+                            </td>
+                            
+                            {/* วันผลิตและวันหมดอายุ - แสดงแยกในแต่ละแถว */}
+                            <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                              <span className="font-medium text-gray-900 font-thai">
+                                {item.production_date ? new Date(item.production_date).toLocaleDateString('th-TH') : '-'}
+                              </span>
+                            </td>
+                            <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                              <span className="font-medium text-gray-900 font-thai">
+                                {item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('th-TH') : '-'}
+                              </span>
+                            </td>
+                            
+                            {/* คอลัมน์ที่ใช้ rowspan - แสดงเฉพาะแถวแรก */}
+                            {idx === 0 && (
+                              <>
+                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-middle" rowSpan={ledger._groupItems.length}>
+                                  <span className="font-mono text-thai-gray-700">{ledger.reference_no || '-'}</span>
+                                </td>
+                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-middle" rowSpan={ledger._groupItems.length}>
+                                  <span className="text-gray-700 font-thai">{ledger.remarks || '-'}</span>
+                                </td>
+                                <td className="px-2 py-0.5 whitespace-nowrap align-middle" rowSpan={ledger._groupItems.length}>
+                                  <span className="font-mono text-thai-gray-700">{ledger.created_by || '-'}</span>
+                                </td>
+                              </>
+                            )}
+                          </tr>
+                        ));
+                      }
+                      
+                      // แถวปกติที่ไม่ได้รวมกลุ่ม
+                      return (
                       <tr
                         key={ledger.ledger_id}
                         className={`transition-colors duration-150 ${
@@ -335,10 +561,10 @@ const InventoryLedgerPage = () => {
                             : 'hover:bg-blue-50/30'
                         }`}
                       >
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">
                           <span className="font-mono text-thai-gray-700">{ledger.ledger_id}</span>
                         </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">
                           <span className="text-thai-gray-600 font-thai">
                             {new Date(ledger.movement_at).toLocaleString('th-TH', {
                               year: 'numeric',
@@ -349,10 +575,10 @@ const InventoryLedgerPage = () => {
                             })}
                           </span>
                         </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">
                           {getTransactionTypeBadge(ledger.transaction_type)}
                         </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">
                           {ledger._isConsolidated ? (
                             <Badge variant="info" size="sm" className="whitespace-nowrap">
                               <span className="text-[10px]">ย้าย</span>
@@ -361,10 +587,39 @@ const InventoryLedgerPage = () => {
                             getDirectionBadge(ledger.direction)
                           )}
                         </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                        <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap align-top">
+                          <span className="font-medium text-thai-gray-700 font-thai">{ledger.warehouse_id}</span>
+                        </td>
+                        <td className="px-2 py-0.5 text-center border-r border-gray-100 min-w-[120px] align-top">
+                          {ledger._isConsolidated ? (
+                            <span className="font-mono text-thai-gray-700 text-xs">
+                              {(ledger._outEntry as any).master_location?.location_name || ledger._outEntry.location_id || '-'}
+                            </span>
+                          ) : ledger.direction === 'out' ? (
+                            <span className="font-mono text-thai-gray-700 text-xs">
+                              {(ledger as any).master_location?.location_name || ledger.location_id || '-'}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-2 py-0.5 text-center border-r border-gray-100 min-w-[120px] align-top">
+                          {ledger._isConsolidated ? (
+                            <span className="font-mono text-thai-gray-700 text-xs">
+                              {(ledger._inEntry as any).master_location?.location_name || ledger._inEntry.location_id || '-'}
+                            </span>
+                          ) : ledger.direction === 'in' ? (
+                            <span className="font-mono text-thai-gray-700 text-xs">
+                              {(ledger as any).master_location?.location_name || ledger.location_id || '-'}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">
                           <span className="font-mono text-thai-gray-700">{ledger.move_item_id || '-'}</span>
                         </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">
                           <span className="font-mono text-thai-gray-700">{ledger.receive_item_id || '-'}</span>
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
@@ -375,7 +630,7 @@ const InventoryLedgerPage = () => {
                             {(ledger as any).master_sku?.sku_name || '-'}
                           </span>
                         </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">
                           <div>
                             {ledger.pallet_id_external && (
                               <div className="font-mono text-thai-gray-700">{ledger.pallet_id_external}</div>
@@ -387,26 +642,6 @@ const InventoryLedgerPage = () => {
                               <span className="text-gray-400">-</span>
                             )}
                           </div>
-                        </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          <span className="font-medium text-thai-gray-700 font-thai">{ledger.warehouse_id}</span>
-                        </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 min-w-[200px]">
-                          {ledger._isConsolidated ? (
-                            <div className="flex items-center gap-1 text-[11px] whitespace-nowrap">
-                              <span className="font-mono text-thai-gray-700">
-                                {(ledger._outEntry as any).master_location?.location_name || ledger._outEntry.location_id || '-'}
-                              </span>
-                              <span className="text-gray-400">→</span>
-                              <span className="font-mono text-thai-gray-700">
-                                {(ledger._inEntry as any).master_location?.location_name || ledger._inEntry.location_id || '-'}
-                              </span>
-                            </div>
-                          ) : (
-                            <span className="font-mono text-thai-gray-700">
-                              {(ledger as any).master_location?.location_name || ledger.location_id || '-'}
-                            </span>
-                          )}
                         </td>
                         <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
                           {ledger._isConsolidated ? (
@@ -453,27 +688,28 @@ const InventoryLedgerPage = () => {
                             );
                           })()}
                         </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">
                           <span className="font-medium text-gray-900 font-thai">
                             {ledger.production_date ? new Date(ledger.production_date).toLocaleDateString('th-TH') : '-'}
                           </span>
                         </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">
                           <span className="font-medium text-gray-900 font-thai">
                             {ledger.expiry_date ? new Date(ledger.expiry_date).toLocaleDateString('th-TH') : '-'}
                           </span>
                         </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">
                           <span className="font-mono text-thai-gray-700">{ledger.reference_no || '-'}</span>
                         </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">
                           <span className="text-gray-700 font-thai">{ledger.remarks || '-'}</span>
                         </td>
-                        <td className="px-2 py-0.5 whitespace-nowrap">
+                        <td className="px-2 py-0.5 whitespace-nowrap align-top">
                           <span className="font-mono text-thai-gray-700">{ledger.created_by || '-'}</span>
                         </td>
                       </tr>
-                    ))}
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

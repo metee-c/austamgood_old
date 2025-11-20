@@ -219,6 +219,41 @@ export class ReceiveService {
     }
   }
 
+  // Get the latest pallet_id for reference
+  async getLatestPalletId(): Promise<{ data: string | null; error: string | null }> {
+    try {
+      const now = new Date();
+      const year = now.getFullYear().toString();
+      const month = String(now.getMonth() + 1).padStart(2, '0');
+      const day = String(now.getDate()).padStart(2, '0');
+      const datePrefix = `ATG${year}${month}${day}`;
+
+      // Get the latest pallet_id for this date from the items table
+      const { data: latestRecord, error } = await this.supabase
+        .from('wms_receive_items')
+        .select('pallet_id')
+        .like('pallet_id', `${datePrefix}%`)
+        .order('pallet_id', { ascending: false })
+        .limit(1);
+
+      if (error) {
+        console.error('Error getting latest pallet_id:', error);
+        return { data: null, error: error.message };
+      }
+
+      if (latestRecord && latestRecord.length > 0 && latestRecord[0].pallet_id) {
+        return { data: latestRecord[0].pallet_id, error: null };
+      }
+
+      // If no pallet exists for today, return the first pallet ID that would be generated
+      const firstPalletId = `${datePrefix}${String(1).padStart(9, '0')}`;
+      return { data: firstPalletId, error: null };
+    } catch (err) {
+      console.error('Error getting latest pallet_id:', err);
+      return { data: null, error: 'Error getting latest pallet ID' };
+    }
+  }
+
   // Create new receive document with multiple items
   async createReceive(payload: CreateReceivePayload): Promise<{ data: ReceiveHeader | null; error: string | null }> {
     // Step 1: Insert the header record

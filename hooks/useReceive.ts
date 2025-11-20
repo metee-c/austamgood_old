@@ -252,7 +252,17 @@ export const useGeneratePalletId = () => {
     }
   };
 
-  return { generatePalletId, generateMultiplePalletIds };
+  const getLatestPalletId = async () => {
+    try {
+      const response = await fetch('/api/receives/latest-pallet-id');
+      const result = await response.json();
+      return { data: result.data, error: result.error };
+    } catch (err) {
+      return { data: null, error: 'Failed to get latest pallet ID' };
+    }
+  };
+
+  return { generatePalletId, generateMultiplePalletIds, getLatestPalletId };
 };
 
 // Hook for pallet scan validation
