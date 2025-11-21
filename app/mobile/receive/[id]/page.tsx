@@ -1,0 +1,791 @@
+'use client';
+
+import React, { useState, useEffect } from 'react';
+import { useRouter, useParams } from 'next/navigation';
+import {
+  ChevronLeft,
+  Package,
+  Calendar,
+  User,
+  TruckIcon,
+  FileText,
+  QrCode,
+  Camera,
+  X,
+  Save,
+  CheckCircle,
+  Clock,
+  AlertCircle,
+  Printer,
+  RefreshCw,
+  Loader2,
+  ScanLine,
+  MapPin
+} from 'lucide-react';
+import Badge from '@/components/ui/Badge';
+import Button from '@/components/ui/Button';
+
+// Types
+interface ReceiveItem {
+  item_id: number;
+  sku_id: string;
+  product_name: string;
+  barcode?: string;
+  piece_quantity: number;
+  pack_quantity: number;
+  pallet_id?: string;
+  pallet_id_external?: string;
+  pallet_scan_status: 'ไม่จำเป็น' | 'รอดำเนินการ' | 'สแกนแล้ว';
+  production_date?: string;
+  expiry_date?: string;
+  location_id?: string;
+  weight_kg?: number;
+  master_sku?: {
+    sku_name: string;
+    barcode: string;
+  };
+  master_location?: {
+    location_code: string;
+    location_name?: string;
+  };
+}
+
+interface ReceiveDocument {
+  receive_id: number;
+  receive_no: string;
+  receive_type: string;
+  reference_doc?: string;
+  receive_date: string;
+  status: string;
+  warehouse_id: string;
+  supplier_id?: string;
+  customer_id?: string;
+  notes?: string;
+  wms_receive_items: ReceiveItem[];
+  master_supplier?: {
+    supplier_name: string;
+  };
+  master_customer?: {
+    customer_name: string;
+  };
+  master_warehouse?: {
+    warehouse_name: string;
+  };
+  received_by_employee?: {
+    first_name: string;
+    last_name: string;
+  };
+}
+
+export default function MobileReceiveDetailPage() {
+  const router = useRouter();
+  const params = useParams();
+  const receiveId = params.id as string;
+
+  const [loading, setLoading] = useState(true);
+  const [receive, setReceive] = useState<ReceiveDocument | null>(null);
+  const [showScanner, setShowScanner] = useState(false);
+  const [scanningItem, setScanningItem] = useState<ReceiveItem | null>(null);
+  const [manualInput, setManualInput] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    if (receiveId) {
+      fetchReceiveDetail();
+    }
+  }, [receiveId]);
+
+  const fetchReceiveDetail = async () => {
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/receives/${receiveId}`);
+      const result = await response.json();
+
+      if (result.data) {
+        setReceive(result.data);
+      }
+    } catch (error) {
+      console.error('Error fetching receive detail:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    await fetchReceiveDetail();
+    setRefreshing(false);
+    playTapSound();
+  };
+
+  const handleBack = () => {
+    router.push('/mobile/receive');
+  };
+
+  const handleStartScan = (item: ReceiveItem) => {
+    setScanningItem(item);
+    setShowScanner(true);
+    setManualInput('');
+  };
+
+  const handleCloseScan = () => {
+    setShowScanner(false);
+    setScanningItem(null);
+    setManualInput('');
+  };
+
+  const handleSaveExternalPallet = async () => {
+    if (!scanningItem || !manualInput.trim()) {
+      alert('กรุณากรอกรหัสพาเลทภายนอก');
+      return;
+    }
+
+    try {
+      setSaving(true);
+      const response = await fetch('/api/receive/update-external-pallet', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          itemId: scanningItem.item_id,
+          externalPalletId: manualInput.trim(),
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.error) {
+        alert(`เกิดข้อผิดพลาด: ${result.error}`);
+        return;
+      }
+
+      // Success
+      playSuccessSound();
+      alert('✅ บันทึกรหัสพาเลทสำเร็จ!');
+
+      // Refresh data
+      await fetchReceiveDetail();
+
+      // Close scanner
+      handleCloseScan();
+    } catch (error) {
+      console.error('Error saving external pallet:', error);
+      alert('เกิดข้อผิดพลาดในการบันทึก');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handlePrintLabel = (item: ReceiveItem) => {
+    // Open print window
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) return;
+
+    const labelContent = generateLabelHTML(item);
+    printWindow.document.write(labelContent);
+    printWindow.document.close();
+
+    setTimeout(() => {
+      printWindow.print();
+      printWindow.close();
+    }, 250);
+
+    playTapSound();
+  };
+
+  const generateLabelHTML = (item: ReceiveItem): string => {
+    const barcode = item.pallet_id_external || item.pallet_id || item.barcode || item.sku_id;
+    const productName = item.master_sku?.sku_name || item.product_name || '';
+    const receiveDate = receive?.receive_date ? formatThaiDate(receive.receive_date) : '-';
+    const mfgDate = item.production_date ? formatThaiDate(item.production_date) : '-';
+    const expDate = item.expiry_date ? formatThaiDate(item.expiry_date) : '-';
+    const receiverName = receive?.received_by_employee
+      ? `${receive.received_by_employee.first_name} ${receive.received_by_employee.last_name}`
+      : '-';
+
+    return `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>Pallet Label - ${barcode}</title>
+        <style>
+          @page { size: 4in 6in; margin: 0; }
+          * { margin: 0; padding: 0; box-sizing: border-box; }
+          body {
+            font-family: 'Sarabun', Arial, sans-serif;
+            width: 4in;
+            height: 6in;
+            padding: 0.25in;
+            display: flex;
+            flex-direction: column;
+          }
+          .barcode-section {
+            text-align: center;
+            padding: 10px 0;
+            border-bottom: 2px solid #000;
+            margin-bottom: 10px;
+          }
+          .barcode-text {
+            font-size: 16px;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+            margin-top: 5px;
+          }
+          .info-section {
+            flex: 1;
+            font-size: 14px;
+            line-height: 1.6;
+          }
+          .info-row {
+            display: flex;
+            margin-bottom: 8px;
+          }
+          .info-label {
+            width: 120px;
+            font-weight: normal;
+          }
+          .info-value {
+            flex: 1;
+            font-weight: bold;
+          }
+          .quantities {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin: 10px 0;
+            padding: 10px;
+            border: 2px solid #000;
+          }
+          .qty-box {
+            text-align: center;
+          }
+          .qty-label {
+            font-size: 12px;
+            margin-bottom: 5px;
+          }
+          .qty-value {
+            font-size: 32px;
+            font-weight: bold;
+          }
+          .dates-section {
+            margin: 10px 0;
+            padding: 10px;
+            border: 1px solid #000;
+          }
+          .date-row {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+            font-size: 14px;
+          }
+          .date-label {
+            font-weight: normal;
+          }
+          .date-value {
+            font-weight: bold;
+            font-size: 16px;
+          }
+          .receiver-section {
+            margin-top: 10px;
+            padding-top: 10px;
+            border-top: 1px solid #000;
+          }
+          .receiver-name {
+            font-size: 18px;
+            font-weight: bold;
+            text-align: center;
+            padding: 10px 0;
+            border-bottom: 2px dotted #000;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="barcode-section">
+          <svg id="barcode"></svg>
+          <div class="barcode-text">${barcode}</div>
+        </div>
+
+        <div class="info-section">
+          <div class="info-row">
+            <span class="info-label">วันที่รับสินค้า:</span>
+            <span class="info-value">${receiveDate}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">SKU:</span>
+            <span class="info-value">${item.sku_id}</span>
+          </div>
+          <div class="info-row">
+            <span class="info-label">ชื่อสินค้า:</span>
+            <span class="info-value">${productName}</span>
+          </div>
+
+          <div class="quantities">
+            <div class="qty-box">
+              <div class="qty-label">จำนวนแพ็ค</div>
+              <div class="qty-value">${item.pack_quantity}</div>
+            </div>
+            <div class="qty-box">
+              <div class="qty-label">จำนวนชิ้น</div>
+              <div class="qty-value">${item.piece_quantity}</div>
+            </div>
+          </div>
+
+          <div class="dates-section">
+            <div class="date-row">
+              <span class="date-label">วันที่ผลิต:</span>
+              <span class="date-value">${mfgDate}</span>
+            </div>
+            <div class="date-row">
+              <span class="date-label">วันที่หมดอายุ:</span>
+              <span class="date-value">${expDate}</span>
+            </div>
+          </div>
+
+          <div class="receiver-section">
+            <div style="font-size: 12px; margin-bottom: 5px;">ชื่อผู้รับ:</div>
+            <div class="receiver-name">${receiverName}</div>
+          </div>
+        </div>
+
+        <script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.5/dist/JsBarcode.all.min.js"></script>
+        <script>
+          JsBarcode("#barcode", "${barcode}", {
+            format: "CODE128",
+            width: 2,
+            height: 45,
+            displayValue: false
+          });
+        </script>
+      </body>
+      </html>
+    `;
+  };
+
+  const playTapSound = () => {
+    try {
+      const audio = new Audio('/audio/tap.mp3');
+      audio.volume = 0.3;
+      audio.play().catch(() => {});
+    } catch (err) {
+      // Silent fail
+    }
+  };
+
+  const playSuccessSound = () => {
+    try {
+      const audio = new Audio('/audio/success.mp3');
+      audio.play().catch(() => {});
+    } catch (error) {
+      // Silent fail
+    }
+  };
+
+  const formatThaiDate = (dateString?: string) => {
+    if (!dateString) return '-';
+    try {
+      const date = new Date(dateString);
+      return date.toLocaleDateString('th-TH', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric'
+      });
+    } catch {
+      return dateString;
+    }
+  };
+
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case 'รอรับเข้า':
+        return <Badge variant="default" size="sm">รอรับเข้า</Badge>;
+      case 'รับเข้าแล้ว':
+        return <Badge variant="info" size="sm">รับเข้าแล้ว</Badge>;
+      case 'กำลังตรวจสอบ':
+        return <Badge variant="warning" size="sm">กำลังตรวจสอบ</Badge>;
+      case 'สำเร็จ':
+        return <Badge variant="success" size="sm">สำเร็จ</Badge>;
+      default:
+        return <Badge variant="default" size="sm">{status}</Badge>;
+    }
+  };
+
+  const getScanStatusBadge = (status: string) => {
+    switch (status) {
+      case 'สแกนแล้ว':
+        return <Badge variant="success" size="sm">✓ สแกนแล้ว</Badge>;
+      case 'รอดำเนินการ':
+        return <Badge variant="warning" size="sm">⏳ รอสแกน</Badge>;
+      default:
+        return <Badge variant="secondary" size="sm">ไม่จำเป็น</Badge>;
+    }
+  };
+
+  const getPendingScanCount = () => {
+    if (!receive) return 0;
+    return receive.wms_receive_items.filter(item => item.pallet_scan_status === 'รอดำเนินการ').length;
+  };
+
+  // Loading state
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader2 className="w-12 h-12 text-blue-500 animate-spin mx-auto mb-4" />
+          <p className="text-gray-600 font-thai">กำลังโหลดข้อมูล...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Error state
+  if (!receive) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="text-center">
+          <AlertCircle className="w-16 h-16 text-red-500 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-gray-900 font-thai mb-2">ไม่พบข้อมูล</h2>
+          <p className="text-gray-600 font-thai mb-4">ไม่พบเอกสารรับที่ระบุ</p>
+          <Button variant="primary" onClick={handleBack}>
+            กลับไปหน้ารายการ
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Scanner View
+  if (showScanner && scanningItem) {
+    return (
+      <div className="min-h-screen bg-gray-900 flex flex-col pb-20">
+        {/* Header */}
+        <div className="bg-gray-800 p-4 flex items-center justify-between">
+          <button
+            onClick={handleCloseScan}
+            className="text-white p-2 hover:bg-gray-700 rounded-lg transition-colors"
+          >
+            <X className="w-6 h-6" />
+          </button>
+          <h2 className="text-white font-bold font-thai text-lg">สแกนพาเลทภายนอก</h2>
+          <div className="w-10" />
+        </div>
+
+        {/* Scanning Area */}
+        <div className="flex-1 flex flex-col items-center justify-center p-4">
+          <div className="bg-white/10 border-4 border-dashed border-blue-400 rounded-2xl w-full max-w-md aspect-square flex items-center justify-center mb-8">
+            <div className="text-center">
+              <ScanLine className="w-24 h-24 text-blue-400 mx-auto mb-4 animate-pulse" />
+              <p className="text-white text-lg font-thai">เตรียมสแกนบาร์โค้ด</p>
+              <p className="text-gray-400 text-sm font-thai mt-2">หรือพิมพ์รหัสด้านล่าง</p>
+            </div>
+          </div>
+
+          {/* Item Info */}
+          <div className="bg-gray-800 rounded-xl p-4 w-full max-w-md mb-6">
+            <div className="text-gray-400 text-sm font-thai mb-2">รายการที่กำลังสแกน:</div>
+            <div className="text-white font-bold font-thai text-lg mb-1">
+              {scanningItem.master_sku?.sku_name || scanningItem.product_name}
+            </div>
+            <div className="text-gray-400 text-sm font-thai mb-3">
+              SKU: {scanningItem.sku_id}
+            </div>
+            <div className="flex gap-3">
+              <div className="bg-blue-500/20 px-3 py-1 rounded">
+                <span className="text-blue-300 text-sm font-thai">{scanningItem.pack_quantity} แพ็ค</span>
+              </div>
+              <div className="bg-green-500/20 px-3 py-1 rounded">
+                <span className="text-green-300 text-sm font-thai">{scanningItem.piece_quantity} ชิ้น</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Manual Input */}
+          <div className="w-full max-w-md">
+            <label className="text-white text-sm font-thai mb-2 block">
+              พิมพ์รหัสพาเลทภายนอก:
+            </label>
+            <input
+              type="text"
+              value={manualInput}
+              onChange={(e) => setManualInput(e.target.value)}
+              placeholder="สแกนหรือพิมพ์รหัส..."
+              className="w-full px-4 py-4 bg-gray-800 border-2 border-gray-700 rounded-xl text-white text-lg font-mono focus:border-blue-500 focus:outline-none"
+              autoFocus
+              onKeyPress={(e) => {
+                if (e.key === 'Enter' && manualInput.trim()) {
+                  handleSaveExternalPallet();
+                }
+              }}
+            />
+          </div>
+
+          {/* Save Button */}
+          <Button
+            variant="primary"
+            size="lg"
+            onClick={handleSaveExternalPallet}
+            disabled={!manualInput.trim() || saving}
+            loading={saving}
+            className="w-full max-w-md mt-6 py-4 text-lg font-thai"
+          >
+            {saving ? 'กำลังบันทึก...' : '✓ บันทึกรหัสพาเลท'}
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Main Detail View
+  const pendingCount = getPendingScanCount();
+  const totalItems = receive.wms_receive_items.length;
+  const completedCount = totalItems - pendingCount;
+
+  return (
+    <div className="min-h-screen bg-gray-50 pb-20">
+      {/* Header */}
+      <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white sticky top-0 z-10 shadow-lg">
+        <div className="p-4">
+          <div className="flex items-center gap-3 mb-3">
+            <button
+              onClick={handleBack}
+              className="p-2 hover:bg-white/20 rounded-lg transition-colors active:scale-95"
+            >
+              <ChevronLeft className="w-6 h-6" />
+            </button>
+            <div className="flex-1">
+              <h1 className="text-xl font-bold font-thai">
+                {receive.receive_no}
+              </h1>
+              <p className="text-sm text-blue-100 font-thai">
+                {formatThaiDate(receive.receive_date)}
+              </p>
+            </div>
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="p-2 hover:bg-white/20 rounded-lg transition-colors active:scale-95 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
+            </button>
+          </div>
+
+          {/* Progress Bar */}
+          <div className="bg-white/20 rounded-full h-3 mb-2">
+            <div
+              className="bg-green-400 h-3 rounded-full transition-all duration-500"
+              style={{ width: `${totalItems > 0 ? (completedCount / totalItems) * 100 : 0}%` }}
+            />
+          </div>
+          <div className="flex justify-between text-xs font-thai text-blue-100">
+            <span>สแกนแล้ว {completedCount}/{totalItems}</span>
+            <span>{totalItems > 0 ? Math.round((completedCount / totalItems) * 100) : 0}%</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Info Section */}
+      <div className="bg-white border-b border-gray-200 p-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-blue-50 rounded-lg p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <FileText className="w-4 h-4 text-blue-600" />
+              <span className="text-xs text-blue-600 font-thai">ประเภท</span>
+            </div>
+            <div className="text-sm font-semibold text-blue-900 font-thai">
+              {receive.receive_type}
+            </div>
+          </div>
+
+          <div className="bg-green-50 rounded-lg p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <CheckCircle className="w-4 h-4 text-green-600" />
+              <span className="text-xs text-green-600 font-thai">สถานะ</span>
+            </div>
+            <div>{getStatusBadge(receive.status)}</div>
+          </div>
+
+          {receive.reference_doc && (
+            <div className="col-span-2 bg-purple-50 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <FileText className="w-4 h-4 text-purple-600" />
+                <span className="text-xs text-purple-600 font-thai">เอกสารอ้างอิง</span>
+              </div>
+              <div className="text-sm font-semibold text-purple-900 font-mono">
+                {receive.reference_doc}
+              </div>
+            </div>
+          )}
+
+          {receive.master_supplier && (
+            <div className="col-span-2 bg-gray-50 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <TruckIcon className="w-4 h-4 text-gray-600" />
+                <span className="text-xs text-gray-600 font-thai">ผู้จำหน่าย</span>
+              </div>
+              <div className="text-sm font-semibold text-gray-900 font-thai">
+                {receive.master_supplier.supplier_name}
+              </div>
+            </div>
+          )}
+
+          {receive.master_customer && (
+            <div className="col-span-2 bg-gray-50 rounded-lg p-3">
+              <div className="flex items-center gap-2 mb-1">
+                <User className="w-4 h-4 text-gray-600" />
+                <span className="text-xs text-gray-600 font-thai">ลูกค้า</span>
+              </div>
+              <div className="text-sm font-semibold text-gray-900 font-thai">
+                {receive.master_customer.customer_name}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Items Header */}
+      <div className="bg-white border-b border-gray-200 p-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold font-thai text-gray-900">
+            รายการสินค้า ({totalItems})
+          </h2>
+          {pendingCount > 0 && (
+            <Badge variant="warning" size="sm">
+              รอสแกน {pendingCount} รายการ
+            </Badge>
+          )}
+        </div>
+      </div>
+
+      {/* Items List */}
+      <div className="p-4 space-y-3">
+        {receive.wms_receive_items.map((item, index) => {
+          const needsScan = item.pallet_scan_status === 'รอดำเนินการ';
+
+          return (
+            <div
+              key={item.item_id}
+              className={`bg-white rounded-xl shadow-sm border-2 overflow-hidden transition-all ${
+                needsScan ? 'border-amber-300 bg-amber-50/30' : 'border-gray-200'
+              }`}
+            >
+              {/* Item Header */}
+              <div className="p-4 pb-3">
+                <div className="flex items-start justify-between mb-2">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="bg-gray-100 text-gray-600 text-xs font-mono px-2 py-1 rounded">
+                        #{index + 1}
+                      </span>
+                      {getScanStatusBadge(item.pallet_scan_status)}
+                    </div>
+                    <h3 className="font-bold text-gray-900 font-thai text-base mb-1">
+                      {item.master_sku?.sku_name || item.product_name}
+                    </h3>
+                    <p className="text-sm text-gray-600 font-mono">
+                      SKU: {item.sku_id}
+                    </p>
+                    {item.barcode && (
+                      <p className="text-sm text-gray-500 font-mono">
+                        Barcode: {item.barcode}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Quantities */}
+                <div className="flex gap-2 mt-3">
+                  <div className="flex-1 bg-blue-50 rounded-lg p-2 text-center">
+                    <div className="text-xs text-blue-600 font-thai mb-1">แพ็ค</div>
+                    <div className="text-lg font-bold text-blue-900">{item.pack_quantity}</div>
+                  </div>
+                  <div className="flex-1 bg-green-50 rounded-lg p-2 text-center">
+                    <div className="text-xs text-green-600 font-thai mb-1">ชิ้น</div>
+                    <div className="text-lg font-bold text-green-900">{item.piece_quantity}</div>
+                  </div>
+                  {item.weight_kg && (
+                    <div className="flex-1 bg-gray-50 rounded-lg p-2 text-center">
+                      <div className="text-xs text-gray-600 font-thai mb-1">น้ำหนัก</div>
+                      <div className="text-lg font-bold text-gray-900">{item.weight_kg} กก.</div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Pallet Info */}
+                <div className="mt-3 space-y-2">
+                  {item.pallet_id && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <Package className="w-4 h-4 text-gray-400" />
+                      <span className="text-gray-600 font-thai">พาเลทภายใน:</span>
+                      <span className="font-mono text-blue-600">{item.pallet_id}</span>
+                    </div>
+                  )}
+                  {item.pallet_id_external && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <QrCode className="w-4 h-4 text-gray-400" />
+                      <span className="text-gray-600 font-thai">พาเลทภายนอก:</span>
+                      <span className="font-mono text-green-600">{item.pallet_id_external}</span>
+                    </div>
+                  )}
+                  {item.master_location && (
+                    <div className="flex items-center gap-2 text-sm">
+                      <MapPin className="w-4 h-4 text-gray-400" />
+                      <span className="text-gray-600 font-thai">ที่จัดเก็บ:</span>
+                      <span className="font-mono text-purple-600">{item.master_location.location_code}</span>
+                    </div>
+                  )}
+                </div>
+
+                {/* Dates */}
+                {(item.production_date || item.expiry_date) && (
+                  <div className="mt-3 pt-3 border-t border-gray-100 space-y-1">
+                    {item.production_date && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-600 font-thai">วันที่ผลิต:</span>
+                        <span className="font-semibold text-gray-900">{formatThaiDate(item.production_date)}</span>
+                      </div>
+                    )}
+                    {item.expiry_date && (
+                      <div className="flex justify-between text-xs">
+                        <span className="text-gray-600 font-thai">วันหมดอายุ:</span>
+                        <span className="font-semibold text-gray-900">{formatThaiDate(item.expiry_date)}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Action Buttons */}
+              <div className="grid grid-cols-2 gap-0 border-t border-gray-200">
+                {needsScan ? (
+                  <button
+                    onClick={() => handleStartScan(item)}
+                    className="col-span-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white py-4 font-bold font-thai text-base flex items-center justify-center gap-2 hover:from-amber-600 hover:to-orange-600 transition-all active:scale-95"
+                  >
+                    <Camera className="w-5 h-5" />
+                    สแกนพาเลทภายนอก
+                  </button>
+                ) : (
+                  <>
+                    <div className="bg-green-50 text-green-700 py-3 font-semibold font-thai text-sm flex items-center justify-center gap-2 border-r border-gray-200">
+                      <CheckCircle className="w-4 h-4" />
+                      สแกนเรียบร้อย
+                    </div>
+                    <button
+                      onClick={() => handlePrintLabel(item)}
+                      className="bg-blue-50 text-blue-700 py-3 font-semibold font-thai text-sm flex items-center justify-center gap-2 hover:bg-blue-100 transition-colors active:scale-95"
+                    >
+                      <Printer className="w-4 h-4" />
+                      พิมพ์ลาเบล
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}

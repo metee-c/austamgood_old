@@ -22,9 +22,26 @@ export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const warehouse_id = searchParams.get('warehouse_id');
+    const location_id = searchParams.get('location_id');
     const location_type = searchParams.get('location_type');
     const zone = searchParams.get('zone');
     const search = searchParams.get('search');
+
+    // If requesting specific location by ID, return full details
+    if (location_id) {
+      const { data, error } = await supabase
+        .from('master_location')
+        .select('*')
+        .eq('location_id', location_id)
+        .single();
+
+      if (error) {
+        console.error('Error fetching location by ID:', error);
+        return NextResponse.json({ data: null, error: error.message }, { status: 500 });
+      }
+
+      return NextResponse.json({ data: data ? [data] : [], error: null });
+    }
 
     // Build base query
     let baseQuery = supabase

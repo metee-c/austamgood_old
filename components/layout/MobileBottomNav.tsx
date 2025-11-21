@@ -7,7 +7,8 @@ import {
   Truck,
   Move,
   Package,
-  QrCode
+  QrCode,
+  Home
 } from 'lucide-react';
 
 interface NavItem {
@@ -18,9 +19,9 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   {
-    path: '/mobile/loading',
-    icon: Truck,
-    label: 'โหลดสินค้า'
+    path: '/mobile/receive',
+    icon: Package,
+    label: 'รับสินค้า'
   },
   {
     path: '/mobile/transfer',
@@ -28,14 +29,19 @@ const navItems: NavItem[] = [
     label: 'ย้ายสินค้า'
   },
   {
-    path: '/mobile/receive',
-    icon: Package,
-    label: 'รับสินค้า'
+    path: '/mobile',
+    icon: Home,
+    label: 'หน้าหลัก'
   },
   {
     path: '/mobile/pick',
     icon: QrCode,
     label: 'หยิบสินค้า'
+  },
+  {
+    path: '/mobile/loading',
+    icon: Truck,
+    label: 'โหลดสินค้า'
   }
 ];
 
@@ -48,7 +54,10 @@ export default function MobileBottomNav() {
         <ul className="flex items-center justify-around">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = pathname?.startsWith(item.path);
+            // Exact match for home page, startsWith for others
+            const isActive = item.path === '/mobile'
+              ? pathname === '/mobile'
+              : pathname?.startsWith(item.path);
 
             return (
               <li key={item.path} className="flex-1">

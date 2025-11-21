@@ -34,6 +34,8 @@ export interface ReceiveHeader {
   receive_images?: string[];
   receive_image_names?: string[];
   receive_image_count?: number;
+  pallet_box_option?: string;
+  pallet_calculation_method?: string;
   created_by?: number;
   created_at: string;
   updated_at: string;
@@ -75,6 +77,8 @@ export interface CreateReceivePayload {
   notes?: string;
   receive_images?: string[];
   receive_image_names?: string[];
+  pallet_box_option?: string;
+  pallet_calculation_method?: string;
   created_by?: number;
 
   // Line items data
@@ -272,6 +276,8 @@ export class ReceiveService {
         notes: payload.notes,
         receive_images: payload.receive_images,
         receive_image_names: payload.receive_image_names,
+        pallet_box_option: payload.pallet_box_option,
+        pallet_calculation_method: payload.pallet_calculation_method,
         created_by: payload.created_by,
       })
       .select()
@@ -288,8 +294,8 @@ export class ReceiveService {
         return { data: null, error: 'Failed to create receive header: No data returned.' };
     }
 
-    // Step 2: Prepare and insert the line items
-    const itemsToInsert = payload.items.map(item => ({
+    // Step 2: Generate Pallet IDs if needed
+    let itemsToInsert = payload.items.map(item => ({
       ...item,
       receive_id: header.receive_id, // Link to the new header
       created_by: payload.created_by, // Add created_by to items
@@ -298,6 +304,30 @@ export class ReceiveService {
       expiry_date: item.expiry_date && item.expiry_date.trim() !== '' ? item.expiry_date : null,
       received_date: item.received_date && item.received_date.trim() !== '' ? item.received_date : null,
     }));
+
+    // Auto-generate Pallet IDs based on pallet_box_option
+    if (payload.pallet_box_option === 'สร้าง_Pallet_ID' || payload.pallet_box_option === 'สร้าง_Pallet_ID_รวม') {
+      const palletIdsNeeded = payload.pallet_box_option === 'สร้าง_Pallet_ID'
+        ? itemsToInsert.length // แยก Pallet แต่ละ SKU
+        : 1; // รวม Pallet ทุก SKU
+
+      const { data: palletIds, error: palletError } = await this.generateMultiplePalletIds(palletIdsNeeded);
+
+      if (palletError || !palletIds) {
+        console.error('Error generating pallet IDs:', palletError);
+        await this.supabase.from('wms_receives').delete().eq('receive_id', header.receive_id);
+        return { data: null, error: `Failed to generate pallet IDs: ${palletError}` };
+      }
+
+      // Assign pallet IDs to items
+      itemsToInsert = itemsToInsert.map((item, index) => ({
+        ...item,
+        pallet_id: payload.pallet_box_option === 'สร้าง_Pallet_ID'
+          ? palletIds[index] // แต่ละ item ได้ pallet แยก
+          : palletIds[0], // ทุก item ใช้ pallet เดียวกัน
+        pallet_scan_status: 'ไม่จำเป็น' // สร้างอัตโนมัติแล้ว ไม่ต้องสแกน
+      }));
+    }
 
     const { error: itemsError } = await this.supabase
       .from('wms_receive_items')
@@ -325,8 +355,8 @@ export class ReceiveService {
           master_supplier(supplier_name),
           master_customer(customer_name),
           master_warehouse(warehouse_name),
-          received_by_employee:master_employee!received_by(first_name, last_name),
-          created_by_employee:master_employee!created_by(first_name, last_name)
+          received_by_employee:master_employee!fk_receives_employee(first_name, last_name),
+          created_by_employee:master_employee!fk_receives_created_by(first_name, last_name)
         `)
         .order('receive_date', { ascending: false });
 
@@ -388,12 +418,13 @@ export class ReceiveService {
           *,
           wms_receive_items (
             *,
-            master_sku (sku_name, barcode)
+            master_sku (sku_name, barcode),
+            master_location (location_code, location_name)
           ),
           master_supplier (supplier_name),
           master_customer (customer_name),
           master_warehouse (warehouse_name),
-          master_employee (first_name, last_name)
+          received_by_employee:master_employee!fk_receives_employee (first_name, last_name)
         `)
         .eq('receive_id', id)
         .single();

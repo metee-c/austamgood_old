@@ -10,7 +10,6 @@ import {
   Smartphone,
   ArrowRight
 } from 'lucide-react';
-import MobileBottomNav from '@/components/layout/MobileBottomNav';
 
 interface MobileTool {
   path: string;
@@ -164,9 +163,6 @@ export default function MobileToolsPage() {
           </div>
         </div>
       </div>
-
-      {/* Bottom Navigation */}
-      <MobileBottomNav />
     </div>
   );
 }

@@ -53,6 +53,8 @@ const InboundPage = () => {
   const [savingPalletIds, setSavingPalletIds] = useState<Record<string, boolean>>({});
   const [sortField, setSortField] = useState<string>('');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [changingStatus, setChangingStatus] = useState<Record<number, boolean>>({});
+  
   // Build filters object
   const filters: ReceiveFilters = useMemo(() => ({
     ...(selectedType !== 'all' && { receive_type: selectedType as ReceiveType }),
@@ -225,6 +227,41 @@ const InboundPage = () => {
       setSavingPalletIds((prev) => ({ ...prev, [itemId]: false }));
     }
   };
+
+  // Handle status change
+  const handleStatusChange = async (receiveId: number, newStatus: ReceiveStatus) => {
+    if (changingStatus[receiveId]) return;
+
+    setChangingStatus((prev) => ({ ...prev, [receiveId]: true }));
+
+    try {
+      const response = await fetch(`/api/receives/${receiveId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          status: newStatus,
+        }),
+      });
+
+      const result = await response.json();
+
+      if (result.error) {
+        alert(`เกิดข้อผิดพลาด: ${result.error}`);
+        return;
+      }
+
+      // Success - refresh data
+      refetch();
+    } catch (error) {
+      console.error('Error changing status:', error);
+      alert('เกิดข้อผิดพลาดในการเปลี่ยนสถานะ');
+    } finally {
+      setChangingStatus((prev) => ({ ...prev, [receiveId]: false }));
+    }
+  };
+
   // Receive types for dropdown
   const receiveTypes: { value: ReceiveType | 'all'; label: string }[] = [
     { value: 'all', label: 'ทั้งหมด' },
@@ -286,6 +323,24 @@ const InboundPage = () => {
         return <Badge variant="warning" size="sm"><span className="text-[10px]">รอดำเนินการ</span></Badge>;
       default:
         return <Badge variant="secondary" size="sm"><span className="text-[10px]">ไม่จำเป็น</span></Badge>;
+    }
+  };
+
+  const getPalletBoxOptionLabel = (option?: string) => {
+    if (!option) return '-';
+    switch (option) {
+      case 'ไม่สร้าง_Pallet_ID':
+        return 'ไม่สร้าง Pallet ID';
+      case 'สร้าง_Pallet_ID':
+        return 'สร้าง Pallet ID (แยก Pallet แต่ละ SKU)';
+      case 'สร้าง_Pallet_ID_รวม':
+        return 'สร้าง Pallet ID (1 Pallet > หลาย SKUs - Mixed Pallet)';
+      case 'สร้าง_Pallet_ID_และ_Box_ID':
+        return 'สร้าง Pallet ID + Box ID';
+      case 'สร้าง_Pallet_ID_และ_สแกน_Pallet_ID_ภายนอก':
+        return 'สร้าง Pallet ID + สแกน Pallet ID ภายนอก';
+      default:
+        return option;
     }
   };
   // Handle loading and error states
@@ -560,8 +615,26 @@ const InboundPage = () => {
                             {formatThaiDate(receive.receive_date)}
                           </div>
                         </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          {getStatusBadge(receive.status)}
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          <select
+                            value={receive.status}
+                            onChange={(e) => handleStatusChange(receive.receive_id, e.target.value as ReceiveStatus)}
+                            disabled={changingStatus[receive.receive_id]}
+                            className={`
+                              text-[10px] font-medium px-2 py-1 rounded border-0 cursor-pointer
+                              focus:outline-none focus:ring-2 focus:ring-blue-300
+                              ${changingStatus[receive.receive_id] ? 'opacity-50 cursor-wait' : ''}
+                              ${receive.status === 'รอรับเข้า' ? 'bg-gray-100 text-gray-700' : ''}
+                              ${receive.status === 'รับเข้าแล้ว' ? 'bg-blue-100 text-blue-700' : ''}
+                              ${receive.status === 'กำลังตรวจสอบ' ? 'bg-yellow-100 text-yellow-700' : ''}
+                              ${receive.status === 'สำเร็จ' ? 'bg-green-100 text-green-700' : ''}
+                            `}
+                          >
+                            <option value="รอรับเข้า">รอรับเข้า</option>
+                            <option value="รับเข้าแล้ว">รับเข้าแล้ว</option>
+                            <option value="กำลังตรวจสอบ">กำลังตรวจสอบ</option>
+                            <option value="สำเร็จ">สำเร็จ</option>
+                          </select>
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                           {receive.master_employee ? (
@@ -609,6 +682,22 @@ const InboundPage = () => {
                                   <span>พาเลท {uniquePallets.length || 0}</span>
                                   <span>แพ็ค {totalPackQty.toLocaleString()}</span>
                                   <span>ชิ้น {totalPieceQty.toLocaleString()}</span>
+                                </div>
+                              </div>
+                              
+                              {/* Pallet/Box Options Display */}
+                              <div className="grid grid-cols-2 gap-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                <div>
+                                  <div className="text-[10px] text-gray-600 font-medium mb-1">เงื่อนไขการสร้าง Pallet/Box</div>
+                                  <div className="text-[11px] font-semibold text-gray-900">
+                                    {getPalletBoxOptionLabel(receive.pallet_box_option)}
+                                  </div>
+                                </div>
+                                <div>
+                                  <div className="text-[10px] text-gray-600 font-medium mb-1">วิธีการคำนวณจำนวน</div>
+                                  <div className="text-[11px] font-semibold text-gray-900">
+                                    {receive.pallet_calculation_method || '-'}
+                                  </div>
                                 </div>
                               </div>
                               {items.length > 0 ? (

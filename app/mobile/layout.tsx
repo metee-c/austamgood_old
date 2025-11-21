@@ -1,4 +1,5 @@
 import React from 'react';
+import MobileBottomNav from '@/components/layout/MobileBottomNav';
 
 export default function MobileLayout({
   children,
@@ -8,6 +9,7 @@ export default function MobileLayout({
   return (
     <>
       {children}
+      <MobileBottomNav />
     </>
   );
 }

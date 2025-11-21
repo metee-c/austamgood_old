@@ -31,7 +31,8 @@
       "Bash(C:UsersUser.denobindeno.exe --version)",
       "Bash(powershell -c \"Test-Path ''C:\\Users\\User\\.deno\\bin\\deno.exe''\")",
       "Bash(powershell -c \"winget install DenoLand.Deno\")",
-      "Bash(git checkout:*)"
+      "Bash(git checkout:*)",
+      "Bash(powershell -c:*)"
     ],
     "deny": [],
     "ask": []
