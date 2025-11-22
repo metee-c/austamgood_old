@@ -706,16 +706,47 @@ const TransferPage: React.FC = () => {
         });
       } else {
         // Handle transfer-like modes (transfer, replenishment, adjustment)
-        transferSelectedItems.forEach((item) => {
+        // Need to handle partial pallet moves - generate new pallet IDs
+        const partialMoveItems: typeof transferSelectedItems = [];
+
+        for (const item of transferSelectedItems) {
+          // Check if this is a partial pallet move
+          // If item has pallet_id and quantity is less than total, it's partial
+          const isPartialMove = item.pallet_id && item.move_method === 'pallet';
+
+          let newPalletId: string | null = null;
+          let parentPalletId: string | null = null;
+
+          if (isPartialMove) {
+            // Generate new pallet ID for the partial move
+            try {
+              const response = await fetch('/api/receives/generate-pallet-id', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' }
+              });
+              const result = await response.json();
+
+              if (result.data) {
+                newPalletId = result.data;
+                parentPalletId = item.pallet_id;
+              }
+            } catch (err) {
+              console.error('Failed to generate new pallet ID for partial move:', err);
+              // Continue without new pallet ID - will use original
+            }
+          }
+
           itemsPayload.push({
             receive_item_id: null,
             sku_id: item.sku_id,
-            pallet_id: item.pallet_id || null,
+            pallet_id: isPartialMove && newPalletId ? newPalletId : (item.pallet_id || null),
             pallet_id_external: item.pallet_id_external || null,
+            parent_pallet_id: parentPalletId,
+            new_pallet_id: newPalletId,
             move_method: item.move_method,
             from_location_id: item.from_location_id || null,
             to_location_id: item.to_location_id || null,
-            requested_pack_qty: Number.isFinite(item.pack_qty) ? Number(item.pack_qty) : 0,
+            requested_pack_qty: 0, // ให้ API คำนวณจาก piece_qty
             requested_piece_qty: Math.max(1, Number(item.piece_qty) || 1),
             confirmed_pack_qty: 0,
             confirmed_piece_qty: 0,
@@ -724,7 +755,7 @@ const TransferPage: React.FC = () => {
             remarks: null,
             created_by: null
           });
-        });
+        }
       }
 
       if (itemsPayload.length === 0) {
@@ -2271,21 +2302,28 @@ const TransferPage: React.FC = () => {
                                   <td className="px-2 py-1.5 text-xs text-gray-700">{item.from_location_code || item.from_location_id || '-'}</td>
                                   <td className="px-2 py-1.5 text-xs font-mono text-blue-600">{item.pallet_id || '-'}</td>
                                   <td className="px-2 py-1.5">
-                                    <div className="flex items-center gap-1">
-                                      <input
-                                        type="number"
-                                        min={1}
-                                        value={item.piece_qty}
-                                        onChange={(e) =>
-                                          handleUpdateTransferItem(item.key, {
-                                            piece_qty: Math.max(1, Number(e.target.value) || 1),
-                                          })
-                                        }
-                                        disabled={isPallet}
-                                        className="w-20 px-1 py-0.5 border border-gray-300 rounded text-xs text-right"
-                                      />
-                                      {isPallet && (
-                                        <span className="text-xs text-blue-600">(ทั้งพาเลท)</span>
+                                    <div className="flex flex-col gap-0.5">
+                                      <div className="flex items-center gap-1">
+                                        <input
+                                          type="number"
+                                          min={1}
+                                          value={item.piece_qty}
+                                          onChange={(e) =>
+                                            handleUpdateTransferItem(item.key, {
+                                              piece_qty: Math.max(1, Number(e.target.value) || 1),
+                                            })
+                                          }
+                                          className="w-20 px-1 py-0.5 border border-gray-300 rounded text-xs text-right"
+                                        />
+                                        {isPallet && (
+                                          <span className="text-xs text-blue-600">(ทั้งพาเลท)</span>
+                                        )}
+                                      </div>
+                                      {/* Show warning if partial pallet move */}
+                                      {item.pallet_id && item.piece_qty < (item.pack_qty * (item as any).pack_size || item.piece_qty) && (
+                                        <div className="text-[10px] text-orange-600 font-medium">
+                                          ⚠️ ย้ายบางส่วน - จะสร้างพาเลทใหม่
+                                        </div>
                                       )}
                                     </div>
                                   </td>

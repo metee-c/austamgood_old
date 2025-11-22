@@ -85,6 +85,10 @@ const InventoryLedgerPage = () => {
           master_sku!sku_id (
             sku_name,
             weight_per_piece_kg
+          ),
+          wms_move_items!move_item_id (
+            parent_pallet_id,
+            new_pallet_id
           )
         `)
         .order('movement_at', { ascending: false })
@@ -373,13 +377,18 @@ const InventoryLedgerPage = () => {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
                     {groupedData.map((ledger: any) => {
+                      // ตรวจสอบว่าเป็นการแบ่งพาเลทหรือไม่
+                      const isPartialSplit = ledger.wms_move_items?.parent_pallet_id;
+                      
                       // ถ้าเป็นกลุ่ม ให้สร้างหลายแถวโดยใช้ rowspan สำหรับคอลัมน์ที่เหมือนกัน
                       if (ledger._isGrouped && ledger._groupItems) {
                         return ledger._groupItems.map((item: any, idx: number) => (
                           <tr
                             key={`${ledger.ledger_id}-${idx}`}
                             className={`transition-colors duration-150 ${
-                              ledger._isConsolidated
+                              isPartialSplit
+                                ? 'hover:bg-amber-50/50 bg-amber-50/20 border-l-2 border-amber-400'
+                                : ledger._isConsolidated
                                 ? 'hover:bg-blue-50/50 bg-blue-50/20'
                                 : 'hover:bg-blue-50/30'
                             }`}
@@ -465,17 +474,58 @@ const InventoryLedgerPage = () => {
                             {idx === 0 && (
                               <>
                                 <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-middle" rowSpan={ledger._groupItems.length}>
-                                  <div>
-                                    {ledger.pallet_id_external && (
-                                      <div className="font-mono text-thai-gray-700">{ledger.pallet_id_external}</div>
-                                    )}
-                                    {ledger.pallet_id && (
-                                      <div className="font-mono text-[10px] text-gray-500">{ledger.pallet_id}</div>
-                                    )}
-                                    {!ledger.pallet_id && !ledger.pallet_id_external && (
-                                      <span className="text-gray-400">-</span>
-                                    )}
-                                  </div>
+                                  {ledger.transaction_type === 'transfer' && ledger.direction === 'in' ? (
+                                    (ledger as any).wms_move_items?.parent_pallet_id ? (
+                                      <details className="cursor-pointer">
+                                        <summary className="list-none pl-2 border-l-2 border-green-400 text-[10px]">
+                                          <span className="text-gray-600 font-thai">พาเลทใหม่: </span>
+                                          <span className="font-mono text-green-600 font-semibold">
+                                            {(ledger as any).wms_move_items.new_pallet_id}
+                                          </span>
+                                        </summary>
+                                        <div className="mt-1 pl-2 border-l-2 border-orange-300 text-[10px]">
+                                          <span className="text-gray-600 font-thai">พาเลทเดิม: </span>
+                                          <span className="font-mono text-orange-600">
+                                            {(ledger as any).wms_move_items.parent_pallet_id}
+                                          </span>
+                                        </div>
+                                      </details>
+                                    ) : (
+                                      <div className="pl-2 border-l-2 border-green-400 text-[10px]">
+                                        <span className="text-gray-600 font-thai">พาเลทใหม่: </span>
+                                        <span className="font-mono text-green-600 font-semibold">
+                                          {ledger.pallet_id}
+                                        </span>
+                                      </div>
+                                    )
+                                  ) : (ledger as any).wms_move_items?.parent_pallet_id ? (
+                                    <details className="cursor-pointer">
+                                      <summary className="list-none pl-2 border-l-2 border-green-400 text-[10px]">
+                                        <span className="text-gray-600 font-thai">พาเลทใหม่: </span>
+                                        <span className="font-mono text-green-600 font-semibold">
+                                          {(ledger as any).wms_move_items.new_pallet_id}
+                                        </span>
+                                      </summary>
+                                      <div className="mt-1 pl-2 border-l-2 border-orange-300 text-[10px]">
+                                        <span className="text-gray-600 font-thai">พาเลทเดิม: </span>
+                                        <span className="font-mono text-orange-600">
+                                          {(ledger as any).wms_move_items.parent_pallet_id}
+                                        </span>
+                                      </div>
+                                    </details>
+                                  ) : (
+                                    <div>
+                                      {ledger.pallet_id_external && (
+                                        <div className="font-mono text-thai-gray-700">{ledger.pallet_id_external}</div>
+                                      )}
+                                      {ledger.pallet_id && (
+                                        <div className="font-mono text-[10px] text-gray-500">{ledger.pallet_id}</div>
+                                      )}
+                                      {!ledger.pallet_id && !ledger.pallet_id_external && (
+                                        <span className="text-gray-400">-</span>
+                                      )}
+                                    </div>
+                                  )}
                                 </td>
                               </>
                             )}
@@ -551,12 +601,14 @@ const InventoryLedgerPage = () => {
                         ));
                       }
                       
-                      // แถวปกติที่ไม่ได้รวมกลุ่ม
+                      // แถวปกติที่ไม่ได้รวมกลุ่ม (ใช้ isPartialSplit ที่ประกาศไว้ด้านบนแล้ว)
                       return (
                       <tr
                         key={ledger.ledger_id}
                         className={`transition-colors duration-150 ${
-                          ledger._isConsolidated
+                          isPartialSplit
+                            ? 'hover:bg-amber-50/50 bg-amber-50/20 border-l-2 border-amber-400'
+                            : ledger._isConsolidated
                             ? 'hover:bg-blue-50/50 bg-blue-50/20'
                             : 'hover:bg-blue-50/30'
                         }`}
@@ -631,17 +683,58 @@ const InventoryLedgerPage = () => {
                           </span>
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">
-                          <div>
-                            {ledger.pallet_id_external && (
-                              <div className="font-mono text-thai-gray-700">{ledger.pallet_id_external}</div>
-                            )}
-                            {ledger.pallet_id && (
-                              <div className="font-mono text-[10px] text-gray-500">{ledger.pallet_id}</div>
-                            )}
-                            {!ledger.pallet_id && !ledger.pallet_id_external && (
-                              <span className="text-gray-400">-</span>
-                            )}
-                          </div>
+                          {ledger.transaction_type === 'transfer' && ledger.direction === 'in' ? (
+                            (ledger as any).wms_move_items?.parent_pallet_id ? (
+                              <details className="cursor-pointer">
+                                <summary className="list-none pl-2 border-l-2 border-green-400 text-[10px]">
+                                  <span className="text-gray-600 font-thai">พาเลทใหม่: </span>
+                                  <span className="font-mono text-green-600 font-semibold">
+                                    {(ledger as any).wms_move_items.new_pallet_id}
+                                  </span>
+                                </summary>
+                                <div className="mt-1 pl-2 border-l-2 border-orange-300 text-[10px]">
+                                  <span className="text-gray-600 font-thai">พาเลทเดิม: </span>
+                                  <span className="font-mono text-orange-600">
+                                    {(ledger as any).wms_move_items.parent_pallet_id}
+                                  </span>
+                                </div>
+                              </details>
+                            ) : (
+                              <div className="pl-2 border-l-2 border-green-400 text-[10px]">
+                                <span className="text-gray-600 font-thai">พาเลทใหม่: </span>
+                                <span className="font-mono text-green-600 font-semibold">
+                                  {ledger.pallet_id}
+                                </span>
+                              </div>
+                            )
+                          ) : (ledger as any).wms_move_items?.parent_pallet_id ? (
+                            <details className="cursor-pointer">
+                              <summary className="list-none pl-2 border-l-2 border-green-400 text-[10px]">
+                                <span className="text-gray-600 font-thai">พาเลทใหม่: </span>
+                                <span className="font-mono text-green-600 font-semibold">
+                                  {(ledger as any).wms_move_items.new_pallet_id}
+                                </span>
+                              </summary>
+                              <div className="mt-1 pl-2 border-l-2 border-orange-300 text-[10px]">
+                                <span className="text-gray-600 font-thai">พาเลทเดิม: </span>
+                                <span className="font-mono text-orange-600">
+                                  {(ledger as any).wms_move_items.parent_pallet_id}
+                                </span>
+                              </div>
+                            </details>
+                          ) : (
+                            <div>
+                              {ledger.pallet_id_external && (
+                                <div className="font-mono text-thai-gray-700">{ledger.pallet_id_external}</div>
+                              )}
+                              {ledger.pallet_id && (
+                                <div className="font-mono text-[10px] text-gray-500">{ledger.pallet_id}</div>
+                              )}
+                              {!ledger.pallet_id && !ledger.pallet_id_external && (
+                                <span className="text-gray-400">-</span>
+                              )}
+                            </div>
+                          )}
                         </td>
                         <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
                           {ledger._isConsolidated ? (

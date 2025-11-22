@@ -64,7 +64,7 @@ export default function MobileBottomNav() {
                 <Link
                   href={item.path}
                   className={`
-                    flex flex-col items-center justify-center py-2 px-3
+                    flex flex-col items-center justify-center py-2 px-3 relative
                     transition-all duration-200
                     ${isActive
                       ? 'text-primary-600'

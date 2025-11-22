@@ -130,9 +130,10 @@ export async function POST(request: NextRequest) {
       expiry_date: balance.expiry_date,
     }));
 
-    const { error: itemsError } = await supabase
+    const { data: insertedItems, error: itemsError } = await supabase
       .from('wms_move_items')
-      .insert(moveItems);
+      .insert(moveItems)
+      .select();
 
     if (itemsError) {
       console.error('Error creating move items:', itemsError);
@@ -144,7 +145,18 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 6. Return success
+    // 6. Record inventory movement for each completed item
+    const { moveService } = await import('@/lib/database/move');
+    
+    for (const item of insertedItems || []) {
+      const inventoryResult = await moveService.recordInventoryMovement(item, moveHeader);
+      if (inventoryResult.error) {
+        console.error('Failed to record inventory movement:', inventoryResult.error);
+        // Continue with other items even if one fails
+      }
+    }
+
+    // 7. Return success
     return NextResponse.json({
       data: {
         move_id: moveHeader.move_id,

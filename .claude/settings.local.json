@@ -32,7 +32,9 @@
       "Bash(powershell -c \"Test-Path ''C:\\Users\\User\\.deno\\bin\\deno.exe''\")",
       "Bash(powershell -c \"winget install DenoLand.Deno\")",
       "Bash(git checkout:*)",
-      "Bash(powershell -c:*)"
+      "Bash(powershell -c:*)",
+      "Bash(findstr:*)",
+      "Bash(npm run db:generate-types:*)"
     ],
     "deny": [],
     "ask": []

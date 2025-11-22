@@ -115,6 +115,18 @@ export async function PATCH(
 
     // ตรวจสอบข้อมูลก่อนการอัพเดทหากกำลังจะเสร็จงาน
     if (isCompletingItem) {
+      // ดึงข้อมูล move item เพื่อตั้งค่า confirmed quantities
+      const { data: currentMoveItem } = await supabase
+        .from('wms_move_items')
+        .select('planned_pack_qty, planned_piece_qty, confirmed_pack_qty, confirmed_piece_qty')
+        .eq('move_item_id', moveItemId)
+        .single();
+
+      // ถ้ายังไม่มี confirmed quantities ให้ใช้ค่า planned
+      if (currentMoveItem && (!updates.confirmed_pack_qty && !updates.confirmed_piece_qty)) {
+        updates.confirmed_pack_qty = currentMoveItem.confirmed_pack_qty || currentMoveItem.planned_pack_qty || 0;
+        updates.confirmed_piece_qty = currentMoveItem.confirmed_piece_qty || currentMoveItem.planned_piece_qty || 0;
+      }
       // ดึงข้อมูลปัจจุบันของ move item เพื่อตรวจสอบ
       const { data: currentItem, error: fetchError } = await supabase
         .from('wms_move_items')

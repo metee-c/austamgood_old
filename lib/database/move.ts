@@ -39,6 +39,8 @@ export interface MoveItem {
   sku_id: string;
   pallet_id?: string | null;
   pallet_id_external?: string | null;
+  parent_pallet_id?: string | null;  // Original pallet when split during partial move
+  new_pallet_id?: string | null;      // New pallet ID generated for partial move
   move_method: MoveMethod;
   status: MoveItemStatus;
   from_location_id?: string | null;
@@ -92,6 +94,8 @@ export interface CreateMoveItemInput {
   sku_id: string;
   pallet_id?: string | null;
   pallet_id_external?: string | null;
+  parent_pallet_id?: string | null;  // Track original pallet for partial moves
+  new_pallet_id?: string | null;      // New pallet ID for partial moves
   move_method: MoveMethod;
   from_location_id?: string | null;
   to_location_id?: string | null;
@@ -254,25 +258,46 @@ class MoveService {
       }
 
       const moveNo = generated.data;
-      const items = (payload.items || []).map((item) => ({
-        receive_item_id: item.receive_item_id ?? null,
-        sku_id: item.sku_id,
-        pallet_id: item.pallet_id ?? null,
-        pallet_id_external: item.pallet_id_external ?? null,
-        move_method: item.move_method,
-        from_location_id: item.from_location_id && item.from_location_id.trim() !== '' ? item.from_location_id : null,
-        to_location_id: item.to_location_id && item.to_location_id.trim() !== '' ? item.to_location_id : null,
-        requested_pack_qty: item.requested_pack_qty ?? 0,
-        requested_piece_qty: item.requested_piece_qty,
-        planned_pack_qty: item.requested_pack_qty ?? 0,
-        planned_piece_qty: item.requested_piece_qty ?? 0,
-        confirmed_pack_qty: item.confirmed_pack_qty ?? 0,
-        confirmed_piece_qty: item.confirmed_piece_qty ?? 0,
-        production_date: item.production_date ?? null,
-        expiry_date: item.expiry_date ?? null,
-        remarks: item.remarks ?? null,
-        created_by: payload.created_by ?? null,
-      }));
+
+      // Fetch SKU pack sizes for calculating pack quantities
+      const skuIds = [...new Set((payload.items || []).map(item => item.sku_id))];
+      const { data: skuData } = await this.supabase
+        .from('master_sku')
+        .select('sku_id, qty_per_pack')
+        .in('sku_id', skuIds);
+
+      const skuPackSizeMap = new Map<string, number>();
+      (skuData || []).forEach(sku => {
+        skuPackSizeMap.set(sku.sku_id, (sku as any).qty_per_pack || 1);
+      });
+
+      const items = (payload.items || []).map((item) => {
+        const packSize = skuPackSizeMap.get(item.sku_id) || 1;
+        const requestedPieceQty = item.requested_piece_qty ?? 0;
+        const plannedPackQty = packSize > 0 ? Math.floor(requestedPieceQty / packSize) : 0;
+
+        return {
+          receive_item_id: item.receive_item_id ?? null,
+          sku_id: item.sku_id,
+          pallet_id: item.pallet_id ?? null,
+          pallet_id_external: item.pallet_id_external ?? null,
+          parent_pallet_id: item.parent_pallet_id ?? null,
+          new_pallet_id: item.new_pallet_id ?? null,
+          move_method: item.move_method,
+          from_location_id: item.from_location_id && item.from_location_id.trim() !== '' ? item.from_location_id : null,
+          to_location_id: item.to_location_id && item.to_location_id.trim() !== '' ? item.to_location_id : null,
+          requested_pack_qty: plannedPackQty,
+          requested_piece_qty: requestedPieceQty,
+          planned_pack_qty: plannedPackQty,
+          planned_piece_qty: requestedPieceQty,
+          confirmed_pack_qty: item.confirmed_pack_qty ?? 0,
+          confirmed_piece_qty: item.confirmed_piece_qty ?? 0,
+          production_date: item.production_date ?? null,
+          expiry_date: item.expiry_date ?? null,
+          remarks: item.remarks ?? null,
+          created_by: payload.created_by ?? null,
+        };
+      });
 
       if (items.length === 0) {
         return { data: null, error: 'Move document requires at least one item' };
@@ -488,14 +513,18 @@ class MoveService {
       let productionDate = moveItem.production_date;
       let expiryDate = moveItem.expiry_date;
 
+      // ดึงข้อมูล production_date และ expiry_date จาก balance ต้นทาง
       if (moveItem.from_location_id && !productionDate && !expiryDate) {
+        // For partial pallet moves, use parent_pallet_id to find source balance
+        const sourcePalletId = (moveItem as any).parent_pallet_id || moveItem.pallet_id;
+        
         const { data: sourceBalance } = await this.supabase
           .from('wms_inventory_balances')
           .select('production_date, expiry_date, lot_no')
           .eq('warehouse_id', warehouseId)
           .eq('location_id', moveItem.from_location_id)
           .eq('sku_id', moveItem.sku_id)
-          .eq('pallet_id_external', moveItem.pallet_id_external || '')
+          .eq('pallet_id', sourcePalletId)
           .maybeSingle();
 
         if (sourceBalance) {
@@ -514,6 +543,10 @@ class MoveService {
 
       const ledgerRecords = [];
 
+      // For partial pallet moves, use parent_pallet_id for OUT and new pallet_id for IN
+      const outPalletId = (moveItem as any).parent_pallet_id || moveItem.pallet_id;
+      const inPalletId = moveItem.pallet_id;
+
       if (moveItem.from_location_id) {
         ledgerRecords.push({
           movement_at: new Date().toISOString(),
@@ -524,7 +557,7 @@ class MoveService {
           warehouse_id: warehouseId,
           location_id: moveItem.from_location_id,
           sku_id: moveItem.sku_id,
-          pallet_id: moveItem.pallet_id,
+          pallet_id: outPalletId,
           pallet_id_external: moveItem.pallet_id_external,
           production_date: productionDate,
           expiry_date: expiryDate,
@@ -546,7 +579,7 @@ class MoveService {
           warehouse_id: warehouseId,
           location_id: moveItem.to_location_id,
           sku_id: moveItem.sku_id,
-          pallet_id: moveItem.pallet_id,
+          pallet_id: inPalletId,
           pallet_id_external: moveItem.pallet_id_external,
           production_date: productionDate,
           expiry_date: expiryDate,
@@ -571,80 +604,10 @@ class MoveService {
         return { data: null, error: ledgerError.message };
       }
 
-      if (moveItem.from_location_id) {
-        // ตรวจสอบ location type ของ from_location
-        // ใช้ทั้ง location_id และ location_code เพื่อรองรับทั้งสองกรณี
-        const { data: fromLoc, error: locError } = await this.supabase
-          .from('master_location')
-          .select('location_type, location_id, location_code, zone')
-          .or(`location_id.eq.${moveItem.from_location_id},location_code.eq.${moveItem.from_location_id}`)
-          .maybeSingle();
-
-        // ถ้าเป็น receiving location ให้ข้ามการลดยอด inventory
-        // เพราะ receiving zone ไม่มีการ track inventory balance
-        // ตรวจสอบทั้ง location_type, location_code และ zone
-        const isReceivingLocation =
-          fromLoc?.location_type === 'receiving' ||
-          fromLoc?.location_code === 'Receiving' ||
-          fromLoc?.location_code === 'RCV' ||
-          fromLoc?.zone === 'Zone Receiving' ||
-          fromLoc?.zone === 'Receiving';
-
-        if (!isReceivingLocation && fromLoc) {
-          const updateResult = await this.updateInventoryBalance(
-            warehouseId,
-            fromLoc.location_id, // ใช้ location_id ที่แท้จริงแทน
-            moveItem.sku_id,
-            moveItem.pallet_id ?? null,
-            moveItem.pallet_id_external ?? null,
-            moveItem.production_date ?? null,
-            moveItem.expiry_date ?? null,
-            -packQty,
-            -pieceQty,
-            moveHeader.move_id
-          );
-          if (updateResult.error) {
-            return updateResult;
-          }
-        }
-      }
-
-      if (moveItem.to_location_id) {
-        // ตรวจสอบและแปลง location code เป็น location_id ถ้าจำเป็น
-        const { data: toLoc } = await this.supabase
-          .from('master_location')
-          .select('location_id')
-          .or(`location_id.eq.${moveItem.to_location_id},location_code.eq.${moveItem.to_location_id}`)
-          .maybeSingle();
-
-        const actualToLocationId = toLoc?.location_id || moveItem.to_location_id;
-
-        const updateResult = await this.updateInventoryBalance(
-          warehouseId,
-          actualToLocationId,
-          moveItem.sku_id,
-          moveItem.pallet_id ?? null,
-          moveItem.pallet_id_external ?? null,
-          productionDate ?? null,
-          expiryDate ?? null,
-          packQty,
-          pieceQty,
-          moveHeader.move_id
-        );
-        if (updateResult.error) {
-          return updateResult;
-        }
-
-        // อัพเดตข้อมูลปริมาณปัจจุบันใน master_location
-        const locationUpdateResult = await this.updateLocationCurrentData(
-          actualToLocationId,
-          pieceQty,
-          packQty
-        );
-        if (locationUpdateResult.error) {
-          console.error('[MoveService] Failed to update location current data:', locationUpdateResult.error);
-        }
-      }
+      // Balance updates are now handled by the database trigger (sync_inventory_ledger_to_balance)
+      // which automatically syncs from ledger to balance table
+      // Location current_qty is also automatically synced by trigger (sync_location_qty_from_balance)
+      // This ensures single source of truth and prevents duplicate updates
 
       return { data: { success: true }, error: null };
     } catch (err) {

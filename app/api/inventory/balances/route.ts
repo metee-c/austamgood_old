@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
     const palletId = searchParams.get('pallet_id');
     const limit = searchParams.get('limit') || '100';
 
-    // สร้าง query
+    // สร้าง query - กรองเฉพาะ balance ที่มีสต็อก > 0
     let query = supabase
       .from('wms_inventory_balances')
       .select(`
@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
           zone
         )
       `)
+      .gt('total_piece_qty', 0)
       .order('created_at', { ascending: false });
 
     // Apply filters

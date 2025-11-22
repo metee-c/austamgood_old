@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import type { Database } from '@/types/database/supabase'
+import { Database } from '@/types/database/supabase'
 
 type Product = Database['public']['Tables']['packing_products']['Row']
 type ProductInsert = Database['public']['Tables']['packing_products']['Insert']
