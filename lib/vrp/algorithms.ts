@@ -569,6 +569,14 @@ export function calculateRouteCosts(
     const fixedCost = costPerVehicle;
     const totalCost = distanceCost + timeCost + fixedCost;
 
+    // Calculate pricing breakdown
+    const numStops = trip.stops.length;
+    const baseStops = 5; // Base price includes first 5 stops
+    const extraStops = Math.max(0, numStops - baseStops);
+    const extraStopFee = extraStops * 50; // 50 THB per extra stop
+    const basePrice = fixedCost + (distanceCost * 0.6); // 60% of distance cost as base
+    const helperFee = (trip.totalWeight || 0) > 500 ? 300 : 0; // Helper fee if weight > 500kg
+
     // Calculate estimated arrival times
     let currentTime = parseTime(settings.startTime || '08:00');
     let currentLocation = warehouse;
@@ -604,6 +612,9 @@ export function calculateRouteCosts(
       totalDriveTime: driveTimeHours * 60,
       totalServiceTime: serviceTimeHours * 60,
       totalCost: totalCost,
+      basePrice: basePrice,
+      helperFee: helperFee,
+      extraStopFee: extraStopFee,
       totalVolume: trip.stops.reduce((sum, stop) => sum + (stop.volume || 0), 0),
       totalPallets: trip.stops.reduce((sum, stop) => sum + (stop.pallets || 0), 0),
       totalUnits: trip.stops.reduce((sum, stop) => sum + (stop.units || 0), 0)

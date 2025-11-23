@@ -96,6 +96,11 @@ npm run build
 - `007_add_receive_to_ledger_trigger.sql` - Add database trigger
 - `010_add_reference_doc_type_to_ledger.sql` - Add column to existing table
 - `012_fix_date_type_casting.sql` - Fix data type issues
+- `014_create_stock_import_tables.sql` - Create new tables for stock import
+- `015_add_move_to_ledger_trigger.sql` - Add trigger for inventory transfers
+- `026_add_workflow_status_enums.sql` - Add workflow status enums
+- `027_create_workflow_status_triggers.sql` - Create 6 workflow triggers
+- `028_add_loadlist_rls_and_triggers.sql` - Add RLS policies for loadlists
 
 ## Environment Setup
 
@@ -242,15 +247,18 @@ API routes in `app/api/` follow REST patterns with standard HTTP methods:
 - `/api/orders/*` - Order management (CRUD, import, dashboard, with-items)
 - `/api/master-*/*` - Master data endpoints (suppliers, customers, employees, SKU, vehicles, warehouses, locations)
 - `/api/loadlists/*` - Loadlist operations and available picklists
+  - `/api/loadlists/[id]/scan` - Scan orders onto loadlist (GET/POST)
+  - `/api/loadlists/[id]/depart` - Mark loadlist as departed (POST)
 - `/api/picklists/*` - Picklist management
+  - `/api/picklists/[id]/print` - Mark picklist as printing (POST)
 - `/api/face-sheets/*` - Face sheet generation and delivery documents
 - `/api/route-plans/*` - Route planning, optimization, and draft orders
 - `/api/mobile/loading/*` - Mobile loading operations (tasks, items, status updates, completion)
 - `/api/moves/*` - Inventory movement operations and status updates
 - `/api/preparation-areas/*` - Preparation area management with import/export
 - `/api/storage-strategies/*` - Storage strategy configuration
-- `/api/system-users/*` - **NEW**: System user management endpoints
-- `/api/stock-import/*` - **NEW**: Stock import batch processing (upload, validate, process)
+- `/api/system-users/*` - System user management endpoints
+- `/api/stock-import/*` - Stock import batch processing (upload, validate, process)
 
 ### Route Planning & VRP (Vehicle Routing Problem)
 The system includes advanced route optimization capabilities. See `README_VRP.md` for detailed documentation.
@@ -341,6 +349,46 @@ Key files:
 3. Scan and validate pallets
 4. Assign to locations
 5. Generate loadlists and face sheets
+
+### Delivery Workflow Status Management (NEW)
+The system implements an automated workflow with 6 database triggers that transition statuses automatically:
+
+**Complete Workflow:**
+```
+1. Import Orders → status: draft
+2. Create & Publish Route Plan → Orders: draft → confirmed (TRIGGER 1)
+3. Create Picklist → Orders: confirmed → in_picking (TRIGGER 2)
+4. Print Picklist API → Picklist: pending → picking
+5. Complete Picklist → Orders: in_picking → picked + Route: ready_to_load (TRIGGER 3)
+6. Scan to Loadlist → Orders: picked → loaded (TRIGGER 4)
+7. Loadlist Depart API → Orders: loaded → in_transit + Route: in_transit (TRIGGER 5)
+8. Mark Delivered → Orders: delivered + Loadlist/Route: completed (TRIGGER 6)
+```
+
+**Key Features:**
+- Automatic status transitions via database triggers
+- `loadlists` table with `loadlist_items` for tracking scanned orders
+- API endpoints: `/api/picklists/[id]/print`, `/api/loadlists/[id]/scan`, `/api/loadlists/[id]/depart`
+- Status enums: `draft`, `confirmed`, `in_picking`, `picked`, `loaded`, `in_transit`, `delivered`
+- Route plan statuses: `draft`, `published`, `ready_to_load`, `in_transit`, `completed`
+
+**Documentation:** See `WORKFLOW_IMPLEMENTATION_SUMMARY.md` for complete details
+
+## Important Documentation Files
+
+The codebase includes several important documentation files that provide detailed context for specific features:
+
+- **DESIGN_SYSTEM.md** - Complete UI/UX design system (colors, typography, components, spacing)
+- **README_VRP.md** - Vehicle Routing Problem system documentation
+- **WORKFLOW_IMPLEMENTATION_SUMMARY.md** - Delivery workflow status management system
+- **WORKFLOW_STATUS_DESIGN.md** - Workflow design specifications
+- **STOCK_IMPORT_SUMMARY.md** - Stock import system documentation
+- **STOCK_IMPORT_PLAN.md** - Detailed stock import planning
+- **MOBILE_RECEIVE_GUIDE.md** - Mobile receiving operations guide
+- **MOBILE_TRANSFER_GUIDE.md** - Mobile transfer operations guide
+- **WORKFLOW_QUICK_START.md** - Quick start guide for workflow system
+
+**Best Practice:** Always check if relevant documentation exists before starting work on a feature. These docs contain critical context about design decisions, implementation details, and common patterns.
 
 ## Important Notes
 
@@ -500,6 +548,13 @@ The system includes recent migrations that add:
 - `reference_doc_type` field for tracking document origins
 - Date type casting fixes for production dates
 - Stock import tables for legacy system migration (migration 014)
+- Move to ledger trigger system (migration 015) - auto-creates ledger entries for transfers
+- Balance sync fixes for all move types (migrations 021-023)
+- Workflow status management system (migrations 026-028):
+  - Added `ready_to_load` and `in_transit` statuses to route plans
+  - Created `loadlist_status_enum` and restructured `loadlists` table
+  - 6 database triggers for automatic status transitions across workflow
+  - Loadlist items tracking and RLS policies
 
 ## Common Gotchas & Troubleshooting
 
@@ -597,6 +652,22 @@ npm run db:generate-types
 - [app/api/master-location/route.ts](app/api/master-location/route.ts) - API with limit parameter
 - [hooks/useLocations.ts](hooks/useLocations.ts) - Hook with debouncing and duplicate prevention
 - [components/warehouse/ZoneLocationSelect.tsx](components/warehouse/ZoneLocationSelect.tsx) - Search-optimized dropdown
+
+### 12. Workflow Status Not Updating Automatically
+**Problem**: Order or route status not changing after completing workflow steps
+**Solution**: Check database triggers are enabled:
+1. Verify triggers exist: Run `npm run db:migrate` to ensure migrations 026-028 are applied
+2. Check trigger status in Supabase dashboard
+3. Verify the action that should trigger status change is actually happening:
+   - Route publish must update `receiving_route_plans.status = 'published'`
+   - Picklist completion must update `wms_picklists.status = 'completed'`
+   - Loadlist scan must INSERT into `loadlist_items`
+4. Check for error messages in Supabase logs
+5. Manually test triggers with SQL if needed
+
+**Related Documentation:**
+- [WORKFLOW_IMPLEMENTATION_SUMMARY.md](WORKFLOW_IMPLEMENTATION_SUMMARY.md) - Complete workflow documentation
+- [WORKFLOW_STATUS_DESIGN.md](WORKFLOW_STATUS_DESIGN.md) - Design specifications
 
 ## Performance Considerations
 

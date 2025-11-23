@@ -17,7 +17,9 @@ import {
     MapPin,
     Printer,
     DollarSign,
-    Trash2
+    Trash2,
+    PlayCircle,
+    CheckCircle
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
@@ -44,6 +46,11 @@ interface RoutePlan {
     total_trips?: number;
     total_distance_km?: number;
     total_drive_minutes?: number;
+    total_service_minutes?: number;
+    total_weight_kg?: number;
+    total_volume_cbm?: number;
+    total_pallets?: number;
+    objective_value?: number;
 }
 
 interface DraftOrder {
@@ -580,6 +587,8 @@ const RoutesPage = () => {
 
     const [planForm, setPlanForm] = useState({
 
+        planCode: '',
+
         planName: '',
 
         planDate: new Date().toISOString().split('T')[0],
@@ -715,6 +724,11 @@ const RoutesPage = () => {
     const [selectedPreviewTripIndex, setSelectedPreviewTripIndex] = useState<number | null>(null);
     const [selectedPreviewTripIndices, setSelectedPreviewTripIndices] = useState<number[]>([]);
     const [editorDraftOrders, setEditorDraftOrders] = useState<DraftOrder[]>([]);
+
+    // Expandable rows state
+    const [expandedPlanIds, setExpandedPlanIds] = useState<Set<number>>(new Set());
+    const [planTripsData, setPlanTripsData] = useState<Map<number, any[]>>(new Map());
+    const [loadingTrips, setLoadingTrips] = useState<Set<number>>(new Set());
     const [editorDraftOrdersLoading, setEditorDraftOrdersLoading] = useState(false);
 
     const fetchDraftOrders = useCallback(async (warehouseId: string, planDate: string) => {
@@ -905,6 +919,22 @@ const RoutesPage = () => {
         }
     };
 
+    const fetchNextPlanCode = useCallback(async (planDate: string) => {
+        try {
+            const res = await fetch(`/api/route-plans/next-code?date=${planDate}`);
+            if (res.ok) {
+                const data = await res.json();
+                setPlanForm(prev => ({
+                    ...prev,
+                    planCode: data.plan_code,
+                    planName: data.plan_name
+                }));
+            }
+        } catch (error) {
+            console.error('Error fetching next plan code:', error);
+        }
+    }, []);
+
     const handleWarehouseChange = (warehouseId: string) => {
         setPlanForm(prev => ({ ...prev, warehouseId }));
         const warehouse = warehouses.find(w => w.warehouse_id === warehouseId);
@@ -919,6 +949,7 @@ const RoutesPage = () => {
     };
 
     const handleCreatePlan = () => {
+        fetchNextPlanCode(planForm.planDate);
         setShowCreateModal(true);
     };
 
@@ -926,6 +957,45 @@ const RoutesPage = () => {
         setEditorPlanId(planId);
         setIsEditorOpen(true);
         await fetchEditorData(planId);
+    };
+
+    // Toggle expand/collapse แผนเส้นทาง
+    const toggleExpandPlan = async (planId: number) => {
+        const newExpanded = new Set(expandedPlanIds);
+
+        if (expandedPlanIds.has(planId)) {
+            // Collapse
+            newExpanded.delete(planId);
+            setExpandedPlanIds(newExpanded);
+        } else {
+            // Expand - fetch trips if not already loaded
+            newExpanded.add(planId);
+            setExpandedPlanIds(newExpanded);
+
+            if (!planTripsData.has(planId)) {
+                // Fetch trips data
+                const newLoadingTrips = new Set(loadingTrips);
+                newLoadingTrips.add(planId);
+                setLoadingTrips(newLoadingTrips);
+
+                try {
+                    const response = await fetch(`/api/route-plans/${planId}/trips`);
+                    const result = await response.json();
+
+                    if (result.data) {
+                        const newPlanTripsData = new Map(planTripsData);
+                        newPlanTripsData.set(planId, result.data);
+                        setPlanTripsData(newPlanTripsData);
+                    }
+                } catch (error) {
+                    console.error('Error fetching trips:', error);
+                } finally {
+                    const newLoadingTrips = new Set(loadingTrips);
+                    newLoadingTrips.delete(planId);
+                    setLoadingTrips(newLoadingTrips);
+                }
+            }
+        }
     };
 
     const handleSaveSettings = useCallback(() => {
@@ -966,15 +1036,9 @@ const RoutesPage = () => {
             setIsOptimizing(true);
             setStatusMessage('กำลังเตรียมข้อมูลเพื่อส่งไปคำนวณ...');
 
-            const planCode = `RCV-PLAN-${new Date().toISOString().split('T')[0].replace(/-/g, '')}-${Math.floor(
-                Math.random() * 1000
-            )
-                .toString()
-                .padStart(3, '0')}`;
-
             const planPayload = {
-                plan_code: planCode,
-                plan_name: planForm.planName || `แผนรับสินค้า ${new Date().toLocaleDateString('th-TH')}`,
+                plan_code: planForm.planCode,
+                plan_name: planForm.planName,
                 plan_date: planForm.planDate,
                 warehouse_id: planForm.warehouseId,
                 settings: {
@@ -1232,6 +1296,8 @@ const RoutesPage = () => {
                         service_duration_minutes: stop.service_duration_minutes ?? null,
                         load_weight_kg: stop.load_weight_kg ?? null,
                         load_volume_cbm: stop.load_volume_cbm ?? null,
+                        load_units: stop.load_units ?? null,
+                        load_pallets: stop.load_pallets ?? null,
                         notes: stop.notes ?? null,
                         orders: fallbackOrders,
                         // Flatten first order for popup display
@@ -1365,6 +1431,8 @@ const RoutesPage = () => {
         { value: 'draft', label: 'แบบร่าง' },
         { value: 'optimizing', label: 'กำลังคำนวณ' },
         { value: 'published', label: 'เผยแพร่แล้ว' },
+        { value: 'pending_approval', label: 'รออนุมัติ' },
+        { value: 'approved', label: 'อนุมัติแล้ว' },
         { value: 'completed', label: 'เสร็จสิ้น' },
         { value: 'cancelled', label: 'ยกเลิก' }
     ];
@@ -1725,9 +1793,25 @@ const RoutesPage = () => {
         }
     };
 
-    const handlePrintPlan = (planId: number) => {
-        // Open Transport Contract Modal instead
+    const handlePrintPlan = async (planId: number) => {
+        // Open Transport Contract Modal
         setShowTransportContractModal(true);
+        
+        // เปลี่ยนสถานะเป็น pending_approval หลังจากพิมพ์ใบว่าจ้าง
+        try {
+            const response = await fetch(`/api/route-plans/${planId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'pending_approval' })
+            });
+            
+            if (response.ok) {
+                console.log('✅ เปลี่ยนสถานะเป็น pending_approval แล้ว');
+                await fetchRoutePlans(); // Refresh data
+            }
+        } catch (err) {
+            console.error('Error updating status:', err);
+        }
     };
 
     const editorActiveTrip = useMemo(() => {
@@ -1793,8 +1877,10 @@ const RoutesPage = () => {
             draft: { label: 'แบบร่าง', variant: 'default' },
             optimizing: { label: 'กำลังคำนวณ', variant: 'warning' },
             published: { label: 'เผยแพร่แล้ว', variant: 'success' },
-            ready_to_load: { label: 'พร้อมขึ้นรถ', variant: 'primary' },  // สถานะใหม่
-            in_transit: { label: 'กำลังจัดส่ง', variant: 'info' },       // สถานะใหม่
+            pending_approval: { label: 'รออนุมัติ', variant: 'warning' },
+            approved: { label: 'อนุมัติแล้ว', variant: 'success' },
+            ready_to_load: { label: 'พร้อมขึ้นรถ', variant: 'primary' },
+            in_transit: { label: 'กำลังจัดส่ง', variant: 'info' },
             completed: { label: 'เสร็จสิ้น', variant: 'success' },
             cancelled: { label: 'ยกเลิก', variant: 'danger' }
         };
@@ -2026,47 +2112,64 @@ const RoutesPage = () => {
                         </div>
 
                         <div className="flex-1 min-h-0">
-                            <div className="w-full h-[74vh] overflow-auto bg-white border border-gray-200 rounded-lg shadow-sm">
+                            <div className="w-full h-[74vh] overflow-x-auto overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-sm">
                                 {loading ? (
                                     <div className="p-12 text-center text-gray-500">กำลังโหลด...</div>
                                 ) : filteredPlans.length === 0 ? (
                                     <div className="p-12 text-center text-gray-500">ยังไม่มีแผนเส้นทาง</div>
                                 ) : (
-                                    <table className="min-w-full border-collapse text-sm">
+                                    <table className="min-w-max w-full border-collapse text-sm">
                                         <thead className="sticky top-0 z-10 bg-gray-100">
                                             <tr className="bg-gray-100">
+                                                <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200 w-8">
+                                                    {/* Expand column */}
+                                                </th>
                                                 <th {...getSortCellProps('plan_code')}>รหัสแผน {getSortIcon('plan_code')}</th>
                                                 <th {...getSortCellProps('plan_name')}>ชื่อแผน {getSortIcon('plan_name')}</th>
                                                 <th {...getSortCellProps('plan_date')}>วันที่ {getSortIcon('plan_date')}</th>
                                                 <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">
                                                     คลัง
                                                 </th>
+                                                <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">รถ</th>
+                                                <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">ระยะทาง</th>
+                                                <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">เวลาขับ</th>
+                                                <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">น้ำหนัก</th>
+                                                <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">ปริมาตร</th>
+                                                <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">พาเลท</th>
+                                                <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">ต้นทุน</th>
+                                                <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">สถานะ</th>
                                                 <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">
-                                                    รถ
-                                                </th>
-                                                <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">
-                                                    ระยะทาง
-                                                </th>
-                                                <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">
-                                                    เวลา
-                                                </th>
-                                                <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">
-                                                    สถานะ
-                                                </th>
-                                                <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">
-                                                    <div className="flex items-center gap-1 justify-center">
-                                                        <Edit className="w-3 h-3" />
-                                                        <span>จัดการ</span>
-                                                    </div>
+                                                    <Edit className="w-3 h-3 mx-auto" />
                                                 </th>
                                             </tr>
                                         </thead>
                                         <tbody className="bg-white divide-y divide-gray-100">
-                                            {filteredPlans.map(plan => (
-                                                <tr key={plan.plan_id} className="hover:bg-gray-50/80 transition-colors duration-200">
-                                                    <td className="px-2 py-2 text-xs border-r border-gray-100">
-                                                        <div className="font-semibold text-blue-600 font-mono">{plan.plan_code}</div>
-                                                    </td>
+                                            {filteredPlans.map(plan => {
+                                                const isExpanded = expandedPlanIds.has(plan.plan_id);
+                                                const trips = planTripsData.get(plan.plan_id) || [];
+                                                const isLoadingTrips = loadingTrips.has(plan.plan_id);
+
+                                                return (
+                                                    <React.Fragment key={plan.plan_id}>
+                                                        <tr className="hover:bg-gray-50/80 transition-colors duration-200">
+                                                            <td className="px-2 py-2 text-xs border-r border-gray-100">
+                                                                <button
+                                                                    onClick={() => toggleExpandPlan(plan.plan_id)}
+                                                                    className="p-1 hover:bg-gray-200 rounded transition-colors"
+                                                                    disabled={isLoadingTrips}
+                                                                >
+                                                                    {isLoadingTrips ? (
+                                                                        <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                                                                    ) : (
+                                                                        <ChevronDown
+                                                                            className={`w-3 h-3 transition-transform ${isExpanded ? 'transform rotate-180' : ''}`}
+                                                                        />
+                                                                    )}
+                                                                </button>
+                                                            </td>
+                                                            <td className="px-2 py-2 text-xs border-r border-gray-100">
+                                                                <div className="font-semibold text-blue-600 font-mono">{plan.plan_code}</div>
+                                                            </td>
                                                     <td className="px-2 py-2 text-xs border-r border-gray-100">
                                                         <div className="font-medium text-thai-gray-800">{plan.plan_name || '-'}</div>
                                                     </td>
@@ -2093,6 +2196,26 @@ const RoutesPage = () => {
                                                             {plan.total_drive_minutes
                                                                 ? `${Math.round((plan.total_drive_minutes || 0) / 60)} ชม.`
                                                                 : '-'}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-2 py-2 text-xs border-r border-gray-100 text-center">
+                                                        <div className="font-medium text-thai-gray-700">
+                                                            {plan.total_weight_kg ? `${plan.total_weight_kg.toFixed(0)} kg` : '-'}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-2 py-2 text-xs border-r border-gray-100 text-center">
+                                                        <div className="font-medium text-thai-gray-700">
+                                                            {plan.total_volume_cbm ? `${plan.total_volume_cbm.toFixed(2)} m³` : '-'}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-2 py-2 text-xs border-r border-gray-100 text-center">
+                                                        <div className="font-medium text-thai-gray-700">
+                                                            {plan.total_pallets ? `${plan.total_pallets.toFixed(1)}` : '-'}
+                                                        </div>
+                                                    </td>
+                                                    <td className="px-2 py-2 text-xs border-r border-gray-100 text-center">
+                                                        <div className="font-semibold text-green-600">
+                                                            {plan.objective_value ? `฿${plan.objective_value.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '-'}
                                                         </div>
                                                     </td>
                                                     <td className="px-2 py-2 text-xs border-r border-gray-100">
@@ -2144,43 +2267,274 @@ const RoutesPage = () => {
                                                             </select>
                                                         </div>
                                                     </td>
-                                                    <td className="px-2 py-2 text-xs">
-                                                        <div className="flex items-center space-x-1">
-                                                            <button
-                                                                className="p-1 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                                                                title="ดูแผนที่แผนงาน"
-                                                                onClick={() => handlePreviewPlan(plan.plan_id)}
-                                                            >
-                                                                <Eye className="w-3 h-3" />
-                                                            </button>
-                                                            <button
-                                                                className="p-1 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                                                                title="แก้ไขเส้นทาง"
-                                                                onClick={() => handleOpenEditor(plan.plan_id)}
-                                                            >
-                                                                <Edit className="w-3 h-3" />
-                                                            </button>
-                                                            <button
-                                                                className="p-1 rounded hover:bg-green-50 hover:text-green-600 transition-colors"
-                                                                title="แก้ไขราคาค่าขนส่ง"
-                                                                onClick={() => {
-                                                                    setSelectedPlanIdForShippingCost(plan.plan_id);
-                                                                    setShowEditShippingCostModal(true);
-                                                                }}
-                                                            >
-                                                                <DollarSign className="w-3 h-3" />
-                                                            </button>
-                                                            <button
-                                                                className="p-1 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                                                                title="พิมพ์ใบว่าจ้าง"
-                                                                onClick={() => handlePrintPlan(plan.plan_id)}
-                                                            >
-                                                                <Printer className="w-3 h-3" />
-                                                            </button>
-                                                        </div>
-                                                    </td>
-                                                </tr>
-                                            ))}
+                                                            <td className="px-2 py-2 text-xs">
+                                                                <div className="flex items-center space-x-1">
+                                                                    <button
+                                                                        className="p-1 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                                                                        title="ดูแผนที่แผนงาน"
+                                                                        onClick={() => handlePreviewPlan(plan.plan_id)}
+                                                                    >
+                                                                        <Eye className="w-3 h-3" />
+                                                                    </button>
+                                                                    <button
+                                                                        className="p-1 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                                                                        title="แก้ไขเส้นทาง"
+                                                                        onClick={() => handleOpenEditor(plan.plan_id)}
+                                                                    >
+                                                                        <Edit className="w-3 h-3" />
+                                                                    </button>
+                                                                    {/* ปุ่มเปลี่ยนสถานะ draft → optimizing */}
+                                                                    {plan.status === 'draft' && (
+                                                                        <button
+                                                                            className="p-1 rounded hover:bg-purple-50 hover:text-purple-600 transition-colors"
+                                                                            title="เริ่มกรอกค่าขนส่ง (เปลี่ยนเป็น กำลังคำนวณ)"
+                                                                            onClick={async () => {
+                                                                                if (confirm('เปลี่ยนสถานะเป็น "กำลังคำนวณ" เพื่อเริ่มกรอกค่าขนส่งหรือไม่?')) {
+                                                                                    try {
+                                                                                        const response = await fetch(`/api/route-plans/${plan.plan_id}`, {
+                                                                                            method: 'PATCH',
+                                                                                            headers: { 'Content-Type': 'application/json' },
+                                                                                            body: JSON.stringify({ status: 'optimizing' })
+                                                                                        });
+                                                                                        if (response.ok) {
+                                                                                            alert('✅ เปลี่ยนสถานะเป็น "กำลังคำนวณ" เรียบร้อย\nคุณสามารถกรอกค่าขนส่งได้แล้ว');
+                                                                                            await fetchRoutePlans();
+                                                                                        } else {
+                                                                                            const result = await response.json();
+                                                                                            alert('❌ เกิดข้อผิดพลาด: ' + (result.error || 'Unknown error'));
+                                                                                        }
+                                                                                    } catch (err: any) {
+                                                                                        alert('เกิดข้อผิดพลาด: ' + err.message);
+                                                                                    }
+                                                                                }
+                                                                            }}
+                                                                        >
+                                                                            <PlayCircle className="w-3 h-3" />
+                                                                        </button>
+                                                                    )}
+                                                                    <button
+                                                                        className={`p-1 rounded transition-colors ${
+                                                                            plan.status === 'optimizing'
+                                                                                ? 'hover:bg-green-50 hover:text-green-600 cursor-pointer'
+                                                                                : 'opacity-40 cursor-not-allowed'
+                                                                        }`}
+                                                                        title={
+                                                                            plan.status === 'optimizing'
+                                                                                ? 'แก้ไขราคาค่าขนส่ง'
+                                                                                : 'เปลี่ยนสถานะเป็น "กำลังคำนวณ" ก่อนเพื่อแก้ไขค่าขนส่ง'
+                                                                        }
+                                                                        disabled={plan.status !== 'optimizing'}
+                                                                        onClick={() => {
+                                                                            if (plan.status === 'optimizing') {
+                                                                                setSelectedPlanIdForShippingCost(plan.plan_id);
+                                                                                setShowEditShippingCostModal(true);
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        <DollarSign className="w-3 h-3" />
+                                                                    </button>
+                                                                    <button
+                                                                        className={`p-1 rounded transition-colors ${
+                                                                            plan.status === 'published'
+                                                                                ? 'hover:bg-blue-50 hover:text-blue-600 cursor-pointer'
+                                                                                : 'opacity-40 cursor-not-allowed'
+                                                                        }`}
+                                                                        title={
+                                                                            plan.status === 'published'
+                                                                                ? 'พิมพ์ใบว่าจ้าง'
+                                                                                : 'ต้องกรอกค่าขนส่งครบทุกเที่ยวก่อน (สถานะ: เผยแพร่แล้ว)'
+                                                                        }
+                                                                        disabled={plan.status !== 'published'}
+                                                                        onClick={() => {
+                                                                            if (plan.status === 'published') {
+                                                                                handlePrintPlan(plan.plan_id);
+                                                                            }
+                                                                        }}
+                                                                    >
+                                                                        <Printer className="w-3 h-3" />
+                                                                    </button>
+                                                                    {/* ปุ่มอนุมัติ (สำหรับผู้จัดการ) */}
+                                                                    {plan.status === 'pending_approval' && (
+                                                                        <button
+                                                                            className="p-1 rounded hover:bg-green-50 hover:text-green-600 transition-colors"
+                                                                            title="อนุมัติใบว่าจ้าง"
+                                                                            onClick={async () => {
+                                                                                if (confirm('อนุมัติใบว่าจ้างนี้หรือไม่?')) {
+                                                                                    try {
+                                                                                        const response = await fetch(`/api/route-plans/${plan.plan_id}`, {
+                                                                                            method: 'PATCH',
+                                                                                            headers: { 'Content-Type': 'application/json' },
+                                                                                            body: JSON.stringify({
+                                                                                                status: 'approved',
+                                                                                                approved_at: new Date().toISOString()
+                                                                                            })
+                                                                                        });
+                                                                                        if (response.ok) {
+                                                                                            alert('✅ อนุมัติเรียบร้อยแล้ว');
+                                                                                            await fetchRoutePlans();
+                                                                                        } else {
+                                                                                            const result = await response.json();
+                                                                                            alert('❌ เกิดข้อผิดพลาด: ' + (result.error || 'Unknown error'));
+                                                                                        }
+                                                                                    } catch (err: any) {
+                                                                                        alert('เกิดข้อผิดพลาด: ' + err.message);
+                                                                                    }
+                                                                                }
+                                                                            }}
+                                                                        >
+                                                                            <CheckCircle className="w-3 h-3" />
+                                                                        </button>
+                                                                    )}
+                                                                </div>
+                                                            </td>
+                                                        </tr>
+
+                                                        {/* Expandable Trips Section */}
+                                                        {isExpanded && (
+                                                            <tr>
+                                                                <td colSpan={14} className="px-0 py-0 bg-gray-50">
+                                                                    <div className="border-t border-gray-200">
+                                                                        <div className="p-4">
+                                                                            {/* Header */}
+                                                                            <div className="flex items-center justify-between mb-3">
+                                                                                <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
+                                                                                    <TruckIcon className="w-4 h-4 text-blue-600" />
+                                                                                    รายละเอียดเที่ยวรถ
+                                                                                </h4>
+                                                                                <Badge variant="info" size="sm">
+                                                                                    {trips.length} เที่ยว
+                                                                                </Badge>
+                                                                            </div>
+
+                                                                            {/* Trips Table */}
+                                                                            {trips.length > 0 ? (
+                                                                                <div className="overflow-x-auto">
+                                                                                    <table className="w-full text-xs">
+                                                                                        <thead>
+                                                                                            <tr className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
+                                                                                                <th className="text-left px-2 py-2 text-xs font-semibold text-gray-700 uppercase">รหัสเที่ยว</th>
+                                                                                                <th className="text-left px-2 py-2 text-xs font-semibold text-gray-700 uppercase">หมายเหตุ</th>
+                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">ลำดับ</th>
+                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">คลัง</th>
+                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">จุดส่ง</th>
+                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">ระยะทาง</th>
+                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">เวลาขับ</th>
+                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">น้ำหนัก</th>
+                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">ปริมาตร</th>
+                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">พาเลท</th>
+                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">ค่าขนส่ง</th>
+                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">สถานะ</th>
+                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">%ใช้งาน</th>
+                                                                                            </tr>
+                                                                                        </thead>
+                                                                                        <tbody>
+                                                                                            {trips.map((trip: any, idx: number) => {
+                                                                                                // ตรวจสอบว่ามีค่าขนส่งหรือไม่
+                                                                                                const hasShippingCost = trip.shipping_cost && trip.shipping_cost > 0;
+
+                                                                                                return (
+                                                                                                <tr
+                                                                                                    key={`trip-${trip.trip_id}`}
+                                                                                                    className={`border-b border-gray-100 transition-colors ${
+                                                                                                        !hasShippingCost
+                                                                                                            ? 'bg-red-50 hover:bg-red-100' // แถวที่ยังไม่มีค่าขนส่ง → สีแดง
+                                                                                                            : idx % 2 === 0
+                                                                                                                ? 'bg-white hover:bg-blue-50/50'
+                                                                                                                : 'bg-gray-50/50 hover:bg-blue-50/50'
+                                                                                                    }`}
+                                                                                                >
+                                                                                                    <td className="px-2 py-2 text-xs">
+                                                                                                        <div className="flex items-center gap-2">
+                                                                                                            <TruckIcon className="w-3 h-3 text-blue-600" />
+                                                                                                            <span className="font-semibold text-blue-700">{trip.trip_code}</span>
+                                                                                                        </div>
+                                                                                                    </td>
+                                                                                                    <td className="px-2 py-2 text-xs text-gray-600">{trip.notes || '-'}</td>
+                                                                                                    <td className="px-2 py-2 text-xs text-center">
+                                                                                                        <span className="font-medium text-gray-700">#{trip.trip_sequence || '-'}</span>
+                                                                                                    </td>
+                                                                                                    <td className="px-2 py-2 text-xs text-center text-gray-600">{trip.warehouse_id || '-'}</td>
+                                                                                                    <td className="px-2 py-2 text-xs text-center">
+                                                                                                        <span className="font-medium text-gray-700">{trip.total_stops || 0}</span>
+                                                                                                    </td>
+                                                                                                    <td className="px-2 py-2 text-xs text-center text-gray-700">
+                                                                                                        {trip.total_distance_km ? `${trip.total_distance_km.toFixed(1)} km` : '-'}
+                                                                                                    </td>
+                                                                                                    <td className="px-2 py-2 text-xs text-center text-gray-700">
+                                                                                                        {trip.total_drive_minutes ? `${Math.round(trip.total_drive_minutes / 60)} ชม.` : '-'}
+                                                                                                    </td>
+                                                                                                    <td className="px-2 py-2 text-xs text-center text-gray-700">
+                                                                                                        {trip.total_weight_kg ? `${trip.total_weight_kg.toFixed(0)} kg` : '-'}
+                                                                                                    </td>
+                                                                                                    <td className="px-2 py-2 text-xs text-center text-gray-700">
+                                                                                                        {trip.total_volume_cbm ? `${trip.total_volume_cbm.toFixed(2)} m³` : '-'}
+                                                                                                    </td>
+                                                                                                    <td className="px-2 py-2 text-xs text-center text-gray-700">
+                                                                                                        {trip.total_pallets ? `${trip.total_pallets.toFixed(1)}` : '-'}
+                                                                                                    </td>
+                                                                                                    <td className="px-2 py-2 text-xs text-center">
+                                                                                                        <div className="font-medium text-gray-700">
+                                                                                                            {trip.shipping_cost ? `฿${trip.shipping_cost.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '-'}
+                                                                                                        </div>
+                                                                                                        {trip.base_price && (
+                                                                                                            <div className="text-[9px] text-gray-500 mt-0.5">
+                                                                                                                ฐาน ฿{trip.base_price.toFixed(0)}
+                                                                                                                {trip.helper_fee > 0 && ` +ช่วย ฿${trip.helper_fee.toFixed(0)}`}
+                                                                                                                {trip.extra_stop_fee > 0 && ` +จุด ฿${trip.extra_stop_fee.toFixed(0)}`}
+                                                                                                            </div>
+                                                                                                        )}
+                                                                                                    </td>
+                                                                                                    <td className="px-2 py-2 text-xs text-center">
+                                                                                                        <Badge
+                                                                                                            variant={
+                                                                                                                trip.trip_status === 'completed' ? 'success' :
+                                                                                                                trip.trip_status === 'in_transit' ? 'warning' :
+                                                                                                                trip.trip_status === 'planned' ? 'info' :
+                                                                                                                'default'
+                                                                                                            }
+                                                                                                        >
+                                                                                                            {trip.trip_status === 'planned' ? 'วางแผน' :
+                                                                                                             trip.trip_status === 'in_transit' ? 'กำลังส่ง' :
+                                                                                                             trip.trip_status === 'completed' ? 'เสร็จสิ้น' : trip.trip_status}
+                                                                                                        </Badge>
+                                                                                                        {trip.is_overweight && (
+                                                                                                            <div className="mt-1">
+                                                                                                                <Badge variant="danger" className="text-[9px]">น้ำหนักเกิน</Badge>
+                                                                                                            </div>
+                                                                                                        )}
+                                                                                                    </td>
+                                                                                                    <td className="px-2 py-2 text-xs text-center">
+                                                                                                        <span className="font-medium text-gray-600">
+                                                                                                            {trip.capacity_utilization ? `${trip.capacity_utilization.toFixed(0)}%` : '-'}
+                                                                                                        </span>
+                                                                                                    </td>
+                                                                                                </tr>
+                                                                                                );
+                                                                                            })}
+                                                                                        </tbody>
+                                                                                    </table>
+                                                                                </div>
+                                                                            ) : (
+                                                                                <div className="text-center py-8 text-gray-500 text-sm">
+                                                                                    ไม่พบข้อมูลเที่ยวรถ
+                                                                                </div>
+                                                                            )}
+                                                                        </div>
+                                                                    </div>
+                                                                </td>
+                                                            </tr>
+                                                        )}
+
+                                                        {isExpanded && trips.length === 0 && !isLoadingTrips && (
+                                                            <tr className="bg-blue-50/20">
+                                                                <td colSpan={14} className="px-4 py-3 text-center text-xs text-gray-500">
+                                                                    กำลังโหลดข้อมูล...
+                                                                </td>
+                                                            </tr>
+                                                        )}
+                                                    </React.Fragment>
+                                                );
+                                            })}
                                         </tbody>
                                     </table>
                                 )}
@@ -2211,13 +2565,13 @@ const RoutesPage = () => {
                 <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                         <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">ชื่อแผน</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-2">รหัสแผน</label>
                             <input
                                 type="text"
-                                value={planForm.planName}
-                                onChange={event => setPlanForm(prev => ({ ...prev, planName: event.target.value }))}
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                                placeholder="แผนรับสินค้า..."
+                                value={planForm.planCode}
+                                readOnly
+                                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600 font-mono"
+                                placeholder="RP-YYYYMMDD-XXX"
                             />
                         </div>
                         <div>
@@ -2228,6 +2582,7 @@ const RoutesPage = () => {
                                 onChange={event => {
                                     const newDate = event.target.value;
                                     setPlanForm(prev => ({ ...prev, planDate: newDate }));
+                                    fetchNextPlanCode(newDate);
                                     if (planForm.warehouseId) {
                                         fetchDraftOrders(planForm.warehouseId, newDate);
                                     }
@@ -2235,6 +2590,17 @@ const RoutesPage = () => {
                                 className="w-full px-4 py-2 border border-gray-300 rounded-lg"
                             />
                         </div>
+                    </div>
+
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">ชื่อแผน</label>
+                        <input
+                            type="text"
+                            value={planForm.planName}
+                            readOnly
+                            className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600"
+                            placeholder="แผนจัดส่งประจำวัน รอบ X – DD/MM/YYYY"
+                        />
                     </div>
 
                     <div>

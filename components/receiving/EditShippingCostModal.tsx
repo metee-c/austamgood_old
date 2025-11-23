@@ -654,6 +654,12 @@ const EditShippingCostModal: React.FC<EditShippingCostModalProps> = ({
 
       await Promise.all(savePromises);
 
+      // ⚠️ หมายเหตุ: ไม่ต้องอัปเดต objective_value ที่นี่แล้ว
+      // Database Trigger (check_shipping_cost_complete_and_publish) จะทำให้อัตโนมัติ
+      // เมื่อค่าขนส่งครบทุกเที่ยว trigger จะ:
+      // 1. คำนวณ objective_value = SUM(shipping_cost)
+      // 2. เปลี่ยนสถานะจาก 'optimizing' → 'published'
+
       // Show result
       if (errors.length === 0) {
         alert(`✅ บันทึกสำเร็จทั้งหมด ${successCount} เที่ยว`);

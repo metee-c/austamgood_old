@@ -63,6 +63,43 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
     documentTitle: `ใบว่าจ้างขนส่ง-${selectedSupplier?.supplier_name}-${selectedPlan?.plan_code}`,
   });
 
+  // ฟังก์ชันพิมพ์และเปลี่ยนสถานะ
+  const handlePrint = async () => {
+    try {
+      // พิมพ์ก่อน
+      reactToPrintFn();
+
+      // รอให้พิมพ์เสร็จ (ใช้ setTimeout เล็กน้อย)
+      setTimeout(async () => {
+        if (selectedPlan) {
+          try {
+            // เปลี่ยนสถานะเป็น pending_approval
+            const response = await fetch(`/api/route-plans/${selectedPlan.plan_id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                status: 'pending_approval',
+                printed_at: new Date().toISOString()
+              })
+            });
+
+            if (response.ok) {
+              alert('✅ พิมพ์ใบว่าจ้างสำเร็จ\nสถานะเปลี่ยนเป็น "รออนุมัติ" แล้ว');
+              onClose(); // ปิด modal
+            } else {
+              const result = await response.json();
+              console.error('Failed to update status:', result.error);
+            }
+          } catch (err) {
+            console.error('Error updating plan status:', err);
+          }
+        }
+      }, 500);
+    } catch (err) {
+      console.error('Error in handlePrint:', err);
+    }
+  };
+
   useEffect(() => {
     if (isOpen && step === 'select-plan') {
       fetchPublishedPlans();
@@ -325,7 +362,7 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
                     </div>
 
                     <button
-                      onClick={() => reactToPrintFn()}
+                      onClick={handlePrint}
                       className="inline-flex items-center px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors font-thai"
                     >
                       <Printer size={20} className="mr-2" />

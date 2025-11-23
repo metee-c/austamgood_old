@@ -40,19 +40,116 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. Fetch inputs (orders to deliver)
+    // 2. Fetch inputs first
     const { data: inputs, error: inputsError } = await supabase
       .from('receiving_route_plan_inputs')
       .select('*')
       .eq('plan_id', planId)
       .eq('is_active', true);
 
-    if (inputsError || !inputs || inputs.length === 0) {
+    if (inputsError) {
+      console.error('Error fetching inputs:', inputsError);
+      return NextResponse.json(
+        { error: 'Error fetching inputs: ' + inputsError.message },
+        { status: 500 }
+      );
+    }
+
+    if (!inputs || inputs.length === 0) {
       return NextResponse.json(
         { error: 'No active inputs found for this plan' },
         { status: 400 }
       );
     }
+
+    // 3. Get all unique order IDs
+    const orderIds = [...new Set(inputs.map(input => input.order_id).filter(Boolean))];
+
+    console.log('📦 Fetching order data for IDs:', orderIds);
+
+    // 4. Fetch all orders
+    const { data: orders, error: ordersError } = await supabase
+      .from('wms_orders')
+      .select('order_id, order_no, total_qty, total_pack_all')
+      .in('order_id', orderIds);
+
+    if (ordersError) {
+      console.error('Error fetching orders:', ordersError);
+      return NextResponse.json(
+        { error: 'Error fetching orders: ' + ordersError.message },
+        { status: 500 }
+      );
+    }
+
+    console.log('✅ Fetched orders:', { count: orders?.length || 0 });
+
+    // 5. Fetch all order items
+    const { data: orderItems, error: itemsError } = await supabase
+      .from('wms_order_items')
+      .select('order_item_id, order_id, sku_id, order_qty, pack_all')
+      .in('order_id', orderIds);
+
+    if (itemsError) {
+      console.error('Error fetching order items:', itemsError);
+      return NextResponse.json(
+        { error: 'Error fetching order items: ' + itemsError.message },
+        { status: 500 }
+      );
+    }
+
+    console.log('✅ Fetched order items:', { count: orderItems?.length || 0 });
+
+    // 6. Get unique SKU IDs
+    const skuIds = [...new Set(orderItems?.map(item => item.sku_id).filter(Boolean) || [])];
+
+    // 7. Fetch all SKU data
+    const { data: skus, error: skusError } = await supabase
+      .from('master_sku')
+      .select('sku_id, sku_name, sku_description, qty_per_pack, qty_per_pallet, dimension_length_cm, dimension_width_cm, dimension_height_cm')
+      .in('sku_id', skuIds);
+
+    if (skusError) {
+      console.error('Error fetching SKUs:', skusError);
+      return NextResponse.json(
+        { error: 'Error fetching SKUs: ' + skusError.message },
+        { status: 500 }
+      );
+    }
+
+    console.log('✅ Fetched SKUs:', { count: skus?.length || 0 });
+
+    // 8. Build data structure: SKU map -> Item map -> Order map
+    const skuMap = new Map(skus?.map(sku => [sku.sku_id, sku]) || []);
+
+    // Attach SKU data to items
+    const itemsWithSkus = orderItems?.map(item => ({
+      ...item,
+      sku: skuMap.get(item.sku_id) || null
+    })) || [];
+
+    // Group items by order_id
+    const itemsByOrderId = new Map<number, any[]>();
+    for (const item of itemsWithSkus) {
+      if (!itemsByOrderId.has(item.order_id)) {
+        itemsByOrderId.set(item.order_id, []);
+      }
+      itemsByOrderId.get(item.order_id)!.push(item);
+    }
+
+    // Attach items to orders
+    const ordersWithItems = orders?.map(order => ({
+      ...order,
+      items: itemsByOrderId.get(order.order_id) || []
+    })) || [];
+
+    // 9. Create a map of orders by order_id for easy lookup
+    const ordersMap = new Map(ordersWithItems.map(order => [order.order_id, order]));
+
+    // 10. Attach order data to each input
+    const inputsWithOrders = inputs.map(input => ({
+      ...input,
+      order: ordersMap.get(input.order_id) || null
+    }));
 
     const settings = plan.settings || {};
     const warehouseLocation = {
@@ -60,11 +157,72 @@ export async function POST(request: Request) {
       longitude: settings.warehouseLng || plan.warehouse?.longitude || 100.7576916
     };
 
-    // 3. Prepare deliveries data and consolidate orders by location
+    // Helper function to calculate volume and pallet from order items
+    function calculateVolumeAndPallets(input: any): { volume: number; pallets: number; missingDimensions: string[] } {
+      const order = input.order;
+      let totalVolume = 0;
+      let totalPallets = 0;
+      const missingDimensions: string[] = [];
+
+      if (order && order.items && Array.isArray(order.items)) {
+        for (const item of order.items) {
+          const sku = item.sku;
+          const packQty = item.pack_all || 0; // จำนวนแพ็ค
+          const pieceQty = item.order_qty || 0; // จำนวนชิ้น
+
+          if (!sku) continue;
+
+          // Calculate pallets from packs
+          // วิธีที่ 1: ถ้ามี qty_per_pallet ใช้แพ็คหาร
+          if (sku.qty_per_pallet && sku.qty_per_pallet > 0 && sku.qty_per_pack && sku.qty_per_pack > 0) {
+            // คำนวณจำนวนแพ็คต่อพาเลท
+            const packsPerPallet = sku.qty_per_pallet / sku.qty_per_pack;
+            if (packsPerPallet > 0) {
+              totalPallets += packQty / packsPerPallet;
+            } else {
+              // Fallback: ใช้ชิ้นหารด้วย qty_per_pallet
+              totalPallets += pieceQty / sku.qty_per_pallet;
+            }
+          } else if (sku.qty_per_pallet && sku.qty_per_pallet > 0) {
+            // ใช้ชิ้นหารด้วย qty_per_pallet โดยตรง
+            totalPallets += pieceQty / sku.qty_per_pallet;
+          } else {
+            // Default: สมมติ 50 แพ็คต่อพาเลท
+            totalPallets += packQty / 50;
+          }
+
+          // Calculate volume from dimensions
+          if (sku.dimension_length_cm && sku.dimension_width_cm && sku.dimension_height_cm) {
+            // คำนวณ volume ต่อแพ็ค: (L * W * H) in cm³ → convert to m³
+            const volumePerPack = (sku.dimension_length_cm * sku.dimension_width_cm * sku.dimension_height_cm) / 1000000;
+            totalVolume += volumePerPack * packQty;
+          } else {
+            // Missing dimension data
+            missingDimensions.push(`${sku.sku_id} (${sku.sku_name || sku.sku_description || 'No description'})`);
+            // Default: สมมติ 0.1 CBM ต่อแพ็ค
+            totalVolume += 0.1 * packQty;
+          }
+        }
+      } else {
+        // Fallback: use total_pack_all if no items
+        const totalPack = order?.total_pack_all || 0;
+        totalPallets = totalPack / 50; // Default: 50 packs per pallet
+        totalVolume = totalPack * 0.1; // Default: 0.1 CBM per pack
+      }
+
+      return {
+        volume: totalVolume,
+        pallets: totalPallets,
+        missingDimensions
+      };
+    }
+
+    // 7. Prepare deliveries data and consolidate orders by location
     // Group inputs by customer location (stopName + lat/lng combination)
     const locationGroups = new Map<string, any[]>();
+    const allMissingDimensions = new Set<string>();
 
-    for (const input of inputs) {
+    for (const input of inputsWithOrders) {
       // Create a unique key for each location (using stop name and rounded coordinates)
       const latRounded = Math.round((input.latitude || 0) * 10000) / 10000;
       const lngRounded = Math.round((input.longitude || 0) * 10000) / 10000;
@@ -78,11 +236,28 @@ export async function POST(request: Request) {
 
     // Convert grouped inputs to consolidated deliveries
     const deliveries = Array.from(locationGroups.values()).map((groupInputs: any[]) => {
-      // Sum up weights, volumes, etc. from all orders going to this location
+      // Sum up weights and quantities from inputs
       const totalWeight = groupInputs.reduce((sum, inp) => sum + (inp.demand_weight_kg || 0), 0);
-      const totalVolume = groupInputs.reduce((sum, inp) => sum + (inp.demand_volume_cbm || 0), 0);
-      const totalUnits = groupInputs.reduce((sum, inp) => sum + (inp.demand_units || 0), 0);
-      const totalPallets = groupInputs.reduce((sum, inp) => sum + (inp.demand_pallets || 0), 0);
+      
+      // Calculate total pieces (not order count) from order.total_qty
+      const totalPieces = groupInputs.reduce((sum, inp) => {
+        const order = inp.order;
+        const qty = order?.total_qty || 0;
+        return sum + Number(qty);
+      }, 0);
+
+      // Calculate volume and pallets from SKU data
+      let totalVolume = 0;
+      let totalPallets = 0;
+
+      for (const inp of groupInputs) {
+        const calc = calculateVolumeAndPallets(inp);
+        totalVolume += calc.volume;
+        totalPallets += calc.pallets;
+
+        // Track SKUs missing dimension data
+        calc.missingDimensions.forEach(sku => allMissingDimensions.add(sku));
+      }
 
       // Use the first input as representative for location details
       const representative = groupInputs[0];
@@ -97,7 +272,7 @@ export async function POST(request: Request) {
         longitude: representative.longitude,
         weight: totalWeight,
         volume: totalVolume,
-        units: totalUnits,
+        units: totalPieces, // จำนวนชิ้นสินค้าจริง (ไม่ใช่จำนวนออเดอร์)
         pallets: totalPallets,
         serviceTime: representative.service_duration_minutes || settings.serviceTime || 15,
         priority: Math.max(...groupInputs.map((inp: any) => inp.priority || 50)),
@@ -107,7 +282,14 @@ export async function POST(request: Request) {
       };
     });
 
-    console.log(`Starting optimization for plan ${planId} with ${deliveries.length} stops (from ${inputs.length} orders)`);
+    console.log(`Starting optimization for plan ${planId} with ${deliveries.length} stops (from ${inputsWithOrders.length} orders)`);
+
+    // Log SKUs missing dimension data
+    if (allMissingDimensions.size > 0) {
+      console.warn('⚠️ WARNING: The following SKUs are missing dimension data (width, height, length):');
+      console.warn(Array.from(allMissingDimensions).join('\n'));
+      console.warn('Please update master_sku table with dimension data for accurate volume calculation');
+    }
 
     // 4. Apply geographic clustering if enabled
     let zonedDeliveries: any = { 0: deliveries };
@@ -189,23 +371,34 @@ export async function POST(request: Request) {
 
     // 10. Save trips to database
     try {
-      const tripsToInsert = allTrips.map((trip: any, index: number) => ({
-        plan_id: planId,
-        trip_sequence: index + 1,
-        trip_code: `TRIP-${String(index + 1).padStart(3, '0')}`,
-        trip_status: 'planned',
-        warehouse_id: plan.warehouse_id,
-        total_distance_km: trip.totalDistance || 0,
-        total_drive_minutes: Math.round(trip.totalDriveTime || 0),
-        total_service_minutes: Math.round(trip.totalServiceTime || 0),
-        total_stops: trip.stops?.length || 0,
-        total_weight_kg: trip.totalWeight || 0,
-        total_volume_cbm: trip.totalVolume || 0,
-        total_pallets: trip.totalPallets || 0,
-        fuel_cost_estimate: trip.totalCost || 0,
-        is_overweight: trip.isOverweight || false,
-        notes: trip.zoneName ? `โซน: ${trip.zoneName}` : null
-      }));
+      const tripsToInsert = allTrips.map((trip: any, index: number) => {
+        const vehicleCapacity = settings.vehicleCapacityKg || 1000;
+        const capacityUtil = vehicleCapacity > 0 ? ((trip.totalWeight || 0) / vehicleCapacity) * 100 : 0;
+
+        return {
+          plan_id: planId,
+          trip_sequence: index + 1,
+          trip_code: `TRIP-${String(index + 1).padStart(3, '0')}`,
+          trip_status: 'planned',
+          warehouse_id: plan.warehouse_id,
+          total_distance_km: trip.totalDistance || 0,
+          total_drive_minutes: Math.round(trip.totalDriveTime || 0),
+          total_service_minutes: Math.round(trip.totalServiceTime || 0),
+          total_stops: trip.stops?.length || 0,
+          total_weight_kg: trip.totalWeight || 0,
+          total_volume_cbm: trip.totalVolume || 0,
+          total_pallets: trip.totalPallets || 0,
+          capacity_utilization: Math.round(capacityUtil),
+          fuel_cost_estimate: trip.totalCost || 0,
+          // ไม่บันทึกค่าขนส่งอัตโนมัติ - ให้ผู้ใช้กรอกเองผ่าน Modal "แก้ไขราคาค่าขนส่ง"
+          shipping_cost: null,
+          base_price: null,
+          helper_fee: null,
+          extra_stop_fee: null,
+          is_overweight: trip.isOverweight || false,
+          notes: trip.zoneName ? `โซน: ${trip.zoneName}` : null
+        };
+      });
 
       // Delete existing trips for this plan
       await supabase
@@ -318,20 +511,44 @@ export async function POST(request: Request) {
     const totalServiceTime = allTrips.reduce((sum: number, trip: any) => sum + (trip.totalServiceTime || 0), 0);
     const totalCost = allTrips.reduce((sum: number, trip: any) => sum + (trip.totalCost || 0), 0);
     const totalWeight = allTrips.reduce((sum: number, trip: any) => sum + (trip.totalWeight || 0), 0);
+    const totalVolume = allTrips.reduce((sum: number, trip: any) => sum + (trip.totalVolume || 0), 0);
+    const totalPallets = allTrips.reduce((sum: number, trip: any) => sum + (trip.totalPallets || 0), 0);
+    const totalStops = allTrips.reduce((sum: number, trip: any) => sum + (trip.stops?.length || 0), 0);
 
-    // Update plan
-    await supabase
+    // Update plan - เก็บสถานะเป็น draft เพื่อให้ผู้ใช้ตรวจสอบและ publish เอง
+    const { error: planUpdateError } = await supabase
       .from('receiving_route_plans')
       .update({
-        status: 'optimized',
+        status: 'draft', // เก็บเป็น draft ให้ผู้ใช้กด Publish เอง
         total_trips: allTrips.length,
         total_distance_km: totalDistance,
-        total_drive_minutes: totalDriveTime,
-        total_service_minutes: totalServiceTime,
+        total_drive_minutes: Math.round(totalDriveTime),
+        total_service_minutes: Math.round(totalServiceTime),
         total_weight_kg: totalWeight,
+        total_volume_cbm: totalVolume,
+        total_pallets: totalPallets,
+        // ไม่บันทึก objective_value (ต้นทุน) อัตโนมัติ - ให้คำนวณจากค่าขนส่งที่ผู้ใช้กรอก
+        objective_value: null,
         completed_optimization_at: new Date().toISOString()
       })
       .eq('plan_id', planId);
+
+    if (planUpdateError) {
+      console.error('❌ ERROR: Failed to update route plan:', {
+        planId,
+        error: planUpdateError.message,
+        code: planUpdateError.code,
+        details: planUpdateError.details
+      });
+    } else {
+      console.log('✅ Route plan updated successfully:', {
+        planId,
+        total_trips: allTrips.length,
+        total_distance_km: totalDistance,
+        total_weight_kg: totalWeight,
+        total_cost: totalCost
+      });
+    }
 
     // Update or insert metrics
     await supabase
