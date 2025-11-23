@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   ShoppingCart,
   Plus,
@@ -17,10 +17,12 @@ import {
   XCircle,
   FileText,
   MapPin,
+  MapPinOff,
   ChevronUp,
   ChevronDown,
   ChevronsUpDown,
-  RotateCcw
+  RotateCcw,
+  Trash2
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
@@ -28,6 +30,9 @@ import Card from '@/components/ui/Card';
 import StatsCard from '@/components/ui/StatsCard';
 import Table from '@/components/ui/Table';
 import ImportOrderModal from '@/components/orders/ImportOrderModal';
+import EditOrderModal from '@/components/orders/EditOrderModal';
+import OrderLocationModal from '@/components/orders/OrderLocationModal';
+import AddCoordinatesModal from '@/components/orders/AddCoordinatesModal';
 import { useOrders, useOrderDashboard, OrderType, OrderStatus, OrderPriority, OrderFilters } from '@/hooks/useOrders';
 import useSWR from 'swr';
 
@@ -60,6 +65,13 @@ const OrdersPage = () => {
   const [showImportModal, setShowImportModal] = useState(false);
   const [showRollbackModal, setShowRollbackModal] = useState(false);
   const [selectedOrderForRollback, setSelectedOrderForRollback] = useState<any>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [selectedOrderIdForEdit, setSelectedOrderIdForEdit] = useState<string>('');
+  const [showLocationModal, setShowLocationModal] = useState(false);
+  const [selectedOrderForLocation, setSelectedOrderForLocation] = useState<any>(null);
+  const [showAddCoordinatesModal, setShowAddCoordinatesModal] = useState(false);
+  const [selectedOrderForAddCoords, setSelectedOrderForAddCoords] = useState<any>(null);
+  const [warehouse, setWarehouse] = useState<any>(null);
 
   // Fetcher function for SWR
   const fetcher = async (url: string) => {
@@ -93,6 +105,46 @@ const OrdersPage = () => {
 
   const ordersLoading = !orders && !ordersError;
   const dashboardLoading = !dashboardData && !dashboardError;
+
+  // Fetch warehouse data
+  useEffect(() => {
+    const fetchWarehouse = async () => {
+      try {
+        const res = await fetch('/api/master-warehouse');
+        const data = await res.json();
+        const list = Array.isArray(data) ? data : data?.data || [];
+        if (list.length > 0) {
+          // ใช้คลังแรกและตรวจสอบพิกัด
+          const wh = list[0];
+          setWarehouse({
+            ...wh,
+            // ใช้พิกัดจาก API ถ้ามี ไม่เช่นนั้นใช้พิกัดเริ่มต้น
+            latitude: wh.latitude || 13.5836207,
+            longitude: wh.longitude || 100.7638036,
+            name: wh.warehouse_name || wh.name || 'คลังสินค้า'
+          });
+        } else {
+          // ถ้าไม่มีข้อมูลจาก API ใช้ค่าเริ่มต้น
+          setWarehouse({
+            warehouse_id: 'WH001',
+            name: 'คลังสินค้า',
+            latitude: 13.5836207,
+            longitude: 100.7638036
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching warehouse:', error);
+        // กรณี error ใช้ค่าเริ่มต้น
+        setWarehouse({
+          warehouse_id: 'WH001',
+          name: 'คลังสินค้า',
+          latitude: 13.5836207,
+          longitude: 100.7638036
+        });
+      }
+    };
+    fetchWarehouse();
+  }, []);
 
   // Use dashboard data or defaults
   const dashboardStats = dashboardData || {
@@ -170,17 +222,17 @@ const OrdersPage = () => {
     }));
   };
 
-  // Get status badge variant
+  // Get status badge variant - อัปเดตให้สอดคล้องกับ Workflow ใหม่
   const getStatusVariant = (status: OrderStatus): 'default' | 'primary' | 'success' | 'warning' | 'danger' | 'info' => {
     switch (status) {
-      case 'draft': return 'default';
-      case 'confirmed': return 'info';
-      case 'in_picking': return 'warning';
-      case 'picked': return 'primary';
-      case 'loaded': return 'primary';
-      case 'in_transit': return 'primary';
-      case 'delivered': return 'success';
-      case 'cancelled': return 'danger';
+      case 'draft': return 'default';           // เทา - ร่าง
+      case 'confirmed': return 'info';          // ฟ้า - ยืนยันแล้ว
+      case 'in_picking': return 'warning';      // ส้ม/เหลือง - กำลังหยิบ
+      case 'picked': return 'primary';          // น้ำเงิน - หยิบเสร็จ
+      case 'loaded': return 'primary';          // น้ำเงิน - ขึ้นรถแล้ว
+      case 'in_transit': return 'info';         // ฟ้า - กำลังจัดส่ง
+      case 'delivered': return 'success';       // เขียว - ส่งถึงแล้ว
+      case 'cancelled': return 'danger';        // แดง - ยกเลิก
       default: return 'default';
     }
   };
@@ -382,6 +434,62 @@ const OrdersPage = () => {
     setShowRollbackModal(true);
   };
 
+  // Open edit modal
+  const openEditModal = (orderId: string) => {
+    setSelectedOrderIdForEdit(orderId);
+    setShowEditModal(true);
+  };
+
+  // Handle edit success
+  const handleEditSuccess = () => {
+    refetch(); // Refresh the orders list
+  };
+
+  // Open location modal
+  const openLocationModal = (order: any) => {
+    setSelectedOrderForLocation(order);
+    setShowLocationModal(true);
+  };
+
+  // Open add coordinates modal
+  const openAddCoordinatesModal = (order: any) => {
+    setSelectedOrderForAddCoords(order);
+    setShowAddCoordinatesModal(true);
+  };
+
+  // Handle coordinates add success
+  const handleAddCoordinatesSuccess = () => {
+    refetch(); // Refresh the orders list to get updated coordinates
+  };
+
+  // Handle delete order
+  const handleDelete = async (orderId: string, orderNo: string) => {
+    // Confirm deletion
+    const confirmed = window.confirm(
+      `ยืนยันการลบคำสั่งซื้อ ${orderNo}?\n\nการลบจะไม่สามารถกู้คืนได้`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch(`/api/orders/${orderId}`, {
+        method: 'DELETE',
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || result.error) {
+        throw new Error(result.error || 'Failed to delete order');
+      }
+
+      alert(`ลบคำสั่งซื้อ ${orderNo} สำเร็จ`);
+      refetch(); // Refresh the orders list
+    } catch (error: any) {
+      console.error('Error deleting order:', error);
+      alert(`เกิดข้อผิดพลาด: ${error.message || 'ไม่สามารถลบคำสั่งซื้อได้'}`);
+    }
+  };
+
   // Handle import - ถูกเรียกเฉพาะเมื่อไม่มี conflicts เท่านั้น
   const handleImport = async (type: string, file: File, warehouse: string, orderDate: string): Promise<void> => {
     // ฟังก์ชันนี้จะถูกเรียกจาก ImportOrderModal เมื่อไม่มี conflicts
@@ -567,7 +675,11 @@ const OrdersPage = () => {
                   sortedOrders.map((order: any) => (
                     <React.Fragment key={order.order_id}>
                       {/* Main Row */}
-                      <Table.Row>
+                      <Table.Row className={
+                        !order.customer?.latitude || !order.customer?.longitude
+                          ? 'bg-red-100'
+                          : ''
+                      }>
                         <Table.Cell>
                           <button
                             onClick={() => toggleExpandOrder(order.order_id)}
@@ -667,28 +779,32 @@ const OrdersPage = () => {
                         <Table.Cell className="text-center">
                           <div className="flex items-center justify-center space-x-1">
                             <button
-                              className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                              title="ดูรายละเอียด"
-                            >
-                              <Eye className="w-3.5 h-3.5" />
-                            </button>
-                            <button
                               className="p-1 text-gray-600 hover:bg-gray-100 rounded transition-colors"
                               title="แก้ไข"
+                              onClick={() => openEditModal(order.order_id)}
                             >
                               <Edit className="w-3.5 h-3.5" />
                             </button>
                             <button
-                              className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors"
-                              title="จัดส่ง"
+                              className="p-1 text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                              title={
+                                order.customer?.latitude && order.customer?.longitude
+                                  ? 'ที่อยู่จัดส่ง'
+                                  : 'เพิ่มพิกัดที่อยู่'
+                              }
+                              onClick={() => {
+                                if (order.customer?.latitude && order.customer?.longitude) {
+                                  openLocationModal(order);
+                                } else {
+                                  openAddCoordinatesModal(order);
+                                }
+                              }}
                             >
-                              <Truck className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              className="p-1 text-purple-600 hover:bg-purple-50 rounded transition-colors"
-                              title="ที่อยู่จัดส่ง"
-                            >
-                              <MapPin className="w-3.5 h-3.5" />
+                              {order.customer?.latitude && order.customer?.longitude ? (
+                                <MapPin className="w-3.5 h-3.5" />
+                              ) : (
+                                <MapPinOff className="w-3.5 h-3.5" />
+                              )}
                             </button>
                             {order.status !== 'draft' && order.status !== 'cancelled' && (
                               <button
@@ -699,6 +815,13 @@ const OrdersPage = () => {
                                 <RotateCcw className="w-3.5 h-3.5" />
                               </button>
                             )}
+                            <button
+                              className="p-1 text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                              title="ลบคำสั่งซื้อ"
+                              onClick={() => handleDelete(order.order_id, order.order_no)}
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
                           </div>
                         </Table.Cell>
                       </Table.Row>
@@ -846,6 +969,40 @@ const OrdersPage = () => {
         onImport={handleImport}
         onRefresh={refetch}
       />
+
+      {/* Edit Modal */}
+      <EditOrderModal
+        isOpen={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        orderId={selectedOrderIdForEdit}
+        onSuccess={handleEditSuccess}
+      />
+
+      {/* Location Modal */}
+      {showLocationModal && selectedOrderForLocation && warehouse && (
+        <OrderLocationModal
+          isOpen={showLocationModal}
+          onClose={() => setShowLocationModal(false)}
+          order={selectedOrderForLocation}
+          warehouse={warehouse}
+        />
+      )}
+
+      {/* Add Coordinates Modal */}
+      {showAddCoordinatesModal && selectedOrderForAddCoords && warehouse && (
+        <AddCoordinatesModal
+          isOpen={showAddCoordinatesModal}
+          onClose={() => setShowAddCoordinatesModal(false)}
+          order={{
+            order_no: selectedOrderForAddCoords.order_no,
+            customer_id: selectedOrderForAddCoords.customer_id,
+            shop_name: selectedOrderForAddCoords.shop_name,
+            address: selectedOrderForAddCoords.text_field_long_1
+          }}
+          warehouse={warehouse}
+          onSuccess={handleAddCoordinatesSuccess}
+        />
+      )}
 
       {/* Rollback Confirmation Modal */}
       {showRollbackModal && selectedOrderForRollback && (

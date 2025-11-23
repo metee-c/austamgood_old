@@ -6,7 +6,7 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
 
-    // Build query - use * to get all columns first to see what's available
+    // Build query - get all orders with items first
     let query = supabase
       .from('wms_orders')
       .select(`
@@ -53,14 +53,43 @@ export async function GET(request: NextRequest) {
       query = query.lte('order_date', endDate);
     }
 
-    const { data, error } = await query;
+    const { data: ordersData, error } = await query;
 
     if (error) {
       console.error('Error fetching orders with items:', error);
       return NextResponse.json({ data: null, error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ data: data || [], error: null });
+    // Get unique customer IDs from orders
+    const customerIds = [...new Set(ordersData?.map(order => order.customer_id).filter(Boolean) || [])];
+
+    // Fetch customer coordinates if there are any customer IDs
+    let customersMap = new Map();
+    if (customerIds.length > 0) {
+      const { data: customersData, error: customersError } = await supabase
+        .from('master_customer')
+        .select('customer_id, latitude, longitude')
+        .in('customer_id', customerIds);
+
+      if (!customersError && customersData) {
+        customersData.forEach(customer => {
+          customersMap.set(customer.customer_id, {
+            latitude: customer.latitude,
+            longitude: customer.longitude
+          });
+        });
+      } else if (customersError) {
+        console.error('Error fetching customers:', customersError);
+      }
+    }
+
+    // Merge customer data into orders
+    const ordersWithCustomer = ordersData?.map(order => ({
+      ...order,
+      customer: customersMap.get(order.customer_id) || null
+    })) || [];
+
+    return NextResponse.json({ data: ordersWithCustomer, error: null });
   } catch (error) {
     console.error('API Error in GET /api/orders/with-items:', error);
     return NextResponse.json(

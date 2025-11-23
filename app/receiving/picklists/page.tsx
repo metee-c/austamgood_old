@@ -14,7 +14,8 @@ import {
   ChevronUp,
   ChevronDown,
   ChevronsUpDown,
-  Plus
+  Plus,
+  Printer
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
@@ -55,6 +56,7 @@ const PicklistsPage = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [editingStatusPicklistId, setEditingStatusPicklistId] = useState<number | null>(null);
+  const [printingPicklistId, setPrintingPicklistId] = useState<number | null>(null);
 
   // Fetcher function
   const fetcher = async (url: string) => {
@@ -183,6 +185,49 @@ const PicklistsPage = () => {
       hour: '2-digit',
       minute: '2-digit'
     }).format(date);
+  };
+
+  // Handle print picklist - เปลี่ยนสถานะจาก pending → picking
+  const handlePrint = async (picklistId: number, picklistCode: string, currentStatus: PicklistStatus) => {
+    // ตรวจสอบสถานะ - ต้องเป็น pending เท่านั้น
+    if (currentStatus !== 'pending') {
+      alert(`ไม่สามารถพิมพ์ได้ สถานะปัจจุบันคือ ${getStatusText(currentStatus)}`);
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `ยืนยันการพิมพ์เอกสาร Picklist ${picklistCode}?\n\nสถานะจะเปลี่ยนเป็น "กำลังหยิบ" โดยอัตโนมัติ`
+    );
+
+    if (!confirmed) return;
+
+    setPrintingPicklistId(picklistId);
+
+    try {
+      const response = await fetch(`/api/picklists/${picklistId}/print`, {
+        method: 'POST'
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || result.error) {
+        throw new Error(result.error || 'Failed to print picklist');
+      }
+
+      alert(`พิมพ์เอกสาร ${picklistCode} สำเร็จ\nสถานะเปลี่ยนเป็น "กำลังหยิบ"`);
+
+      // Refresh picklists
+      mutate();
+
+      // TODO: เปิดหน้าพิมพ์จริง (ถ้ามี)
+      // window.open(`/receiving/picklists/${picklistId}/print-document`, '_blank');
+
+    } catch (error: any) {
+      console.error('Error printing picklist:', error);
+      alert(`เกิดข้อผิดพลาด: ${error.message || 'ไม่สามารถพิมพ์เอกสารได้'}`);
+    } finally {
+      setPrintingPicklistId(null);
+    }
   };
 
   // Status options
@@ -416,10 +461,24 @@ const PicklistsPage = () => {
                     </Table.Cell>
                     <Table.Cell>
                       <div className="flex items-center space-x-1">
+                        {picklist.status === 'pending' && (
+                          <button
+                            onClick={() => handlePrint(picklist.id, picklist.picklist_code, picklist.status)}
+                            disabled={printingPicklistId === picklist.id}
+                            className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-50"
+                            title="พิมพ์เอกสารและเริ่มหยิบ"
+                          >
+                            {printingPicklistId === picklist.id ? (
+                              <Clock className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Printer className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        )}
                         <Link
                           href={`/receiving/picklists/${picklist.id}`}
                           className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
-                          title="ดูรายละเอียดและพิมพ์"
+                          title="ดูรายละเอียด"
                         >
                           <Eye className="w-3.5 h-3.5" />
                         </Link>

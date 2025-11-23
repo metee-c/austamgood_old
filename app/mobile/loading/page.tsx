@@ -9,11 +9,13 @@ import {
   CheckCircle,
   AlertCircle,
   Loader2,
-  RefreshCw
+  RefreshCw,
+  X
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import MobileBottomNav from '@/components/layout/MobileBottomNav';
+import { Html5Qrcode } from 'html5-qrcode';
 
 interface LoadlistTask {
   loadlist_id: number;
@@ -66,6 +68,8 @@ const MobileLoadingPageContent = () => {
   const [scannedCode, setScannedCode] = useState('');
   const [processingItem, setProcessingItem] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const [isScanning, setIsScanning] = useState(false);
+  const [scanner, setScanner] = useState<Html5Qrcode | null>(null);
 
   useEffect(() => {
     if (loadlistIdParam && codeParam) {
@@ -75,6 +79,16 @@ const MobileLoadingPageContent = () => {
       fetchPendingTasks();
     }
   }, [loadlistIdParam, codeParam]);
+
+  useEffect(() => {
+    // Cleanup scanner on unmount
+    return () => {
+      if (scanner) {
+        scanner.stop().catch(console.error);
+        scanner.clear();
+      }
+    };
+  }, [scanner]);
 
   const fetchPendingTasks = async () => {
     try {
@@ -128,23 +142,75 @@ const MobileLoadingPageContent = () => {
     await fetchLoadlistItems(task.loadlist_id);
   };
 
+  const startScanning = async () => {
+    try {
+      setIsScanning(true);
+      setErrorMessage('');
+      const html5QrCode = new Html5Qrcode('qr-reader-loading');
+      setScanner(html5QrCode);
+
+      await html5QrCode.start(
+        { facingMode: 'environment' },
+        { fps: 10, qrbox: { width: 250, height: 250 } },
+        (decodedText) => {
+          stopScanning();
+          handleScan(decodedText);
+        },
+        (errorMessage) => {
+          // Ignore scan errors (not finding QR code is normal)
+        }
+      );
+    } catch (error) {
+      console.error('Error starting scanner:', error);
+      setErrorMessage('ไม่สามารถเปิดกล้องได้ กรุณาตรวจสอบสิทธิ์การใช้งานกล้อง');
+      setIsScanning(false);
+    }
+  };
+
+  const stopScanning = async () => {
+    if (scanner) {
+      try {
+        await scanner.stop();
+        scanner.clear();
+      } catch (error) {
+        console.error('Error stopping scanner:', error);
+      }
+      setScanner(null);
+    }
+    setIsScanning(false);
+  };
+
   const handleScan = async (code: string) => {
     if (!selectedTask) return;
 
     const trimmedCode = code.trim().toUpperCase();
 
     // Find the picklist by code
-    const picklistItem = items.find(item => 
+    const picklistItem = items.find(item =>
       item.picklist_code.toUpperCase() === trimmedCode
     );
 
     if (!picklistItem) {
       setErrorMessage('ไม่พบใบจัดสินค้านี้ในใบโหลด');
+      // Play error sound
+      try {
+        const audio = new Audio('/audio/error.mp3');
+        audio.play();
+      } catch (e) {
+        console.log('Audio not available');
+      }
       return;
     }
 
     if (picklistItem.is_loaded) {
       setErrorMessage('ใบจัดสินค้านี้โหลดแล้ว');
+      // Play error sound
+      try {
+        const audio = new Audio('/audio/error.mp3');
+        audio.play();
+      } catch (e) {
+        console.log('Audio not available');
+      }
       return;
     }
 
@@ -167,7 +233,22 @@ const MobileLoadingPageContent = () => {
       if (!response.ok) {
         setErrorMessage(result.details || result.error || 'เกิดข้อผิดพลาด');
         setProcessingItem(null);
+        // Play error sound
+        try {
+          const audio = new Audio('/audio/error.mp3');
+          audio.play();
+        } catch (e) {
+          console.log('Audio not available');
+        }
         return;
+      }
+
+      // Play success sound
+      try {
+        const audio = new Audio('/audio/success.mp3');
+        audio.play();
+      } catch (e) {
+        console.log('Audio not available');
       }
 
       await fetchLoadlistItems(selectedTask.loadlist_id);
@@ -179,6 +260,13 @@ const MobileLoadingPageContent = () => {
       console.error('Error updating status:', error);
       setErrorMessage('ไม่สามารถเชื่อมต่อระบบได้');
       setProcessingItem(null);
+      // Play error sound
+      try {
+        const audio = new Audio('/audio/error.mp3');
+        audio.play();
+      } catch (e) {
+        console.log('Audio not available');
+      }
     }
   };
 
@@ -251,25 +339,36 @@ const MobileLoadingPageContent = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
-      <div className="bg-green-500 text-white shadow-lg">
-        <div className="px-4 py-4">
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={handleBack}
-              className="p-2 hover:bg-green-600 rounded-lg transition-colors"
-            >
-              <ArrowLeft className="w-6 h-6" />
-            </button>
-            <div className="flex-1">
-              <h1 className="text-xl font-bold">
-                {selectedTask ? selectedTask.loadlist_code : 'โหลดสินค้าขึ้นรถ'}
-              </h1>
-              <p className="text-sm text-green-100">
-                {selectedTask ? 'รายละเอียดการโหลด' : 'เลือกใบโหลดที่ต้องการทำ'}
-              </p>
-            </div>
+      <div className="bg-gradient-to-br from-sky-400 to-sky-500 text-white p-4 sticky top-0 z-10 shadow-lg">
+        <div className="flex items-center space-x-3 mb-3">
+          <button
+            onClick={handleBack}
+            className="p-1.5 bg-white/20 rounded-lg hover:bg-white/30 transition-colors active:scale-95"
+          >
+            <ArrowLeft className="w-5 h-5" />
+          </button>
+          <div className="flex-1">
+            <h1 className="text-xl font-bold">
+              {selectedTask ? selectedTask.loadlist_code : 'โหลดสินค้าขึ้นรถ'}
+            </h1>
+            <p className="text-xs opacity-90">
+              {selectedTask ? 'รายละเอียดการโหลด' : 'เลือกใบโหลดที่ต้องการทำ'}
+            </p>
           </div>
         </div>
+
+        {!selectedTask && tasks.length > 0 && (
+          <div className="grid grid-cols-2 gap-2">
+            <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
+              <div className="text-xl font-bold">{tasks.filter(t => t.status === 'pending').length}</div>
+              <div className="text-[10px] opacity-90">รอโหลด</div>
+            </div>
+            <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
+              <div className="text-xl font-bold">{tasks.filter(t => t.status === 'loading').length}</div>
+              <div className="text-[10px] opacity-90">กำลังโหลด</div>
+            </div>
+          </div>
+        )}
       </div>
 
       {!selectedTask ? (
@@ -348,7 +447,7 @@ const MobileLoadingPageContent = () => {
 
           <Button
             onClick={() => setScanMode(true)}
-            className="w-full py-4 text-lg flex items-center justify-center space-x-2"
+            className="w-full py-4 text-lg flex items-center justify-center space-x-2 bg-sky-500 hover:bg-sky-600"
           >
             <QrCode className="w-6 h-6" />
             <span>สแกน QR Code / Barcode</span>
@@ -419,44 +518,77 @@ const MobileLoadingPageContent = () => {
       )}
 
       {scanMode && (
-        <div className="fixed inset-0 bg-black bg-opacity-90 z-50 flex flex-col">
-          <div className="bg-white px-4 py-3 flex items-center justify-between">
+        <div className="fixed inset-0 bg-black z-50 flex flex-col">
+          <div className="bg-gradient-to-r from-sky-500 to-sky-600 text-white px-4 py-3 flex items-center justify-between shadow-lg">
             <h2 className="font-bold text-lg">สแกน QR Code</h2>
             <button
-              onClick={() => setScanMode(false)}
-              className="text-thai-gray-600 hover:text-thai-gray-900"
+              onClick={async () => {
+                await stopScanning();
+                setScanMode(false);
+                setScannedCode('');
+                setErrorMessage('');
+              }}
+              className="p-2 hover:bg-white/20 rounded-lg transition-colors"
             >
-              ปิด
+              <X className="w-5 h-5" />
             </button>
           </div>
 
-          <div className="flex-1 flex items-center justify-center">
-            <div className="w-64 h-64 border-4 border-white rounded-2xl relative">
-              <div className="absolute top-0 left-0 w-8 h-8 border-t-4 border-l-4 border-green-500" />
-              <div className="absolute top-0 right-0 w-8 h-8 border-t-4 border-r-4 border-green-500" />
-              <div className="absolute bottom-0 left-0 w-8 h-8 border-b-4 border-l-4 border-green-500" />
-              <div className="absolute bottom-0 right-0 w-8 h-8 border-b-4 border-r-4 border-green-500" />
-            </div>
+          <div className="flex-1 flex flex-col items-center justify-center p-4">
+            {!isScanning ? (
+              <div className="text-center">
+                <div className="mb-6">
+                  <QrCode className="w-24 h-24 text-sky-400 mx-auto mb-4" />
+                  <p className="text-white text-lg mb-2">เตรียมพร้อมสแกน QR Code</p>
+                  <p className="text-gray-400 text-sm">กดปุ่มด้านล่างเพื่อเปิดกล้อง</p>
+                </div>
+                <Button
+                  onClick={startScanning}
+                  className="bg-sky-500 hover:bg-sky-600 px-8 py-3"
+                >
+                  <QrCode className="w-5 h-5 mr-2" />
+                  เปิดกล้องสแกน
+                </Button>
+              </div>
+            ) : (
+              <div className="w-full max-w-md">
+                <div id="qr-reader-loading" className="rounded-xl overflow-hidden shadow-2xl" />
+                <div className="mt-4 text-center">
+                  <p className="text-white text-sm mb-3">วางรหัส QR ให้อยู่ในกรอบสี่เหลี่ยม</p>
+                  <Button
+                    onClick={stopScanning}
+                    variant="secondary"
+                    className="bg-white/10 hover:bg-white/20 text-white border-white/30"
+                  >
+                    หยุดสแกน
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="bg-white px-4 py-6">
+          <div className="bg-gray-900 px-4 py-6">
             {errorMessage && (
-              <div className="mb-4 p-3 bg-red-100 border border-red-300 rounded-lg">
-                <p className="text-red-700 text-sm text-center">{errorMessage}</p>
+              <div className="mb-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg backdrop-blur-sm">
+                <p className="text-red-200 text-sm text-center font-medium">{errorMessage}</p>
               </div>
             )}
 
-            <p className="text-center text-thai-gray-600 mb-4">
-              สแกนรหัสใบจัดสินค้า
-            </p>
+            <div className="text-center mb-4">
+              <p className="text-gray-400 text-sm mb-2">หรือป้อนรหัสด้วยตนเอง</p>
+            </div>
 
             <input
               type="text"
               value={scannedCode}
               onChange={(e) => setScannedCode(e.target.value)}
-              placeholder="สแกนรหัสใบจัดสินค้า..."
-              className="w-full px-4 py-3 border border-gray-300 rounded-lg text-center text-lg"
-              autoFocus
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && scannedCode && !processingItem) {
+                  handleScan(scannedCode);
+                }
+              }}
+              placeholder="พิมพ์รหัสใบจัดสินค้า..."
+              className="w-full px-4 py-3 bg-gray-800 border border-gray-700 text-white placeholder-gray-500 rounded-lg text-center text-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-transparent"
               disabled={processingItem !== null}
             />
             <Button
@@ -465,7 +597,7 @@ const MobileLoadingPageContent = () => {
                   handleScan(scannedCode);
                 }
               }}
-              className="w-full mt-3"
+              className="w-full mt-3 bg-sky-500 hover:bg-sky-600"
               disabled={!scannedCode || processingItem !== null}
             >
               {processingItem ? (
@@ -474,7 +606,10 @@ const MobileLoadingPageContent = () => {
                   กำลังบันทึก...
                 </>
               ) : (
-                'ยืนยัน'
+                <>
+                  <CheckCircle className="w-5 h-5 mr-2" />
+                  ยืนยัน
+                </>
               )}
             </Button>
           </div>

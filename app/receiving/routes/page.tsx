@@ -1793,7 +1793,9 @@ const RoutesPage = () => {
             draft: { label: 'แบบร่าง', variant: 'default' },
             optimizing: { label: 'กำลังคำนวณ', variant: 'warning' },
             published: { label: 'เผยแพร่แล้ว', variant: 'success' },
-            completed: { label: 'เสร็จสิ้น', variant: 'info' },
+            ready_to_load: { label: 'พร้อมขึ้นรถ', variant: 'primary' },  // สถานะใหม่
+            in_transit: { label: 'กำลังจัดส่ง', variant: 'info' },       // สถานะใหม่
+            completed: { label: 'เสร็จสิ้น', variant: 'success' },
             cancelled: { label: 'ยกเลิก', variant: 'danger' }
         };
         const match = map[status] || map.draft;
