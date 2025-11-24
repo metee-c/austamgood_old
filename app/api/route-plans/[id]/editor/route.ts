@@ -96,7 +96,7 @@ export async function GET(
         if (allOrderIds.size > 0) {
           const { data: ordersData, error: ordersError } = await supabase
             .from('wms_orders')
-            .select('order_id, order_no, customer_id, total_weight, order_date, delivery_date')
+            .select('order_id, order_no, customer_id, shop_name, province, total_weight, order_date, delivery_date')
             .in('order_id', Array.from(allOrderIds));
 
           if (!ordersError && ordersData) {
@@ -192,6 +192,8 @@ export async function GET(
               order_no: order.order_no,
               customer_id: order.customer_id,
               customer_name: stop.stop_name,
+              shop_name: order.shop_name || stop.stop_name,
+              province: order.province || null,
               allocated_weight_kg: allocatedWeight,
               total_order_weight_kg: order.total_weight,
               total_qty: totalQty
@@ -291,6 +293,8 @@ export async function GET(
             order_id,
             order_no,
             customer_id,
+            shop_name,
+            province,
             total_weight
           `)
           .in('order_id', allOrderIds);
@@ -367,6 +371,8 @@ export async function GET(
               order_no: order.order_no,
               customer_id: order.customer_id,
               customer_name: stop.stopName,
+              shop_name: order.shop_name || stop.stopName,
+              province: order.province || null,
               allocated_weight_kg: orderWeight,
               total_order_weight_kg: orderWeight,
               total_qty: totalQty

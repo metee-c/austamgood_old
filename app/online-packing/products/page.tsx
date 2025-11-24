@@ -2,11 +2,17 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { Database } from '@/types/database/supabase'
 
-type Product = Database['public']['Tables']['packing_products']['Row']
-type ProductInsert = Database['public']['Tables']['packing_products']['Insert']
-type ProductUpdate = Database['public']['Tables']['packing_products']['Update']
+// Type definitions for packing_products table
+type Product = {
+  id: number
+  product_name: string | null
+  parent_sku: string | null
+  barcode: string | null
+  is_sample: boolean | null
+  created_at: string
+  updated_at: string
+}
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([])

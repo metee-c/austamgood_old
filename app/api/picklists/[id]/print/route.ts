@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 
 /**
  * POST /api/picklists/[id]/print
- * เมื่อกดปุ่มพิมพ์เอกสาร Picklist → เปลี่ยนสถานะจาก pending → picking
+ * เมื่อกดปุ่มพิมพ์เอกสาร Picklist (ไม่อัปเดตสถานะอัตโนมัติ)
  */
 export async function POST(
   request: NextRequest,
@@ -13,7 +13,7 @@ export async function POST(
     const supabase = await createClient();
     const { id } = await params;
 
-    // ตรวจสอบว่า Picklist มีอยู่และสถานะเป็น pending
+    // ตรวจสอบว่า Picklist มีอยู่
     const { data: picklist, error: fetchError } = await supabase
       .from('picklists')
       .select('id, picklist_code, status')
@@ -27,41 +27,11 @@ export async function POST(
       );
     }
 
-    // ถ้าสถานะไม่ใช่ pending ให้แจ้งเตือน
-    if (picklist.status !== 'pending') {
-      return NextResponse.json(
-        {
-          error: `Cannot print. Picklist is already ${picklist.status}`,
-          current_status: picklist.status
-        },
-        { status: 400 }
-      );
-    }
-
-    // อัปเดตสถานะเป็น picking
-    const { data, error } = await supabase
-      .from('picklists')
-      .update({
-        status: 'picking',
-        picking_started_at: new Date().toISOString(),
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', id)
-      .select()
-      .single();
-
-    if (error) {
-      console.error('Error updating picklist status:', error);
-      return NextResponse.json(
-        { error: error.message },
-        { status: 500 }
-      );
-    }
-
+    // ส่งข้อมูล picklist กลับไป (ไม่อัปเดตสถานะ)
     return NextResponse.json({
       success: true,
-      message: `Picklist ${picklist.picklist_code} status changed to picking`,
-      data
+      message: `Picklist ${picklist.picklist_code} ready to print`,
+      data: picklist
     });
 
   } catch (error) {

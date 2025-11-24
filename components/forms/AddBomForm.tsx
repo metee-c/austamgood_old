@@ -16,7 +16,17 @@ import Button from '@/components/ui/Button';
 import { bomSkuService } from '@/lib/database/bom-sku';
 import { masterSkuService } from '@/lib/database/master-sku';
 import { CreateBomSkuData } from '@/types/database/bom-sku';
-import { MasterSku } from '@/types/database/supabase';
+
+// Type for MasterSku
+type MasterSku = {
+  sku_id: string
+  sku_name: string
+  barcode?: string
+  category?: string
+  uom?: string
+  weight_kg?: number
+  [key: string]: any
+}
 
 const bomSchema = z.object({
   bom_id: z.string().min(1, 'กรุณาระบุรหัส BOM'),

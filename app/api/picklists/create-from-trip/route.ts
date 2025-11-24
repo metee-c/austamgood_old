@@ -122,14 +122,17 @@ export async function POST(request: NextRequest) {
     const skuIds = [...new Set((orderItems || []).map(item => item.sku_id))];
     const { data: skus, error: skusError } = await supabase
       .from('master_sku')
-      .select('sku_id, sku_name, uom_base, barcode')
+      .select('sku_id, sku_name, uom_base, barcode, default_location')
       .in('sku_id', skuIds);
 
     if (skusError) {
       console.error('Error fetching SKUs:', skusError);
     }
 
-    // 7. Fetch order details
+    // 7. Note: We will use default_location from SKU master data as the primary source
+    // for source_location_id (preparation area configured in master data)
+
+    // 8. Fetch order details
     const { data: orders, error: ordersError } = await supabase
       .from('wms_orders')
       .select('order_id, order_no')
@@ -143,7 +146,7 @@ export async function POST(request: NextRequest) {
     const skuMap = new Map((skus || []).map(sku => [sku.sku_id, sku]));
     const orderMap = new Map((orders || []).map(order => [order.order_id, order]));
 
-    // 8. Create picklist
+    // 9. Create picklist
     const totalQuantity = (orderItems || []).reduce((sum, item) => sum + (item.order_qty || 0), 0);
     const totalLines = (orderItems || []).length;
 
@@ -172,7 +175,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 9. Create picklist items
+    // 10. Create picklist items with source_location_id
     // Group items by SKU and stop to avoid duplicates
     const itemsToInsert: any[] = [];
 
@@ -201,6 +204,10 @@ export async function POST(request: NextRequest) {
       if (stop) {
         const order = orderMap.get(item.order_id);
 
+        // Use default_location (preparation area) as source_location_id
+        // This is the preparation area configured in master data
+        const sourceLocationId = sku.default_location || null;
+
         itemsToInsert.push({
           picklist_id: picklist.id,
           order_item_id: item.order_item_id,
@@ -212,6 +219,7 @@ export async function POST(request: NextRequest) {
           stop_id: stop.stop_id,
           quantity_to_pick: item.order_qty,
           quantity_picked: 0,
+          source_location_id: sourceLocationId,  // ✅ ใช้ default_location (preparation area)
           status: 'pending',
           notes: sku?.barcode || null
         });

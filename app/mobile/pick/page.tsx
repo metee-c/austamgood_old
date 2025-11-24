@@ -41,7 +41,7 @@ interface Picklist {
 const PICKLIST_STATUSES = [
   'all',
   'pending',
-  'picking',
+  'assigned',
   'completed',
   'cancelled'
 ] as const;
@@ -51,7 +51,7 @@ export default function MobilePickPage() {
   const [loading, setLoading] = useState(true);
   const [picklists, setPicklists] = useState<Picklist[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState<string>('picking');
+  const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [showFilter, setShowFilter] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -120,6 +120,8 @@ export default function MobilePickPage() {
     switch (status) {
       case 'pending':
         return <Clock className="w-4 h-4 text-gray-500" />;
+      case 'assigned':
+        return <Package className="w-4 h-4 text-blue-500" />;
       case 'picking':
         return <Package className="w-4 h-4 text-yellow-500" />;
       case 'completed':
@@ -163,8 +165,8 @@ export default function MobilePickPage() {
         {/* Stats Summary */}
         <div className="grid grid-cols-2 gap-2 mb-3">
           <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
-            <div className="text-xl font-bold">{picklists.filter(p => p.status === 'picking').length}</div>
-            <div className="text-[10px] opacity-90">กำลังหยิบ</div>
+            <div className="text-xl font-bold">{picklists.filter(p => p.status === 'assigned').length}</div>
+            <div className="text-[10px] opacity-90">มอบหมายแล้ว</div>
           </div>
           <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
             <div className="text-xl font-bold">{picklists.filter(p => p.status === 'completed').length}</div>
@@ -191,7 +193,13 @@ export default function MobilePickPage() {
         >
           <span className="flex items-center gap-1.5">
             <Filter className="w-3.5 h-3.5" />
-            <span>กรอง: {selectedStatus === 'all' ? 'ทั้งหมด' : selectedStatus === 'picking' ? 'กำลังหยิบ' : 'อื่นๆ'}</span>
+            <span>กรอง: {
+              selectedStatus === 'all' ? 'ทั้งหมด' :
+              selectedStatus === 'assigned' ? 'มอบหมายแล้ว' :
+              selectedStatus === 'completed' ? 'เสร็จสิ้น' :
+              selectedStatus === 'pending' ? 'รอดำเนินการ' :
+              selectedStatus === 'cancelled' ? 'ยกเลิก' : 'อื่นๆ'
+            }</span>
           </span>
           {showFilter ? <X className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
         </button>
@@ -216,7 +224,7 @@ export default function MobilePickPage() {
               >
                 {status === 'all' && 'ทั้งหมด'}
                 {status === 'pending' && 'รอดำเนินการ'}
-                {status === 'picking' && 'กำลังหยิบ (แนะนำ)'}
+                {status === 'assigned' && 'มอบหมายแล้ว (แนะนำ)'}
                 {status === 'completed' && 'เสร็จสิ้น'}
                 {status === 'cancelled' && 'ยกเลิก'}
               </button>

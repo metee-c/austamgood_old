@@ -5,11 +5,27 @@ import { Save, X, AlertCircle } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import ComboBox from '@/components/ui/ComboBox';
 import { masterSkuService } from '@/lib/database/master-sku';
-import { Database } from '@/types/database/supabase';
-
-type MasterSkuInsert = Database['public']['Tables']['master_sku']['Insert'];
 import { useSkuOptions } from '@/hooks/useSkuOptions';
 import { useSuppliers, useStorageStrategies } from '@/hooks/useFormOptions';
+
+// Type for master_sku insert
+type MasterSkuInsert = {
+  sku_id?: string
+  sku_name?: string
+  barcode?: string
+  category?: string
+  uom?: string
+  weight_kg?: number
+  length_cm?: number
+  width_cm?: number
+  height_cm?: number
+  supplier_id?: string
+  reorder_level?: number
+  storage_strategy_id?: number
+  is_active?: boolean
+  created_at?: string
+  updated_at?: string
+}
 
 interface AddProductFormProps {
   onSuccess: () => void;

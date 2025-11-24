@@ -4,7 +4,27 @@ import React, { useState, useRef } from 'react';
 import { Upload, Download, AlertCircle, CheckCircle, X, FileText } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import { masterSkuService } from '@/lib/database/master-sku';
-import { MasterSkuInsert } from '@/types/database/supabase';
+
+// Type for MasterSkuInsert
+type MasterSkuInsert = {
+  sku_id?: string
+  sku_name?: string
+  sku_description?: string
+  barcode?: string
+  category?: string
+  sub_category?: string
+  brand?: string
+  uom?: string
+  weight_kg?: number
+  length_cm?: number
+  width_cm?: number
+  height_cm?: number
+  supplier_id?: string
+  reorder_level?: number
+  storage_strategy_id?: number
+  is_active?: boolean
+  [key: string]: any
+}
 
 interface ImportDataFormProps {
   onSuccess: () => void;

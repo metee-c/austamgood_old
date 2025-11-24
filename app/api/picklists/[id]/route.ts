@@ -3,7 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 
 /**
  * GET /api/picklists/[id]
- * 6I-!9% Picklist by ID #I-!#2"%0@-5"1I+!
+ * ดึง Picklist by ID พร้อมรายละเอียดทั้งหมด
  */
 export async function GET(
   request: NextRequest,
@@ -29,10 +29,18 @@ export async function GET(
         ),
         picklist_items (
           id,
+          picklist_id,
+          order_item_id,
           sku_id,
-          product_name,
-          quantity,
-          picked_quantity,
+          sku_name,
+          uom,
+          order_no,
+          order_id,
+          stop_id,
+          quantity_to_pick,
+          quantity_picked,
+          status,
+          notes,
           master_sku (
             sku_name,
             barcode
@@ -64,7 +72,8 @@ export async function GET(
 
 /**
  * PATCH /api/picklists/[id]
- * -1@I-!9% Picklist (*3+#1AID*20+#7-I-!9%-7HF)
+ * อัปเดต Picklist (รวมถึงอัปเดตสถานะออเดอร์)
+ * เมื่อเปลี่ยนสถานะเป็น 'assigned' → ออเดอร์ทั้งหมดใน picklist เปลี่ยนเป็น 'in_picking'
  */
 export async function PATCH(
   request: NextRequest,
@@ -75,7 +84,7 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
 
-    // -1@I-!9%
+    // อัปเดต picklist
     const { data, error } = await supabase
       .from('picklists')
       .update({
@@ -92,6 +101,41 @@ export async function PATCH(
         { error: error.message },
         { status: 500 }
       );
+    }
+
+    // ถ้าเปลี่ยนสถานะเป็น 'assigned' (มอบหมายแล้ว)
+    // → อัปเดตสถานะออเดอร์ทั้งหมดใน picklist เป็น 'in_picking' (กำลังหยิบ)
+    if (body.status === 'assigned') {
+      // ดึง order_id ทั้งหมดจาก picklist_items
+      const { data: picklistItems, error: itemsError } = await supabase
+        .from('picklist_items')
+        .select('order_id')
+        .eq('picklist_id', id);
+
+      if (itemsError) {
+        console.error('Error fetching picklist items:', itemsError);
+      } else if (picklistItems && picklistItems.length > 0) {
+        // เอา order_id ที่ไม่ซ้ำกัน
+        const orderIds = [...new Set(picklistItems.map(item => item.order_id))];
+
+        // อัปเดตสถานะออเดอร์ทั้งหมด
+        const { error: ordersUpdateError } = await supabase
+          .from('wms_orders')
+          .update({
+            status: 'in_picking',
+            updated_at: new Date().toISOString()
+          })
+          .in('order_id', orderIds)
+          .eq('status', 'confirmed'); // อัปเดตเฉพาะออเดอร์ที่สถานะเป็น confirmed
+
+        if (ordersUpdateError) {
+          console.error('Error updating orders status:', ordersUpdateError);
+          // ไม่ return error เพราะ picklist อัปเดตสำเร็จแล้ว
+          // แค่ log ไว้เพื่อ debug
+        } else {
+          console.log(`Updated ${orderIds.length} orders to in_picking status`);
+        }
+      }
     }
 
     return NextResponse.json({
@@ -111,7 +155,7 @@ export async function PATCH(
 
 /**
  * DELETE /api/picklists/[id]
- * % Picklist (@%5H"*20@G cancelled)
+ * ลบ Picklist (เปลี่ยนสถานะเป็น cancelled)
  */
 export async function DELETE(
   request: NextRequest,
@@ -121,7 +165,7 @@ export async function DELETE(
     const supabase = await createClient();
     const { id } = await params;
 
-    // @%5H"*20@G cancelled A2#%#4
+    // เปลี่ยนสถานะเป็น cancelled แทนการลบ
     const { data, error } = await supabase
       .from('picklists')
       .update({

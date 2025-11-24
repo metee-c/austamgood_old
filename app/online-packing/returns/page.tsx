@@ -3,10 +3,38 @@
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import type { Order } from '@/types/online-packing'
-import type { Database } from '@/types/database/supabase'
 
-type ReturnRequest = Database['public']['Tables']['packing_returns']['Row']
-type Product = Database['public']['Tables']['packing_products']['Row']
+// Type definitions
+type ReturnRequest = {
+  id: number
+  order_no: string | null
+  order_number: string | null
+  buyer_name: string | null
+  product_name: string | null
+  parent_sku: string | null
+  return_quantity: number | null
+  quantity: number | null
+  return_reason: string | null
+  return_status: 'pending' | 'approved' | 'rejected' | 'completed'
+  image_url: string | null
+  notes: string | null
+  status: string | null
+  processed_by: string | null
+  processed_at: string | null
+  confirmation_images?: string[]
+  created_at: string
+  updated_at: string
+}
+
+type Product = {
+  id: number
+  product_name: string | null
+  parent_sku: string | null
+  barcode: string | null
+  is_sample: boolean | null
+  created_at: string
+  updated_at: string
+}
 
 interface ManualReturnItem {
     key: number;
@@ -433,7 +461,7 @@ export default function ReturnsPage() {
     }
   };
 
-  const updateReturnStatus = async (returnId: string, newStatus: ReturnRequest['return_status']) => {
+  const updateReturnStatus = async (returnId: string | number, newStatus: ReturnRequest['return_status']) => {
     const supabase = createClient()
     try {
       await supabase.from('packing_returns').update({ return_status: newStatus, processed_at: new Date().toISOString(), processed_by: currentUser?.full_name || 'warehouse' }).eq('id', returnId)

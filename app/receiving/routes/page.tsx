@@ -1428,9 +1428,9 @@ const RoutesPage = () => {
 
     const statuses = [
         { value: 'all', label: 'ทั้งหมด' },
-        { value: 'draft', label: 'แบบร่าง' },
-        { value: 'optimizing', label: 'กำลังคำนวณ' },
-        { value: 'published', label: 'เผยแพร่แล้ว' },
+        { value: 'draft', label: 'ร่าง (สร้างใหม่)' },
+        { value: 'optimizing', label: 'กำลังกรอกค่าขนส่ง' },
+        { value: 'published', label: 'กรอกค่าขนส่งเสร็จ (พร้อมพิมพ์)' },
         { value: 'pending_approval', label: 'รออนุมัติ' },
         { value: 'approved', label: 'อนุมัติแล้ว' },
         { value: 'completed', label: 'เสร็จสิ้น' },
@@ -2269,95 +2269,74 @@ const RoutesPage = () => {
                                                     </td>
                                                             <td className="px-2 py-2 text-xs">
                                                                 <div className="flex items-center space-x-1">
+                                                                    {/* ปุ่มดูแผนที่ - แสดงตลอด */}
                                                                     <button
                                                                         className="p-1 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                                                                        title="ดูแผนที่แผนงาน"
+                                                                        title="ดูแผนที่และเส้นทาง"
                                                                         onClick={() => handlePreviewPlan(plan.plan_id)}
                                                                     >
                                                                         <Eye className="w-3 h-3" />
                                                                     </button>
+
+                                                                    {/* ปุ่มแก้ไขเส้นทาง - แสดงตลอด */}
                                                                     <button
                                                                         className="p-1 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                                                                        title="แก้ไขเส้นทาง"
+                                                                        title="แก้ไขเส้นทางและจุดส่ง"
                                                                         onClick={() => handleOpenEditor(plan.plan_id)}
                                                                     >
                                                                         <Edit className="w-3 h-3" />
                                                                     </button>
-                                                                    {/* ปุ่มเปลี่ยนสถานะ draft → optimizing */}
-                                                                    {plan.status === 'draft' && (
-                                                                        <button
-                                                                            className="p-1 rounded hover:bg-purple-50 hover:text-purple-600 transition-colors"
-                                                                            title="เริ่มกรอกค่าขนส่ง (เปลี่ยนเป็น กำลังคำนวณ)"
-                                                                            onClick={async () => {
-                                                                                if (confirm('เปลี่ยนสถานะเป็น "กำลังคำนวณ" เพื่อเริ่มกรอกค่าขนส่งหรือไม่?')) {
-                                                                                    try {
-                                                                                        const response = await fetch(`/api/route-plans/${plan.plan_id}`, {
-                                                                                            method: 'PATCH',
-                                                                                            headers: { 'Content-Type': 'application/json' },
-                                                                                            body: JSON.stringify({ status: 'optimizing' })
-                                                                                        });
-                                                                                        if (response.ok) {
-                                                                                            alert('✅ เปลี่ยนสถานะเป็น "กำลังคำนวณ" เรียบร้อย\nคุณสามารถกรอกค่าขนส่งได้แล้ว');
-                                                                                            await fetchRoutePlans();
-                                                                                        } else {
-                                                                                            const result = await response.json();
-                                                                                            alert('❌ เกิดข้อผิดพลาด: ' + (result.error || 'Unknown error'));
-                                                                                        }
-                                                                                    } catch (err: any) {
-                                                                                        alert('เกิดข้อผิดพลาด: ' + err.message);
-                                                                                    }
-                                                                                }
-                                                                            }}
-                                                                        >
-                                                                            <PlayCircle className="w-3 h-3" />
-                                                                        </button>
-                                                                    )}
+
+                                                                    {/* ปุ่มกรอกค่าขนส่ง - แสดงตลอด เปลี่ยนสีตามสถานะ */}
                                                                     <button
                                                                         className={`p-1 rounded transition-colors ${
-                                                                            plan.status === 'optimizing'
-                                                                                ? 'hover:bg-green-50 hover:text-green-600 cursor-pointer'
-                                                                                : 'opacity-40 cursor-not-allowed'
+                                                                            plan.status === 'draft'
+                                                                                ? 'hover:bg-yellow-50 hover:text-yellow-600 text-yellow-600'
+                                                                                : plan.status === 'optimizing'
+                                                                                ? 'hover:bg-orange-50 hover:text-orange-600 text-orange-600'
+                                                                                : plan.status === 'published'
+                                                                                ? 'hover:bg-green-50 hover:text-green-600 text-green-600'
+                                                                                : 'hover:bg-gray-50 hover:text-gray-600 text-gray-500'
                                                                         }`}
                                                                         title={
-                                                                            plan.status === 'optimizing'
-                                                                                ? 'แก้ไขราคาค่าขนส่ง'
-                                                                                : 'เปลี่ยนสถานะเป็น "กำลังคำนวณ" ก่อนเพื่อแก้ไขค่าขนส่ง'
+                                                                            plan.status === 'draft'
+                                                                                ? '💡 กรอกค่าขนส่ง (คลิกเพื่อเริ่มกรอก)'
+                                                                                : plan.status === 'optimizing'
+                                                                                ? '✏️ แก้ไขค่าขนส่ง (กำลังกรอก)'
+                                                                                : plan.status === 'published'
+                                                                                ? '✅ ดู/แก้ไขค่าขนส่ง (กรอกเสร็จแล้ว)'
+                                                                                : '📋 ดูค่าขนส่ง (สถานะ: ' + plan.status + ')'
                                                                         }
-                                                                        disabled={plan.status !== 'optimizing'}
                                                                         onClick={() => {
-                                                                            if (plan.status === 'optimizing') {
-                                                                                setSelectedPlanIdForShippingCost(plan.plan_id);
-                                                                                setShowEditShippingCostModal(true);
-                                                                            }
+                                                                            setSelectedPlanIdForShippingCost(plan.plan_id);
+                                                                            setShowEditShippingCostModal(true);
                                                                         }}
                                                                     >
                                                                         <DollarSign className="w-3 h-3" />
                                                                     </button>
+
+                                                                    {/* ปุ่มพิมพ์ใบว่าจ้าง - แสดงตลอด เปลี่ยนสีตามสถานะ */}
                                                                     <button
                                                                         className={`p-1 rounded transition-colors ${
                                                                             plan.status === 'published'
-                                                                                ? 'hover:bg-blue-50 hover:text-blue-600 cursor-pointer'
-                                                                                : 'opacity-40 cursor-not-allowed'
+                                                                                ? 'hover:bg-purple-50 hover:text-purple-600 text-purple-600'
+                                                                                : plan.status === 'pending_approval'
+                                                                                ? 'hover:bg-blue-50 hover:text-blue-600 text-blue-600'
+                                                                                : plan.status === 'approved'
+                                                                                ? 'hover:bg-green-50 hover:text-green-600 text-green-600'
+                                                                                : 'hover:bg-gray-50 hover:text-gray-600 text-gray-500'
                                                                         }`}
-                                                                        title={
-                                                                            plan.status === 'published'
-                                                                                ? 'พิมพ์ใบว่าจ้าง'
-                                                                                : 'ต้องกรอกค่าขนส่งครบทุกเที่ยวก่อน (สถานะ: เผยแพร่แล้ว)'
-                                                                        }
-                                                                        disabled={plan.status !== 'published'}
-                                                                        onClick={() => {
-                                                                            if (plan.status === 'published') {
-                                                                                handlePrintPlan(plan.plan_id);
-                                                                            }
-                                                                        }}
+                                                                        title="พิมพ์ใบว่าจ้าง"
+                                                                        onClick={() => handlePrintPlan(plan.plan_id)}
                                                                     >
                                                                         <Printer className="w-3 h-3" />
                                                                     </button>
-                                                                    {/* ปุ่มอนุมัติ (สำหรับผู้จัดการ) */}
+
+                                                                    {/* ปุ่มอนุมัติ - แสดงเฉพาะเมื่อรออนุมัติ */}
                                                                     {plan.status === 'pending_approval' && (
                                                                         <button
-                                                                            className="p-1 rounded hover:bg-green-50 hover:text-green-600 transition-colors"
-                                                                            title="อนุมัติใบว่าจ้าง"
+                                                                            className="p-1 rounded hover:bg-green-50 hover:text-green-600 transition-colors text-green-600"
+                                                                            title="✅ อนุมัติใบว่าจ้าง (สำหรับผู้จัดการ)"
                                                                             onClick={async () => {
                                                                                 if (confirm('อนุมัติใบว่าจ้างนี้หรือไม่?')) {
                                                                                     try {
@@ -2422,7 +2401,11 @@ const RoutesPage = () => {
                                                                                                 <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">น้ำหนัก</th>
                                                                                                 <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">ปริมาตร</th>
                                                                                                 <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">พาเลท</th>
-                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">ค่าขนส่ง</th>
+                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">ราคาเริ่มต้น</th>
+                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">ค่าเด็ก</th>
+                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">ค่าจุดเพิ่ม</th>
+                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">ค่าแบก</th>
+                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase bg-blue-50">รวมค่าขนส่ง</th>
                                                                                                 <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">สถานะ</th>
                                                                                                 <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">%ใช้งาน</th>
                                                                                             </tr>
@@ -2472,17 +2455,34 @@ const RoutesPage = () => {
                                                                                                     <td className="px-2 py-2 text-xs text-center text-gray-700">
                                                                                                         {trip.total_pallets ? `${trip.total_pallets.toFixed(1)}` : '-'}
                                                                                                     </td>
-                                                                                                    <td className="px-2 py-2 text-xs text-center">
-                                                                                                        <div className="font-medium text-gray-700">
-                                                                                                            {trip.shipping_cost ? `฿${trip.shipping_cost.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '-'}
-                                                                                                        </div>
-                                                                                                        {trip.base_price && (
+                                                                                                    {/* ราคาเริ่มต้น */}
+                                                                                                    <td className="px-2 py-2 text-xs text-center text-gray-700">
+                                                                                                        {trip.base_price ? `฿${trip.base_price.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '-'}
+                                                                                                    </td>
+                                                                                                    {/* ค่าเด็ก */}
+                                                                                                    <td className="px-2 py-2 text-xs text-center text-gray-700">
+                                                                                                        {trip.helper_fee ? `฿${trip.helper_fee.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '-'}
+                                                                                                    </td>
+                                                                                                    {/* ค่าจุดเพิ่ม */}
+                                                                                                    <td className="px-2 py-2 text-xs text-center text-gray-700">
+                                                                                                        {trip.extra_stop_fee && trip.extra_stops_count > 0
+                                                                                                            ? `฿${(trip.extra_stop_fee * trip.extra_stops_count).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
+                                                                                                            : '-'}
+                                                                                                        {trip.extra_stops_count > 0 && (
                                                                                                             <div className="text-[9px] text-gray-500 mt-0.5">
-                                                                                                                ฐาน ฿{trip.base_price.toFixed(0)}
-                                                                                                                {trip.helper_fee > 0 && ` +ช่วย ฿${trip.helper_fee.toFixed(0)}`}
-                                                                                                                {trip.extra_stop_fee > 0 && ` +จุด ฿${trip.extra_stop_fee.toFixed(0)}`}
+                                                                                                                ({trip.extra_stops_count} จุด × ฿{trip.extra_stop_fee})
                                                                                                             </div>
                                                                                                         )}
+                                                                                                    </td>
+                                                                                                    {/* ค่าแบกน้ำหนัก */}
+                                                                                                    <td className="px-2 py-2 text-xs text-center text-gray-700">
+                                                                                                        {trip.porterage_fee ? `฿${trip.porterage_fee.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '-'}
+                                                                                                    </td>
+                                                                                                    {/* รวมค่าขนส่ง */}
+                                                                                                    <td className="px-2 py-2 text-xs text-center bg-blue-50">
+                                                                                                        <div className="font-bold text-blue-700">
+                                                                                                            {trip.shipping_cost ? `฿${trip.shipping_cost.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '-'}
+                                                                                                        </div>
                                                                                                     </td>
                                                                                                     <td className="px-2 py-2 text-xs text-center">
                                                                                                         <Badge

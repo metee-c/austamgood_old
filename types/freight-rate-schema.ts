@@ -4,9 +4,13 @@ export const freightRateSchema = z.object({
   freight_rate_id: z.number().optional(),
   carrier_id: z.number().min(1, 'ผู้ให้บริการขนส่งไม่สามารถเว้นว่างได้'),
   route_name: z.string().min(1, 'ชื่อสายขนส่งไม่สามารถเว้นว่างได้'),
-  origin_province: z.string().min(1, 'จังหวัดต้นทางไม่สามารถเว้นว่างได้'),
+  origin_province: z.string().min(1, 'จังหวัดต้นทางไม่สามารถเว้นว่างได้').refine((val) => THAI_PROVINCES.includes(val), {
+    message: 'กรุณาเลือกจังหวัดต้นทางที่ถูกต้อง',
+  }),
   origin_district: z.string().optional().nullable(),
-  destination_province: z.string().min(1, 'จังหวัดปลายทางไม่สามารถเว้นว่างได้'),
+  destination_province: z.string().min(1, 'จังหวัดปลายทางไม่สามารถเว้นว่างได้').refine((val) => THAI_PROVINCES.includes(val), {
+    message: 'กรุณาเลือกจังหวัดปลายทางที่ถูกต้อง',
+  }),
   destination_district: z.string().optional().nullable(),
   total_distance_km: z.number().positive('ระยะทางต้องมากกว่า 0'),
   pricing_mode: z.enum(['flat', 'formula']).default('flat'),

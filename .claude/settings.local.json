@@ -39,7 +39,10 @@
       "Bash(psql:*)",
       "Bash(git clean:*)",
       "Bash(git rm:*)",
-      "Bash(.gitignore)"
+      "Bash(.gitignore)",
+      "Bash(timeout 30 bash:*)",
+      "Bash(npx ts-node:*)",
+      "Bash(audioREADME.md)"
     ],
     "deny": [],
     "ask": []

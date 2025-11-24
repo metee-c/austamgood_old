@@ -9,13 +9,11 @@ import {
   Eye,
   FileText,
   CheckCircle,
-  Clock,
   AlertTriangle,
   ChevronUp,
   ChevronDown,
   ChevronsUpDown,
-  Plus,
-  Printer
+  Plus
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
@@ -56,7 +54,6 @@ const PicklistsPage = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [editingStatusPicklistId, setEditingStatusPicklistId] = useState<number | null>(null);
-  const [printingPicklistId, setPrintingPicklistId] = useState<number | null>(null);
 
   // Fetcher function
   const fetcher = async (url: string) => {
@@ -187,54 +184,10 @@ const PicklistsPage = () => {
     }).format(date);
   };
 
-  // Handle print picklist - เปลี่ยนสถานะจาก pending → picking
-  const handlePrint = async (picklistId: number, picklistCode: string, currentStatus: PicklistStatus) => {
-    // ตรวจสอบสถานะ - ต้องเป็น pending เท่านั้น
-    if (currentStatus !== 'pending') {
-      alert(`ไม่สามารถพิมพ์ได้ สถานะปัจจุบันคือ ${getStatusText(currentStatus)}`);
-      return;
-    }
-
-    const confirmed = window.confirm(
-      `ยืนยันการพิมพ์เอกสาร Picklist ${picklistCode}?\n\nสถานะจะเปลี่ยนเป็น "กำลังหยิบ" โดยอัตโนมัติ`
-    );
-
-    if (!confirmed) return;
-
-    setPrintingPicklistId(picklistId);
-
-    try {
-      const response = await fetch(`/api/picklists/${picklistId}/print`, {
-        method: 'POST'
-      });
-
-      const result = await response.json();
-
-      if (!response.ok || result.error) {
-        throw new Error(result.error || 'Failed to print picklist');
-      }
-
-      alert(`พิมพ์เอกสาร ${picklistCode} สำเร็จ\nสถานะเปลี่ยนเป็น "กำลังหยิบ"`);
-
-      // Refresh picklists
-      mutate();
-
-      // TODO: เปิดหน้าพิมพ์จริง (ถ้ามี)
-      // window.open(`/receiving/picklists/${picklistId}/print-document`, '_blank');
-
-    } catch (error: any) {
-      console.error('Error printing picklist:', error);
-      alert(`เกิดข้อผิดพลาด: ${error.message || 'ไม่สามารถพิมพ์เอกสารได้'}`);
-    } finally {
-      setPrintingPicklistId(null);
-    }
-  };
-
   // Status options
   const statusOptions: { value: PicklistStatus; label: string }[] = [
     { value: 'pending', label: 'รอดำเนินการ' },
     { value: 'assigned', label: 'มอบหมายแล้ว' },
-    { value: 'picking', label: 'กำลังหยิบ' },
     { value: 'completed', label: 'เสร็จสิ้น' },
     { value: 'cancelled', label: 'ยกเลิก' }
   ];
@@ -295,7 +248,6 @@ const PicklistsPage = () => {
               <option value="all">ทุกสถานะ</option>
               <option value="pending" className="text-gray-900">รอดำเนินการ</option>
               <option value="assigned" className="text-gray-900">มอบหมายแล้ว</option>
-              <option value="picking" className="text-gray-900">กำลังหยิบ</option>
               <option value="completed" className="text-gray-900">เสร็จสิ้น</option>
               <option value="cancelled" className="text-gray-900">ยกเลิก</option>
             </select>
@@ -461,20 +413,6 @@ const PicklistsPage = () => {
                     </Table.Cell>
                     <Table.Cell>
                       <div className="flex items-center space-x-1">
-                        {picklist.status === 'pending' && (
-                          <button
-                            onClick={() => handlePrint(picklist.id, picklist.picklist_code, picklist.status)}
-                            disabled={printingPicklistId === picklist.id}
-                            className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors disabled:opacity-50"
-                            title="พิมพ์เอกสารและเริ่มหยิบ"
-                          >
-                            {printingPicklistId === picklist.id ? (
-                              <Clock className="w-3.5 h-3.5 animate-spin" />
-                            ) : (
-                              <Printer className="w-3.5 h-3.5" />
-                            )}
-                          </button>
-                        )}
                         <Link
                           href={`/receiving/picklists/${picklist.id}`}
                           className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
@@ -529,7 +467,9 @@ const PicklistsPage = () => {
                         <h3 className="font-bold text-gray-900 font-thai">{plan.plan_name}</h3>
                         <p className="text-xs text-gray-600 font-mono">{plan.plan_code}</p>
                       </div>
-                      <Badge variant="success">เผยแพร่แล้ว</Badge>
+                      <Badge variant={plan.status === 'published' ? 'success' : 'warning'}>
+                        {plan.status === 'published' ? 'เผยแพร่แล้ว' : 'รออนุมัติ'}
+                      </Badge>
                     </div>
 
                     {/* Plan Info */}

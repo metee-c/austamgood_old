@@ -39,7 +39,7 @@ const formatDate = (dateString: string) => {
 
 interface FreightRate {
   freight_rate_id: number;
-  carrier_id: number;
+  carrier_id: string | number; // รองรับทั้ง string (supplier_code) และ number (supplier_id)
   route_name: string;
   origin_province: string;
   origin_district?: string;
@@ -65,6 +65,11 @@ interface FreightRate {
   created_at: string;
   updated_at: string;
   carrier_name?: string;
+  carrier?: {
+    supplier_id: string;
+    supplier_code: string;
+    supplier_name: string;
+  };
   is_active?: boolean;
 }
 
@@ -129,7 +134,8 @@ const ShippingCostsPage = () => {
       const transformedData: FreightRate[] = (result.data || []).map((item: any) => ({
         freight_rate_id: item.freight_rate_id,
         carrier_id: item.carrier_id,
-        carrier_name: item.carrier?.carrier_name || '-',
+        carrier: item.carrier,
+        carrier_name: item.carrier_name || item.carrier?.supplier_name || '-',
         route_name: item.route_name,
         origin_province: item.origin_province,
         origin_district: item.origin_district,
@@ -524,7 +530,31 @@ const ShippingCostsPage = () => {
       >
         {selectedFreightRate && (
           <EditFreightRateForm
-            freightRate={selectedFreightRate}
+            freightRate={{
+              freight_rate_id: selectedFreightRate.freight_rate_id,
+              carrier_id: typeof selectedFreightRate.carrier_id === 'string'
+                ? parseInt(selectedFreightRate.carrier_id)
+                : selectedFreightRate.carrier_id,
+              route_name: selectedFreightRate.route_name,
+              origin_province: selectedFreightRate.origin_province,
+              origin_district: selectedFreightRate.origin_district,
+              destination_province: selectedFreightRate.destination_province,
+              destination_district: selectedFreightRate.destination_district,
+              total_distance_km: selectedFreightRate.total_distance_km,
+              pricing_mode: selectedFreightRate.pricing_mode,
+              base_price: selectedFreightRate.base_price,
+              extra_drop_price: selectedFreightRate.extra_drop_price,
+              helper_price: selectedFreightRate.helper_price,
+              price_unit: selectedFreightRate.price_unit,
+              effective_start_date: selectedFreightRate.effective_start_date,
+              effective_end_date: selectedFreightRate.effective_end_date,
+              notes: selectedFreightRate.notes,
+              created_by: selectedFreightRate.created_by,
+              created_at: selectedFreightRate.created_at,
+              updated_at: selectedFreightRate.updated_at,
+              carrier_name: selectedFreightRate.carrier_name,
+              is_active: selectedFreightRate.is_active
+            }}
             onSuccess={handleEditSuccess}
             onCancel={() => setShowEditModal(false)}
           />

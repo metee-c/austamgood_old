@@ -12,7 +12,9 @@ import {
   Calendar,
   ClipboardList,
   Loader2,
-  Eye
+  Eye,
+  Store,
+  ShoppingCart
 } from 'lucide-react';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
@@ -21,9 +23,15 @@ import { Html5Qrcode } from 'html5-qrcode';
 interface PicklistItem {
   id: number;
   sku_id: string;
-  product_name: string;
-  quantity: number;
-  picked_quantity: number;
+  sku_name: string;
+  uom: string;
+  order_no: string;
+  order_id: number;
+  stop_id: number;
+  quantity_to_pick: number;
+  quantity_picked: number;
+  status: string;
+  notes?: string;
   master_sku?: {
     sku_name: string;
     barcode: string;
@@ -52,6 +60,14 @@ interface Picklist {
   picklist_items?: PicklistItem[];
 }
 
+interface OrderData {
+  order_id: number;
+  order_no: string;
+  shop_name: string;
+  items: PicklistItem[];
+  confirmed?: boolean;
+}
+
 export default function MobilePickDetailPage({
   params
 }: {
@@ -66,10 +82,30 @@ export default function MobilePickDetailPage({
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [scanner, setScanner] = useState<Html5Qrcode | null>(null);
+  const [qrCodeInput, setQrCodeInput] = useState('');
+  const [showItemsList, setShowItemsList] = useState(false);
+  const [ordersByShop, setOrdersByShop] = useState<OrderData[]>([]);
+  const [confirmedShops, setConfirmedShops] = useState<Set<number>>(new Set());
+  const [showEmployeeSelection, setShowEmployeeSelection] = useState(false);
+  const [employees, setEmployees] = useState<Array<{ employee_id: string; first_name: string; last_name: string }>>([]);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string>('');
 
   useEffect(() => {
     fetchPicklist();
+    fetchEmployees();
   }, [resolvedParams.id]);
+
+  const fetchEmployees = async () => {
+    try {
+      const response = await fetch('/api/master-employee');
+      const data = await response.json();
+      if (data.data) {
+        setEmployees(data.data);
+      }
+    } catch (error) {
+      console.error('Error fetching employees:', error);
+    }
+  };
 
   const fetchPicklist = async () => {
     try {
@@ -84,10 +120,55 @@ export default function MobilePickDetailPage({
       }
 
       setPicklist(data);
+
+      // จัดกลุ่มสินค้าตามร้าน
+      if (data.picklist_items && data.picklist_items.length > 0) {
+        await groupItemsByShop(data.picklist_items);
+      }
     } catch (err: any) {
       setError(err.message);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const groupItemsByShop = async (items: PicklistItem[]) => {
+    try {
+      // ดึง order_id ทั้งหมด
+      const orderIds = [...new Set(items.map(item => item.order_id))];
+
+      // ดึงข้อมูลออเดอร์จาก API
+      const response = await fetch(`/api/orders?${orderIds.map(id => `ids=${id}`).join('&')}`);
+      const ordersData = await response.json();
+
+      // สร้าง map ของ order_id -> shop_name
+      const orderMap: Record<number, { order_no: string; shop_name: string }> = {};
+      if (ordersData.data) {
+        ordersData.data.forEach((order: any) => {
+          orderMap[order.order_id] = {
+            order_no: order.order_no,
+            shop_name: order.shop_name || order.customer_name || 'ไม่ระบุ'
+          };
+        });
+      }
+
+      // จัดกลุ่มสินค้าตาม order_id
+      const grouped: Record<number, OrderData> = {};
+      items.forEach(item => {
+        if (!grouped[item.order_id]) {
+          grouped[item.order_id] = {
+            order_id: item.order_id,
+            order_no: orderMap[item.order_id]?.order_no || item.order_no,
+            shop_name: orderMap[item.order_id]?.shop_name || 'ไม่ระบุ',
+            items: []
+          };
+        }
+        grouped[item.order_id].items.push(item);
+      });
+
+      setOrdersByShop(Object.values(grouped));
+    } catch (err) {
+      console.error('Error grouping items:', err);
     }
   };
 
@@ -140,22 +221,20 @@ export default function MobilePickDetailPage({
 
     // ตรวจสอบว่า QR Code ตรงกับ Picklist Code หรือไม่
     if (decodedText === picklist?.picklist_code) {
-      // ถูกต้อง - แสดง Confirm Dialog
-      const confirmed = confirm(
-        `ยืนยันการเช็คสินค้าเสร็จสิ้น?\n\nPicklist: ${decodedText}\nสถานะจะเปลี่ยนเป็น "เสร็จสิ้น" (Completed)`
-      );
+      // ถูกต้อง - แสดงรายการสินค้า
+      setShowItemsList(true);
+      setError(null);
 
-      if (confirmed) {
-        handleComplete();
-      } else {
-        // ถ้ายกเลิก ให้เปิดกล้องใหม่
-        setError(null);
-      }
+      // เล่นเสียงสำเร็จ
+      try {
+        const audio = new Audio('/audio/success.mp3');
+        audio.play().catch(() => {});
+      } catch (e) {}
     } else {
       // QR Code ไม่ถูกต้อง
       setError(`QR Code ไม่ถูกต้อง!\nคาดหวัง: ${picklist?.picklist_code}\nสแกน: ${decodedText}`);
 
-      // เล่นเสียง error (ถ้ามี)
+      // เล่นเสียง error
       try {
         const audio = new Audio('/audio/error.mp3');
         audio.play().catch(() => {});
@@ -163,14 +242,71 @@ export default function MobilePickDetailPage({
     }
   };
 
+  const handleManualInput = () => {
+    if (!qrCodeInput.trim()) {
+      setError('กรุณาใส่ Picklist Code');
+      return;
+    }
+
+    if (qrCodeInput.trim() === picklist?.picklist_code) {
+      // ถูกต้อง - แสดงรายการสินค้า
+      setShowItemsList(true);
+      setError(null);
+      setQrCodeInput('');
+
+      // เล่นเสียงสำเร็จ
+      try {
+        const audio = new Audio('/audio/success.mp3');
+        audio.play().catch(() => {});
+      } catch (e) {}
+    } else {
+      // ไม่ถูกต้อง
+      setError(`Picklist Code ไม่ถูกต้อง!\nคาดหวัง: ${picklist?.picklist_code}\nใส่: ${qrCodeInput}`);
+
+      // เล่นเสียง error
+      try {
+        const audio = new Audio('/audio/error.mp3');
+        audio.play().catch(() => {});
+      } catch (e) {}
+    }
+  };
+
+  const handleShopConfirm = (orderId: number) => {
+    setConfirmedShops((prev) => {
+      const newSet = new Set(prev);
+      newSet.add(orderId);
+      return newSet;
+    });
+
+    // เล่นเสียงสำเร็จ
+    try {
+      const audio = new Audio('/audio/success.mp3');
+      audio.play().catch(() => {});
+    } catch (e) {}
+  };
+
+  const isShopConfirmed = (orderId: number) => {
+    return confirmedShops.has(orderId);
+  };
+
+  const allShopsConfirmed = () => {
+    return ordersByShop.length > 0 && ordersByShop.every(order => confirmedShops.has(order.order_id));
+  };
+
   const handleComplete = async () => {
     if (!picklist) return;
 
-    // ตรวจสอบสถานะต้องเป็น picking
-    if (picklist.status !== 'picking') {
+    // ตรวจสอบสถานะต้องเป็น assigned หรือ picking
+    if (picklist.status !== 'assigned' && picklist.status !== 'picking') {
       setError(`ไม่สามารถเสร็จสิ้นได้ สถานะปัจจุบันคือ "${getStatusText(picklist.status)}"`);
       return;
     }
+
+    const confirmed = confirm(
+      `ยืนยันการเช็คสินค้าเสร็จสิ้น?\n\nPicklist: ${picklist.picklist_code}\nสถานะจะเปลี่ยนเป็น "เสร็จสิ้น" (Completed)`
+    );
+
+    if (!confirmed) return;
 
     setCompleting(true);
     setError(null);
@@ -197,10 +333,10 @@ export default function MobilePickDetailPage({
 
       setSuccessMessage(`✅ Picklist ${picklist.picklist_code} เสร็จสิ้นแล้ว!`);
 
-      // รอ 2 วินาที แล้วกลับไปหน้ารายการ
+      // แสดงหน้าเลือกพนักงานผู้จัดสินค้า
       setTimeout(() => {
-        router.push('/mobile/pick');
-      }, 2000);
+        setShowEmployeeSelection(true);
+      }, 1500);
 
     } catch (err: any) {
       setError(err.message);
@@ -212,6 +348,50 @@ export default function MobilePickDetailPage({
       } catch (e) {}
     } finally {
       setCompleting(false);
+    }
+  };
+
+  const handleEmployeeSubmit = async () => {
+    if (!selectedEmployeeId) {
+      setError('กรุณาเลือกพนักงานผู้จัดสินค้า');
+      return;
+    }
+
+    try {
+      // อัปเดต assigned_to_employee_id ใน picklist
+      const response = await fetch(`/api/picklists/${picklist?.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          assigned_to_employee_id: selectedEmployeeId
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to update picker');
+      }
+
+      // เล่นเสียงสำเร็จ
+      try {
+        const audio = new Audio('/audio/success.mp3');
+        audio.play().catch(() => {});
+      } catch (e) {}
+
+      // กลับไปหน้ารายการ
+      setTimeout(() => {
+        router.push('/mobile/pick');
+      }, 1000);
+
+    } catch (err: any) {
+      setError(err.message);
+
+      // เล่นเสียง error
+      try {
+        const audio = new Audio('/audio/error.mp3');
+        audio.play().catch(() => {});
+      } catch (e) {}
     }
   };
 
@@ -342,36 +522,23 @@ export default function MobilePickDetailPage({
                   {picklist.receiving_route_trips.receiving_route_plans.plan_code}
                 </span>
               </div>
-              {picklist.receiving_route_trips.vehicle_id && (
-                <div className="flex justify-between">
-                  <span className="text-gray-600 font-thai flex items-center">
-                    <Truck className="w-4 h-4 mr-1" />
-                    รถ:
-                  </span>
-                  <span className="font-semibold text-gray-900 font-thai">
-                    {picklist.receiving_route_trips.vehicle_id}
-                  </span>
-                </div>
-              )}
+              <div className="flex justify-between">
+                <span className="text-gray-600 font-thai">รถที่:</span>
+                <span className="font-semibold text-gray-900 font-thai">
+                  {picklist.receiving_route_trips.trip_sequence}
+                </span>
+              </div>
             </>
           )}
 
           <div className="flex justify-between">
-            <span className="text-gray-600 font-thai flex items-center">
-              <Package className="w-4 h-4 mr-1" />
-              จำนวนรายการ:
-            </span>
-            <span className="font-semibold text-gray-900 font-thai">
-              {picklist.total_lines} รายการ
-            </span>
+            <span className="text-gray-600 font-thai">จำนวนรายการ:</span>
+            <span className="font-semibold text-gray-900 font-thai">{picklist.total_lines} รายการ</span>
           </div>
 
           <div className="flex justify-between">
-            <span className="text-gray-600 font-thai flex items-center">
-              <Calendar className="w-4 h-4 mr-1" />
-              สร้างเมื่อ:
-            </span>
-            <span className="text-gray-900 font-thai">{formatDate(picklist.created_at)}</span>
+            <span className="text-gray-600 font-thai">จำนวนชิ้น:</span>
+            <span className="font-semibold text-gray-900 font-thai">{picklist.total_quantity} ชิ้น</span>
           </div>
 
           {picklist.picking_started_at && (
@@ -383,12 +550,12 @@ export default function MobilePickDetailPage({
         </div>
       </div>
 
-      {/* QR Scanner */}
-      {!successMessage && (
+      {/* QR Scanner / Manual Input */}
+      {!successMessage && !showItemsList && (
         <div className="m-4">
           <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
             <h3 className="text-lg font-bold text-gray-900 mb-4 font-thai text-center">
-              สแกน QR Code ยืนยันการเช็คสินค้า
+              สแกน QR Code หรือพิมพ์ Picklist Code
             </h3>
 
             {/* Scanner Container */}
@@ -405,25 +572,51 @@ export default function MobilePickDetailPage({
               </div>
             ) : (
               <div className="space-y-4">
+                {/* QR Scanner - Click to scan */}
                 <div className="flex justify-center">
-                  <div className="w-40 h-40 border-4 border-dashed border-gray-300 rounded-xl flex items-center justify-center">
+                  <button
+                    onClick={startScanning}
+                    disabled={picklist.status !== 'assigned' && picklist.status !== 'picking'}
+                    className="w-40 h-40 border-4 border-dashed border-gray-300 rounded-xl flex items-center justify-center hover:border-sky-400 hover:bg-sky-50 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
                     <QrCode className="w-20 h-20 text-gray-400" />
+                  </button>
+                </div>
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-gray-300"></div>
+                  </div>
+                  <div className="relative flex justify-center text-sm">
+                    <span className="px-2 bg-white text-gray-500 font-thai">หรือ</span>
                   </div>
                 </div>
 
-                <Button
-                  onClick={startScanning}
-                  variant="primary"
-                  className="w-full bg-sky-500 hover:bg-sky-600"
-                  disabled={picklist.status !== 'picking'}
-                >
-                  <QrCode className="w-5 h-5 mr-2" />
-                  เริ่มสแกน QR Code
-                </Button>
+                {/* Manual Input */}
+                <div className="space-y-2">
+                  <label className="text-sm font-semibold text-gray-700 font-thai">พิมพ์ Picklist Code:</label>
+                  <input
+                    type="text"
+                    value={qrCodeInput}
+                    onChange={(e) => setQrCodeInput(e.target.value)}
+                    onKeyPress={(e) => e.key === 'Enter' && handleManualInput()}
+                    placeholder={`เช่น ${picklist.picklist_code}`}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg font-thai text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  />
+                  <Button
+                    onClick={handleManualInput}
+                    variant="primary"
+                    className="w-full bg-green-500 hover:bg-green-600"
+                    disabled={picklist.status !== 'assigned' && picklist.status !== 'picking'}
+                  >
+                    <CheckCircle className="w-5 h-5 mr-2" />
+                    ยืนยัน Checker
+                  </Button>
+                </div>
 
-                {picklist.status !== 'picking' && (
+                {picklist.status !== 'assigned' && picklist.status !== 'picking' && (
                   <p className="text-sm text-red-600 text-center font-thai">
-                    ⚠️ สถานะต้องเป็น "กำลังหยิบ" เท่านั้น
+                    ⚠️ สถานะต้องเป็น "มอบหมายแล้ว" หรือ "กำลังหยิบ" เท่านั้น
                   </p>
                 )}
 
@@ -431,11 +624,9 @@ export default function MobilePickDetailPage({
                   <p className="text-xs text-blue-800 font-thai">
                     💡 <strong>วิธีใช้:</strong>
                     <br />
-                    1. กดปุ่ม "เริ่มสแกน QR Code"
+                    • คลิกที่ QR Code ด้านบนเพื่อเปิดกล้องสแกน หรือ
                     <br />
-                    2. นำกล้องไปสแกน QR Code บนใบ Picklist
-                    <br />
-                    3. ระบบจะยืนยันการเช็คสินค้าอัตโนมัติ
+                    • พิมพ์ Picklist Code ด้านล่างแล้วกดยืนยัน
                   </p>
                 </div>
               </div>
@@ -444,30 +635,253 @@ export default function MobilePickDetailPage({
         </div>
       )}
 
-      {/* Manual Complete Button (สำหรับทดสอบ) */}
-      {!successMessage && !isScanning && picklist.status === 'picking' && (
-        <div className="m-4">
-          <Button
-            onClick={handleComplete}
-            variant="success"
-            className="w-full"
-            disabled={completing}
-          >
-            {completing ? (
-              <>
-                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
-                กำลังบันทึก...
-              </>
-            ) : (
-              <>
-                <CheckCircle className="w-5 h-5 mr-2" />
-                ยืนยันเช็คสินค้าเสร็จ (ไม่สแกน)
-              </>
+      {/* Items List by Shop */}
+      {!successMessage && showItemsList && ordersByShop.length > 0 && (
+        <div className="m-4 space-y-3">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="text-lg font-bold text-gray-900 font-thai flex items-center">
+              <ShoppingCart className="w-5 h-5 mr-2" />
+              รายการสินค้าแยกตามร้านค้า
+            </h3>
+            <Badge variant="info" size="sm">
+              {ordersByShop.length} ร้าน
+            </Badge>
+          </div>
+
+          {ordersByShop.map((order, index) => (
+            <div key={order.order_id} className={`bg-white rounded-xl shadow-sm overflow-hidden transition-all ${
+              isShopConfirmed(order.order_id)
+                ? 'border-2 border-green-500'
+                : 'border border-gray-200'
+            }`}>
+              {/* Shop Header */}
+              <div className={`p-3 ${
+                isShopConfirmed(order.order_id)
+                  ? 'bg-gradient-to-r from-green-500 to-green-600'
+                  : 'bg-gradient-to-r from-blue-500 to-blue-600'
+              } text-white`}>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center space-x-2">
+                    {isShopConfirmed(order.order_id) ? (
+                      <CheckCircle className="w-5 h-5" />
+                    ) : (
+                      <Store className="w-5 h-5" />
+                    )}
+                    <div>
+                      <p className="font-bold font-thai">{order.shop_name}</p>
+                      <p className="text-xs text-white/80 font-thai">Order: {order.order_no}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <Badge variant="default" size="sm" className="bg-white/20 text-white border-white/40">
+                      {order.items.length} รายการ
+                    </Badge>
+                    {isShopConfirmed(order.order_id) && (
+                      <span className="text-xs font-semibold font-thai">✓ ยืนยันแล้ว</span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* Items */}
+              <div className="divide-y divide-gray-100">
+                {order.items.map((item, itemIndex) => (
+                  <div key={item.id} className="p-3 hover:bg-gray-50 transition-colors">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-start space-x-2">
+                          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center text-xs font-bold">
+                            {itemIndex + 1}
+                          </div>
+                          <div className="flex-1">
+                            <p className="font-semibold text-gray-900 font-thai text-sm">
+                              {item.sku_name}
+                            </p>
+                            {item.master_sku?.barcode && (
+                              <p className="text-xs text-gray-500 font-mono mt-1">
+                                Barcode: {item.master_sku.barcode}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="ml-3 text-right flex-shrink-0">
+                        <div className="flex items-center space-x-1">
+                          <Package className="w-4 h-4 text-gray-400" />
+                          <span className="font-bold text-blue-600 font-thai">
+                            {item.quantity_to_pick}
+                          </span>
+                          <span className="text-xs text-gray-500 font-thai">{item.uom}</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* Shop Summary */}
+              <div className="bg-gray-50 px-3 py-2 border-t border-gray-200">
+                <div className="flex justify-between items-center text-sm mb-2">
+                  <span className="text-gray-600 font-thai">รวมร้านนี้:</span>
+                  <span className="font-bold text-gray-900 font-thai">
+                    {order.items.reduce((sum, item) => sum + item.quantity_to_pick, 0)} ชิ้น
+                  </span>
+                </div>
+
+                {/* Shop Confirm Button */}
+                <Button
+                  onClick={() => handleShopConfirm(order.order_id)}
+                  variant={isShopConfirmed(order.order_id) ? 'success' : 'primary'}
+                  className="w-full"
+                  disabled={isShopConfirmed(order.order_id)}
+                >
+                  {isShopConfirmed(order.order_id) ? (
+                    <>
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      ✓ ยืนยันแล้ว
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="w-4 h-4 mr-2" />
+                      ยืนยันร้านนี้
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          ))}
+
+          {/* Complete Button */}
+          <div className="sticky bottom-4 mt-6">
+            {!allShopsConfirmed() && (
+              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 mb-3">
+                <p className="text-sm text-yellow-800 font-thai text-center">
+                  ⚠️ กรุณายืนยันทุกร้านค้าก่อนเสร็จสิ้น
+                  <br />
+                  <span className="font-semibold">
+                    ยืนยันแล้ว: {confirmedShops.size} / {ordersByShop.length} ร้าน
+                  </span>
+                </p>
+              </div>
             )}
-          </Button>
-          <p className="text-xs text-gray-500 text-center mt-2 font-thai">
-            หรือสแกน QR Code ด้านบน
-          </p>
+            <Button
+              onClick={handleComplete}
+              variant="success"
+              className="w-full shadow-lg"
+              disabled={completing || !allShopsConfirmed()}
+            >
+              {completing ? (
+                <>
+                  <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                  กำลังบันทึก...
+                </>
+              ) : (
+                <>
+                  <CheckCircle className="w-5 h-5 mr-2" />
+                  ยืนยันเช็คสินค้าเสร็จ
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Employee Selection Modal */}
+      {showEmployeeSelection && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full max-h-[80vh] overflow-hidden">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-green-500 to-green-600 text-white p-6">
+              <div className="flex items-center space-x-3">
+                <CheckCircle className="w-8 h-8" />
+                <div>
+                  <h2 className="text-xl font-bold font-thai">เช็คสินค้าเสร็จสิ้น</h2>
+                  <p className="text-sm text-green-100 font-thai">กรุณาระบุพนักงานผู้จัดสินค้า</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Content */}
+            <div className="p-6">
+              <div className="mb-6">
+                <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
+                  <div className="flex items-center space-x-2 text-green-800">
+                    <CheckCircle className="w-5 h-5" />
+                    <p className="font-semibold font-thai">Picklist: {picklist?.picklist_code}</p>
+                  </div>
+                  <p className="text-sm text-green-700 mt-1 font-thai">
+                    สถานะถูกอัปเดตเป็น "เสร็จสิ้น" แล้ว
+                  </p>
+                </div>
+
+                <label className="block text-sm font-bold text-gray-700 mb-3 font-thai">
+                  เลือกพนักงานผู้จัดสินค้า <span className="text-red-500">*</span>
+                </label>
+
+                <div className="space-y-2 max-h-64 overflow-y-auto border border-gray-200 rounded-lg p-2">
+                  {employees.map((employee) => (
+                    <button
+                      key={employee.employee_id}
+                      onClick={() => setSelectedEmployeeId(employee.employee_id)}
+                      className={`w-full text-left px-4 py-3 rounded-lg font-thai transition-all ${
+                        selectedEmployeeId === employee.employee_id
+                          ? 'bg-green-500 text-white shadow-md'
+                          : 'bg-gray-50 text-gray-900 hover:bg-gray-100'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold">
+                          {employee.first_name} {employee.last_name}
+                        </span>
+                        {selectedEmployeeId === employee.employee_id && (
+                          <CheckCircle className="w-5 h-5" />
+                        )}
+                      </div>
+                      <span className="text-xs opacity-75">
+                        รหัส: {employee.employee_id}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                {employees.length === 0 && (
+                  <div className="text-center py-8 text-gray-500 font-thai">
+                    <p>ไม่พบข้อมูลพนักงาน</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Error Message */}
+              {error && (
+                <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-4">
+                  <p className="text-sm text-red-800 font-thai">{error}</p>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex space-x-3">
+                <Button
+                  onClick={() => {
+                    setShowEmployeeSelection(false);
+                    router.push('/mobile/pick');
+                  }}
+                  variant="secondary"
+                  className="flex-1"
+                >
+                  ข้าม
+                </Button>
+                <Button
+                  onClick={handleEmployeeSubmit}
+                  variant="success"
+                  className="flex-1"
+                  disabled={!selectedEmployeeId}
+                >
+                  <CheckCircle className="w-5 h-5 mr-2" />
+                  ยืนยัน
+                </Button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

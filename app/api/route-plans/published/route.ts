@@ -5,8 +5,9 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
 
-    // Get route plans with status 'optimizing' or 'published'
-    // optimizing = กำลังกรอกค่าขนส่ง, published = กรอกค่าขนส่งครบแล้ว
+    // Get route plans with status 'published' or 'pending_approval'
+    // published = เผยแพร่แล้ว (พร้อมสร้าง Picklist)
+    // pending_approval = รออนุมัติ (แผนที่พร้อมสร้าง Picklist แต่รออนุมัติ)
     const { data: plans, error } = await supabase
       .from('receiving_route_plans')
       .select(`
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
           warehouse_name
         )
       `)
-      .in('status', ['optimizing', 'published'])
+      .in('status', ['published', 'pending_approval'])
       .order('plan_date', { ascending: false })
       .order('plan_code', { ascending: false });
 
@@ -89,7 +90,7 @@ export async function GET(request: NextRequest) {
             if (orderIds.size > 0) {
               const { data: ordersData, error: ordersError } = await supabase
                 .from('wms_orders')
-                .select('order_id, order_no, customer_id, total_weight')
+                .select('order_id, order_no, customer_id, shop_name, province, total_weight')
                 .in('order_id', Array.from(orderIds));
 
               if (!ordersError && ordersData) {
@@ -135,6 +136,8 @@ export async function GET(request: NextRequest) {
                   order_no: order.order_no,
                   customer_id: order.customer_id,
                   stop_name: stop.stop_name,
+                  shop_name: order.shop_name,
+                  province: order.province,
                   total_qty: orderItemsMap[order.order_id] || 0,
                   weight: order.total_weight || 0
                 }))

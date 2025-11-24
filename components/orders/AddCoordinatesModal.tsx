@@ -269,12 +269,21 @@ const AddCoordinatesModal: React.FC<AddCoordinatesModalProps> = ({
 
     setSaving(true);
 
+    // Debug: ตรวจสอบข้อมูลก่อนส่ง
+    console.log('📤 Sending to API:', {
+      customer_id: order.customer_id,
+      order_no: order.order_no,
+      latitude,
+      longitude
+    });
+
     try {
       const response = await fetch('/api/master-customer/update-coordinates', {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           customer_id: order.customer_id,
+          order_no: order.order_no,
           latitude,
           longitude
         })

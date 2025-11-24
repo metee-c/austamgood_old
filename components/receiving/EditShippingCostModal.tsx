@@ -8,8 +8,12 @@ interface OrderDetail {
   order_no: string;
   customer_id: string;
   stop_name: string;
+  shop_name?: string;
+  province?: string;
   total_qty: number;
-  weight: number;
+  weight?: number;
+  allocated_weight_kg?: number;
+  total_order_weight_kg?: number;
 }
 
 interface Stop {
@@ -171,6 +175,10 @@ const TripEditForm: React.FC<TripEditFormProps> = ({ trip, tripIndex, suppliers,
   // State for saving to master
   const [savingToMaster, setSavingToMaster] = useState(false);
 
+  // State for reference province (จุดอ้างอิงราคา)
+  const [referenceProvinceIndex, setReferenceProvinceIndex] = useState<number | null>(null);
+  const [loadingRateFromMaster, setLoadingRateFromMaster] = useState(false);
+
   // Notify parent when formData changes
   useEffect(() => {
     onDataChange(trip.trip_id, {
@@ -236,10 +244,47 @@ const TripEditForm: React.FC<TripEditFormProps> = ({ trip, tripIndex, suppliers,
   // Collect all orders from all stops
   const allOrders = trip.stops?.flatMap(stop => stop.orders || []) || [];
 
+  // Function to load rate from master based on selected province
+  const handleLoadRateFromMaster = async (province: string) => {
+    if (!formData.supplier_id) {
+      alert('⚠️ กรุณาเลือกผู้ให้บริการขนส่งก่อน');
+      return;
+    }
+
+    setLoadingRateFromMaster(true);
+    try {
+      const res = await fetch(`/api/freight-rates/by-province?province=${encodeURIComponent(province)}&supplier_id=${formData.supplier_id}`);
+      const { data, error } = await res.json();
+
+      if (error || !data) {
+        alert(`ไม่พบราคามาสเตอร์สำหรับจังหวัด "${province}"\nกรุณากรอกราคาด้วยตนเอง`);
+        return;
+      }
+
+      // Apply rate to form
+      // **สำคัญ:** ใช้โหมด formula เสมอ สำหรับการกรอกค่าขนส่งในหน้านี้
+      // (ไม่ว่ามาสเตอร์จะเป็นโหมด formula หรือ flat ก็ตาม)
+      setPricingMode('formula');
+      setFormData(prev => ({
+        ...prev,
+        base_price: data.base_price || 0,
+        helper_fee: data.helper_price || 0,
+        extra_stop_fee: data.extra_drop_price || 100,
+        porterage_fee: data.porterage_fee || 0
+      }));
+
+      alert(`✅ โหลดราคาจากมาสเตอร์สำเร็จ!\nเส้นทาง: ${data.route_name}`);
+    } catch (err: any) {
+      alert(`❌ เกิดข้อผิดพลาด: ${err.message}`);
+    } finally {
+      setLoadingRateFromMaster(false);
+    }
+  };
+
   // Calculate totals
   const totalStops = trip.stops?.length || 0;
   const totalUnits = allOrders.reduce((sum, order) => sum + order.total_qty, 0);
-  const totalWeight = trip.total_weight_kg || allOrders.reduce((sum, order) => sum + order.weight, 0);
+  const totalWeight = trip.total_weight_kg || allOrders.reduce((sum, order) => sum + (order.allocated_weight_kg || order.weight || 0), 0);
   const distance = trip.total_distance_km || 0;
   
   // Calculate capacity percentage (assuming 2200kg default capacity)
@@ -388,8 +433,15 @@ ${otherFees.length > 0 ? `🔖 ค่าอื่นๆ: ${otherFees.length} ร
 
       {/* Order Details Table */}
       {allOrders.length > 0 && (
-        <div className="mb-4 overflow-x-auto">
-          <table className="min-w-full text-xs border border-gray-300">
+        <div className="mb-4">
+          {/* คำแนะนำ */}
+          <div className="mb-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs font-thai">
+            <span className="font-semibold text-blue-800">💡 คำแนะนำ:</span> 
+            <span className="text-blue-700"> คลิกปุ่ม "เลือก" ที่จุดส่งที่ไกลที่สุด เพื่อดึงราคาเริ่มต้นจากมาสเตอร์อัตโนมัติ</span>
+          </div>
+          
+          <div className="overflow-x-auto">
+            <table className="min-w-full text-xs border border-gray-300">
             <thead className="bg-gray-50">
               <tr>
                 <th className="px-2 py-2 text-left font-semibold text-gray-700 border-b font-thai">ลำดับ</th>
@@ -397,6 +449,7 @@ ${otherFees.length > 0 ? `🔖 ค่าอื่นๆ: ${otherFees.length} ร
                 <th className="px-2 py-2 text-left font-semibold text-gray-700 border-b font-thai">รหัสลูกค้า</th>
                 <th className="px-2 py-2 text-left font-semibold text-gray-700 border-b font-thai">ชื่อร้าน</th>
                 <th className="px-2 py-2 text-left font-semibold text-gray-700 border-b font-thai">จังหวัด</th>
+                <th className="px-2 py-2 text-center font-semibold text-gray-700 border-b font-thai">จุดอ้างอิงราคา</th>
                 <th className="px-2 py-2 text-right font-semibold text-gray-700 border-b font-thai">รวมจำนวนชิ้น</th>
                 <th className="px-2 py-2 text-right font-semibold text-gray-700 border-b font-thai">น้ำหนัก (kg)</th>
                 <th className="px-2 py-2 text-left font-semibold text-gray-700 border-b font-thai" style={{ minWidth: '200px' }}>หมายเหตุเพิ่มเติม</th>
@@ -404,34 +457,90 @@ ${otherFees.length > 0 ? `🔖 ค่าอื่นๆ: ${otherFees.length} ร
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {allOrders.map((order, index) => {
-                // Get province from customer map
+                // Get province - prioritize order.province from database
                 const getProvince = () => {
-                  // First try to get from customer map
+                  // Priority 1: Get from order data directly (from wms_orders.province)
+                  if (order.province && order.province.trim() !== '') {
+                    return order.province.trim();
+                  }
+
+                  // Priority 2: Try to get from customer map
                   const customer = customerMap[order.customer_id];
-                  if (customer?.province) {
-                    return customer.province;
+                  if (customer?.province && customer.province.trim() !== '') {
+                    return customer.province.trim();
                   }
-                  // Fallback: If order has province field directly
-                  if ((order as any).province) {
-                    return (order as any).province;
+
+                  // Priority 3: Try to extract from stop_name first (more reliable than shop_name)
+                  if (order.stop_name && order.stop_name.trim() !== '') {
+                    const parts = order.stop_name.split(/[-,]/);
+                    if (parts.length > 1) {
+                      const lastPart = parts[parts.length - 1].trim();
+                      // ตรวจสอบว่า lastPart ไม่ใช่ตัวเลข (เพราะอาจเป็นรหัสพื้นที่)
+                      if (lastPart && lastPart !== '' && isNaN(Number(lastPart))) {
+                        return lastPart;
+                      }
+                    }
+                    // ถ้าไม่มี separator ลอง return ทั้งหมด (อาจเป็นชื่อจังหวัดเดียว)
+                    const trimmed = order.stop_name.trim();
+                    if (trimmed && isNaN(Number(trimmed))) {
+                      return trimmed;
+                    }
                   }
-                  // Fallback: Try to extract from stop_name
-                  const parts = order.stop_name?.split(/[-,]/);
-                  if (parts && parts.length > 1) {
-                    return parts[parts.length - 1].trim();
+
+                  // Priority 4: Try to extract from shop_name (ชื่อร้าน - จังหวัด)
+                  if (order.shop_name && order.shop_name.trim() !== '') {
+                    const parts = order.shop_name.split(/[-,]/);
+                    if (parts.length > 1) {
+                      const lastPart = parts[parts.length - 1].trim();
+                      if (lastPart && lastPart !== '' && isNaN(Number(lastPart))) {
+                        return lastPart;
+                      }
+                    }
                   }
+
+                  // Debug: log when province not found
+                  console.warn('⚠️ Province not found for order:', {
+                    order_no: order.order_no,
+                    customer_id: order.customer_id,
+                    order_province: order.province,
+                    customer_province: customer?.province,
+                    shop_name: order.shop_name,
+                    stop_name: order.stop_name
+                  });
+
                   return '-';
                 };
 
+                const province = getProvince();
+                const isReferencePoint = referenceProvinceIndex === index;
+
                 return (
-                  <tr key={order.order_id} className="hover:bg-gray-50">
+                  <tr key={order.order_id} className={`hover:bg-gray-50 ${isReferencePoint ? 'bg-yellow-50' : ''}`}>
                     <td className="px-2 py-2 text-gray-900">{index + 1}</td>
                     <td className="px-2 py-2 text-blue-600 font-mono">{order.order_no}</td>
                     <td className="px-2 py-2 text-gray-900 font-mono">{order.customer_id}</td>
-                    <td className="px-2 py-2 text-gray-900 font-thai">{order.stop_name}</td>
-                    <td className="px-2 py-2 text-gray-900 font-thai">{getProvince()}</td>
-                    <td className="px-2 py-2 text-right text-gray-900 font-mono">{order.total_qty}</td>
-                    <td className="px-2 py-2 text-right text-gray-900 font-mono">{order.weight.toFixed(1)}</td>
+                    <td className="px-2 py-2 text-gray-900 font-thai">{order.shop_name || order.stop_name || '-'}</td>
+                    <td className="px-2 py-2 text-gray-900 font-thai font-semibold">{province}</td>
+                    <td className="px-2 py-2 text-center">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setReferenceProvinceIndex(index);
+                          handleLoadRateFromMaster(province);
+                        }}
+                        disabled={loadingRateFromMaster || province === '-'}
+                        className={`px-2 py-1 text-xs rounded font-thai transition-colors ${
+                          isReferencePoint
+                            ? 'bg-yellow-500 text-white font-semibold'
+                            : 'bg-blue-500 text-white hover:bg-blue-600'
+                        } disabled:bg-gray-300 disabled:cursor-not-allowed`}
+                        title={`ใช้จังหวัด "${province}" เป็นจุดอ้างอิงราคา`}
+                      >
+                        {isReferencePoint ? '✓ จุดอ้างอิง' : 'เลือก'}
+                      </button>
+                    </td>
+                    <td className="px-2 py-2 text-right text-gray-900 font-mono">{order.total_qty || 0}</td>
+                    <td className="px-2 py-2 text-right text-gray-900 font-mono">{(order.allocated_weight_kg || order.weight || 0).toFixed(1)}</td>
                     <td className="px-2 py-2">
                       <input
                         type="text"
@@ -447,13 +556,14 @@ ${otherFees.length > 0 ? `🔖 ค่าอื่นๆ: ${otherFees.length} ร
             </tbody>
             <tfoot className="bg-gray-50">
               <tr>
-                <td colSpan={5} className="px-2 py-2 text-right font-semibold text-gray-900 font-thai">รวม:</td>
+                <td colSpan={6} className="px-2 py-2 text-right font-semibold text-gray-900 font-thai">รวม:</td>
                 <td className="px-2 py-2 text-right font-semibold text-gray-900 font-mono">{allOrders.reduce((sum, order) => sum + order.total_qty, 0)} ชิ้น</td>
-                <td className="px-2 py-2 text-right font-semibold text-gray-900 font-mono">{allOrders.reduce((sum, order) => sum + order.weight, 0).toFixed(1)} kg</td>
+                <td className="px-2 py-2 text-right font-semibold text-gray-900 font-mono">{allOrders.reduce((sum, order) => sum + (order.allocated_weight_kg || order.weight || 0), 0).toFixed(1)} kg</td>
                 <td className="px-2 py-2"></td>
               </tr>
             </tfoot>
           </table>
+          </div>
         </div>
       )}
 
@@ -910,7 +1020,8 @@ const EditShippingCostModal: React.FC<EditShippingCostModalProps> = ({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/route-plans/published');
+      // เปลี่ยนจาก /published เป็น /api/route-plans เพื่อดึงทุกสถานะ
+      const res = await fetch('/api/route-plans');
       const { data, error } = await res.json();
       if (error) {
         setError(error);
@@ -936,9 +1047,31 @@ const EditShippingCostModal: React.FC<EditShippingCostModalProps> = ({
     }
   };
 
-  const handleSelectPlan = (plan: Plan) => {
-    setSelectedPlan(plan);
-    setStep('edit');
+  const handleSelectPlan = async (plan: Plan) => {
+    setLoading(true);
+    setError(null);
+    try {
+      // Fetch plan details with trips
+      const res = await fetch(`/api/route-plans/${plan.plan_id}/editor`);
+      const { data, error } = await res.json();
+      
+      if (error) {
+        setError(error);
+        return;
+      }
+      
+      // Set plan with trips data
+      setSelectedPlan({
+        ...plan,
+        trips: data.trips || []
+      });
+      setStep('edit');
+    } catch (err: any) {
+      setError('เกิดข้อผิดพลาดในการโหลดข้อมูลเที่ยว');
+      console.error('Error fetching plan details:', err);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleBack = () => {
@@ -1085,7 +1218,7 @@ const EditShippingCostModal: React.FC<EditShippingCostModalProps> = ({
               {loading && <div className="text-center py-8 text-gray-500">กำลังโหลด...</div>}
               {error && <div className="text-center py-8 text-red-500">{error}</div>}
               {!loading && !error && plans.length === 0 && (
-                <div className="text-center py-8 text-gray-500">ไม่พบแผนเส้นทางที่เผยแพร่แล้ว</div>
+                <div className="text-center py-8 text-gray-500">ไม่พบแผนเส้นทาง</div>
               )}
               {!loading && !error && plans.length > 0 && (
                 <div className="overflow-x-auto">

@@ -131,7 +131,8 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch('/api/route-plans/published');
+      // เปลี่ยนจาก /published เป็น /api/route-plans เพื่อดึงทุกสถานะ
+      const res = await fetch('/api/route-plans');
       const { data, error } = await res.json();
       if (error) {
         setError(error);
@@ -244,7 +245,7 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
               {loading && <div className="text-center py-8 text-gray-500">กำลังโหลด...</div>}
               {error && <div className="text-center py-8 text-red-500">{error}</div>}
               {!loading && !error && plans.length === 0 && (
-                <div className="text-center py-8 text-gray-500">ไม่พบแผนเส้นทางที่เผยแพร่แล้ว</div>
+                <div className="text-center py-8 text-gray-500">ไม่พบแผนเส้นทาง</div>
               )}
               {!loading && !error && plans.length > 0 && (
                 <div className="overflow-x-auto">
