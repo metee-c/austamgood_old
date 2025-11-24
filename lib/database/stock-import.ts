@@ -691,6 +691,240 @@ export class StockImportService {
   }
 
   /**
+   * Validate ข้อมูล Picking Area Import
+   */
+  async validatePickingAreaData(batchId: string, locationId: string): Promise<ValidationSummary> {
+    const supabase = await createClient();
+
+    // ดึงข้อมูล staging ทั้งหมด
+    const { data: stagingRecords, error: fetchError } = await supabase
+      .from('wms_stock_import_staging')
+      .select('*')
+      .eq('import_batch_id', batchId)
+      .eq('processing_status', 'pending');
+
+    if (fetchError) {
+      throw new Error('ไม่สามารถดึงข้อมูล staging ได้');
+    }
+
+    const validationStart = Date.now();
+    let validCount = 0;
+    let errorCount = 0;
+    let warningCount = 0;
+    const errorsByType: { [key: string]: number } = {};
+    const missingSkus: Set<string> = new Set();
+
+    // ดึง SKUs ทั้งหมดที่ต้องตรวจสอบ
+    const skuIds = [...new Set(stagingRecords.map(r => r.sku_id).filter(Boolean))];
+    const { data: existingSkus } = await supabase
+      .from('master_sku')
+      .select('sku_id')
+      .in('sku_id', skuIds);
+
+    const existingSkuSet = new Set(existingSkus?.map(s => s.sku_id) || []);
+
+    // ตรวจสอบว่า location มีอยู่จริง
+    const { data: locationData } = await supabase
+      .from('master_location')
+      .select('location_id, location_code')
+      .eq('location_id', locationId)
+      .single();
+
+    if (!locationData) {
+      throw new Error('ไม่พบโลเคชั่นที่ระบุ');
+    }
+
+    // Validate แต่ละแถว
+    for (const record of stagingRecords) {
+      const errors: string[] = [];
+      const warnings: string[] = [];
+
+      // 1. ตรวจสอบ SKU (required)
+      if (!record.sku_id || record.sku_id.trim() === '') {
+        errors.push('ไม่มีรหัส SKU');
+        this.incrementErrorType(errorsByType, 'missing_sku');
+      } else if (!existingSkuSet.has(record.sku_id)) {
+        errors.push(`ไม่พบ SKU: ${record.sku_id} ในระบบ`);
+        this.incrementErrorType(errorsByType, 'sku_not_found');
+        missingSkus.add(record.sku_id);
+      }
+
+      // 2. ตรวจสอบจำนวน (required)
+      if (!record.piece_qty || record.piece_qty <= 0) {
+        errors.push('จำนวนต้องมากกว่า 0');
+        this.incrementErrorType(errorsByType, 'invalid_quantity');
+      }
+
+      // 3. Warnings
+      if (!record.product_name) {
+        warnings.push('ไม่มีชื่อสินค้า');
+      }
+
+      // บันทึกผลการ validate
+      const isValid = errors.length === 0;
+      if (isValid) {
+        validCount++;
+      } else {
+        errorCount++;
+      }
+      if (warnings.length > 0) {
+        warningCount++;
+      }
+
+      // อัพเดท staging record
+      await supabase
+        .from('wms_stock_import_staging')
+        .update({
+          processing_status: isValid ? ('validated' as StockImportStagingStatus) : ('error' as StockImportStagingStatus),
+          validation_errors: errors.length > 0 ? errors : null,
+          validation_warnings: warnings.length > 0 ? warnings : null,
+        })
+        .eq('staging_id', record.staging_id);
+    }
+
+    const validationTime = (Date.now() - validationStart) / 1000;
+
+    const summary: ValidationSummary = {
+      total_checked: stagingRecords.length,
+      valid_count: validCount,
+      error_count: errorCount,
+      warning_count: warningCount,
+      errors_by_type: errorsByType,
+      missing_skus: Array.from(missingSkus),
+      new_locations: [], // Picking area doesn't create new locations
+      validation_time_seconds: validationTime,
+    };
+
+    // อัพเดท batch
+    await this.updateBatchStatus(batchId, 'validated', {
+      validated_rows: validCount,
+      error_rows: errorCount,
+      validation_summary: summary as any,
+    });
+
+    return summary;
+  }
+
+  /**
+   * ประมวลผลการนำเข้า Picking Area (Import จริง)
+   */
+  async processPickingAreaImport(batchId: string, locationId: string, userId: number, skipErrors: boolean = false): Promise<ProcessingSummary> {
+    const supabase = await createClient();
+
+    const processStart = Date.now();
+
+    // ดึงข้อมูล staging ที่ validated แล้ว
+    const { data: stagingRecords, error: fetchError } = await supabase
+      .from('wms_stock_import_staging')
+      .select('*')
+      .eq('import_batch_id', batchId)
+      .eq('processing_status', 'validated');
+
+    if (fetchError) {
+      throw new Error('ไม่สามารถดึงข้อมูล staging ได้');
+    }
+
+    // ดึงข้อมูล SKU ทั้งหมดเพื่อเอา pieces_per_pack มาคำนวณ pack_qty
+    const skuIds = [...new Set(stagingRecords.map(r => r.sku_id).filter(Boolean))];
+    const { data: skuData } = await supabase
+      .from('master_sku')
+      .select('sku_id, pieces_per_pack')
+      .in('sku_id', skuIds);
+
+    const skuMap = new Map(skuData?.map(s => [s.sku_id, s.pieces_per_pack]) || []);
+
+    let successCount = 0;
+    let errorCount = 0;
+    let ledgerEntriesCreated = 0;
+    let totalPieceQtyImported = 0;
+    let totalPackQtyImported = 0;
+    let totalWeightKgImported = 0;
+
+    // อัพเดทสถานะเป็น processing
+    await this.updateBatchStatus(batchId, 'processing');
+
+    // ประมวลผลแต่ละแถว
+    for (const record of stagingRecords) {
+      try {
+        // ข้ามถ้าไม่มีสินค้า
+        if (!record.piece_qty || record.piece_qty <= 0) {
+          await this.updateStagingStatus(record.staging_id, 'skipped');
+          continue;
+        }
+
+        // คำนวณ pack_qty จาก piece_qty และ pieces_per_pack
+        const piecesPerPack = skuMap.get(record.sku_id) || 1;
+        const calculatedPackQty = piecesPerPack > 0 ? Math.floor(Number(record.piece_qty) / piecesPerPack) : 0;
+
+        // อัพเดท pack_qty ใน record
+        record.pack_qty = calculatedPackQty;
+
+        // สร้าง Inventory Ledger เท่านั้น (ไม่ต้องสร้าง location)
+        // Trigger จะสร้าง/อัพเดท Balance อัตโนมัติ
+        const ledgerId = await this.insertInventoryLedger(record, batchId, userId, supabase, locationId);
+        ledgerEntriesCreated++;
+
+        // อัพเดท staging
+        await supabase
+          .from('wms_stock_import_staging')
+          .update({
+            processing_status: 'processed' as StockImportStagingStatus,
+            processed_at: new Date().toISOString(),
+            processed_ledger_id: ledgerId,
+          })
+          .eq('staging_id', record.staging_id);
+
+        // สะสมปริมาณ
+        totalPieceQtyImported += Number(record.piece_qty);
+        totalPackQtyImported += Number(record.pack_qty || 0);
+        totalWeightKgImported += Number(record.weight_kg || 0);
+
+        successCount++;
+      } catch (error: any) {
+        console.error(`Error processing staging_id ${record.staging_id}:`, error);
+        await supabase
+          .from('wms_stock_import_staging')
+          .update({
+            processing_status: 'error' as StockImportStagingStatus,
+            validation_errors: [error.message || 'เกิดข้อผิดพลาดในการประมวลผล'],
+          })
+          .eq('staging_id', record.staging_id);
+
+        errorCount++;
+
+        if (!skipErrors) {
+          throw error;
+        }
+      }
+    }
+
+    const processingTime = (Date.now() - processStart) / 1000;
+
+    const summary: ProcessingSummary = {
+      total_processed: stagingRecords.length,
+      success_count: successCount,
+      error_count: errorCount,
+      locations_created: 0, // Picking area doesn't create locations
+      locations_updated: 0,
+      balances_created: 0, // Handled by trigger
+      balances_updated: 0, // Handled by trigger
+      ledger_entries_created: ledgerEntriesCreated,
+      total_piece_qty_imported: totalPieceQtyImported,
+      total_pack_qty_imported: totalPackQtyImported,
+      total_weight_kg_imported: totalWeightKgImported,
+      processing_time_seconds: processingTime,
+    };
+
+    // อัพเดท batch
+    await this.updateBatchStatus(batchId, errorCount > 0 ? 'completed' : 'completed', {
+      processed_rows: successCount,
+      processing_summary: summary as any,
+    });
+
+    return summary;
+  }
+
+  /**
    * ดึงรายการ Import Batches
    */
   async getImportBatches(

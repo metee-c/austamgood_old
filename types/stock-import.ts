@@ -433,3 +433,50 @@ export const ValidationErrorMessages: Record<ValidationErrorType, string> = {
   [ValidationErrorType.EXPIRY_DATE_BEFORE_PRODUCTION]: 'วันหมดอายุก่อนวันผลิต',
   [ValidationErrorType.DATA_TOO_LONG]: 'ข้อมูลยาวเกินไป',
 };
+
+// ============================================================================
+// Picking Area Import Types
+// ============================================================================
+
+/**
+ * ข้อมูลแถวจาก CSV สำหรับ Picking Area (พื้นที่หยิบ)
+ */
+export interface PickingAreaImportRowData {
+  'SKU'?: string;
+  'Product_Name'?: string;
+  'Type'?: string;
+  'Barcode'?: string;
+  'Unit'?: string;
+  'จำนวนน้ำหนัก (ปกติ)'?: string;  // Weight
+  'จำนวนถุง (ปกติ)'?: string;        // Quantity (Bags/Units)
+  'Remark'?: string;
+}
+
+/**
+ * Parsed Data สำหรับ Picking Area Import
+ */
+export interface ParsedPickingAreaRow {
+  sku_id: string;
+  product_name: string | null;
+  product_type: string | null;
+  barcode: string | null;
+  unit: string | null;
+  weight_kg: number | null;
+  quantity: number | null;
+  remarks: string | null;
+
+  // Validation
+  is_valid: boolean;
+  errors: string[];
+  warnings: string[];
+}
+
+/**
+ * Request สำหรับนำเข้า Picking Area
+ */
+export interface PickingAreaImportRequest {
+  warehouse_id: string;
+  location_id: string;  // PK001 หรือ location อื่นๆ ที่เป็น picking area
+  file: File;
+  batch_name?: string;
+}

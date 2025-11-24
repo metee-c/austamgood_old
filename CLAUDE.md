@@ -372,23 +372,25 @@ The system implements an automated workflow with 6 database triggers that transi
 - Status enums: `draft`, `confirmed`, `in_picking`, `picked`, `loaded`, `in_transit`, `delivered`
 - Route plan statuses: `draft`, `published`, `ready_to_load`, `in_transit`, `completed`
 
-**Documentation:** See `WORKFLOW_IMPLEMENTATION_SUMMARY.md` for complete details
+**Documentation:** See `docs-archive/workflow/WORKFLOW_IMPLEMENTATION_SUMMARY.md` for complete details
 
 ## Important Documentation Files
 
 The codebase includes several important documentation files that provide detailed context for specific features:
 
+- **DOCUMENTATION_INDEX.md** - Complete index of all 44+ documentation files organized by topic and role
 - **DESIGN_SYSTEM.md** - Complete UI/UX design system (colors, typography, components, spacing)
 - **README_VRP.md** - Vehicle Routing Problem system documentation
-- **WORKFLOW_IMPLEMENTATION_SUMMARY.md** - Delivery workflow status management system
-- **WORKFLOW_STATUS_DESIGN.md** - Workflow design specifications
-- **STOCK_IMPORT_SUMMARY.md** - Stock import system documentation
-- **STOCK_IMPORT_PLAN.md** - Detailed stock import planning
-- **MOBILE_RECEIVE_GUIDE.md** - Mobile receiving operations guide
-- **MOBILE_TRANSFER_GUIDE.md** - Mobile transfer operations guide
-- **WORKFLOW_QUICK_START.md** - Quick start guide for workflow system
+- **GEMINI.md** - AI configuration and guidelines for Gemini AI
+- **docs-archive/workflow/WORKFLOW_IMPLEMENTATION_SUMMARY.md** - Delivery workflow status management system
+- **docs-archive/workflow/WORKFLOW_STATUS_DESIGN.md** - Workflow design specifications
+- **docs-archive/stock-import/STOCK_IMPORT_SUMMARY.md** - Stock import system documentation
+- **docs-archive/stock-import/STOCK_IMPORT_PLAN.md** - Detailed stock import planning
+- **docs-archive/mobile/MOBILE_RECEIVE_GUIDE.md** - Mobile receiving operations guide
+- **docs-archive/mobile/MOBILE_TRANSFER_GUIDE.md** - Mobile transfer operations guide
+- **docs-archive/workflow/WORKFLOW_QUICK_START.md** - Quick start guide for workflow system
 
-**Best Practice:** Always check if relevant documentation exists before starting work on a feature. These docs contain critical context about design decisions, implementation details, and common patterns.
+**Best Practice:** Always check DOCUMENTATION_INDEX.md first to find relevant documentation before starting work on a feature. These docs contain critical context about design decisions, implementation details, and common patterns.
 
 ## Important Notes
 
@@ -666,8 +668,8 @@ npm run db:generate-types
 5. Manually test triggers with SQL if needed
 
 **Related Documentation:**
-- [WORKFLOW_IMPLEMENTATION_SUMMARY.md](WORKFLOW_IMPLEMENTATION_SUMMARY.md) - Complete workflow documentation
-- [WORKFLOW_STATUS_DESIGN.md](WORKFLOW_STATUS_DESIGN.md) - Design specifications
+- [docs-archive/workflow/WORKFLOW_IMPLEMENTATION_SUMMARY.md](docs-archive/workflow/WORKFLOW_IMPLEMENTATION_SUMMARY.md) - Complete workflow documentation
+- [docs-archive/workflow/WORKFLOW_STATUS_DESIGN.md](docs-archive/workflow/WORKFLOW_STATUS_DESIGN.md) - Design specifications
 
 ## Performance Considerations
 
