@@ -9,15 +9,11 @@ export const freightRateSchema = z.object({
   destination_province: z.string().min(1, 'จังหวัดปลายทางไม่สามารถเว้นว่างได้'),
   destination_district: z.string().optional().nullable(),
   total_distance_km: z.number().positive('ระยะทางต้องมากกว่า 0'),
+  pricing_mode: z.enum(['flat', 'formula']).default('flat'),
   base_price: z.number().positive('ราคาหลักต้องมากกว่า 0'),
   extra_drop_price: z.number().min(0, 'ค่าจุดส่งเพิ่มต้องไม่ติดลบ').optional().nullable(),
   helper_price: z.number().min(0, 'ค่าเด็กติดรถต้องไม่ติดลบ').optional().nullable(),
   price_unit: z.enum(['trip', 'kg', 'pallet', 'other']).default('trip'),
-  min_charge: z.number().positive('ค่าขนส่งขั้นต่ำต้องมากกว่า 0').optional().nullable(),
-  calculated_price_per_km: z.number().optional().nullable(),
-  calculated_price_per_kg: z.number().optional().nullable(),
-  calculated_price_per_pallet: z.number().optional().nullable(),
-  fuel_surcharge_rate: z.number().min(0, 'อัตราค่าน้ำมันต้องไม่ติดลบ').max(100, 'อัตราค่าน้ำมันต้องไม่เกิน 100%').optional().nullable(),
   effective_start_date: z.string().min(1, 'วันที่เริ่มใช้ราคาไม่สามารถเว้นว่างได้'),
   effective_end_date: z.string().optional().nullable(),
   notes: z.string().optional().nullable(),
@@ -39,6 +35,11 @@ export const freightRateSchema = z.object({
 });
 
 export type FreightRateFormValues = z.infer<typeof freightRateSchema>;
+
+export const PRICING_MODES = [
+  { value: 'flat', label: 'แบบเหมา (ใส่ราคาเดียวจบ)' },
+  { value: 'formula', label: 'แบบคำนวณ (ราคาเริ่มต้น + ค่าเด็ก + ค่าจุดเพิ่ม)' }
+];
 
 export const PRICE_UNITS = [
   { value: 'trip', label: 'ต่อเที่ยว' },
@@ -134,13 +135,22 @@ export const MOCK_CARRIERS = [
   { carrier_id: 3, carrier_name: 'บริษัท ขนส่งปลอดภัย จำกัด' }
 ];
 
-// Helper function to format price
+// Helper function to format price with currency symbol
 export const formatPrice = (price: number | null | undefined): string => {
   if (price == null) return '-';
   return new Intl.NumberFormat('th-TH', {
     style: 'currency',
     currency: 'THB',
     minimumFractionDigits: 0,
+    maximumFractionDigits: 2,
+  }).format(price);
+};
+
+// Helper function to format price without currency symbol (for table display)
+export const formatPriceNumber = (price: number | null | undefined): string => {
+  if (price == null) return '-';
+  return new Intl.NumberFormat('th-TH', {
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   }).format(price);
 };

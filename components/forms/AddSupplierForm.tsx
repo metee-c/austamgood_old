@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Save, X, AlertCircle, Building, User, Mail, Phone, Star, CreditCard } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import { CreateSupplierRequest } from '@/types/supplier';
@@ -9,32 +9,74 @@ interface AddSupplierFormProps {
   onSuccess: () => void;
   onCancel: () => void;
   initialData?: Partial<CreateSupplierRequest>;
+  supplier?: any; // For edit mode
+  mode?: 'create' | 'edit' | 'view';
 }
 
-const AddSupplierForm: React.FC<AddSupplierFormProps> = ({ onSuccess, onCancel, initialData }) => {
+const AddSupplierForm: React.FC<AddSupplierFormProps> = ({ 
+  onSuccess, 
+  onCancel, 
+  initialData,
+  supplier,
+  mode = 'create'
+}) => {
+  const isViewMode = mode === 'view';
+  const isEditMode = mode === 'edit' || !!supplier;
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [formData, setFormData] = useState<CreateSupplierRequest>({
-    supplier_id: initialData?.supplier_id || '',
-    supplier_code: initialData?.supplier_code || '',
-    supplier_name: initialData?.supplier_name || '',
-    supplier_type: initialData?.supplier_type || 'vendor',
-    business_reg_no: initialData?.business_reg_no || '',
-    tax_id: initialData?.tax_id || '',
-    contact_person: initialData?.contact_person || '',
-    phone: initialData?.phone || '',
-    email: initialData?.email || '',
-    website: initialData?.website || '',
-    billing_address: initialData?.billing_address || '',
-    shipping_address: initialData?.shipping_address || '',
-    payment_terms: initialData?.payment_terms || '',
-    service_category: initialData?.service_category || '',
-    product_category: initialData?.product_category || '',
-    rating: initialData?.rating || 0,
-    status: initialData?.status || 'active',
-    created_by: initialData?.created_by || 'admin@austamgood.com', // TODO: Get from auth context
-    remarks: initialData?.remarks || ''
+    supplier_id: supplier?.supplier_id || initialData?.supplier_id || '',
+    supplier_code: supplier?.supplier_code || initialData?.supplier_code || '',
+    supplier_name: supplier?.supplier_name || initialData?.supplier_name || '',
+    supplier_type: supplier?.supplier_type || initialData?.supplier_type || 'vendor',
+    business_reg_no: supplier?.business_reg_no || initialData?.business_reg_no || '',
+    tax_id: supplier?.tax_id || initialData?.tax_id || '',
+    contact_person: supplier?.contact_person || initialData?.contact_person || '',
+    phone: supplier?.phone || initialData?.phone || '',
+    email: supplier?.email || initialData?.email || '',
+    website: supplier?.website || initialData?.website || '',
+    billing_address: supplier?.billing_address || initialData?.billing_address || '',
+    shipping_address: supplier?.shipping_address || initialData?.shipping_address || '',
+    payment_terms: supplier?.payment_terms || initialData?.payment_terms || '',
+    service_category: supplier?.service_category || initialData?.service_category || '',
+    product_category: supplier?.product_category || initialData?.product_category || '',
+    rating: supplier?.rating || initialData?.rating || 0,
+    status: supplier?.status || initialData?.status || 'active',
+    created_by: supplier?.created_by || initialData?.created_by || 'admin@austamgood.com',
+    remarks: supplier?.remarks || initialData?.remarks || ''
   });
+
+  // Auto-generate supplier code on mount and when supplier_type changes (only in create mode)
+  useEffect(() => {
+    if (!isEditMode && !supplier) {
+      fetchNextSupplierCode(formData.supplier_type);
+    }
+  }, [formData.supplier_type, isEditMode, supplier]);
+
+  const fetchNextSupplierCode = async (supplierType: string) => {
+    try {
+      const response = await fetch(`/api/master-supplier/next-code?type=${supplierType}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch next supplier code');
+      }
+      const data = await response.json();
+
+      setFormData(prev => ({
+        ...prev,
+        supplier_code: data.nextCode,
+        supplier_id: data.nextCode // Use same code for ID
+      }));
+    } catch (err) {
+      console.error('Error fetching next supplier code:', err);
+      // Fallback to timestamp-based generation if API fails
+      const fallbackCode = generateSupplierCode();
+      setFormData(prev => ({
+        ...prev,
+        supplier_code: fallbackCode,
+        supplier_id: fallbackCode
+      }));
+    }
+  };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
     const { name, value, type } = e.target;
@@ -61,11 +103,17 @@ const AddSupplierForm: React.FC<AddSupplierFormProps> = ({ onSuccess, onCancel, 
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (isViewMode) {
+      onCancel();
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
     try {
-      // Auto-generate IDs if not provided
+      // Auto-generate IDs if not provided (create mode only)
       const submitData = {
         ...formData,
         supplier_id: formData.supplier_id || generateSupplierId(),
@@ -77,8 +125,13 @@ const AddSupplierForm: React.FC<AddSupplierFormProps> = ({ onSuccess, onCancel, 
         throw new Error('กรุณากรอกข้อมูลที่จำเป็น: ชื่อผู้จำหน่าย');
       }
 
-      const response = await fetch('/api/master-supplier', {
-        method: 'POST',
+      const method = isEditMode ? 'PUT' : 'POST';
+      const url = isEditMode 
+        ? `/api/master-supplier?id=${submitData.supplier_id}` 
+        : '/api/master-supplier';
+
+      const response = await fetch(url, {
+        method,
         headers: {
           'Content-Type': 'application/json',
         },
@@ -87,12 +140,12 @@ const AddSupplierForm: React.FC<AddSupplierFormProps> = ({ onSuccess, onCancel, 
 
       if (!response.ok) {
         const errorData = await response.json();
-        throw new Error(errorData.error || 'เกิดข้อผิดพลาดในการเพิ่มผู้จำหน่าย');
+        throw new Error(errorData.error || `เกิดข้อผิดพลาดในการ${isEditMode ? 'แก้ไข' : 'เพิ่ม'}ผู้จำหน่าย`);
       }
 
       onSuccess();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'เกิดข้อผิดพลาดในการเพิ่มผู้จำหน่าย');
+      setError(err instanceof Error ? err.message : `เกิดข้อผิดพลาดในการ${isEditMode ? 'แก้ไข' : 'เพิ่ม'}ผู้จำหน่าย`);
     } finally {
       setLoading(false);
     }
@@ -106,7 +159,7 @@ const AddSupplierForm: React.FC<AddSupplierFormProps> = ({ onSuccess, onCancel, 
   };
 
   return (
-    <div className="max-h-[80vh] overflow-y-auto">
+    <div>
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Error Display */}
         {error && (
@@ -128,25 +181,25 @@ const AddSupplierForm: React.FC<AddSupplierFormProps> = ({ onSuccess, onCancel, 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
-                รหัสผู้จำหน่าย
+                รหัสซัพพลายเออร์
+                <span className="ml-2 text-xs text-green-600 font-normal">(สร้างอัตโนมัติ)</span>
               </label>
               <input
                 type="text"
                 name="supplier_code"
                 value={formData.supplier_code}
-                onChange={handleInputChange}
-                placeholder="ระบบจะสร้างให้อัตโนมัติ"
+                readOnly
                 className="
                   w-full px-3 py-2 border border-thai-gray-300 rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
-                  font-thai text-sm
+                  bg-gray-50 text-gray-600 cursor-not-allowed
+                  font-mono text-sm font-semibold
                 "
               />
             </div>
 
             <div>
               <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
-                ชื่อผู้จำหน่าย <span className="text-red-500">*</span>
+                ชื่อซัพพลายเออร์ <span className="text-red-500">*</span>
               </label>
               <input
                 type="text"
@@ -154,11 +207,13 @@ const AddSupplierForm: React.FC<AddSupplierFormProps> = ({ onSuccess, onCancel, 
                 value={formData.supplier_name}
                 onChange={handleInputChange}
                 placeholder="เช่น บริษัท ผลิตภัณฑ์อุตสาหกรรม จำกัด"
-                className="
+                disabled={isViewMode}
+                className={`
                   w-full px-3 py-2 border border-thai-gray-300 rounded-lg
                   focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
                   font-thai text-sm
-                "
+                  ${isViewMode ? 'bg-gray-50 cursor-not-allowed' : ''}
+                `}
                 required
               />
             </div>
@@ -171,11 +226,13 @@ const AddSupplierForm: React.FC<AddSupplierFormProps> = ({ onSuccess, onCancel, 
                 name="supplier_type"
                 value={formData.supplier_type}
                 onChange={handleInputChange}
-                className="
+                disabled={isViewMode}
+                className={`
                   w-full px-3 py-2 border border-thai-gray-300 rounded-lg
                   focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
                   font-thai text-sm
-                "
+                  ${isViewMode ? 'bg-gray-50 cursor-not-allowed' : ''}
+                `}
               >
                 <option value="vendor">ผู้จำหน่าย</option>
                 <option value="service_provider">ผู้ให้บริการ</option>
@@ -191,11 +248,13 @@ const AddSupplierForm: React.FC<AddSupplierFormProps> = ({ onSuccess, onCancel, 
                 name="status"
                 value={formData.status}
                 onChange={handleInputChange}
-                className="
+                disabled={isViewMode}
+                className={`
                   w-full px-3 py-2 border border-thai-gray-300 rounded-lg
                   focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
                   font-thai text-sm
-                "
+                  ${isViewMode ? 'bg-gray-50 cursor-not-allowed' : ''}
+                `}
               >
                 <option value="active">ใช้งาน</option>
                 <option value="inactive">ไม่ใช้งาน</option>
@@ -212,11 +271,13 @@ const AddSupplierForm: React.FC<AddSupplierFormProps> = ({ onSuccess, onCancel, 
                 value={formData.business_reg_no}
                 onChange={handleInputChange}
                 placeholder="เช่น 0105558123456"
-                className="
+                disabled={isViewMode}
+                className={`
                   w-full px-3 py-2 border border-thai-gray-300 rounded-lg
                   focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
                   font-thai text-sm
-                "
+                  ${isViewMode ? 'bg-gray-50 cursor-not-allowed' : ''}
+                `}
               />
             </div>
 
@@ -230,11 +291,13 @@ const AddSupplierForm: React.FC<AddSupplierFormProps> = ({ onSuccess, onCancel, 
                 value={formData.tax_id}
                 onChange={handleInputChange}
                 placeholder="เช่น 0105558123456"
-                className="
+                disabled={isViewMode}
+                className={`
                   w-full px-3 py-2 border border-thai-gray-300 rounded-lg
                   focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
                   font-thai text-sm
-                "
+                  ${isViewMode ? 'bg-gray-50 cursor-not-allowed' : ''}
+                `}
               />
             </div>
           </div>
@@ -258,11 +321,13 @@ const AddSupplierForm: React.FC<AddSupplierFormProps> = ({ onSuccess, onCancel, 
                 value={formData.contact_person}
                 onChange={handleInputChange}
                 placeholder="ชื่อผู้ติดต่อ"
-                className="
+                disabled={isViewMode}
+                className={`
                   w-full px-3 py-2 border border-thai-gray-300 rounded-lg
                   focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
                   font-thai text-sm
-                "
+                  ${isViewMode ? 'bg-gray-50 cursor-not-allowed' : ''}
+                `}
               />
             </div>
 
@@ -276,11 +341,13 @@ const AddSupplierForm: React.FC<AddSupplierFormProps> = ({ onSuccess, onCancel, 
                 value={formData.phone}
                 onChange={handleInputChange}
                 placeholder="เช่น 02-345-6789"
-                className="
+                disabled={isViewMode}
+                className={`
                   w-full px-3 py-2 border border-thai-gray-300 rounded-lg
                   focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
                   font-thai text-sm
-                "
+                  ${isViewMode ? 'bg-gray-50 cursor-not-allowed' : ''}
+                `}
               />
             </div>
 
@@ -294,11 +361,13 @@ const AddSupplierForm: React.FC<AddSupplierFormProps> = ({ onSuccess, onCancel, 
                 value={formData.email}
                 onChange={handleInputChange}
                 placeholder="เช่น contact@company.com"
-                className="
+                disabled={isViewMode}
+                className={`
                   w-full px-3 py-2 border border-thai-gray-300 rounded-lg
                   focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
                   font-thai text-sm
-                "
+                  ${isViewMode ? 'bg-gray-50 cursor-not-allowed' : ''}
+                `}
               />
             </div>
 
@@ -312,11 +381,13 @@ const AddSupplierForm: React.FC<AddSupplierFormProps> = ({ onSuccess, onCancel, 
                 value={formData.website}
                 onChange={handleInputChange}
                 placeholder="เช่น https://www.company.com"
-                className="
+                disabled={isViewMode}
+                className={`
                   w-full px-3 py-2 border border-thai-gray-300 rounded-lg
                   focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
                   font-thai text-sm
-                "
+                  ${isViewMode ? 'bg-gray-50 cursor-not-allowed' : ''}
+                `}
               />
             </div>
           </div>
@@ -338,11 +409,13 @@ const AddSupplierForm: React.FC<AddSupplierFormProps> = ({ onSuccess, onCancel, 
               onChange={handleInputChange}
               placeholder="ระบุที่อยู่สำหรับออกบิล"
               rows={3}
-              className="
+              disabled={isViewMode}
+              className={`
                 w-full px-3 py-2 border border-thai-gray-300 rounded-lg
                 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
                 font-thai text-sm resize-none
-              "
+                ${isViewMode ? 'bg-gray-50 cursor-not-allowed' : ''}
+              `}
             />
           </div>
 
@@ -351,13 +424,15 @@ const AddSupplierForm: React.FC<AddSupplierFormProps> = ({ onSuccess, onCancel, 
               <label className="block text-sm font-medium text-thai-gray-700 font-thai">
                 ที่อยู่สำหรับจัดส่ง
               </label>
-              <button
-                type="button"
-                onClick={copyBillingToShipping}
-                className="text-sm text-primary-600 hover:text-primary-700 font-thai"
-              >
-                คัดลอกจากที่อยู่บิล
-              </button>
+              {!isViewMode && (
+                <button
+                  type="button"
+                  onClick={copyBillingToShipping}
+                  className="text-sm text-primary-600 hover:text-primary-700 font-thai"
+                >
+                  คัดลอกจากที่อยู่บิล
+                </button>
+              )}
             </div>
             <textarea
               name="shipping_address"
@@ -365,11 +440,13 @@ const AddSupplierForm: React.FC<AddSupplierFormProps> = ({ onSuccess, onCancel, 
               onChange={handleInputChange}
               placeholder="ระบุที่อยู่สำหรับจัดส่ง"
               rows={3}
-              className="
+              disabled={isViewMode}
+              className={`
                 w-full px-3 py-2 border border-thai-gray-300 rounded-lg
                 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
                 font-thai text-sm resize-none
-              "
+                ${isViewMode ? 'bg-gray-50 cursor-not-allowed' : ''}
+              `}
             />
           </div>
         </div>
@@ -392,11 +469,13 @@ const AddSupplierForm: React.FC<AddSupplierFormProps> = ({ onSuccess, onCancel, 
                 value={formData.payment_terms}
                 onChange={handleInputChange}
                 placeholder="เช่น 30 วัน, เงินสด"
-                className="
+                disabled={isViewMode}
+                className={`
                   w-full px-3 py-2 border border-thai-gray-300 rounded-lg
                   focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
                   font-thai text-sm
-                "
+                  ${isViewMode ? 'bg-gray-50 cursor-not-allowed' : ''}
+                `}
               />
             </div>
 
@@ -413,11 +492,13 @@ const AddSupplierForm: React.FC<AddSupplierFormProps> = ({ onSuccess, onCancel, 
                 min="0"
                 max="5"
                 step="0.1"
-                className="
+                disabled={isViewMode}
+                className={`
                   w-full px-3 py-2 border border-thai-gray-300 rounded-lg
                   focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
                   font-thai text-sm
-                "
+                  ${isViewMode ? 'bg-gray-50 cursor-not-allowed' : ''}
+                `}
               />
             </div>
 
@@ -432,11 +513,13 @@ const AddSupplierForm: React.FC<AddSupplierFormProps> = ({ onSuccess, onCancel, 
                   value={formData.product_category}
                   onChange={handleInputChange}
                   placeholder="เช่น วัตถุดิบอุตสาหกรรม, อุปกรณ์อิเล็กทรอนิกส์"
-                  className="
+                  disabled={isViewMode}
+                  className={`
                     w-full px-3 py-2 border border-thai-gray-300 rounded-lg
                     focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
                     font-thai text-sm
-                  "
+                    ${isViewMode ? 'bg-gray-50 cursor-not-allowed' : ''}
+                  `}
                 />
               </div>
             )}
@@ -452,11 +535,13 @@ const AddSupplierForm: React.FC<AddSupplierFormProps> = ({ onSuccess, onCancel, 
                   value={formData.service_category}
                   onChange={handleInputChange}
                   placeholder="เช่น ขนส่งและโลจิสติกส์, ผลิตและประกอบ"
-                  className="
+                  disabled={isViewMode}
+                  className={`
                     w-full px-3 py-2 border border-thai-gray-300 rounded-lg
                     focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
                     font-thai text-sm
-                  "
+                    ${isViewMode ? 'bg-gray-50 cursor-not-allowed' : ''}
+                  `}
                 />
               </div>
             )}
@@ -474,11 +559,13 @@ const AddSupplierForm: React.FC<AddSupplierFormProps> = ({ onSuccess, onCancel, 
             onChange={handleInputChange}
             placeholder="หมายเหตุเพิ่มเติม"
             rows={3}
-            className="
+            disabled={isViewMode}
+            className={`
               w-full px-3 py-2 border border-thai-gray-300 rounded-lg
               focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500
               font-thai text-sm resize-none
-            "
+              ${isViewMode ? 'bg-gray-50 cursor-not-allowed' : ''}
+            `}
           />
         </div>
 
@@ -491,16 +578,18 @@ const AddSupplierForm: React.FC<AddSupplierFormProps> = ({ onSuccess, onCancel, 
             disabled={loading}
             icon={X}
           >
-            ยกเลิก
+            {isViewMode ? 'ปิด' : 'ยกเลิก'}
           </Button>
-          <Button
-            type="submit"
-            variant="primary"
-            loading={loading}
-            icon={Save}
-          >
-            {loading ? 'กำลังบันทึก...' : 'บันทึก'}
-          </Button>
+          {!isViewMode && (
+            <Button
+              type="submit"
+              variant="primary"
+              loading={loading}
+              icon={Save}
+            >
+              {loading ? 'กำลังบันทึก...' : 'บันทึก'}
+            </Button>
+          )}
         </div>
       </form>
     </div>

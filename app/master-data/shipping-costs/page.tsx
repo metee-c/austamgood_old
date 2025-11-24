@@ -24,7 +24,18 @@ import Modal from '@/components/ui/Modal';
 import AddFreightRateForm from '@/components/forms/AddFreightRateForm';
 import EditFreightRateForm from '@/components/forms/EditFreightRateForm';
 import ImportFreightRateForm from '@/components/forms/ImportFreightRateForm';
-import { FreightRateFormValues, PRICE_UNITS, formatPrice, formatDistance, getPriceUnitLabel } from '@/types/freight-rate-schema';
+import { FreightRateFormValues, PRICE_UNITS, formatPrice, formatPriceNumber, formatDistance, getPriceUnitLabel } from '@/types/freight-rate-schema';
+
+// Helper function to format dates
+const formatDate = (dateString: string) => {
+  if (!dateString) return '-';
+  const date = new Date(dateString);
+  return date.toLocaleDateString('th-TH', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit'
+  });
+};
 
 interface FreightRate {
   freight_rate_id: number;
@@ -35,9 +46,12 @@ interface FreightRate {
   destination_province: string;
   destination_district?: string;
   total_distance_km: number;
+  pricing_mode?: 'flat' | 'formula';
   base_price: number;
   extra_drop_price?: number;
   helper_price?: number;
+  porterage_fee?: number;
+  other_fees?: Array<{ label: string; amount: number }>;
   price_unit: string;
   min_charge?: number;
   calculated_price_per_km?: number;
@@ -54,42 +68,7 @@ interface FreightRate {
   is_active?: boolean;
 }
 
-const SortableHeader = ({ 
-  field, 
-  children, 
-  className, 
-  sortField, 
-  sortDirection, 
-  handleSort 
-}: { 
-  field: string, 
-  children: React.ReactNode, 
-  className?: string,
-  sortField: string | null,
-  sortDirection: 'asc' | 'desc',
-  handleSort: (field: string) => void
-}) => {
-  const getSortIcon = () => {
-    if (sortField !== field) {
-      return <ChevronsUpDown className="w-4 h-4 text-thai-gray-400" />;
-    }
-    return sortDirection === 'asc' 
-      ? <ChevronUp className="w-4 h-4 text-primary-600" />
-      : <ChevronDown className="w-4 h-4 text-primary-600" />;
-  };
 
-  return (
-    <Table.Head 
-      className={`transition-colors cursor-pointer hover:bg-thai-gray-50/50 ${className || ''}`}
-      onClick={() => handleSort(field)}
-    >
-      <div className="flex items-center justify-between">
-        <span>{children}</span>
-        {getSortIcon()}
-      </div>
-    </Table.Head>
-  );
-};
 
 const ShippingCostsPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -122,162 +101,65 @@ const ShippingCostsPage = () => {
 
   const fetchFreightRates = async () => {
     setLoading(true);
+    setError(null);
+
     try {
-      // Mock data from database sample
-      const mockFreightRates: FreightRate[] = [
-        {
-          freight_rate_id: 1,
-          carrier_id: 1,
-          carrier_name: 'บริษัท ขนส่งไทย จำกัด',
-          route_name: 'สมุทรปราการ-เชียงใหม่-เชียงราย',
-          origin_province: 'สมุทรปราการ',
-          origin_district: 'เมืองสมุทรปราการ',
-          destination_province: 'เชียงราย',
-          destination_district: 'เมืองเชียงราย',
-          total_distance_km: 830.50,
-          base_price: 25000.00,
-          extra_drop_price: 500.00,
-          helper_price: 800.00,
-          price_unit: 'trip',
-          min_charge: 15000.00,
-          calculated_price_per_km: 30.12,
-          fuel_surcharge_rate: 5.00,
-          effective_start_date: '2024-01-01',
-          effective_end_date: undefined,
-          notes: 'เส้นทางหลักภาคเหนือ รวมจุดส่งระหว่างทาง',
-          created_by: 'admin',
-          created_at: '2024-01-01T10:00:00Z',
-          updated_at: '2024-01-01T10:00:00Z',
-          is_active: true
-        },
-        {
-          freight_rate_id: 2,
-          carrier_id: 1,
-          carrier_name: 'บริษัท ขนส่งไทย จำกัด',
-          route_name: 'กรุงเทพฯ-อุบลราชธานี',
-          origin_province: 'กรุงเทพมหานคร',
-          origin_district: 'บางซื่อ',
-          destination_province: 'อุบลราชธานี',
-          destination_district: 'เมืองอุบลราชธานี',
-          total_distance_km: 630.25,
-          base_price: 18000.00,
-          extra_drop_price: 400.00,
-          helper_price: 700.00,
-          price_unit: 'trip',
-          min_charge: 12000.00,
-          calculated_price_per_km: 28.57,
-          fuel_surcharge_rate: 5.00,
-          effective_start_date: '2024-01-01',
-          effective_end_date: undefined,
-          notes: 'เส้นทางภาคอีสาน',
-          created_by: 'admin',
-          created_at: '2024-01-01T10:00:00Z',
-          updated_at: '2024-01-01T10:00:00Z',
-          is_active: true
-        },
-        {
-          freight_rate_id: 3,
-          carrier_id: 2,
-          carrier_name: 'บริษัท ขนส่งรวดเร็ว จำกัด',
-          route_name: 'สมุทรปราการ-หาดใหญ่-ปัตตานี',
-          origin_province: 'สมุทรปราการ',
-          origin_district: 'เมืองสมุทรปราการ',
-          destination_province: 'ปัตตานี',
-          destination_district: 'เมืองปัตตานี',
-          total_distance_km: 1050.75,
-          base_price: 32000.00,
-          extra_drop_price: 600.00,
-          helper_price: 1000.00,
-          price_unit: 'trip',
-          min_charge: 20000.00,
-          calculated_price_per_km: 30.46,
-          fuel_surcharge_rate: 5.50,
-          effective_start_date: '2024-01-01',
-          effective_end_date: undefined,
-          notes: 'เส้นทางภาคใต้ รวมจุดส่งหาดใหญ่',
-          created_by: 'admin',
-          created_at: '2024-01-01T10:00:00Z',
-          updated_at: '2024-01-01T10:00:00Z',
-          is_active: true
-        },
-        {
-          freight_rate_id: 4,
-          carrier_id: 1,
-          carrier_name: 'บริษัท ขนส่งไทย จำกัด',
-          route_name: 'กรุงเทพฯ-เชียงใหม่ (น้ำหนัก)',
-          origin_province: 'กรุงเทพมหานคร',
-          destination_province: 'เชียงใหม่',
-          destination_district: 'เมืองเชียงใหม่',
-          total_distance_km: 700.00,
-          base_price: 15.00,
-          price_unit: 'kg',
-          min_charge: 3000.00,
-          calculated_price_per_kg: 15.00,
-          fuel_surcharge_rate: 5.00,
-          effective_start_date: '2024-01-01',
-          effective_end_date: undefined,
-          notes: 'คิดค่าขนส่งตามน้ำหนัก 15 บาท/กิโลกรัม',
-          created_by: 'admin',
-          created_at: '2024-01-01T10:00:00Z',
-          updated_at: '2024-01-01T10:00:00Z',
-          is_active: true
-        },
-        {
-          freight_rate_id: 5,
-          carrier_id: 2,
-          carrier_name: 'บริษัท ขนส่งรวดเร็ว จำกัด',
-          route_name: 'สมุทรปราการ-ขอนแก่น (พาเลท)',
-          origin_province: 'สมุทรปราการ',
-          origin_district: 'เมืองสมุทรปราการ',
-          destination_province: 'ขอนแก่น',
-          destination_district: 'เมืองขอนแก่น',
-          total_distance_km: 450.00,
-          base_price: 1200.00,
-          price_unit: 'pallet',
-          min_charge: 2400.00,
-          calculated_price_per_pallet: 1200.00,
-          fuel_surcharge_rate: 4.50,
-          effective_start_date: '2024-01-01',
-          effective_end_date: undefined,
-          notes: 'คิดค่าขนส่งตามจำนวนพาเลท 1,200 บาท/พาเลท',
-          created_by: 'admin',
-          created_at: '2024-01-01T10:00:00Z',
-          updated_at: '2024-01-01T10:00:00Z',
-          is_active: true
-        }
-      ];
-
-      // Filter mock data based on search/filters
-      let filteredRates = mockFreightRates;
-      
-      if (searchTerm) {
-        filteredRates = filteredRates.filter(rate =>
-          rate.route_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          rate.origin_province.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          rate.destination_province.toLowerCase().includes(searchTerm.toLowerCase()) ||
-          rate.carrier_name?.toLowerCase().includes(searchTerm.toLowerCase())
-        );
+      // Build query parameters
+      const params = new URLSearchParams();
+      if (searchTerm) params.append('search', searchTerm);
+      if (selectedPriceUnit && selectedPriceUnit !== 'ทั้งหมด') params.append('price_unit', selectedPriceUnit);
+      if (selectedProvince && selectedProvince !== 'ทั้งหมด') {
+        params.append('origin_province', selectedProvince);
       }
 
-      if (selectedPriceUnit) {
-        filteredRates = filteredRates.filter(rate => rate.price_unit === selectedPriceUnit);
+      // Call real API
+      const response = await fetch(`/api/freight-rates?${params.toString()}`);
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch freight rates');
       }
 
-      if (selectedProvince) {
-        filteredRates = filteredRates.filter(rate => 
-          rate.origin_province === selectedProvince || 
-          rate.destination_province === selectedProvince
-        );
+      const result = await response.json();
+
+      if (result.error) {
+        throw new Error(result.error);
       }
 
-      if (showActiveOnly) {
-        filteredRates = filteredRates.filter(rate => rate.is_active);
-      }
+      // Transform data to match FreightRate interface
+      const transformedData: FreightRate[] = (result.data || []).map((item: any) => ({
+        freight_rate_id: item.freight_rate_id,
+        carrier_id: item.carrier_id,
+        carrier_name: item.carrier?.carrier_name || '-',
+        route_name: item.route_name,
+        origin_province: item.origin_province,
+        origin_district: item.origin_district,
+        destination_province: item.destination_province,
+        destination_district: item.destination_district,
+        total_distance_km: item.total_distance_km,
+        pricing_mode: item.pricing_mode,
+        base_price: item.base_price,
+        extra_drop_price: item.extra_drop_price,
+        helper_price: item.helper_price,
+        price_unit: item.price_unit,
+        effective_start_date: item.effective_start_date,
+        effective_end_date: item.effective_end_date,
+        notes: item.notes,
+        created_by: item.created_by,
+        created_at: item.created_at,
+        updated_at: item.updated_at,
+        is_active: item.effective_end_date ? new Date(item.effective_end_date) >= new Date() : true
+      }));
 
-      setFreightRates(filteredRates);
-      setError(null);
+      // Apply active filter on client side
+      const filteredData = showActiveOnly
+        ? transformedData.filter(rate => rate.is_active)
+        : transformedData;
+
+      setFreightRates(filteredData);
     } catch (err) {
+      console.error('Error fetching freight rates:', err);
       setError(err instanceof Error ? err.message : 'เกิดข้อผิดพลาดในการโหลดข้อมูล');
+      setFreightRates([]);
     } finally {
       setLoading(false);
     }
@@ -349,19 +231,6 @@ const ShippingCostsPage = () => {
     fetchFreightRates(); // Refresh data
   };
 
-  const getRouteIcon = (priceUnit: string) => {
-    switch (priceUnit) {
-      case 'trip':
-        return <Route className="w-4 h-4 text-blue-500" />;
-      case 'kg':
-        return <Truck className="w-4 h-4 text-green-500" />;
-      case 'pallet':
-        return <DollarSign className="w-4 h-4 text-orange-500" />;
-      default:
-        return <MapPin className="w-4 h-4 text-thai-gray-400" />;
-    }
-  };
-
   const getUniqueProvinces = () => {
     const provinces = new Set<string>();
     freightRates.forEach(rate => {
@@ -371,287 +240,309 @@ const ShippingCostsPage = () => {
     return Array.from(provinces).sort();
   };
 
+  const getSortIcon = (field: string) => {
+    if (sortField !== field) {
+      return <ChevronsUpDown className="w-3 h-3 ml-1 inline-block" />;
+    }
+    return sortDirection === 'asc' ? (
+      <ChevronUp className="w-3 h-3 ml-1 inline-block" />
+    ) : (
+      <ChevronDown className="w-3 h-3 ml-1 inline-block" />
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-thai-gray-25 to-white">
-      <div className="space-y-3">
-        {/* Modern Page Header */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-0 shadow-sm">
-          <div className="flex items-center justify-between">
+    <div className="h-screen overflow-hidden flex flex-col bg-gradient-to-br from-thai-gray-25 to-white">
+      {/* Header */}
+      <div className="pt-0 px-2 pb-2 space-y-2">
+        {/* Title */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-lg bg-blue-500 flex items-center justify-center shadow-lg">
+              <DollarSign className="w-6 h-6 text-white" />
+            </div>
             <div>
-              <h1 className="text-2xl font-bold text-thai-gray-900 font-thai">ข้อมูลค่าขนส่ง</h1>
-              <p className="text-thai-gray-600 font-thai mt-1">จัดการราคาค่าขนส่งและเส้นทางขนส่ง</p>
+              <h1 className="text-xl font-bold text-thai-gray-900 font-thai">
+                ข้อมูลค่าขนส่ง (Freight Rates)
+              </h1>
+              <p className="text-xs text-thai-gray-600 font-thai">
+                จัดการราคาค่าขนส่งและเส้นทางขนส่ง
+              </p>
             </div>
-            <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                icon={Upload}
-                onClick={() => setShowImportModal(true)}
-                className="bg-white/50 hover:bg-white/80 border-white/30 backdrop-blur-sm shadow-sm"
-              >
-                นำเข้าข้อมูล
-              </Button>
-              <Button 
-                variant="primary" 
-                icon={Plus}
-                onClick={() => setShowAddModal(true)}
-                className="bg-blue-500 hover:bg-blue-600 shadow-lg"
-              >
-                เพิ่มค่าขนส่ง
-              </Button>
-            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              size="md"
+              icon={Upload}
+              onClick={() => setShowImportModal(true)}
+              className="bg-white/50 hover:bg-white/80 border-white/30 backdrop-blur-sm shadow-sm"
+            >
+              นำเข้าข้อมูล
+            </Button>
+            <Button 
+              variant="primary" 
+              size="md"
+              icon={Plus}
+              onClick={() => setShowAddModal(true)}
+              className="bg-blue-500 hover:bg-blue-600 shadow-lg"
+            >
+              เพิ่มค่าขนส่ง
+            </Button>
           </div>
         </div>
 
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-50/80 backdrop-blur-sm border border-red-200/50 rounded-2xl p-4 shadow-sm">
-            <div className="flex items-center space-x-3 text-red-600">
-              <div className="flex-shrink-0">
-                <AlertCircle className="w-5 h-5" />
-              </div>
-              <span className="font-thai text-sm">เกิดข้อผิดพลาด: {error}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Modern Search and Filters */}
+        {/* Filters */}
         <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm">
           <div className="flex items-center space-x-3">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
-                <input
-                  type="text"
-                  placeholder="ค้นหาเส้นทาง จังหวัด หรือผู้ให้บริการ..."
-                  className="
-                    w-full pl-10 pr-4 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                    focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                    text-sm font-thai transition-all duration-300 backdrop-blur-sm
-                    placeholder:text-thai-gray-400
-                  "
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
+            {/* Search */}
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
+              <input
+                type="text"
+                placeholder="ค้นหาเส้นทาง จังหวัด หรือผู้ให้บริการ..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai
+                         focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
+                         transition-all duration-300"
+              />
             </div>
-            
-            <div className="flex space-x-2">
-              <select
-                className="
-                  px-3 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                  text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-32
-                "
-                value={selectedPriceUnit}
-                onChange={(e) => setSelectedPriceUnit(e.target.value)}
-              >
-                <option value="">ประเภทราคาทั้งหมด</option>
-                {PRICE_UNITS.map((unit) => (
-                  <option key={unit.value} value={unit.value}>
-                    {unit.label}
-                  </option>
-                ))}
-              </select>
 
-              <select
-                className="
-                  px-3 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                  text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-32
-                "
-                value={selectedProvince}
-                onChange={(e) => setSelectedProvince(e.target.value)}
-              >
-                <option value="">จังหวัดทั้งหมด</option>
-                {getUniqueProvinces().map((province) => (
-                  <option key={province} value={province}>
-                    {province}
-                  </option>
-                ))}
-              </select>
+            {/* Price Unit Filter */}
+            <select
+              value={selectedPriceUnit}
+              onChange={(e) => setSelectedPriceUnit(e.target.value)}
+              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-24
+                       focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50"
+            >
+              <option value="">ทุกหน่วย</option>
+              {PRICE_UNITS.map((unit) => (
+                <option key={unit.value} value={unit.value}>
+                  {unit.label}
+                </option>
+              ))}
+            </select>
 
-              <label className="flex items-center space-x-2 text-sm font-thai text-thai-gray-700">
-                <input
-                  type="checkbox"
-                  checked={showActiveOnly}
-                  onChange={(e) => setShowActiveOnly(e.target.checked)}
-                  className="rounded border-thai-gray-300"
-                />
-                <span>เฉพาะที่ใช้งาน</span>
-              </label>
-            </div>
+            {/* Province Filter */}
+            <select
+              value={selectedProvince}
+              onChange={(e) => setSelectedProvince(e.target.value)}
+              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-24
+                       focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50"
+            >
+              <option value="">ทุกจังหวัด</option>
+              {getUniqueProvinces().map((province) => (
+                <option key={province} value={province}>
+                  {province}
+                </option>
+              ))}
+            </select>
+
+            <label className="flex items-center space-x-2 text-sm font-thai text-thai-gray-700">
+              <input
+                type="checkbox"
+                checked={showActiveOnly}
+                onChange={(e) => setShowActiveOnly(e.target.checked)}
+                className="rounded border-thai-gray-300"
+              />
+              <span>เฉพาะที่ใช้งาน</span>
+            </label>
           </div>
         </div>
-
-        {/* Modern Freight Rates Table */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-2xl overflow-hidden shadow-sm">
-          {loading ? (
-            <div className="text-center py-12">
-              <div className="loading-spinner w-10 h-10 mx-auto mb-4"></div>
-              <p className="text-thai-gray-500 font-thai text-lg">กำลังโหลดข้อมูล...</p>
-            </div>
-          ) : (
-            <>
-              <div className="overflow-x-auto">
-                <Table>
-                  <Table.Header>
-                    <Table.Row>
-                      <SortableHeader field="route_name" className="min-w-48" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>เส้นทางขนส่ง</SortableHeader>
-                      <SortableHeader field="carrier_name" className="w-40" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ผู้ให้บริการ</SortableHeader>
-                      <SortableHeader field="total_distance_km" className="w-24" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ระยะทาง</SortableHeader>
-                      <SortableHeader field="base_price" className="w-32" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ราคาหลัก</SortableHeader>
-                      <SortableHeader field="price_unit" className="w-24" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>หน่วย</SortableHeader>
-                      <SortableHeader field="calculated_price_per_km" className="w-28" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ต่อกม.</SortableHeader>
-                      <SortableHeader field="effective_start_date" className="w-28" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>วันที่มีผล</SortableHeader>
-                      <SortableHeader field="is_active" className="w-20" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>สถานะ</SortableHeader>
-                      <Table.Head className="w-28">การดำเนินการ</Table.Head>
-                    </Table.Row>
-                  </Table.Header>
-                  <Table.Body>
-                    {sortedFreightRates.map((rate) => (
-                      <Table.Row key={rate.freight_rate_id} className="hover:bg-thai-gray-25">
-                        <Table.Cell>
-                          <div className="space-y-1">
-                            <div className="font-medium font-thai text-sm flex items-center space-x-2">
-                              {getRouteIcon(rate.price_unit)}
-                              <span>{rate.route_name}</span>
-                            </div>
-                            <div className="text-xs text-thai-gray-500">
-                              {rate.origin_province} → {rate.destination_province}
-                            </div>
-                          </div>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <div className="text-sm font-thai">
-                            {rate.carrier_name || '-'}
-                          </div>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <div className="text-center">
-                            <span className="text-sm font-medium text-blue-600">
-                              {formatDistance(rate.total_distance_km)}
-                            </span>
-                          </div>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <div className="text-center">
-                            <span className="text-sm font-bold text-green-600">
-                              {formatPrice(rate.base_price)}
-                            </span>
-                          </div>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <Badge variant="default" className="bg-blue-100/50 text-blue-700 border-blue-200/50">
-                            {getPriceUnitLabel(rate.price_unit)}
-                          </Badge>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <div className="text-center">
-                            <span className="text-xs font-medium text-orange-600">
-                              {rate.calculated_price_per_km ? `${rate.calculated_price_per_km.toFixed(2)} ฿` : '-'}
-                            </span>
-                          </div>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <div className="text-center">
-                            <div className="flex items-center justify-center space-x-1">
-                              <Calendar className="w-3 h-3 text-thai-gray-400" />
-                              <span className="text-xs font-medium">
-                                {new Date(rate.effective_start_date).toLocaleDateString('th-TH')}
-                              </span>
-                            </div>
-                            {rate.effective_end_date && (
-                              <div className="text-xs text-red-500 mt-1">
-                                ถึง {new Date(rate.effective_end_date).toLocaleDateString('th-TH')}
-                              </div>
-                            )}
-                          </div>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <Badge variant={rate.is_active ? 'success' : 'default'}>
-                            {rate.is_active ? 'ใช้งาน' : 'หมดอายุ'}
-                          </Badge>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <div className="flex space-x-1">
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              icon={Edit} 
-                              onClick={() => handleEdit(rate)}
-                              title="แก้ไข"
-                              className="hover:bg-blue-50/50 hover:text-blue-600"
-                            />
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              icon={Trash2} 
-                              onClick={() => handleDelete(rate)}
-                              title="ลบ"
-                              className="hover:bg-red-50/50 hover:text-red-600"
-                            />
-                          </div>
-                        </Table.Cell>
-                      </Table.Row>
-                    ))}
-                  </Table.Body>
-                </Table>
-              </div>
-
-              {!loading && sortedFreightRates.length === 0 && (
-                <div className="text-center py-8">
-                  <DollarSign className="w-12 h-12 text-thai-gray-400 mx-auto mb-4" />
-                  <p className="text-thai-gray-500 font-thai">
-                    {error ? 'เกิดข้อผิดพลาดในการโหลดข้อมูล' : 'ไม่พบข้อมูลค่าขนส่งที่ตรงกับการค้นหา'}
-                  </p>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Add Freight Rate Modal */}
-        <Modal
-          isOpen={showAddModal}
-          onClose={() => setShowAddModal(false)}
-          title="เพิ่มข้อมูลค่าขนส่งใหม่"
-          size="xl"
-        >
-          <AddFreightRateForm
-            onSuccess={handleAddSuccess}
-            onCancel={() => setShowAddModal(false)}
-          />
-        </Modal>
-
-        {/* Edit Freight Rate Modal */}
-        <Modal
-          isOpen={showEditModal}
-          onClose={() => setShowEditModal(false)}
-          title="แก้ไขข้อมูลค่าขนส่ง"
-          size="xl"
-        >
-          {selectedFreightRate && (
-            <EditFreightRateForm
-              freightRate={selectedFreightRate}
-              onSuccess={handleEditSuccess}
-              onCancel={() => setShowEditModal(false)}
-            />
-          )}
-        </Modal>
-
-        {/* Import Freight Rate Modal */}
-        <Modal
-          isOpen={showImportModal}
-          onClose={() => setShowImportModal(false)}
-          title="นำเข้าข้อมูลค่าขนส่ง"
-          size="lg"
-        >
-          <ImportFreightRateForm
-            onSuccess={handleImportSuccess}
-            onCancel={() => setShowImportModal(false)}
-          />
-        </Modal>
       </div>
+
+
+      {/* Table Container - Styled like receiving/orders */}
+      <div className="h-[74vh] bg-white border border-gray-200 rounded-lg shadow-sm overflow-auto">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center h-full text-thai-gray-400">
+            <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
+            <p className="text-sm font-thai">กำลังโหลดข้อมูล...</p>
+          </div>
+        ) : (
+          <Table>
+            <Table.Header>
+              <tr>
+                <Table.Head onClick={() => handleSort('freight_rate_id')}>ID{getSortIcon('freight_rate_id')}</Table.Head>
+                <Table.Head onClick={() => handleSort('carrier_name')}>ผู้ให้บริการ{getSortIcon('carrier_name')}</Table.Head>
+                <Table.Head onClick={() => handleSort('route_name')}>เส้นทางขนส่ง{getSortIcon('route_name')}</Table.Head>
+                <Table.Head onClick={() => handleSort('origin_province')}>จังหวัดต้นทาง{getSortIcon('origin_province')}</Table.Head>
+                <Table.Head>อำเภอต้นทาง</Table.Head>
+                <Table.Head onClick={() => handleSort('destination_province')}>จังหวัดปลายทาง{getSortIcon('destination_province')}</Table.Head>
+                <Table.Head>อำเภอปลายทาง</Table.Head>
+                <Table.Head onClick={() => handleSort('total_distance_km')}>ระยะทาง (กม.){getSortIcon('total_distance_km')}</Table.Head>
+                <Table.Head onClick={() => handleSort('pricing_mode')}>โหมดราคา{getSortIcon('pricing_mode')}</Table.Head>
+                <Table.Head onClick={() => handleSort('base_price')}>ราคาหลัก (฿){getSortIcon('base_price')}</Table.Head>
+                <Table.Head>ค่าจุดเพิ่ม (฿)</Table.Head>
+                <Table.Head>ค่าเด็ก (฿)</Table.Head>
+                <Table.Head onClick={() => handleSort('price_unit')}>หน่วย{getSortIcon('price_unit')}</Table.Head>
+                <Table.Head onClick={() => handleSort('effective_start_date')}>วันที่เริ่มใช้{getSortIcon('effective_start_date')}</Table.Head>
+                <Table.Head>วันที่สิ้นสุด</Table.Head>
+                <Table.Head>หมายเหตุ</Table.Head>
+                <Table.Head>ผู้สร้าง</Table.Head>
+                <Table.Head onClick={() => handleSort('created_at')}>วันที่สร้าง{getSortIcon('created_at')}</Table.Head>
+                <Table.Head onClick={() => handleSort('updated_at')}>วันที่แก้ไข{getSortIcon('updated_at')}</Table.Head>
+                <Table.Head>สถานะ</Table.Head>
+                <Table.Head>การดำเนินการ</Table.Head>
+              </tr>
+            </Table.Header>
+            <Table.Body>
+              {sortedFreightRates.length === 0 ? (
+                <tr>
+                  <Table.Cell colSpan={21} className="px-4 py-8 text-center">
+                    <div className="flex flex-col items-center justify-center text-thai-gray-400">
+                      <DollarSign className="w-12 h-12 mb-2" />
+                      <p className="text-sm font-thai">
+                        {error ? 'เกิดข้อผิดพลาดในการโหลดข้อมูล' : 'ไม่พบข้อมูลค่าขนส่งที่ตรงกับการค้นหา'}
+                      </p>
+                    </div>
+                  </Table.Cell>
+                </tr>
+              ) : (
+                sortedFreightRates.map((rate) => (
+                  <Table.Row key={rate.freight_rate_id}>
+                    <Table.Cell className="text-center">
+                      <span className="font-mono text-xs text-gray-600">{rate.freight_rate_id}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs font-thai">{rate.carrier_name || '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs font-thai">{rate.route_name}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs font-thai">{rate.origin_province}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs font-thai">{rate.origin_district || '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs font-thai">{rate.destination_province}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs font-thai">{rate.destination_district || '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell className="text-right">
+                      <span className="font-mono text-xs">{rate.total_distance_km?.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs font-thai">
+                        {rate.pricing_mode === 'flat' ? 'แบบเหมา' : 'แบบคำนวณ'}
+                      </span>
+                    </Table.Cell>
+                    <Table.Cell className="text-right">
+                      <span className="font-mono text-xs font-semibold text-gray-900">
+                        {formatPriceNumber(rate.base_price)}
+                      </span>
+                    </Table.Cell>
+                    <Table.Cell className="text-right">
+                      <span className="font-mono text-xs">
+                        {rate.extra_drop_price && rate.extra_drop_price > 0 ? formatPriceNumber(rate.extra_drop_price) : '-'}
+                      </span>
+                    </Table.Cell>
+                    <Table.Cell className="text-right">
+                      <span className="font-mono text-xs">
+                        {rate.helper_price && rate.helper_price > 0 ? formatPriceNumber(rate.helper_price) : '-'}
+                      </span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs font-thai">{getPriceUnitLabel(rate.price_unit)}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="font-mono text-xs">{formatDate(rate.effective_start_date)}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="font-mono text-xs">
+                        {rate.effective_end_date ? formatDate(rate.effective_end_date) : '-'}
+                      </span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs font-thai text-gray-600" title={rate.notes || ''}>
+                        {rate.notes ? (rate.notes.length > 30 ? rate.notes.substring(0, 30) + '...' : rate.notes) : '-'}
+                      </span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs font-thai">{rate.created_by || '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="font-mono text-xs">{formatDate(rate.created_at)}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="font-mono text-xs">{formatDate(rate.updated_at)}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs font-thai">
+                        {rate.is_active ? '✓ ใช้งาน' : '✗ หมดอายุ'}
+                      </span>
+                    </Table.Cell>
+                    <Table.Cell className="text-center">
+                      <div className="flex items-center justify-center space-x-1">
+                        <button
+                          className="p-1 text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                          title="แก้ไข"
+                          onClick={() => handleEdit(rate)}
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          className="p-1 text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                          title="ลบ"
+                          onClick={() => handleDelete(rate)}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </Table.Cell>
+                  </Table.Row>
+                ))
+              )}
+            </Table.Body>
+          </Table>
+        )}
+      </div>
+
+      {/* Add Freight Rate Modal */}
+      <Modal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        title="เพิ่มข้อมูลค่าขนส่งใหม่"
+        size="xl"
+      >
+        <AddFreightRateForm
+          onSuccess={handleAddSuccess}
+          onCancel={() => setShowAddModal(false)}
+        />
+      </Modal>
+
+      {/* Edit Freight Rate Modal */}
+      <Modal
+        isOpen={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        title="แก้ไขข้อมูลค่าขนส่ง"
+        size="xl"
+      >
+        {selectedFreightRate && (
+          <EditFreightRateForm
+            freightRate={selectedFreightRate}
+            onSuccess={handleEditSuccess}
+            onCancel={() => setShowEditModal(false)}
+          />
+        )}
+      </Modal>
+
+      {/* Import Freight Rate Modal */}
+      <Modal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        title="นำเข้าข้อมูลค่าขนส่ง"
+        size="lg"
+      >
+        <ImportFreightRateForm
+          onSuccess={handleImportSuccess}
+          onCancel={() => setShowImportModal(false)}
+        />
+      </Modal>
     </div>
   );
 };

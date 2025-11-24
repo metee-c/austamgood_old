@@ -70,6 +70,8 @@ interface TripFormData {
   base_price: number;
   helper_fee: number;
   extra_stop_fee: number;
+  porterage_fee: number;
+  other_fees: Array<{ label: string; amount: number }>;
   orderRemarks: Record<number, string>;
 }
 
@@ -82,7 +84,18 @@ interface Supplier {
   service_category?: string;
 }
 
+interface Customer {
+  customer_id: string;
+  customer_code: string;
+  customer_name: string;
+  province?: string;
+}
+
 const TripEditForm: React.FC<TripEditFormProps> = ({ trip, tripIndex, suppliers, onDataChange }) => {
+  // State for customer data mapping
+  const [customerMap, setCustomerMap] = useState<Record<string, Customer>>({});
+  const [loadingCustomers, setLoadingCustomers] = useState(false);
+
   // Parse notes if it's a JSON string
   let parsedNotes = {
     vehicle_label: '',
@@ -105,6 +118,32 @@ const TripEditForm: React.FC<TripEditFormProps> = ({ trip, tripIndex, suppliers,
     }
   }
 
+  // Fetch customer data when component mounts
+  useEffect(() => {
+    const fetchCustomers = async () => {
+      setLoadingCustomers(true);
+      try {
+        const res = await fetch('/api/master-customer');
+        const customers = await res.json();
+
+        if (customers && Array.isArray(customers)) {
+          // Create a map of customer_id to customer data
+          const map: Record<string, Customer> = {};
+          customers.forEach((customer: Customer) => {
+            map[customer.customer_id] = customer;
+          });
+          setCustomerMap(map);
+        }
+      } catch (err) {
+        console.error('Error fetching customers:', err);
+      } finally {
+        setLoadingCustomers(false);
+      }
+    };
+
+    fetchCustomers();
+  }, []);
+
   // Initialize pricing mode from trip data
   const [pricingMode, setPricingMode] = useState<'formula' | 'flat'>(
     (trip as any).pricing_mode === 'formula' ? 'formula' : 'flat'
@@ -117,20 +156,41 @@ const TripEditForm: React.FC<TripEditFormProps> = ({ trip, tripIndex, suppliers,
     supplier_id: (trip as any).supplier_id || '',
     base_price: (trip as any).base_price || 0,
     helper_fee: (trip as any).helper_fee || 0,
-    extra_stop_fee: (trip as any).extra_stop_fee || 100
+    extra_stop_fee: (trip as any).extra_stop_fee || 100,
+    porterage_fee: (trip as any).porterage_fee || 0
   });
+
+  // State for other fees (custom fees that user can add)
+  const [otherFees, setOtherFees] = useState<Array<{ label: string; amount: number }>>(
+    (trip as any).other_fees || []
+  );
 
   // State for order-specific remarks
   const [orderRemarks, setOrderRemarks] = useState<Record<number, string>>(parsedNotes.order_remarks);
 
+  // State for saving to master
+  const [savingToMaster, setSavingToMaster] = useState(false);
+
+  // Notify parent when formData changes
+  useEffect(() => {
+    onDataChange(trip.trip_id, {
+      pricingMode,
+      ...formData,
+      other_fees: otherFees,
+      orderRemarks
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData, pricingMode, otherFees, orderRemarks, trip.trip_id]);
+
   const handleChange = (field: string, value: any) => {
     const newFormData = { ...formData, [field]: value };
     setFormData(newFormData);
-    
+
     // Notify parent of changes
     onDataChange(trip.trip_id, {
       pricingMode,
       ...newFormData,
+      other_fees: otherFees,
       orderRemarks
     });
   };
@@ -140,32 +200,35 @@ const TripEditForm: React.FC<TripEditFormProps> = ({ trip, tripIndex, suppliers,
     if (pricingMode === 'flat') {
       return formData.shipping_cost;
     }
-    
-    // Formula mode: base_price + helper_fee + (extra stops × extra_stop_fee)
+
+    // Formula mode: base_price + helper_fee + (extra stops × extra_stop_fee) + porterage_fee + other_fees
     const extraStops = Math.max(0, totalStops - 1);
-    const calculated = formData.base_price + formData.helper_fee + (extraStops * formData.extra_stop_fee);
+    const otherFeesTotal = otherFees.reduce((sum, fee) => sum + fee.amount, 0);
+    const calculated = formData.base_price + formData.helper_fee + (extraStops * formData.extra_stop_fee) + formData.porterage_fee + otherFeesTotal;
     return calculated;
   };
 
   const handleOrderRemarkChange = (orderId: number, value: string) => {
     const newRemarks = { ...orderRemarks, [orderId]: value };
     setOrderRemarks(newRemarks);
-    
+
     // Notify parent of changes
     onDataChange(trip.trip_id, {
       pricingMode,
       ...formData,
+      other_fees: otherFees,
       orderRemarks: newRemarks
     });
   };
 
   const handlePricingModeChange = (mode: 'formula' | 'flat') => {
     setPricingMode(mode);
-    
+
     // Notify parent of changes
     onDataChange(trip.trip_id, {
       pricingMode: mode,
       ...formData,
+      other_fees: otherFees,
       orderRemarks
     });
   };
@@ -182,6 +245,103 @@ const TripEditForm: React.FC<TripEditFormProps> = ({ trip, tripIndex, suppliers,
   // Calculate capacity percentage (assuming 2200kg default capacity)
   const vehicleCapacity = 2200; // Default capacity, can be made configurable
   const capacityPercent = vehicleCapacity > 0 ? (totalWeight / vehicleCapacity * 100) : 0;
+
+  // Handler to save shipping cost to master freight rate
+  const handleSaveToMaster = async () => {
+    console.log('[Save to Master] Starting...', {
+      supplier_id: formData.supplier_id,
+      shipping_cost: formData.shipping_cost,
+      pricingMode
+    });
+
+    if (!formData.supplier_id) {
+      alert('⚠️ กรุณาเลือกผู้ให้บริการขนส่งก่อน');
+      return;
+    }
+
+    if (pricingMode === 'flat' && formData.shipping_cost <= 0) {
+      alert('⚠️ กรุณากรอกค่าขนส่งเหมาก่อน');
+      return;
+    }
+
+    // Get provinces from trip stops
+    const provinces = trip.stops?.map(stop => {
+      // Extract province from stop name (assuming format: "ชื่อ - จังหวัด" or similar)
+      const parts = stop.stop_name.split(/[-,]/);
+      return parts.length > 1 ? parts[parts.length - 1].trim() : stop.stop_name;
+    }) || [];
+
+    const uniqueProvinces = [...new Set(provinces)];
+    const originProvince = uniqueProvinces[0] || 'ไม่ระบุ';
+    const destinationProvince = uniqueProvinces.length > 1 ? uniqueProvinces[uniqueProvinces.length - 1] : originProvince;
+
+    const routeName = `${originProvince} - ${destinationProvince} (เที่ยวที่ ${trip.trip_sequence})`;
+
+    const confirmMessage = `
+📋 บันทึกค่าขนส่งนี้เข้าฐานข้อมูลมาสเตอร์
+
+🚚 ผู้ให้บริการ: ${suppliers.find(s => s.supplier_id === formData.supplier_id)?.supplier_name || '-'}
+📍 เส้นทาง: ${routeName}
+💰 ค่าขนส่ง: ${formData.shipping_cost.toLocaleString()} บาท
+📦 ค่าแบกน้ำหนัก: ${formData.porterage_fee.toLocaleString()} บาท
+${otherFees.length > 0 ? `🔖 ค่าอื่นๆ: ${otherFees.length} รายการ\n` : ''}
+📏 ระยะทาง: ${distance.toFixed(1)} กม.
+
+ยืนยันการบันทึก?`;
+
+    if (!confirm(confirmMessage)) {
+      return;
+    }
+
+    setSavingToMaster(true);
+
+    try {
+      const payload = {
+        carrier_id: formData.supplier_id,
+        supplier_id: formData.supplier_id,
+        route_name: routeName,
+        origin_province: originProvince,
+        destination_province: destinationProvince,
+        total_distance_km: distance,
+        pricing_mode: pricingMode,
+        shipping_cost: formData.shipping_cost,
+        base_price: pricingMode === 'formula' ? formData.base_price : formData.shipping_cost,
+        extra_drop_price: pricingMode === 'formula' ? formData.extra_stop_fee : null,
+        extra_stop_fee: pricingMode === 'formula' ? formData.extra_stop_fee : null,
+        helper_price: pricingMode === 'formula' ? formData.helper_fee : null,
+        helper_fee: pricingMode === 'formula' ? formData.helper_fee : null,
+        porterage_fee: formData.porterage_fee,
+        other_fees: otherFees,
+        price_unit: 'trip',
+        effective_start_date: new Date().toISOString().split('T')[0],
+        notes: `บันทึกจากแผนเส้นทาง - เที่ยวที่ ${trip.trip_sequence}\nทะเบียนรถ: ${formData.vehicle_label}\nผู้ขับ: ${formData.driver_label}`
+      };
+
+      console.log('[Save to Master] Payload:', payload);
+
+      const res = await fetch('/api/freight-rates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload)
+      });
+
+      console.log('[Save to Master] Response status:', res.status);
+
+      const result = await res.json();
+      console.log('[Save to Master] Response data:', result);
+
+      if (result.error || !res.ok) {
+        alert(`❌ เกิดข้อผิดพลาด: ${result.error || 'Unknown error'}`);
+      } else {
+        alert(`✅ บันทึกเข้ามาสเตอร์สำเร็จ!\n\nสามารถดูได้ที่: หน้าจัดการข้อมูลมาสเตอร์ > ค่าขนส่ง`);
+      }
+    } catch (err: any) {
+      alert(`❌ เกิดข้อผิดพลาด: ${err.message}`);
+    } finally {
+      setSavingToMaster(false);
+    }
+  };
 
   return (
     <div className="border-2 border-gray-200 rounded-lg p-4 bg-white shadow-sm hover:shadow-md transition-shadow">
@@ -236,35 +396,58 @@ const TripEditForm: React.FC<TripEditFormProps> = ({ trip, tripIndex, suppliers,
                 <th className="px-2 py-2 text-left font-semibold text-gray-700 border-b font-thai">เลขที่ออเดอร์</th>
                 <th className="px-2 py-2 text-left font-semibold text-gray-700 border-b font-thai">รหัสลูกค้า</th>
                 <th className="px-2 py-2 text-left font-semibold text-gray-700 border-b font-thai">ชื่อร้าน</th>
+                <th className="px-2 py-2 text-left font-semibold text-gray-700 border-b font-thai">จังหวัด</th>
                 <th className="px-2 py-2 text-right font-semibold text-gray-700 border-b font-thai">รวมจำนวนชิ้น</th>
                 <th className="px-2 py-2 text-right font-semibold text-gray-700 border-b font-thai">น้ำหนัก (kg)</th>
                 <th className="px-2 py-2 text-left font-semibold text-gray-700 border-b font-thai" style={{ minWidth: '200px' }}>หมายเหตุเพิ่มเติม</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
-              {allOrders.map((order, index) => (
-                <tr key={order.order_id} className="hover:bg-gray-50">
-                  <td className="px-2 py-2 text-gray-900">{index + 1}</td>
-                  <td className="px-2 py-2 text-blue-600 font-mono">{order.order_no}</td>
-                  <td className="px-2 py-2 text-gray-900 font-mono">{order.customer_id}</td>
-                  <td className="px-2 py-2 text-gray-900 font-thai">{order.stop_name}</td>
-                  <td className="px-2 py-2 text-right text-gray-900 font-mono">{order.total_qty}</td>
-                  <td className="px-2 py-2 text-right text-gray-900 font-mono">{order.weight.toFixed(1)}</td>
-                  <td className="px-2 py-2">
-                    <input
-                      type="text"
-                      value={orderRemarks[order.order_id] || ''}
-                      onChange={(e) => handleOrderRemarkChange(order.order_id, e.target.value)}
-                      className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 font-thai"
-                      placeholder="หมายเหตุ..."
-                    />
-                  </td>
-                </tr>
-              ))}
+              {allOrders.map((order, index) => {
+                // Get province from customer map
+                const getProvince = () => {
+                  // First try to get from customer map
+                  const customer = customerMap[order.customer_id];
+                  if (customer?.province) {
+                    return customer.province;
+                  }
+                  // Fallback: If order has province field directly
+                  if ((order as any).province) {
+                    return (order as any).province;
+                  }
+                  // Fallback: Try to extract from stop_name
+                  const parts = order.stop_name?.split(/[-,]/);
+                  if (parts && parts.length > 1) {
+                    return parts[parts.length - 1].trim();
+                  }
+                  return '-';
+                };
+
+                return (
+                  <tr key={order.order_id} className="hover:bg-gray-50">
+                    <td className="px-2 py-2 text-gray-900">{index + 1}</td>
+                    <td className="px-2 py-2 text-blue-600 font-mono">{order.order_no}</td>
+                    <td className="px-2 py-2 text-gray-900 font-mono">{order.customer_id}</td>
+                    <td className="px-2 py-2 text-gray-900 font-thai">{order.stop_name}</td>
+                    <td className="px-2 py-2 text-gray-900 font-thai">{getProvince()}</td>
+                    <td className="px-2 py-2 text-right text-gray-900 font-mono">{order.total_qty}</td>
+                    <td className="px-2 py-2 text-right text-gray-900 font-mono">{order.weight.toFixed(1)}</td>
+                    <td className="px-2 py-2">
+                      <input
+                        type="text"
+                        value={orderRemarks[order.order_id] || ''}
+                        onChange={(e) => handleOrderRemarkChange(order.order_id, e.target.value)}
+                        className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 font-thai"
+                        placeholder="หมายเหตุ..."
+                      />
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
             <tfoot className="bg-gray-50">
               <tr>
-                <td colSpan={4} className="px-2 py-2 text-right font-semibold text-gray-900 font-thai">รวม:</td>
+                <td colSpan={5} className="px-2 py-2 text-right font-semibold text-gray-900 font-thai">รวม:</td>
                 <td className="px-2 py-2 text-right font-semibold text-gray-900 font-mono">{allOrders.reduce((sum, order) => sum + order.total_qty, 0)} ชิ้น</td>
                 <td className="px-2 py-2 text-right font-semibold text-gray-900 font-mono">{allOrders.reduce((sum, order) => sum + order.weight, 0).toFixed(1)} kg</td>
                 <td className="px-2 py-2"></td>
@@ -307,16 +490,17 @@ const TripEditForm: React.FC<TripEditFormProps> = ({ trip, tripIndex, suppliers,
 
       {/* Pricing Fields */}
       {pricingMode === 'flat' ? (
-        <div className="space-y-4 mb-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="space-y-3 mb-4 bg-gradient-to-br from-blue-50 to-indigo-50 p-4 rounded-lg border border-blue-100">
+          {/* Main Price Fields - 3 columns */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1 font-thai">
+              <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">
                 ผู้ให้บริการขนส่ง
               </label>
               <select
                 value={formData.supplier_id}
                 onChange={(e) => handleChange('supplier_id', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-thai"
+                className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-thai bg-white"
               >
                 <option value="">-- เลือกผู้ให้บริการ --</option>
                 {suppliers.map((supplier) => (
@@ -327,7 +511,7 @@ const TripEditForm: React.FC<TripEditFormProps> = ({ trip, tripIndex, suppliers,
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1 font-thai">
+              <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">
                 ค่าขนส่งเหมา (บาท) <span className="text-red-500">*</span>
               </label>
               <input
@@ -337,129 +521,328 @@ const TripEditForm: React.FC<TripEditFormProps> = ({ trip, tripIndex, suppliers,
                   const value = parseFloat(e.target.value) || 0;
                   handleChange('shipping_cost', value);
                 }}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 text-lg font-semibold"
+                className="w-full px-2.5 py-2 text-sm border-2 border-yellow-400 rounded focus:outline-none focus:ring-2 focus:ring-yellow-500 font-semibold bg-yellow-50"
                 placeholder="0.00"
                 step="0.01"
               />
             </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1 font-thai">
+              <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">
+                ค่าแบกน้ำหนัก (บาท)
+              </label>
+              <input
+                type="number"
+                value={formData.porterage_fee}
+                onChange={(e) => {
+                  const value = parseFloat(e.target.value) || 0;
+                  handleChange('porterage_fee', value);
+                }}
+                className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                placeholder="0"
+                step="1"
+              />
+            </div>
+          </div>
+
+          {/* Vehicle & Driver - 2 columns */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">
                 ทะเบียนรถ
               </label>
               <input
                 type="text"
                 value={formData.vehicle_label}
                 onChange={(e) => handleChange('vehicle_label', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-thai"
+                className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-thai bg-white"
                 placeholder="เช่น กข 1234 กรุงเทพ"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1 font-thai">
+              <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">
                 ชื่อผู้ขับ
               </label>
               <input
                 type="text"
                 value={formData.driver_label}
                 onChange={(e) => handleChange('driver_label', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-thai"
+                className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-thai bg-white"
                 placeholder="ชื่อผู้ขับรถ"
               />
             </div>
           </div>
+
+          {/* Other Fees Section */}
+          <div className="pt-2 border-t border-blue-200">
+            <label className="block text-xs font-medium text-gray-700 mb-2 font-thai">
+              ค่าใช้จ่ายอื่นๆ
+            </label>
+
+            {otherFees.map((fee, index) => (
+              <div key={index} className="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  value={fee.label}
+                  onChange={(e) => {
+                    const newFees = [...otherFees];
+                    newFees[index].label = e.target.value;
+                    setOtherFees(newFees);
+                  }}
+                  className="flex-1 px-2.5 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-thai bg-white"
+                  placeholder="หัวข้อค่าใช้จ่าย เช่น ค่าทางด่วน"
+                />
+                <input
+                  type="number"
+                  value={fee.amount}
+                  onChange={(e) => {
+                    const newFees = [...otherFees];
+                    newFees[index].amount = parseFloat(e.target.value) || 0;
+                    setOtherFees(newFees);
+                  }}
+                  className="w-28 px-2.5 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                  placeholder="0"
+                  step="1"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newFees = otherFees.filter((_, i) => i !== index);
+                    setOtherFees(newFees);
+                  }}
+                  className="px-2 py-1.5 text-sm bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setOtherFees([...otherFees, { label: '', amount: 0 }]);
+                }}
+                className="px-3 py-1.5 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors font-thai text-xs"
+              >
+                + เพิ่มค่าใช้จ่ายอื่นๆ
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveToMaster}
+                disabled={savingToMaster || !formData.supplier_id || formData.shipping_cost <= 0}
+                className="px-3 py-1.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded hover:from-purple-600 hover:to-purple-700 transition-all disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed font-thai text-xs font-semibold shadow-sm"
+              >
+                {savingToMaster ? '⏳ กำลังบันทึก...' : '💾 บันทึกเข้ามาสเตอร์'}
+              </button>
+            </div>
+          </div>
         </div>
       ) : (
-        <div className="space-y-4 mb-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="space-y-3 mb-4 bg-gradient-to-br from-green-50 to-emerald-50 p-4 rounded-lg border border-green-100">
+          {/* Formula Fields - 4 columns */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1 font-thai">
-                ราคาเริ่มต้นตามจังหวัด (บาท) <span className="text-red-500">*</span>
+              <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">
+                ราคาเริ่มต้น (บาท) <span className="text-red-500">*</span>
               </label>
               <input
                 type="number"
                 value={formData.base_price}
                 onChange={(e) => {
-                  const value = parseFloat(e.target.value) || 0;
-                  handleChange('base_price', value);
-                  handleChange('shipping_cost', value + formData.helper_fee + (Math.max(0, totalStops - 1) * formData.extra_stop_fee));
+                  const inputValue = e.target.value;
+                  const value = inputValue === '' ? 0 : parseFloat(inputValue);
+                  if (!isNaN(value)) {
+                    setFormData(prev => ({
+                      ...prev,
+                      base_price: value,
+                      shipping_cost: value + prev.helper_fee + (Math.max(0, totalStops - 1) * prev.extra_stop_fee)
+                    }));
+                  }
                 }}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="เช่น 1700"
+                className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                placeholder="1700"
                 step="1"
               />
-              <p className="text-xs text-gray-500 mt-1">เช่น กทม 1700, เชียงใหม่ 5000</p>
+              <p className="text-xs text-gray-500 mt-0.5">ตามจังหวัด</p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1 font-thai">
+              <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">
                 ค่าเด็กติดรถ (บาท)
               </label>
               <input
                 type="number"
                 value={formData.helper_fee}
                 onChange={(e) => {
-                  const value = parseFloat(e.target.value) || 0;
-                  handleChange('helper_fee', value);
-                  handleChange('shipping_cost', formData.base_price + value + (Math.max(0, totalStops - 1) * formData.extra_stop_fee));
+                  const inputValue = e.target.value;
+                  const value = inputValue === '' ? 0 : parseFloat(inputValue);
+                  if (!isNaN(value)) {
+                    setFormData(prev => ({
+                      ...prev,
+                      helper_fee: value,
+                      shipping_cost: prev.base_price + value + (Math.max(0, totalStops - 1) * prev.extra_stop_fee)
+                    }));
+                  }
                 }}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="เช่น 500"
+                className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                placeholder="500"
                 step="1"
               />
-              <p className="text-xs text-gray-500 mt-1">ถ้าไม่มีใส่ 0</p>
+              <p className="text-xs text-gray-500 mt-0.5">ไม่มีใส่ 0</p>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1 font-thai">
+              <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">
                 ค่าจุดเพิ่ม (บาท/จุด)
               </label>
               <input
                 type="number"
                 value={formData.extra_stop_fee}
                 onChange={(e) => {
-                  const value = parseFloat(e.target.value) || 0;
-                  handleChange('extra_stop_fee', value);
-                  handleChange('shipping_cost', formData.base_price + formData.helper_fee + (Math.max(0, totalStops - 1) * value));
+                  const inputValue = e.target.value;
+                  const value = inputValue === '' ? 0 : parseFloat(inputValue);
+                  if (!isNaN(value)) {
+                    setFormData(prev => ({
+                      ...prev,
+                      extra_stop_fee: value,
+                      shipping_cost: prev.base_price + prev.helper_fee + (Math.max(0, totalStops - 1) * value)
+                    }));
+                  }
                 }}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
                 placeholder="100"
                 step="1"
               />
-              <p className="text-xs text-gray-500 mt-1">จุดที่ 2 ขึ้นไป</p>
+              <p className="text-xs text-gray-500 mt-0.5">จุดที่ 2 ขึ้นไป</p>
             </div>
-          </div>
-
-          {/* Calculation Summary */}
-          <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-            <div className="text-sm font-thai space-y-1">
-              <div className="flex justify-between">
-                <span className="text-gray-700">ราคาเริ่มต้น:</span>
-                <span className="font-semibold">{formData.base_price.toLocaleString()} บาท</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-700">ค่าเด็กติดรถ:</span>
-                <span className="font-semibold">{formData.helper_fee.toLocaleString()} บาท</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-700">ค่าจุดเพิ่ม ({Math.max(0, totalStops - 1)} จุด × {formData.extra_stop_fee} บาท):</span>
-                <span className="font-semibold">{(Math.max(0, totalStops - 1) * formData.extra_stop_fee).toLocaleString()} บาท</span>
-              </div>
-              <div className="flex justify-between pt-2 border-t border-green-300">
-                <span className="text-gray-900 font-bold">รวมค่าขนส่ง:</span>
-                <span className="text-green-700 font-bold text-lg">{calculateShippingCost().toLocaleString()} บาท</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1 font-thai">
+              <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">
+                ค่าแบกน้ำหนัก (บาท)
+              </label>
+              <input
+                type="number"
+                value={formData.porterage_fee}
+                onChange={(e) => {
+                  const value = e.target.value === '' ? 0 : parseFloat(e.target.value);
+                  if (!isNaN(value)) {
+                    handleChange('porterage_fee', value);
+                  }
+                }}
+                className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                placeholder="0"
+                step="1"
+              />
+              <p className="text-xs text-gray-500 mt-0.5">ค่าแบกขน</p>
+            </div>
+          </div>
+
+          {/* Other Fees Section */}
+          <div className="pt-2 border-t border-green-200">
+            <label className="block text-xs font-medium text-gray-700 mb-2 font-thai">
+              ค่าใช้จ่ายอื่นๆ
+            </label>
+
+            {otherFees.map((fee, index) => (
+              <div key={index} className="flex gap-2 mb-2">
+                <input
+                  type="text"
+                  value={fee.label}
+                  onChange={(e) => {
+                    const newFees = [...otherFees];
+                    newFees[index].label = e.target.value;
+                    setOtherFees(newFees);
+                  }}
+                  className="flex-1 px-2.5 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500 font-thai bg-white"
+                  placeholder="หัวข้อค่าใช้จ่าย เช่น ค่าทางด่วน"
+                />
+                <input
+                  type="number"
+                  value={fee.amount}
+                  onChange={(e) => {
+                    const newFees = [...otherFees];
+                    newFees[index].amount = parseFloat(e.target.value) || 0;
+                    setOtherFees(newFees);
+                  }}
+                  className="w-28 px-2.5 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500 bg-white"
+                  placeholder="0"
+                  step="1"
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    const newFees = otherFees.filter((_, i) => i !== index);
+                    setOtherFees(newFees);
+                  }}
+                  className="px-2 py-1.5 text-sm bg-red-500 text-white rounded hover:bg-red-600 transition-colors"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setOtherFees([...otherFees, { label: '', amount: 0 }]);
+                }}
+                className="px-3 py-1.5 bg-green-500 text-white rounded hover:bg-green-600 transition-colors font-thai text-xs"
+              >
+                + เพิ่มค่าใช้จ่ายอื่นๆ
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveToMaster}
+                disabled={savingToMaster || !formData.supplier_id || formData.base_price <= 0}
+                className="px-3 py-1.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded hover:from-purple-600 hover:to-purple-700 transition-all disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed font-thai text-xs font-semibold shadow-sm"
+              >
+                {savingToMaster ? '⏳ กำลังบันทึก...' : '💾 บันทึกเข้ามาสเตอร์'}
+              </button>
+            </div>
+          </div>
+
+          {/* Calculation Summary - Compact */}
+          <div className="p-3 bg-white border-2 border-green-300 rounded-lg">
+            <div className="text-xs font-thai space-y-1">
+              <div className="flex justify-between">
+                <span className="text-gray-600">ราคาเริ่มต้น:</span>
+                <span className="font-medium">{formData.base_price.toLocaleString()} ฿</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">ค่าเด็กติดรถ:</span>
+                <span className="font-medium">{formData.helper_fee.toLocaleString()} ฿</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">ค่าจุดเพิ่ม ({Math.max(0, totalStops - 1)} จุด × {formData.extra_stop_fee} ฿):</span>
+                <span className="font-medium">{(Math.max(0, totalStops - 1) * formData.extra_stop_fee).toLocaleString()} ฿</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-gray-600">ค่าแบกน้ำหนัก:</span>
+                <span className="font-medium">{formData.porterage_fee.toLocaleString()} ฿</span>
+              </div>
+              {otherFees.length > 0 && (
+                <div className="flex justify-between">
+                  <span className="text-gray-600">ค่าใช้จ่ายอื่นๆ:</span>
+                  <span className="font-medium">{otherFees.reduce((sum, fee) => sum + fee.amount, 0).toLocaleString()} ฿</span>
+                </div>
+              )}
+              <div className="flex justify-between pt-1.5 mt-1.5 border-t-2 border-green-300">
+                <span className="text-gray-900 font-bold text-sm">รวมค่าขนส่ง:</span>
+                <span className="text-green-700 font-bold text-base">{calculateShippingCost().toLocaleString()} ฿</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Supplier & Vehicle Info - 3 columns */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 border-t border-green-200">
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">
                 ผู้ให้บริการขนส่ง
               </label>
               <select
                 value={formData.supplier_id}
                 onChange={(e) => handleChange('supplier_id', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-thai"
+                className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500 font-thai bg-white"
               >
                 <option value="">-- เลือกผู้ให้บริการ --</option>
                 {suppliers.map((supplier) => (
@@ -470,26 +853,26 @@ const TripEditForm: React.FC<TripEditFormProps> = ({ trip, tripIndex, suppliers,
               </select>
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1 font-thai">
+              <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">
                 ทะเบียนรถ
               </label>
               <input
                 type="text"
                 value={formData.vehicle_label}
                 onChange={(e) => handleChange('vehicle_label', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-thai"
+                className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500 font-thai bg-white"
                 placeholder="เช่น กข 1234 กรุงเทพ"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1 font-thai">
+              <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">
                 ชื่อผู้ขับ
               </label>
               <input
                 type="text"
                 value={formData.driver_label}
                 onChange={(e) => handleChange('driver_label', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-thai"
+                className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500 font-thai bg-white"
                 placeholder="ชื่อผู้ขับรถ"
               />
             </div>
@@ -603,6 +986,8 @@ const EditShippingCostModal: React.FC<EditShippingCostModalProps> = ({
         const basePrice = tripData?.base_price ?? (trip as any).base_price ?? 0;
         const helperFee = tripData?.helper_fee ?? (trip as any).helper_fee ?? 0;
         const extraStopFee = tripData?.extra_stop_fee ?? (trip as any).extra_stop_fee ?? 100;
+        const porterage_fee = tripData?.porterage_fee ?? (trip as any).porterage_fee ?? 0;
+        const other_fees = tripData?.other_fees ?? (trip as any).other_fees ?? [];
         const supplierId = tripData?.supplier_id || (trip as any).supplier_id || null;
         const vehicleLabel = tripData?.vehicle_label ?? existingNotes.vehicle_label ?? '';
         const driverLabel = tripData?.driver_label ?? existingNotes.driver_label ?? '';
@@ -629,6 +1014,8 @@ const EditShippingCostModal: React.FC<EditShippingCostModalProps> = ({
             payload.base_price = basePrice;
             payload.helper_fee = helperFee;
             payload.extra_stop_fee = extraStopFee;
+            payload.porterage_fee = porterage_fee;
+            payload.other_fees = other_fees;
             payload.total_stops = totalStops; // Send total_stops to trigger database calculation
           } else {
             // For flat mode, send shipping_cost directly

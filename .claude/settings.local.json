@@ -34,7 +34,12 @@
       "Bash(git checkout:*)",
       "Bash(powershell -c:*)",
       "Bash(findstr:*)",
-      "Bash(npm run db:generate-types:*)"
+      "Bash(npm run db:generate-types:*)",
+      "Bash(nul)",
+      "Bash(psql:*)",
+      "Bash(git clean:*)",
+      "Bash(git rm:*)",
+      "Bash(.gitignore)"
     ],
     "deny": [],
     "ask": []

@@ -1,12 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { 
-  Save, 
-  X, 
-  Calculator,
+import {
+  Save,
+  X,
   Route,
   MapPin,
   DollarSign,
@@ -14,7 +13,14 @@ import {
   AlertCircle
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
-import { freightRateSchema, FreightRateFormValues, PRICE_UNITS, THAI_PROVINCES, MOCK_CARRIERS } from '@/types/freight-rate-schema';
+import { freightRateSchema, FreightRateFormValues, PRICE_UNITS, THAI_PROVINCES } from '@/types/freight-rate-schema';
+
+interface Supplier {
+  supplier_id: string;
+  supplier_code: string;
+  supplier_name: string;
+  supplier_type: string;
+}
 
 interface FreightRate {
   freight_rate_id: number;
@@ -25,15 +31,11 @@ interface FreightRate {
   destination_province: string;
   destination_district?: string;
   total_distance_km: number;
+  pricing_mode?: 'flat' | 'formula';
   base_price: number;
   extra_drop_price?: number;
   helper_price?: number;
   price_unit: string;
-  min_charge?: number;
-  calculated_price_per_km?: number;
-  calculated_price_per_kg?: number;
-  calculated_price_per_pallet?: number;
-  fuel_surcharge_rate?: number;
   effective_start_date: string;
   effective_end_date?: string;
   notes?: string;
@@ -57,12 +59,32 @@ const EditFreightRateForm: React.FC<EditFreightRateFormProps> = ({
 }) => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [suppliers, setSuppliers] = useState<Supplier[]>([]);
+
+
+  // Fetch suppliers on mount
+  useEffect(() => {
+    fetchSuppliers();
+  }, []);
+
+  const fetchSuppliers = async () => {
+    try {
+      const response = await fetch('/api/master-supplier?type=service_provider&status=active');
+      if (!response.ok) {
+        throw new Error('Failed to fetch suppliers');
+      }
+      const data = await response.json();
+      setSuppliers(data);
+    } catch (err) {
+      console.error('Error fetching suppliers:', err);
+      setError('ไม่สามารถโหลดข้อมูลผู้ให้บริการได้');
+    }
+  };
 
   const {
     register,
     handleSubmit,
     watch,
-    setValue,
     formState: { errors }
   } = useForm<FreightRateFormValues>({
     resolver: zodResolver(freightRateSchema),
@@ -75,15 +97,11 @@ const EditFreightRateForm: React.FC<EditFreightRateFormProps> = ({
       destination_province: freightRate.destination_province,
       destination_district: freightRate.destination_district || '',
       total_distance_km: freightRate.total_distance_km,
+      pricing_mode: (freightRate as any).pricing_mode || 'flat',
       base_price: freightRate.base_price,
       extra_drop_price: freightRate.extra_drop_price || 0,
       helper_price: freightRate.helper_price || 0,
       price_unit: freightRate.price_unit as 'trip' | 'kg' | 'pallet' | 'other',
-      min_charge: freightRate.min_charge || 0,
-      calculated_price_per_km: freightRate.calculated_price_per_km,
-      calculated_price_per_kg: freightRate.calculated_price_per_kg,
-      calculated_price_per_pallet: freightRate.calculated_price_per_pallet,
-      fuel_surcharge_rate: freightRate.fuel_surcharge_rate || 5.0,
       effective_start_date: freightRate.effective_start_date,
       effective_end_date: freightRate.effective_end_date || '',
       notes: freightRate.notes || '',
@@ -91,30 +109,24 @@ const EditFreightRateForm: React.FC<EditFreightRateFormProps> = ({
     }
   });
 
-  const watchedFields = watch(['base_price', 'total_distance_km', 'price_unit']);
-
-  // Auto-calculate price per km when base_price or distance changes
-  React.useEffect(() => {
-    const [basePrice, distance, priceUnit] = watchedFields;
-    if (basePrice && distance && priceUnit === 'trip') {
-      const pricePerKm = basePrice / distance;
-      setValue('calculated_price_per_km', parseFloat(pricePerKm.toFixed(2)));
-    }
-  }, [watchedFields, setValue]);
+  const watchedFields = watch(['pricing_mode']);
 
   const onSubmit = async (data: FreightRateFormValues) => {
     setLoading(true);
     setError(null);
 
     try {
-      // TODO: Replace with actual API endpoint when backend is ready
-      console.log('Updated freight rate data:', data);
-      
-      // Simulate API delay
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Mock success response
-      alert(`แก้ไขข้อมูลค่าขนส่ง "${data.route_name}" สำเร็จ (Demo Mode)`);
+      const response = await fetch(`/api/freight-rates/${freightRate.freight_rate_id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update freight rate');
+      }
+
       onSuccess();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'เกิดข้อผิดพลาดในการบันทึกข้อมูล');
@@ -174,7 +186,7 @@ const EditFreightRateForm: React.FC<EditFreightRateFormProps> = ({
               ผู้ให้บริการขนส่ง <span className="text-red-500">*</span>
             </label>
             <select
-              {...register('carrier_id', { valueAsNumber: true })}
+              {...register('carrier_id')}
               className="
                 w-full px-3 py-2 bg-white/80 border border-thai-gray-300 rounded-lg
                 focus:outline-none focus:ring-2 focus:ring-blue-500/50 focus:border-blue-500/50
@@ -182,9 +194,9 @@ const EditFreightRateForm: React.FC<EditFreightRateFormProps> = ({
               "
             >
               <option value="">เลือกผู้ให้บริการ</option>
-              {MOCK_CARRIERS.map((carrier) => (
-                <option key={carrier.carrier_id} value={carrier.carrier_id}>
-                  {carrier.carrier_name}
+              {suppliers.map((supplier) => (
+                <option key={supplier.supplier_id} value={supplier.supplier_id}>
+                  {supplier.supplier_name} ({supplier.supplier_code})
                 </option>
               ))}
             </select>
@@ -311,6 +323,33 @@ const EditFreightRateForm: React.FC<EditFreightRateFormProps> = ({
           <DollarSign className="w-5 h-5 text-orange-600" />
           <h3 className="text-lg font-semibold text-orange-900 font-thai">ข้อมูลราคาค่าขนส่ง</h3>
         </div>
+
+        {/* Pricing Mode Selection */}
+        <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+          <label className="block text-sm font-medium text-gray-700 mb-2">
+            รูปแบบการคิดค่าขนส่ง <span className="text-red-500">*</span>
+          </label>
+          <div className="flex gap-4">
+            <label className="flex items-center cursor-pointer">
+              <input
+                type="radio"
+                value="flat"
+                {...register('pricing_mode')}
+                className="mr-2"
+              />
+              <span className="text-sm">แบบเหมา (ใส่ราคาเดียวจบ)</span>
+            </label>
+            <label className="flex items-center cursor-pointer">
+              <input
+                type="radio"
+                value="formula"
+                {...register('pricing_mode')}
+                className="mr-2"
+              />
+              <span className="text-sm">แบบคำนวณ (ราคาเริ่มต้น + ค่าเด็ก + ค่าจุดเพิ่ม)</span>
+            </label>
+          </div>
+        </div>
         
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div>
@@ -356,99 +395,51 @@ const EditFreightRateForm: React.FC<EditFreightRateFormProps> = ({
             )}
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
-              ค่าขนส่งขั้นต่ำ (บาท)
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              {...register('min_charge', { valueAsNumber: true })}
-              className="
-                w-full px-3 py-2 bg-white/80 border border-thai-gray-300 rounded-lg
-                focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50
-                text-sm font-thai transition-all duration-300
-              "
-              placeholder="0.00"
-            />
-            {errors.min_charge && (
-              <p className="mt-1 text-sm text-red-600 font-thai">{errors.min_charge.message}</p>
-            )}
-          </div>
+          {/* Show extra_drop_price and helper_price only in formula mode */}
+          {watchedFields[0] === 'formula' && (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
+                  ค่าจุดส่งเพิ่ม (บาท)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  {...register('extra_drop_price', { valueAsNumber: true })}
+                  className="
+                    w-full px-3 py-2 bg-white/80 border border-thai-gray-300 rounded-lg
+                    focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50
+                    text-sm font-thai transition-all duration-300
+                  "
+                  placeholder="0.00"
+                />
+                {errors.extra_drop_price && (
+                  <p className="mt-1 text-sm text-red-600 font-thai">{errors.extra_drop_price.message}</p>
+                )}
+              </div>
 
-          <div>
-            <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
-              ค่าจุดส่งเพิ่ม (บาท)
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              {...register('extra_drop_price', { valueAsNumber: true })}
-              className="
-                w-full px-3 py-2 bg-white/80 border border-thai-gray-300 rounded-lg
-                focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50
-                text-sm font-thai transition-all duration-300
-              "
-              placeholder="0.00"
-            />
-            {errors.extra_drop_price && (
-              <p className="mt-1 text-sm text-red-600 font-thai">{errors.extra_drop_price.message}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
-              ค่าเด็กติดรถ (บาท)
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              {...register('helper_price', { valueAsNumber: true })}
-              className="
-                w-full px-3 py-2 bg-white/80 border border-thai-gray-300 rounded-lg
-                focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50
-                text-sm font-thai transition-all duration-300
-              "
-              placeholder="0.00"
-            />
-            {errors.helper_price && (
-              <p className="mt-1 text-sm text-red-600 font-thai">{errors.helper_price.message}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
-              อัตราค่าน้ำมัน (%)
-            </label>
-            <input
-              type="number"
-              step="0.01"
-              {...register('fuel_surcharge_rate', { valueAsNumber: true })}
-              className="
-                w-full px-3 py-2 bg-white/80 border border-thai-gray-300 rounded-lg
-                focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50
-                text-sm font-thai transition-all duration-300
-              "
-              placeholder="0.00"
-            />
-            {errors.fuel_surcharge_rate && (
-              <p className="mt-1 text-sm text-red-600 font-thai">{errors.fuel_surcharge_rate.message}</p>
-            )}
-          </div>
+              <div>
+                <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
+                  ค่าเด็กติดรถ (บาท)
+                </label>
+                <input
+                  type="number"
+                  step="0.01"
+                  {...register('helper_price', { valueAsNumber: true })}
+                  className="
+                    w-full px-3 py-2 bg-white/80 border border-thai-gray-300 rounded-lg
+                    focus:outline-none focus:ring-2 focus:ring-orange-500/50 focus:border-orange-500/50
+                    text-sm font-thai transition-all duration-300
+                  "
+                  placeholder="0.00"
+                />
+                {errors.helper_price && (
+                  <p className="mt-1 text-sm text-red-600 font-thai">{errors.helper_price.message}</p>
+                )}
+              </div>
+            </>
+          )}
         </div>
-
-        {/* Auto-calculated prices */}
-        {watchedFields[0] && watchedFields[1] && (
-          <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
-            <div className="flex items-center space-x-2 mb-2">
-              <Calculator className="w-4 h-4 text-blue-600" />
-              <span className="text-sm font-medium text-blue-800 font-thai">ราคาที่คำนวณได้</span>
-            </div>
-            <div className="text-sm text-blue-700 font-thai">
-              ราคาต่อกิโลเมตร: {((watchedFields[0] || 0) / (watchedFields[1] || 1)).toFixed(2)} บาท/กม.
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Effective Dates */}

@@ -49,6 +49,10 @@ type Order = {
   text_field_long_1?: string;
   text_field_additional_4?: string;
   items?: any[];
+  // Route plan information
+  plan_code?: string;
+  trip_code?: string;
+  trip_sequence?: number;
 };
 
 const OrdersPage = () => {
@@ -80,6 +84,12 @@ const OrdersPage = () => {
       throw new Error('Failed to fetch orders');
     }
     const result = await response.json();
+    console.log('[Frontend Fetcher] Result:', {
+      hasData: !!result.data,
+      dataLength: result.data?.length,
+      dataType: typeof result.data,
+      isArray: Array.isArray(result.data)
+    });
     return result.data;
   };
 
@@ -104,6 +114,30 @@ const OrdersPage = () => {
   const { data: dashboardData, error: dashboardError } = useSWR('/api/orders/dashboard', fetcher);
 
   const ordersLoading = !orders && !ordersError;
+
+  // Debug: Log sample order data
+  React.useEffect(() => {
+    if (typeof window !== 'undefined') {
+      console.log('[Frontend] Orders data:', {
+        hasOrders: !!orders,
+        ordersLength: orders?.length,
+        ordersType: typeof orders,
+        isArray: Array.isArray(orders)
+      });
+    }
+    
+    if (orders && orders.length > 0) {
+      if (typeof window !== 'undefined') {
+        console.log('[Frontend] Sample order:', {
+          order_no: orders[0].order_no,
+          plan_code: orders[0].plan_code,
+          trip_code: orders[0].trip_code,
+          trip_sequence: orders[0].trip_sequence
+        });
+        console.log('[Frontend] Orders with trip_code:', orders.filter((o: any) => o.trip_code).length);
+      }
+    }
+  }, [orders]);
   const dashboardLoading = !dashboardData && !dashboardError;
 
   // Fetch warehouse data
@@ -629,6 +663,7 @@ const OrdersPage = () => {
                 <Table.Head>จังหวัด</Table.Head>
                 <Table.Head onClick={() => handleSort('order_date')}>วันที่สั่ง{getSortIcon('order_date')}</Table.Head>
                 <Table.Head onClick={() => handleSort('delivery_date')}>วันที่แผนส่ง{getSortIcon('delivery_date')}</Table.Head>
+                <Table.Head>เอกสารแผนส่ง</Table.Head>
                 <Table.Head>ที่อยู่จัดส่ง</Table.Head>
                 <Table.Head>คำแนะนำการจัดส่ง</Table.Head>
                 <Table.Head>จำนวนรายการ</Table.Head>
@@ -764,6 +799,20 @@ const OrdersPage = () => {
                                      focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
                             onClick={(e) => e.stopPropagation()}
                           />
+                        </Table.Cell>
+                        <Table.Cell>
+                          {order.plan_code ? (
+                            <div className="text-xs space-y-0.5">
+                              <div className="font-semibold text-blue-600">{order.plan_code}</div>
+                              {order.trip_code ? (
+                                <div className="text-gray-600 font-medium">เที่ยวที่ {order.trip_sequence || '?'}</div>
+                              ) : (
+                                <div className="text-gray-400 italic">ยังไม่จัดคัน</div>
+                              )}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400 text-xs">-</span>
+                          )}
                         </Table.Cell>
                         <Table.Cell>{order.text_field_long_1 || '-'}</Table.Cell>
                         <Table.Cell>{order.text_field_additional_4 || '-'}</Table.Cell>

@@ -5,7 +5,8 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
 
-    // Get all published route plans with their trips
+    // Get route plans with status 'optimizing' or 'published'
+    // optimizing = กำลังกรอกค่าขนส่ง, published = กรอกค่าขนส่งครบแล้ว
     const { data: plans, error } = await supabase
       .from('receiving_route_plans')
       .select(`
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
           warehouse_name
         )
       `)
-      .eq('status', 'published')
+      .in('status', ['optimizing', 'published'])
       .order('plan_date', { ascending: false })
       .order('plan_code', { ascending: false });
 

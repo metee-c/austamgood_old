@@ -27,42 +27,7 @@ import AddSupplierForm from '@/components/forms/AddSupplierForm';
 import ImportSupplierForm from '@/components/forms/ImportSupplierForm';
 import { Supplier } from '@/types/supplier';
 
-const SortableHeader = ({ 
-  field, 
-  children, 
-  className, 
-  sortField, 
-  sortDirection, 
-  handleSort 
-}: { 
-  field: keyof Supplier, 
-  children: React.ReactNode, 
-  className?: string,
-  sortField: keyof Supplier | null,
-  sortDirection: 'asc' | 'desc',
-  handleSort: (field: keyof Supplier) => void
-}) => {
-  const getSortIcon = () => {
-    if (sortField !== field) {
-      return <ChevronsUpDown className="w-4 h-4 text-thai-gray-400" />;
-    }
-    return sortDirection === 'asc' 
-      ? <ChevronUp className="w-4 h-4 text-primary-600" />
-      : <ChevronDown className="w-4 h-4 text-primary-600" />;
-  };
 
-  return (
-    <Table.Head 
-      className={`transition-colors cursor-pointer hover:bg-thai-gray-50 ${className || ''}`}
-      onClick={() => handleSort(field)}
-    >
-      <div className="flex items-center justify-between">
-        <span>{children}</span>
-        {getSortIcon()}
-      </div>
-    </Table.Head>
-  );
-};
 
 const SuppliersPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -73,6 +38,7 @@ const SuppliersPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showViewModal, setShowViewModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [sortField, setSortField] = useState<keyof Supplier | null>(null);
@@ -150,6 +116,11 @@ const SuppliersPage = () => {
     });
   }, [suppliers, sortField, sortDirection]);
 
+  const handleView = (supplier: Supplier) => {
+    setSelectedSupplier(supplier);
+    setShowViewModal(true);
+  };
+
   const handleEdit = (supplier: Supplier) => {
     setSelectedSupplier(supplier);
     setShowEditModal(true);
@@ -177,6 +148,17 @@ const SuppliersPage = () => {
   const handleAddSuccess = () => {
     setShowAddModal(false);
     fetchSuppliers(); // Refresh data
+  };
+
+  const handleEditSuccess = () => {
+    setShowEditModal(false);
+    setSelectedSupplier(null);
+    fetchSuppliers(); // Refresh data
+  };
+
+  const handleViewClose = () => {
+    setShowViewModal(false);
+    setSelectedSupplier(null);
   };
 
   const handleImportSuccess = () => {
@@ -213,271 +195,317 @@ const SuppliersPage = () => {
     ));
   };
 
+  const getSortIcon = (field: keyof Supplier) => {
+    if (sortField !== field) {
+      return <ChevronsUpDown className="w-3 h-3 ml-1 inline-block" />;
+    }
+    return sortDirection === 'asc' ? (
+      <ChevronUp className="w-3 h-3 ml-1 inline-block" />
+    ) : (
+      <ChevronDown className="w-3 h-3 ml-1 inline-block" />
+    );
+  };
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-thai-gray-25 to-white">
-      <div className="space-y-3">
-        {/* Modern Page Header */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-0 shadow-sm">
-          <div className="flex items-center justify-between">
+    <div className="h-screen overflow-hidden flex flex-col bg-gradient-to-br from-thai-gray-25 to-white">
+      {/* Header */}
+      <div className="pt-0 px-2 pb-2 space-y-2">
+        {/* Title */}
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="w-10 h-10 rounded-lg bg-blue-500 flex items-center justify-center shadow-lg">
+              <Users className="w-6 h-6 text-white" />
+            </div>
             <div>
-              <h1 className="text-2xl font-bold text-thai-gray-900 font-thai">ข้อมูลซัพพลายเออร์</h1>
-              <p className="text-thai-gray-600 font-thai mt-1">จัดการข้อมูลผู้จำหน่ายและคู่ค้าทางธุรกิจ</p>
+              <h1 className="text-xl font-bold text-thai-gray-900 font-thai">
+                ข้อมูลซัพพลายเออร์ (Suppliers)
+              </h1>
+              <p className="text-xs text-thai-gray-600 font-thai">
+                จัดการข้อมูลผู้จำหน่ายและคู่ค้าทางธุรกิจ
+              </p>
             </div>
-            <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                icon={Users}
-                onClick={() => setShowImportModal(true)}
-                className="bg-white/50 hover:bg-white/80 border-white/30 backdrop-blur-sm shadow-sm"
-              >
-                นำเข้าข้อมูล
-              </Button>
-              <Button 
-                variant="primary" 
-                icon={Plus}
-                onClick={() => setShowAddModal(true)}
-                className="bg-blue-500 hover:bg-blue-600 shadow-lg"
-              >
-                เพิ่มผู้จำหน่าย
-              </Button>
-            </div>
+          </div>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              size="md"
+              icon={Users}
+              onClick={() => setShowImportModal(true)}
+              className="bg-white/50 hover:bg-white/80 border-white/30 backdrop-blur-sm shadow-sm"
+            >
+              นำเข้าข้อมูล
+            </Button>
+            <Button 
+              variant="primary" 
+              size="md"
+              icon={Plus}
+              onClick={() => setShowAddModal(true)}
+              className="bg-blue-500 hover:bg-blue-600 shadow-lg"
+            >
+              เพิ่มผู้จำหน่าย
+            </Button>
           </div>
         </div>
 
-
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-50/80 backdrop-blur-sm border border-red-200/50 rounded-2xl p-4 shadow-sm">
-            <div className="flex items-center space-x-3 text-red-600">
-              <div className="flex-shrink-0">
-                <AlertCircle className="w-5 h-5" />
-              </div>
-              <span className="font-thai text-sm">เกิดข้อผิดพลาด: {error}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Modern Search and Filters */}
+        {/* Filters */}
         <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm">
           <div className="flex items-center space-x-3">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
-                <input
-                  type="text"
-                  placeholder="ค้นหาผู้จำหน่าย รหัส หรือ ผู้ติดต่อ..."
-                  className="
-                    w-full pl-10 pr-4 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                    focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                    text-sm font-thai transition-all duration-300 backdrop-blur-sm
-                    placeholder:text-thai-gray-400
-                  "
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
+            {/* Search */}
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
+              <input
+                type="text"
+                placeholder="ค้นหาผู้จำหน่าย รหัส หรือ ผู้ติดต่อ..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai
+                         focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
+                         transition-all duration-300"
+              />
             </div>
-            
-            <div className="flex space-x-2">
-              <select
-                className="
-                  px-3 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                  text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-32
-                "
-                value={selectedType}
-                onChange={(e) => setSelectedType(e.target.value)}
-              >
-                <option value="">ประเภททั้งหมด</option>
-                <option value="vendor">ผู้จำหน่าย</option>
-                <option value="service_provider">ผู้ให้บริการ</option>
-                <option value="both">ทั้งสองอย่าง</option>
-              </select>
 
-              <select
-                className="
-                  px-3 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                  text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-28
-                "
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-              >
-                <option value="">สถานะทั้งหมด</option>
-                <option value="active">ใช้งาน</option>
-                <option value="inactive">ไม่ใช้งาน</option>
-              </select>
-            </div>
+            {/* Type Filter */}
+            <select
+              value={selectedType}
+              onChange={(e) => setSelectedType(e.target.value)}
+              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-24
+                       focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50"
+            >
+              <option value="">ทุกประเภท</option>
+              <option value="vendor">ผู้จำหน่าย</option>
+              <option value="service_provider">ผู้ให้บริการ</option>
+              <option value="both">ทั้งสองอย่าง</option>
+            </select>
+
+            {/* Status Filter */}
+            <select
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value)}
+              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-24
+                       focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50"
+            >
+              <option value="">ทุกสถานะ</option>
+              <option value="active">ใช้งาน</option>
+              <option value="inactive">ไม่ใช้งาน</option>
+            </select>
           </div>
         </div>
+      </div>
 
-        {/* Modern Suppliers Table */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-2xl overflow-hidden shadow-sm">
-          {loading ? (
-            <div className="text-center py-12">
-              <div className="loading-spinner w-10 h-10 mx-auto mb-4"></div>
-              <p className="text-thai-gray-500 font-thai text-lg">กำลังโหลดข้อมูล...</p>
-            </div>
-          ) : (
-            <>
-              <div className="overflow-x-auto">
+      {/* Table Container - Styled like inbound */}
+      <div className="h-[74vh] bg-white border border-gray-200 rounded-lg shadow-sm overflow-auto">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center h-full text-thai-gray-400">
+            <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
+            <p className="text-sm font-thai">กำลังโหลดข้อมูล...</p>
+          </div>
+        ) : (
           <Table>
             <Table.Header>
-              <Table.Row>
-                <SortableHeader 
-                  field="supplier_code" 
-                  sortField={sortField} 
-                  sortDirection={sortDirection} 
-                  handleSort={handleSort}
-                >
-                  รหัส
-                </SortableHeader>
-                <SortableHeader 
-                  field="supplier_name" 
-                  sortField={sortField} 
-                  sortDirection={sortDirection} 
-                  handleSort={handleSort}
-                >
-                  ชื่อผู้จำหน่าย
-                </SortableHeader>
-                <Table.Head>ประเภท</Table.Head>
-                <Table.Head>ผู้ติดต่อ</Table.Head>
-                <Table.Head>โทรศัพท์</Table.Head>
-                <Table.Head>อีเมล</Table.Head>
-                <SortableHeader 
-                  field="rating" 
-                  sortField={sortField} 
-                  sortDirection={sortDirection} 
-                  handleSort={handleSort}
-                >
-                  คะแนน
-                </SortableHeader>
-                <Table.Head>สถานะ</Table.Head>
-                <Table.Head>การดำเนินการ</Table.Head>
-              </Table.Row>
+              <tr>
+                <Table.Head onClick={() => handleSort('supplier_code')} width="100px">รหัส{getSortIcon('supplier_code')}</Table.Head>
+                <Table.Head onClick={() => handleSort('supplier_name')} width="200px">ชื่อผู้จำหน่าย{getSortIcon('supplier_name')}</Table.Head>
+                <Table.Head onClick={() => handleSort('supplier_type')} width="120px">ประเภท{getSortIcon('supplier_type')}</Table.Head>
+                <Table.Head width="130px">เลขทะเบียนธุรกิจ</Table.Head>
+                <Table.Head width="130px">เลขผู้เสียภาษี</Table.Head>
+                <Table.Head width="120px">ผู้ติดต่อ</Table.Head>
+                <Table.Head width="120px">โทรศัพท์</Table.Head>
+                <Table.Head width="150px">อีเมล</Table.Head>
+                <Table.Head width="150px">เว็บไซต์</Table.Head>
+                <Table.Head width="200px">ที่อยู่เรียกเก็บเงิน</Table.Head>
+                <Table.Head width="200px">ที่อยู่จัดส่ง</Table.Head>
+                <Table.Head width="120px">เงื่อนไขชำระเงิน</Table.Head>
+                <Table.Head width="150px">หมวดหมู่บริการ</Table.Head>
+                <Table.Head width="150px">หมวดหมู่สินค้า</Table.Head>
+                <Table.Head onClick={() => handleSort('rating')} width="100px">คะแนน{getSortIcon('rating')}</Table.Head>
+                <Table.Head onClick={() => handleSort('status')} width="80px">สถานะ{getSortIcon('status')}</Table.Head>
+                <Table.Head width="150px">หมายเหตุ</Table.Head>
+                <Table.Head width="150px">ผู้สร้าง</Table.Head>
+                <Table.Head onClick={() => handleSort('created_at')} width="100px">วันที่สร้าง{getSortIcon('created_at')}</Table.Head>
+                <Table.Head onClick={() => handleSort('updated_at')} width="100px">วันที่แก้ไข{getSortIcon('updated_at')}</Table.Head>
+                <Table.Head width="100px">การดำเนินการ</Table.Head>
+              </tr>
             </Table.Header>
             <Table.Body>
-              {sortedSuppliers.map((supplier) => (
-                <Table.Row key={supplier.supplier_id} className="hover:bg-thai-gray-25">
-                  <Table.Cell>
-                    <div className="font-mono text-sm font-medium text-primary-600">
-                      {supplier.supplier_code}
+              {sortedSuppliers.length === 0 ? (
+                <tr>
+                  <Table.Cell colSpan={21} className="px-4 py-8 text-center">
+                    <div className="flex flex-col items-center justify-center text-thai-gray-400">
+                      <Users className="w-12 h-12 mb-2" />
+                      <p className="text-sm font-thai">
+                        {error ? 'เกิดข้อผิดพลาดในการโหลดข้อมูล' : 'ไม่พบผู้จำหน่ายที่ตรงกับการค้นหา'}
+                      </p>
                     </div>
                   </Table.Cell>
-                  <Table.Cell>
-                    <div className="space-y-1">
-                      <div className="font-medium font-thai text-sm">
-                        {supplier.supplier_name}
+                </tr>
+              ) : (
+                sortedSuppliers.map((supplier) => (
+                  <Table.Row key={supplier.supplier_id}>
+                    <Table.Cell>
+                      <span className="font-mono text-xs text-blue-600 whitespace-nowrap">{supplier.supplier_code}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs font-thai">{supplier.supplier_name}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs font-thai whitespace-nowrap">{getSupplierTypeLabel(supplier.supplier_type)}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="font-mono text-xs text-gray-600 whitespace-nowrap">{supplier.business_reg_no || '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="font-mono text-xs text-gray-600 whitespace-nowrap">{supplier.tax_id || '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs font-thai whitespace-nowrap">{supplier.contact_person || '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="font-mono text-xs whitespace-nowrap">{supplier.phone || '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs whitespace-nowrap">{supplier.email || '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs whitespace-nowrap">{supplier.website || '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs font-thai" title={supplier.billing_address || ''}>{supplier.billing_address ? (supplier.billing_address.length > 40 ? supplier.billing_address.substring(0, 40) + '...' : supplier.billing_address) : '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs font-thai" title={supplier.shipping_address || ''}>{supplier.shipping_address ? (supplier.shipping_address.length > 40 ? supplier.shipping_address.substring(0, 40) + '...' : supplier.shipping_address) : '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs font-thai whitespace-nowrap">{supplier.payment_terms || '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs font-thai">{supplier.service_category || '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs font-thai">{supplier.product_category || '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell className="text-center">
+                      <div className="flex items-center justify-center whitespace-nowrap">
+                        {getRatingStars(supplier.rating)}
+                        <span className="ml-1 text-xs text-gray-600">
+                          {supplier.rating.toFixed(1)}
+                        </span>
                       </div>
-                      {supplier.tax_id && (
-                        <div className="text-xs text-thai-gray-500 font-mono">
-                          เลขที่ผู้เสียภาษี: {supplier.tax_id}
-                        </div>
-                      )}
-                    </div>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <Badge variant={getSupplierTypeColor(supplier.supplier_type)}>
-                      {getSupplierTypeLabel(supplier.supplier_type)}
-                    </Badge>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <span className="text-sm font-thai">{supplier.contact_person || '-'}</span>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <div className="flex items-center">
-                      <Phone className="w-4 h-4 mr-2 text-thai-gray-400" />
-                      <span className="text-sm">{supplier.phone || '-'}</span>
-                    </div>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <div className="flex items-center">
-                      <Mail className="w-4 h-4 mr-2 text-thai-gray-400" />
-                      <span className="text-sm">{supplier.email || '-'}</span>
-                    </div>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <div className="flex items-center">
-                      {getRatingStars(supplier.rating)}
-                      <span className="ml-2 text-sm text-thai-gray-600">
-                        {supplier.rating.toFixed(1)}
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs font-thai whitespace-nowrap">
+                        {supplier.status === 'active' ? '✓ ใช้งาน' : '✗ ไม่ใช้งาน'}
                       </span>
-                    </div>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <Badge variant={supplier.status === 'active' ? 'success' : 'default'}>
-                      {supplier.status === 'active' ? 'ใช้งาน' : 'ไม่ใช้งาน'}
-                    </Badge>
-                  </Table.Cell>
-                  <Table.Cell>
-                    <div className="flex space-x-1">
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        icon={Eye}
-                        onClick={() => {/* TODO: View details */}}
-                        title="ดูรายละเอียด"
-                      />
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        icon={Edit}
-                        onClick={() => handleEdit(supplier)}
-                        title="แก้ไข"
-                      />
-                      <Button 
-                        variant="ghost" 
-                        size="sm" 
-                        icon={Trash2}
-                        onClick={() => handleDelete(supplier)}
-                        title="ลบ"
-                      />
-                    </div>
-                  </Table.Cell>
-                </Table.Row>
-              ))}
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs font-thai" title={supplier.remarks || ''}>{supplier.remarks ? (supplier.remarks.length > 30 ? supplier.remarks.substring(0, 30) + '...' : supplier.remarks) : '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs whitespace-nowrap">{supplier.created_by || '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="font-mono text-xs whitespace-nowrap">{supplier.created_at ? new Date(supplier.created_at).toLocaleDateString('th-TH') : '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="font-mono text-xs whitespace-nowrap">{supplier.updated_at ? new Date(supplier.updated_at).toLocaleDateString('th-TH') : '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell className="text-center">
+                      <div className="flex items-center justify-center space-x-1 whitespace-nowrap">
+                        <button
+                          className="p-1 text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                          title="ดูรายละเอียด"
+                          onClick={() => handleView(supplier)}
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          className="p-1 text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                          title="แก้ไข"
+                          onClick={() => handleEdit(supplier)}
+                        >
+                          <Edit className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          className="p-1 text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                          title="ลบ"
+                          onClick={() => handleDelete(supplier)}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </Table.Cell>
+                  </Table.Row>
+                ))
+              )}
             </Table.Body>
           </Table>
-              </div>
-
-              {!loading && sortedSuppliers.length === 0 && (
-                <div className="text-center py-8">
-                  <Users className="w-12 h-12 text-thai-gray-400 mx-auto mb-4" />
-                  <p className="text-thai-gray-500 font-thai">
-                    {error ? 'เกิดข้อผิดพลาดในการโหลดข้อมูล' : 'ไม่พบผู้จำหน่ายที่ตรงกับการค้นหา'}
-                  </p>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Add Supplier Modal */}
-        <Modal
-          isOpen={showAddModal}
-          onClose={() => setShowAddModal(false)}
-          title="เพิ่มผู้จำหน่าย"
-          size="xl"
-        >
-          <AddSupplierForm
-            onSuccess={handleAddSuccess}
-            onCancel={() => setShowAddModal(false)}
-          />
-        </Modal>
-
-        {/* Import Suppliers Modal */}
-        <Modal
-          isOpen={showImportModal}
-          onClose={() => setShowImportModal(false)}
-          title="นำเข้าข้อมูลผู้จำหน่าย"
-          size="lg"
-        >
-          <ImportSupplierForm
-            onSuccess={handleImportSuccess}
-            onCancel={() => setShowImportModal(false)}
-          />
-        </Modal>
+        )}
       </div>
+
+      {/* Add Supplier Modal */}
+      <Modal
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        title="เพิ่มผู้จำหน่าย"
+        size="xl"
+      >
+        <AddSupplierForm
+          onSuccess={handleAddSuccess}
+          onCancel={() => setShowAddModal(false)}
+        />
+      </Modal>
+
+      {/* View Supplier Modal */}
+      <Modal
+        isOpen={showViewModal}
+        onClose={handleViewClose}
+        title={selectedSupplier ? `ดูข้อมูล: ${selectedSupplier.supplier_name}` : 'ดูข้อมูลผู้จำหน่าย'}
+        size="xl"
+      >
+        {selectedSupplier && (
+          <AddSupplierForm
+            supplier={selectedSupplier}
+            mode="view"
+            onSuccess={handleViewClose}
+            onCancel={handleViewClose}
+          />
+        )}
+      </Modal>
+
+      {/* Edit Supplier Modal */}
+      <Modal
+        isOpen={showEditModal}
+        onClose={() => {
+          setShowEditModal(false);
+          setSelectedSupplier(null);
+        }}
+        title={selectedSupplier ? `แก้ไขข้อมูล: ${selectedSupplier.supplier_name}` : 'แก้ไขข้อมูลผู้จำหน่าย'}
+        size="xl"
+      >
+        {selectedSupplier && (
+          <AddSupplierForm
+            supplier={selectedSupplier}
+            mode="edit"
+            onSuccess={handleEditSuccess}
+            onCancel={() => {
+              setShowEditModal(false);
+              setSelectedSupplier(null);
+            }}
+          />
+        )}
+      </Modal>
+
+      {/* Import Suppliers Modal */}
+      <Modal
+        isOpen={showImportModal}
+        onClose={() => setShowImportModal(false)}
+        title="นำเข้าข้อมูลผู้จำหน่าย"
+        size="lg"
+      >
+        <ImportSupplierForm
+          onSuccess={handleImportSuccess}
+          onCancel={() => setShowImportModal(false)}
+        />
+      </Modal>
     </div>
   );
 };
