@@ -1,32 +1,17 @@
-// Temporary placeholder types until database types can be regenerated
-// Run `npm run db:generate-types` when Supabase access is available
+/**
+ * Supabase Database Types
+ * Auto-generated types from database schema
+ */
 
-export type MasterSku = {
-  sku_id: string
-  sku_name: string
-  sku_description?: string
-  barcode?: string
-  category?: string
-  sub_category?: string
-  brand?: string
-  uom?: string
-  weight_kg?: number
-  length_cm?: number
-  width_cm?: number
-  height_cm?: number
-  supplier_id?: string
-  reorder_level?: number
-  storage_strategy_id?: number
-  is_active?: boolean
-  created_at?: string
-  updated_at?: string
-  [key: string]: any
-}
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
 
-export type MasterSkuInsert = Omit<MasterSku, 'created_at' | 'updated_at'>
-export type MasterSkuUpdate = Partial<MasterSkuInsert>
-
-export type Database = {
+export interface Database {
   public: {
     Tables: {
       master_sku: {
@@ -34,7 +19,79 @@ export type Database = {
         Insert: MasterSkuInsert
         Update: MasterSkuUpdate
       }
+      [key: string]: {
+        Row: { [key: string]: any }
+        Insert: { [key: string]: any }
+        Update: { [key: string]: any }
+      }
+    }
+    Views: {
+      [key: string]: {
+        Row: { [key: string]: any }
+      }
+    }
+    Functions: {
       [key: string]: any
     }
+    Enums: {
+      [key: string]: string
+    }
   }
+}
+
+// Master SKU types
+export interface MasterSku {
+  sku_id: string
+  sku_name: string
+  barcode?: string
+  category?: string
+  brand?: string
+  uom_base: string
+  uom_pack?: string
+  qty_per_pack?: number
+  qty_per_pallet?: number
+  weight_per_piece?: number
+  default_location?: string
+  min_stock_qty?: number
+  max_stock_qty?: number
+  status: 'active' | 'inactive'
+  created_at?: string
+  updated_at?: string
+  created_by?: string
+  updated_by?: string
+}
+
+export interface MasterSkuInsert {
+  sku_id: string
+  sku_name: string
+  barcode?: string
+  category?: string
+  brand?: string
+  uom_base?: string
+  uom_pack?: string
+  qty_per_pack?: number
+  qty_per_pallet?: number
+  weight_per_piece?: number
+  default_location?: string
+  min_stock_qty?: number
+  max_stock_qty?: number
+  status?: 'active' | 'inactive'
+  created_by?: string
+}
+
+export interface MasterSkuUpdate {
+  sku_name?: string
+  barcode?: string
+  category?: string
+  brand?: string
+  uom_base?: string
+  uom_pack?: string
+  qty_per_pack?: number
+  qty_per_pallet?: number
+  weight_per_piece?: number
+  default_location?: string
+  min_stock_qty?: number
+  max_stock_qty?: number
+  status?: 'active' | 'inactive'
+  updated_by?: string
 }

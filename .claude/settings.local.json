@@ -42,7 +42,8 @@
       "Bash(.gitignore)",
       "Bash(timeout 30 bash:*)",
       "Bash(npx ts-node:*)",
-      "Bash(audioREADME.md)"
+      "Bash(audioREADME.md)",
+      "Bash(types/database/supabase.ts)"
     ],
     "deny": [],
     "ask": []

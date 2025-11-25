@@ -8,7 +8,9 @@ import {
   Download,
   RefreshCw,
   Eye,
-  Loader2
+  Loader2,
+  ChevronDown,
+  ChevronRight
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
@@ -58,6 +60,9 @@ const InventoryBalancesPage = () => {
 
   // Warehouses for filter
   const [warehouses, setWarehouses] = useState<any[]>([]);
+
+  // Expanded rows state
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     fetchWarehouses();
@@ -121,6 +126,18 @@ const InventoryBalancesPage = () => {
     setViewModalOpen(true);
   };
 
+  const toggleRowExpansion = (key: string) => {
+    setExpandedRows(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(key)) {
+        newSet.delete(key);
+      } else {
+        newSet.add(key);
+      }
+      return newSet;
+    });
+  };
+
 
 
   const isExpiringSoon = (expiryDate: string) => {
@@ -162,38 +179,54 @@ const InventoryBalancesPage = () => {
     return matchesSearch && matchesWarehouse && matchesLowStock && matchesExpiring && matchesZeroBalance && !isTemporaryZeroBalance;
   });
 
-  // รวมแถวที่มี pallet_id เดียวกัน
+  // จัดกลุ่มตาม location (warehouse_id + location_id) เท่านั้น
+  const locationGroups = new Map<string, InventoryBalance[]>();
+  
+  filteredData.forEach(item => {
+    const key = `${item.warehouse_id}-${item.location_id}`;
+    if (!locationGroups.has(key)) {
+      locationGroups.set(key, []);
+    }
+    locationGroups.get(key)!.push(item);
+  });
+
+  // สร้างแถวที่จะแสดง
   const groupedBalances: any[] = [];
-  const processedBalanceIds = new Set<number>();
-
-  for (const item of filteredData) {
-    if (processedBalanceIds.has(item.balance_id)) continue;
-
-    if (!item.pallet_id) {
-      processedBalanceIds.add(item.balance_id);
-      groupedBalances.push(item);
-      continue;
-    }
-
-    const sameGroup = filteredData.filter(other =>
-      !processedBalanceIds.has(other.balance_id) &&
-      other.pallet_id === item.pallet_id &&
-      other.warehouse_id === item.warehouse_id &&
-      other.location_id === item.location_id
-    );
-
-    if (sameGroup.length > 1) {
-      sameGroup.forEach(g => processedBalanceIds.add(g.balance_id));
-      groupedBalances.push({
-        ...item,
-        _isGrouped: true,
-        _groupItems: sameGroup
-      });
+  
+  locationGroups.forEach((items, key) => {
+    if (items.length === 1) {
+      // ถ้ามีแค่ 1 แถว ไม่ต้องจัดกลุ่ม
+      groupedBalances.push(items[0]);
     } else {
-      processedBalanceIds.add(item.balance_id);
-      groupedBalances.push(item);
+      // ถ้ามีหลายแถว ให้รวมเป็นกลุ่ม
+      const firstItem = items[0];
+      
+      // คำนวณยอดรวม
+      const totalPackQty = items.reduce((sum, item) => sum + (item.total_pack_qty || 0), 0);
+      const totalPieceQty = items.reduce((sum, item) => sum + (item.total_piece_qty || 0), 0);
+      const reservedPackQty = items.reduce((sum, item) => sum + (item.reserved_pack_qty || 0), 0);
+      const reservedPieceQty = items.reduce((sum, item) => sum + (item.reserved_piece_qty || 0), 0);
+      
+      // เก็บวันผลิตและวันหมดอายุที่ไม่ซ้ำกัน
+      const uniqueProductionDates = [...new Set(items.map(i => i.production_date).filter(Boolean))];
+      const uniqueExpiryDates = [...new Set(items.map(i => i.expiry_date).filter(Boolean))];
+      
+      groupedBalances.push({
+        ...firstItem,
+        total_pack_qty: totalPackQty,
+        total_piece_qty: totalPieceQty,
+        reserved_pack_qty: reservedPackQty,
+        reserved_piece_qty: reservedPieceQty,
+        production_date: uniqueProductionDates.length > 1 ? 'หลายวัน' : uniqueProductionDates[0] || null,
+        expiry_date: uniqueExpiryDates.length > 1 ? 'หลายวัน' : uniqueExpiryDates[0] || null,
+        _isGrouped: true,
+        _groupKey: key,
+        _groupItems: items,
+        _uniqueProductionDates: uniqueProductionDates,
+        _uniqueExpiryDates: uniqueExpiryDates
+      });
     }
-  }
+  });
 
   // Calculate statistics
   const expiringSoonItems = filteredData.filter(item => isExpiringSoon(item.expiry_date)).length;
@@ -324,117 +357,236 @@ const InventoryBalancesPage = () => {
                   <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
                     {groupedBalances.map((balance: any) => {
                       if (balance._isGrouped && balance._groupItems) {
-                        return balance._groupItems.map((item: any, idx: number) => (
-                          <tr
-                            key={`${balance.balance_id}-${idx}`}
-                            className={`hover:bg-blue-50/30 transition-colors duration-150 ${
-                              isExpired(balance.expiry_date) ? 'bg-red-50' :
-                              isExpiringSoon(balance.expiry_date) ? 'bg-orange-50' :
-                              (balance.total_piece_qty - balance.reserved_piece_qty) <= 10 ? 'bg-yellow-50' : ''
-                            }`}
-                          >
-                            {idx === 0 && (
-                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-middle" rowSpan={balance._groupItems.length}>
-                                <span className="font-mono text-thai-gray-700">{balance.balance_id}</span>
+                        const isExpanded = expandedRows.has(balance._groupKey);
+                        const hasMultipleDates = balance._uniqueProductionDates?.length > 1 || balance._uniqueExpiryDates?.length > 1;
+                        
+                        return (
+                          <React.Fragment key={balance._groupKey}>
+                            {/* แถวหลัก - แสดงยอดรวม */}
+                            <tr
+                              className={`hover:bg-blue-50/30 transition-colors duration-150 ${
+                                balance.expiry_date === 'หลายวัน' ? 'bg-blue-50' :
+                                isExpired(balance.expiry_date) ? 'bg-red-50' :
+                                isExpiringSoon(balance.expiry_date) ? 'bg-orange-50' :
+                                (balance.total_piece_qty - balance.reserved_piece_qty) <= 10 ? 'bg-yellow-50' : ''
+                              }`}
+                            >
+                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                <button
+                                  onClick={() => toggleRowExpansion(balance._groupKey)}
+                                  className="flex items-center gap-1 hover:text-blue-600"
+                                  title={isExpanded ? 'ซ่อนรายละเอียด' : 'แสดงรายละเอียด'}
+                                >
+                                  {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                                  <span className="font-mono text-thai-gray-700 text-[10px]">
+                                    ({balance._groupItems.length})
+                                  </span>
+                                </button>
                               </td>
-                            )}
-                            <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                              <span className="font-mono font-semibold text-thai-gray-700">{item.sku_id}</span>
-                            </td>
-                            <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                              <span className="text-thai-gray-700 font-thai text-[11px]">
-                                {(item as any).master_sku?.sku_name || '-'}
-                              </span>
-                            </td>
-                            {idx === 0 && (
-                              <>
-                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-middle" rowSpan={balance._groupItems.length}>
+                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                <span className="font-mono font-semibold text-thai-gray-700">{balance.sku_id}</span>
+                              </td>
+                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                <span className="text-thai-gray-700 font-thai text-[11px]">
+                                  {(balance as any).master_sku?.sku_name || '-'}
+                                </span>
+                              </td>
+                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                <span className="text-thai-gray-500 font-thai text-[10px] italic">หลายพาเลท</span>
+                              </td>
+                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                <span className="font-medium text-thai-gray-700 font-thai">{balance.warehouse_id}</span>
+                              </td>
+                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                <span className="font-mono text-thai-gray-700">
+                                  {(balance as any).master_location?.location_name || balance.location_id || '-'}
+                                </span>
+                              </td>
+                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                <span className="text-thai-gray-500 font-thai text-[10px] italic">-</span>
+                              </td>
+                              <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
+                                <span className="font-bold text-green-600">{balance.total_pack_qty?.toLocaleString()}</span>
+                              </td>
+                              <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
+                                <span className="font-bold text-green-600">{balance.total_piece_qty?.toLocaleString()}</span>
+                              </td>
+                              <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
+                                {(() => {
+                                  const weightPerPiece = (balance as any).master_sku?.weight_per_piece_kg || 0;
+                                  const totalWeight = (balance.total_piece_qty || 0) * weightPerPiece;
+                                  return totalWeight === 0 ? <span className="text-gray-400">-</span> : (
+                                    <span className="font-bold text-blue-600">
+                                      {totalWeight.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    </span>
+                                  );
+                                })()}
+                              </td>
+                              <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
+                                <span className="font-bold text-orange-600">{balance.reserved_pack_qty?.toLocaleString()}</span>
+                              </td>
+                              <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
+                                <span className="font-bold text-orange-600">{balance.reserved_piece_qty?.toLocaleString()}</span>
+                              </td>
+                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                {balance.production_date === 'หลายวัน' ? (
+                                  <span className="text-blue-600 font-thai text-[10px] font-medium">หลายวัน</span>
+                                ) : balance.production_date ? (
+                                  <span className="font-medium text-gray-900 font-thai">
+                                    {new Date(balance.production_date).toLocaleDateString('th-TH')}
+                                  </span>
+                                ) : (
+                                  <span className="text-thai-gray-400">-</span>
+                                )}
+                              </td>
+                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                {balance.expiry_date === 'หลายวัน' ? (
+                                  <span className="text-blue-600 font-thai text-[10px] font-medium">หลายวัน</span>
+                                ) : balance.expiry_date ? (
+                                  <div className="flex items-center gap-1">
+                                    <span className={`font-thai ${
+                                      isExpired(balance.expiry_date) ? 'text-red-600 font-bold' :
+                                      isExpiringSoon(balance.expiry_date) ? 'text-orange-600 font-medium' : 'text-gray-900'
+                                    }`}>
+                                      {new Date(balance.expiry_date).toLocaleDateString('th-TH')}
+                                    </span>
+                                    {isExpired(balance.expiry_date) && <Badge variant="danger" size="sm" className="whitespace-nowrap"><span className="text-[10px]">หมดอายุ</span></Badge>}
+                                    {isExpiringSoon(balance.expiry_date) && !isExpired(balance.expiry_date) && <Badge variant="warning" size="sm" className="whitespace-nowrap"><span className="text-[10px]">ใกล้หมดอายุ</span></Badge>}
+                                  </div>
+                                ) : (
+                                  <span className="text-thai-gray-400">-</span>
+                                )}
+                              </td>
+                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                <span className="text-thai-gray-500 font-thai text-[10px] italic">-</span>
+                              </td>
+                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                <span className="text-thai-gray-500 font-thai text-[10px] italic">-</span>
+                              </td>
+                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                <span className="text-thai-gray-500 font-thai text-[10px] italic">-</span>
+                              </td>
+                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                <span className="text-thai-gray-500 font-thai text-[10px] italic">-</span>
+                              </td>
+                              <td className="px-2 py-0.5 text-center whitespace-nowrap">
+                                <span className="text-thai-gray-400">-</span>
+                              </td>
+                            </tr>
+                            
+                            {/* แถวย่อย - แสดงเมื่อ expand */}
+                            {isExpanded && balance._groupItems.map((item: any, idx: number) => (
+                              <tr
+                                key={`${balance._groupKey}-${idx}`}
+                                className="bg-gray-50/50 hover:bg-blue-50/20 transition-colors duration-150"
+                              >
+                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                  <span className="font-mono text-thai-gray-500 text-[10px] ml-4">{item.balance_id}</span>
+                                </td>
+                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                  <span className="font-mono text-thai-gray-600 text-[10px]">{item.sku_id}</span>
+                                </td>
+                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                  <span className="text-thai-gray-600 font-thai text-[10px]">
+                                    {(item as any).master_sku?.sku_name || '-'}
+                                  </span>
+                                </td>
+                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                                   <div>
-                                    {balance.pallet_id_external && <div className="font-mono text-thai-gray-700">{balance.pallet_id_external}</div>}
-                                    {balance.pallet_id && <div className="font-mono text-[10px] text-gray-500">{balance.pallet_id}</div>}
-                                    {!balance.pallet_id && !balance.pallet_id_external && <span className="text-gray-400">-</span>}
+                                    {item.pallet_id_external && <div className="font-mono text-thai-gray-700 text-[10px]">{item.pallet_id_external}</div>}
+                                    {item.pallet_id && <div className="font-mono text-[9px] text-gray-500">{item.pallet_id}</div>}
+                                    {!item.pallet_id && !item.pallet_id_external && <span className="text-gray-400 text-[10px]">-</span>}
                                   </div>
                                 </td>
-                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-middle" rowSpan={balance._groupItems.length}>
-                                  <span className="font-medium text-thai-gray-700 font-thai">{balance.warehouse_id}</span>
+                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                  <span className="text-thai-gray-600 font-thai text-[10px]">{item.warehouse_id}</span>
                                 </td>
-                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-middle" rowSpan={balance._groupItems.length}>
-                                  <span className="font-mono text-thai-gray-700">{(balance as any).master_location?.location_name || balance.location_id || '-'}</span>
-                                </td>
-                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-middle" rowSpan={balance._groupItems.length}>
-                                  <span className="font-mono text-thai-gray-700">{balance.lot_no || '-'}</span>
-                                </td>
-                              </>
-                            )}
-                            <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
-                              <span className="font-bold text-green-600">{item.total_pack_qty?.toLocaleString()}</span>
-                            </td>
-                            <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
-                              <span className="font-bold text-green-600">{item.total_piece_qty?.toLocaleString()}</span>
-                            </td>
-                            <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
-                              {(() => {
-                                const weightPerPiece = (item as any).master_sku?.weight_per_piece_kg || 0;
-                                const totalWeight = (item.total_piece_qty || 0) * weightPerPiece;
-                                return totalWeight === 0 ? <span className="text-gray-400">-</span> : (
-                                  <span className="font-bold text-blue-600">
-                                    {totalWeight.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                  </span>
-                                );
-                              })()}
-                            </td>
-                            <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
-                              <span className="font-bold text-orange-600">{item.reserved_pack_qty?.toLocaleString()}</span>
-                            </td>
-                            <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
-                              <span className="font-bold text-orange-600">{item.reserved_piece_qty?.toLocaleString()}</span>
-                            </td>
-                            <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                              <span className="font-medium text-gray-900 font-thai">
-                                {item.production_date ? new Date(item.production_date).toLocaleDateString('th-TH') : '-'}
-                              </span>
-                            </td>
-                            <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                              {item.expiry_date ? (
-                                <div className="flex items-center gap-1">
-                                  <span className={`font-thai ${isExpired(item.expiry_date) ? 'text-red-600 font-bold' : isExpiringSoon(item.expiry_date) ? 'text-orange-600 font-medium' : 'text-gray-900'}`}>
-                                    {new Date(item.expiry_date).toLocaleDateString('th-TH')}
-                                  </span>
-                                  {isExpired(item.expiry_date) && <Badge variant="danger" size="sm" className="whitespace-nowrap"><span className="text-[10px]">หมดอายุ</span></Badge>}
-                                  {isExpiringSoon(item.expiry_date) && !isExpired(item.expiry_date) && <Badge variant="warning" size="sm" className="whitespace-nowrap"><span className="text-[10px]">ใกล้หมดอายุ</span></Badge>}
-                                </div>
-                              ) : <span className="text-thai-gray-400 font-thai">-</span>}
-                            </td>
-                            {idx === 0 && (
-                              <>
-                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-middle" rowSpan={balance._groupItems.length}>
-                                  <span className="font-mono text-thai-gray-700">{balance.last_move_id || '-'}</span>
-                                </td>
-                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-middle" rowSpan={balance._groupItems.length}>
-                                  <span className="text-thai-gray-600 font-thai">
-                                    {balance.last_movement_at ? new Date(balance.last_movement_at).toLocaleString('th-TH', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}
+                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                  <span className="font-mono text-thai-gray-600 text-[10px]">
+                                    {(item as any).master_location?.location_name || item.location_id || '-'}
                                   </span>
                                 </td>
-                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-middle" rowSpan={balance._groupItems.length}>
-                                  <span className="text-thai-gray-600 font-thai">
-                                    {balance.created_at ? new Date(balance.created_at).toLocaleString('th-TH', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}
+                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                  <span className="font-mono text-thai-gray-600 text-[10px]">{item.lot_no || '-'}</span>
+                                </td>
+                                <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
+                                  <span className="text-green-600 text-[10px]">{item.total_pack_qty?.toLocaleString()}</span>
+                                </td>
+                                <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
+                                  <span className="text-green-600 text-[10px]">{item.total_piece_qty?.toLocaleString()}</span>
+                                </td>
+                                <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
+                                  {(() => {
+                                    const weightPerPiece = (item as any).master_sku?.weight_per_piece_kg || 0;
+                                    const totalWeight = (item.total_piece_qty || 0) * weightPerPiece;
+                                    return totalWeight === 0 ? <span className="text-gray-400 text-[10px]">-</span> : (
+                                      <span className="text-blue-600 text-[10px]">
+                                        {totalWeight.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                      </span>
+                                    );
+                                  })()}
+                                </td>
+                                <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
+                                  <span className="text-orange-600 text-[10px]">{item.reserved_pack_qty?.toLocaleString()}</span>
+                                </td>
+                                <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
+                                  <span className="text-orange-600 text-[10px]">{item.reserved_piece_qty?.toLocaleString()}</span>
+                                </td>
+                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                  <span className="text-gray-700 font-thai text-[10px]">
+                                    {item.production_date ? new Date(item.production_date).toLocaleDateString('th-TH') : '-'}
                                   </span>
                                 </td>
-                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-middle" rowSpan={balance._groupItems.length}>
-                                  <span className="text-thai-gray-600 font-thai">
-                                    {balance.updated_at ? new Date(balance.updated_at).toLocaleString('th-TH', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}
+                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                  {item.expiry_date ? (
+                                    <span className={`font-thai text-[10px] ${
+                                      isExpired(item.expiry_date) ? 'text-red-600 font-bold' :
+                                      isExpiringSoon(item.expiry_date) ? 'text-orange-600 font-medium' : 'text-gray-700'
+                                    }`}>
+                                      {new Date(item.expiry_date).toLocaleDateString('th-TH')}
+                                    </span>
+                                  ) : <span className="text-thai-gray-400 text-[10px]">-</span>}
+                                </td>
+                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                  <span className="font-mono text-thai-gray-600 text-[10px]">{item.last_move_id || '-'}</span>
+                                </td>
+                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                  <span className="text-thai-gray-600 font-thai text-[9px]">
+                                    {item.last_movement_at ? new Date(item.last_movement_at).toLocaleString('th-TH', { 
+                                      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' 
+                                    }) : '-'}
                                   </span>
                                 </td>
-                                <td className="px-2 py-0.5 text-center whitespace-nowrap align-middle" rowSpan={balance._groupItems.length}>
-                                  <button className="p-1 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors" title="ดูรายละเอียด" onClick={() => handleViewBalance(balance)}>
+                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                  <span className="text-thai-gray-600 font-thai text-[9px]">
+                                    {item.created_at ? new Date(item.created_at).toLocaleString('th-TH', { 
+                                      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' 
+                                    }) : '-'}
+                                  </span>
+                                </td>
+                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                  <span className="text-thai-gray-600 font-thai text-[9px]">
+                                    {item.updated_at ? new Date(item.updated_at).toLocaleString('th-TH', { 
+                                      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' 
+                                    }) : '-'}
+                                  </span>
+                                </td>
+                                <td className="px-2 py-0.5 text-center whitespace-nowrap">
+                                  <button 
+                                    className="p-1 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors" 
+                                    title="ดูรายละเอียด"
+                                    onClick={() => handleViewBalance(item)}
+                                  >
                                     <Eye className="w-3 h-3" />
                                   </button>
                                 </td>
-                              </>
-                            )}
-                          </tr>
-                        ));
+                              </tr>
+                            ))}
+                          </React.Fragment>
+                        );
                       }
+                      
+                      // แถวเดี่ยว - ไม่ต้องจัดกลุ่ม
                       return (
                         <tr
                           key={balance.balance_id}

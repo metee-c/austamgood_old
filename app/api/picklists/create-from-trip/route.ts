@@ -242,16 +242,118 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // 11. จองสต็อกอัตโนมัติตามหลัก FEFO + FIFO เมื่อ status = 'pending'
+    // สำหรับแสดงใน inventory-balances (reserved_pack_qty, reserved_piece_qty)
+    // จะถูกยกเลิกการจองเมื่อ picklist เปลี่ยนเป็น 'completed'
+    const warehouseId = (trip.receiving_route_plans as any)?.warehouse_id;
+    const stockCheckResults: any[] = [];
+
+    if (warehouseId) {
+      try {
+        // จองสต็อกสำหรับแต่ละ item
+        for (const item of itemsToInsert) {
+          if (!item.source_location_id || !item.quantity_to_pick) continue;
+
+          // Query inventory balances ที่ source_location_id โดยเรียงตาม FEFO + FIFO
+          const { data: balances } = await supabase
+            .from('wms_inventory_balances')
+            .select('balance_id, pallet_id, total_piece_qty, reserved_piece_qty, expiry_date, production_date')
+            .eq('warehouse_id', warehouseId)
+            .eq('location_id', item.source_location_id)
+            .eq('sku_id', item.sku_id)
+            .gt('total_piece_qty', 0)
+            .order('expiry_date', { ascending: true, nullsFirst: false }) // FEFO
+            .order('production_date', { ascending: true, nullsFirst: false }) // FIFO
+            .order('created_at', { ascending: true });
+
+          if (!balances || balances.length === 0) {
+            console.warn(`No stock found for reservation: SKU ${item.sku_id} at ${item.source_location_id}`);
+            continue;
+          }
+
+          // จัดสรรการจองตามลำดับ FEFO + FIFO
+          let remainingQty = item.quantity_to_pick;
+
+          for (const balance of balances) {
+            if (remainingQty <= 0) break;
+
+            const availableQty = (balance.total_piece_qty || 0) - (balance.reserved_piece_qty || 0);
+            if (availableQty <= 0) continue;
+
+            const qtyToReserve = Math.min(availableQty, remainingQty);
+
+            // อัพเดตการจอง
+            await supabase
+              .from('wms_inventory_balances')
+              .update({
+                reserved_piece_qty: (balance.reserved_piece_qty || 0) + qtyToReserve,
+                updated_at: new Date().toISOString()
+              })
+              .eq('balance_id', balance.balance_id);
+
+            remainingQty -= qtyToReserve;
+          }
+
+          if (remainingQty > 0) {
+            console.warn(`Partial reservation for SKU ${item.sku_id}: ${remainingQty} pieces not reserved`);
+          }
+        }
+
+        // 12. ตรวจสอบสต็อกและสร้างการแจ้งเตือนหากไม่เพียงพอ
+        for (const item of itemsToInsert) {
+          if (!item.source_location_id || !item.quantity_to_pick) continue;
+
+          // เรียกใช้ฟังก์ชันตรวจสอบและสร้างการแจ้งเตือน
+          const { data: alertResult, error: alertError } = await supabase
+            .rpc('check_and_create_replenishment_alert', {
+              p_warehouse_id: warehouseId,
+              p_sku_id: item.sku_id,
+              p_pick_location_id: item.source_location_id,
+              p_required_qty: item.quantity_to_pick,
+              p_picklist_id: picklist.id,
+              p_created_by: user?.id
+            });
+
+          if (alertError) {
+            console.error(`Alert check error for SKU ${item.sku_id}:`, alertError);
+          } else if (alertResult && alertResult.length > 0) {
+            const result = alertResult[0];
+            if (result.alert_created) {
+              stockCheckResults.push({
+                sku_id: item.sku_id,
+                alert_id: result.alert_id,
+                shortage_qty: result.shortage_qty,
+                message: result.message
+              });
+            }
+          }
+        }
+
+      } catch (reserveError) {
+        console.error('Stock reservation error:', reserveError);
+        // ไม่ fail request แต่ log warning
+      }
+    }
+
+    // สร้าง warnings array
+    const warnings: string[] = [];
+    if (skippedItems.length > 0) {
+      warnings.push(`ข้ามรายการที่ SKU ไม่มีในระบบ: ${skippedItems.length} รายการ`);
+      warnings.push(`SKU ที่ไม่มี: ${[...new Set(skippedItems.map(i => i.sku_id))].join(', ')}`);
+    }
+    if (stockCheckResults.length > 0) {
+      warnings.push(`⚠️ สต็อกไม่เพียงพอ ${stockCheckResults.length} รายการ - สร้างการแจ้งเตือนแล้ว`);
+    }
+
     return NextResponse.json({
       success: true,
       picklist_id: picklist.id,
       picklist_no: picklistCode,
       total_items: itemsToInsert.length,
       skipped_items: skippedItems.length,
-      warnings: skippedItems.length > 0 ? [
-        `ข้ามรายการที่ SKU ไม่มีในระบบ: ${skippedItems.length} รายการ`,
-        `SKU ที่ไม่มี: ${[...new Set(skippedItems.map(i => i.sku_id))].join(', ')}`
-      ] : []
+      stock_reserved: warehouseId ? true : false,
+      stock_alerts: stockCheckResults,
+      warnings
     });
 
   } catch (error: any) {

@@ -16,6 +16,7 @@ import {
   RefreshCw,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   PlayCircle,
   Users,
   ChevronRight,
@@ -23,6 +24,8 @@ import {
 } from 'lucide-react';
 import { useMoves } from '@/hooks/useMoves';
 import { MoveRecord, MoveStatus, MoveType } from '@/lib/database/move';
+import { useStockAlerts } from '@/hooks/useStockAlerts';
+import { AlertCard } from '@/components/mobile/AlertCard';
 
 // Type labels
 const MOVE_TYPE_LABELS: Record<MoveType, string> = {
@@ -63,8 +66,13 @@ export default function MobileTransferListPage() {
 
   // Data fetching
   const { data: allMoves, loading, error, refetch } = useMoves();
+  const { alerts, isLoading: alertsLoading, updateAlertStatus, mutate: mutateAlerts } = useStockAlerts({
+    status: 'pending',
+    refreshInterval: 30000 // Auto-refresh every 30 seconds
+  });
 
   // State
+  const [activeTab, setActiveTab] = useState<'alerts' | 'moves'>('alerts'); // เริ่มต้นที่ tab alerts
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<MoveStatus | 'all'>('all');
   const [selectedType, setSelectedType] = useState<MoveType | 'all'>('all');
@@ -431,8 +439,23 @@ export default function MobileTransferListPage() {
   const handleRefresh = async () => {
     setRefreshing(true);
     playTapSound();
-    await refetch();
+    if (activeTab === 'alerts') {
+      await mutateAlerts();
+    } else {
+      await refetch();
+    }
     setTimeout(() => setRefreshing(false), 500);
+  };
+
+  // Handle alert status update
+  const handleAlertStatusUpdate = async (alertId: string, status: 'in_progress' | 'completed', notes?: string) => {
+    try {
+      await updateAlertStatus(alertId, status, notes);
+      playSuccessSound();
+    } catch (err) {
+      playErrorSound();
+      console.error('Error updating alert status:', err);
+    }
   };
 
   // Handle move card click
@@ -516,16 +539,18 @@ export default function MobileTransferListPage() {
         <div className="bg-gradient-to-br from-sky-400 to-sky-500 text-white sticky top-0 z-10 shadow-lg">
           <div className="p-3">
             {/* Title and Action Buttons */}
-            <div className="flex items-center justify-between mb-2">
-              <h1 className="text-lg font-bold font-thai">รายการย้ายสินค้า</h1>
+            <div className="flex items-center justify-between mb-3">
+              <h1 className="text-lg font-bold font-thai">ย้าย & เติมสต็อก</h1>
               <div className="flex items-center gap-2">
-                <button
-                  onClick={handleOpenQuickMove}
-                  className="px-2.5 py-1.5 bg-white text-sky-600 rounded-lg font-thai text-sm font-semibold hover:bg-sky-50 transition-colors active:scale-95 flex items-center gap-1 shadow-sm"
-                >
-                  <Package className="w-4 h-4" />
-                  ย้ายสินค้า
-                </button>
+                {activeTab === 'moves' && (
+                  <button
+                    onClick={handleOpenQuickMove}
+                    className="px-2.5 py-1.5 bg-white text-sky-600 rounded-lg font-thai text-sm font-semibold hover:bg-sky-50 transition-colors active:scale-95 flex items-center gap-1 shadow-sm"
+                  >
+                    <Package className="w-4 h-4" />
+                    ย้ายสินค้า
+                  </button>
+                )}
                 <button
                   onClick={handleRefresh}
                   disabled={refreshing}
@@ -536,128 +561,236 @@ export default function MobileTransferListPage() {
               </div>
             </div>
 
-            {/* Statistics Cards - Compact */}
-            <div className="grid grid-cols-4 gap-1.5 mb-2">
-              <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
-                <div className="text-xl font-bold">{stats.total}</div>
-                <div className="text-[10px] text-sky-100">ทั้งหมด</div>
-              </div>
-              <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
-                <div className="text-xl font-bold">{stats.assigned}</div>
-                <div className="text-[10px] text-sky-100">รอดำเนินการ</div>
-              </div>
-              <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
-                <div className="text-xl font-bold">{stats.inProgress}</div>
-                <div className="text-[10px] text-sky-100">ดำเนินการ</div>
-              </div>
-              <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
-                <div className="text-xl font-bold text-yellow-300">{stats.completed}</div>
-                <div className="text-[10px] text-sky-100">เสร็จสิ้น</div>
-              </div>
+            {/* Tabs */}
+            <div className="flex gap-2 mb-3">
+              <button
+                onClick={() => {
+                  setActiveTab('alerts');
+                  playTapSound();
+                }}
+                className={`flex-1 py-2 px-3 rounded-lg font-thai text-sm font-semibold transition-all ${
+                  activeTab === 'alerts'
+                    ? 'bg-white text-sky-600 shadow-md'
+                    : 'bg-white/20 text-white hover:bg-white/30'
+                }`}
+              >
+                <div className="flex items-center justify-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4" />
+                  <span>แจ้งเตือนเติมสต็อก</span>
+                  {alerts.length > 0 && (
+                    <span className="bg-red-500 text-white rounded-full px-1.5 py-0.5 text-[10px] font-bold min-w-[18px] text-center">
+                      {alerts.length}
+                    </span>
+                  )}
+                </div>
+              </button>
+              <button
+                onClick={() => {
+                  setActiveTab('moves');
+                  playTapSound();
+                }}
+                className={`flex-1 py-2 px-3 rounded-lg font-thai text-sm font-semibold transition-all ${
+                  activeTab === 'moves'
+                    ? 'bg-white text-sky-600 shadow-md'
+                    : 'bg-white/20 text-white hover:bg-white/30'
+                }`}
+              >
+                <div className="flex items-center justify-center gap-1.5">
+                  <Package className="w-4 h-4" />
+                  <span>รายการย้าย</span>
+                </div>
+              </button>
             </div>
 
-            {/* Search - Compact */}
-            <div className="relative mb-2">
-              <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-              <input
-                type="text"
-                placeholder="ค้นหา..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-9 pr-8 py-2 rounded-lg bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-sky-300 font-thai text-sm"
-              />
-              {searchTerm && (
+            {/* Statistics Cards - Show only for Moves tab */}
+            {activeTab === 'moves' && (
+              <>
+                <div className="grid grid-cols-4 gap-1.5 mb-2">
+                  <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
+                    <div className="text-xl font-bold">{stats.total}</div>
+                    <div className="text-[10px] text-sky-100">ทั้งหมด</div>
+                  </div>
+                  <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
+                    <div className="text-xl font-bold">{stats.assigned}</div>
+                    <div className="text-[10px] text-sky-100">รอดำเนินการ</div>
+                  </div>
+                  <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
+                    <div className="text-xl font-bold">{stats.inProgress}</div>
+                    <div className="text-[10px] text-sky-100">ดำเนินการ</div>
+                  </div>
+                  <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
+                    <div className="text-xl font-bold text-yellow-300">{stats.completed}</div>
+                    <div className="text-[10px] text-sky-100">เสร็จสิ้น</div>
+                  </div>
+                </div>
+
+                {/* Search - Compact */}
+                <div className="relative mb-2">
+                  <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="ค้นหา..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-9 pr-8 py-2 rounded-lg bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-sky-300 font-thai text-sm"
+                  />
+                  {searchTerm && (
+                    <button
+                      onClick={() => setSearchTerm('')}
+                      className="absolute right-2.5 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Filter Toggle - Compact */}
                 <button
-                  onClick={() => setSearchTerm('')}
-                  className="absolute right-2.5 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  onClick={() => {
+                    setShowFilters(!showFilters);
+                    playTapSound();
+                  }}
+                  className="w-full bg-white/20 rounded-lg py-1.5 px-3 flex items-center justify-between font-thai text-xs hover:bg-white/30 transition-colors"
                 >
-                  <X className="w-4 h-4" />
+                  <div className="flex items-center gap-1.5">
+                    <Filter className="w-3.5 h-3.5" />
+                    <span>ตัวกรอง</span>
+                    {(selectedStatus !== 'all' || selectedType !== 'all') && (
+                      <span className="bg-yellow-400 text-gray-900 rounded-full px-1.5 py-0.5 text-[10px] font-semibold">
+                        {(selectedStatus !== 'all' ? 1 : 0) + (selectedType !== 'all' ? 1 : 0)}
+                      </span>
+                    )}
+                  </div>
+                  <ChevronRight className={`w-3.5 h-3.5 transition-transform ${showFilters ? 'rotate-90' : ''}`} />
                 </button>
-              )}
-            </div>
 
-            {/* Filter Toggle - Compact */}
-            <button
-              onClick={() => {
-                setShowFilters(!showFilters);
-                playTapSound();
-              }}
-              className="w-full bg-white/20 rounded-lg py-1.5 px-3 flex items-center justify-between font-thai text-xs hover:bg-white/30 transition-colors"
-            >
-              <div className="flex items-center gap-1.5">
-                <Filter className="w-3.5 h-3.5" />
-                <span>ตัวกรอง</span>
-                {(selectedStatus !== 'all' || selectedType !== 'all') && (
-                  <span className="bg-yellow-400 text-gray-900 rounded-full px-1.5 py-0.5 text-[10px] font-semibold">
-                    {(selectedStatus !== 'all' ? 1 : 0) + (selectedType !== 'all' ? 1 : 0)}
-                  </span>
+                {/* Filter Panel */}
+                {showFilters && (
+                  <div className="mt-3 bg-white/10 backdrop-blur-sm rounded-lg p-3 space-y-3">
+                    {/* Status Filter */}
+                    <div>
+                      <label className="block text-xs font-semibold text-white mb-1.5 font-thai">สถานะ</label>
+                      <select
+                        value={selectedStatus}
+                        onChange={(e) => {
+                          setSelectedStatus(e.target.value as MoveStatus | 'all');
+                          playTapSound();
+                        }}
+                        className="w-full px-2.5 py-2 bg-white/90 text-gray-900 border-0 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-white/50 font-thai"
+                      >
+                        <option value="all">ทุกสถานะ</option>
+                        <option value="draft">ร่าง</option>
+                        <option value="pending">รอดำเนินการ</option>
+                        <option value="in_progress">กำลังดำเนินการ</option>
+                        <option value="completed">เสร็จสิ้น</option>
+                        <option value="cancelled">ยกเลิก</option>
+                      </select>
+                    </div>
+
+                    {/* Type Filter */}
+                    <div>
+                      <label className="block text-xs font-semibold text-white mb-1.5 font-thai">ประเภท</label>
+                      <select
+                        value={selectedType}
+                        onChange={(e) => {
+                          setSelectedType(e.target.value as MoveType | 'all');
+                          playTapSound();
+                        }}
+                        className="w-full px-2.5 py-2 bg-white/90 text-gray-900 border-0 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-white/50 font-thai"
+                      >
+                        <option value="all">ทุกประเภท</option>
+                        <option value="putaway">จัดเก็บสินค้า</option>
+                        <option value="transfer">ย้ายสินค้า</option>
+                        <option value="replenishment">เติมสินค้า</option>
+                        <option value="adjustment">ปรับสต๊อก</option>
+                      </select>
+                    </div>
+
+                    {/* Clear Filters */}
+                    {(selectedStatus !== 'all' || selectedType !== 'all') && (
+                      <button
+                        onClick={() => {
+                          setSelectedStatus('all');
+                          setSelectedType('all');
+                          playTapSound();
+                        }}
+                        className="w-full px-3 py-1.5 bg-white/20 text-white text-xs font-medium rounded-lg hover:bg-white/30 transition-colors font-thai"
+                      >
+                        ล้างตัวกรอง
+                      </button>
+                    )}
+                  </div>
                 )}
-              </div>
-              <ChevronRight className={`w-3.5 h-3.5 transition-transform ${showFilters ? 'rotate-90' : ''}`} />
-            </button>
+              </>
+            )}
 
-            {/* Filter Panel */}
-            {showFilters && (
-              <div className="mt-3 bg-white/10 backdrop-blur-sm rounded-lg p-3 space-y-3">
-                {/* Status Filter */}
-                <div>
-                  <label className="block text-xs font-semibold text-white mb-1.5 font-thai">สถานะ</label>
-                  <select
-                    value={selectedStatus}
-                    onChange={(e) => {
-                      setSelectedStatus(e.target.value as MoveStatus | 'all');
-                      playTapSound();
-                    }}
-                    className="w-full px-2.5 py-2 bg-white/90 text-gray-900 border-0 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-white/50 font-thai"
-                  >
-                    <option value="all">ทุกสถานะ</option>
-                    <option value="draft">ร่าง</option>
-                    <option value="pending">รอดำเนินการ</option>
-                    <option value="in_progress">กำลังดำเนินการ</option>
-                    <option value="completed">เสร็จสิ้น</option>
-                    <option value="cancelled">ยกเลิก</option>
-                  </select>
+            {/* Alerts Summary - Show only for Alerts tab */}
+            {activeTab === 'alerts' && (
+              <div className="bg-white/15 backdrop-blur-sm rounded-lg p-3">
+                <div className="text-center">
+                  <div className="text-3xl font-bold mb-1">{alerts.length}</div>
+                  <div className="text-sm text-sky-100 font-thai">รายการแจ้งเตือน</div>
                 </div>
-
-                {/* Type Filter */}
-                <div>
-                  <label className="block text-xs font-semibold text-white mb-1.5 font-thai">ประเภท</label>
-                  <select
-                    value={selectedType}
-                    onChange={(e) => {
-                      setSelectedType(e.target.value as MoveType | 'all');
-                      playTapSound();
-                    }}
-                    className="w-full px-2.5 py-2 bg-white/90 text-gray-900 border-0 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-white/50 font-thai"
-                  >
-                    <option value="all">ทุกประเภท</option>
-                    <option value="putaway">จัดเก็บสินค้า</option>
-                    <option value="transfer">ย้ายสินค้า</option>
-                    <option value="replenishment">เติมสินค้า</option>
-                    <option value="adjustment">ปรับสต๊อก</option>
-                  </select>
-                </div>
-
-                {/* Clear Filters */}
-                {(selectedStatus !== 'all' || selectedType !== 'all') && (
-                  <button
-                    onClick={() => {
-                      setSelectedStatus('all');
-                      setSelectedType('all');
-                      playTapSound();
-                    }}
-                    className="w-full px-3 py-1.5 bg-white/20 text-white text-xs font-medium rounded-lg hover:bg-white/30 transition-colors font-thai"
-                  >
-                    ล้างตัวกรอง
-                  </button>
+                {alerts.length > 0 && (
+                  <div className="mt-3 pt-3 border-t border-white/20 grid grid-cols-3 gap-2 text-center text-xs">
+                    <div>
+                      <div className="text-lg font-bold text-red-300">
+                        {alerts.filter(a => a.priority >= 9).length}
+                      </div>
+                      <div className="text-sky-100 font-thai">ด่วนมาก</div>
+                    </div>
+                    <div>
+                      <div className="text-lg font-bold text-orange-300">
+                        {alerts.filter(a => a.priority >= 7 && a.priority < 9).length}
+                      </div>
+                      <div className="text-sky-100 font-thai">ด่วน</div>
+                    </div>
+                    <div>
+                      <div className="text-lg font-bold text-yellow-300">
+                        {alerts.filter(a => a.priority < 7).length}
+                      </div>
+                      <div className="text-sky-100 font-thai">ปกติ</div>
+                    </div>
+                  </div>
                 )}
               </div>
             )}
           </div>
         </div>
 
-        {/* Move List */}
-        <div className="p-2 space-y-2">
+        {/* Content Area */}
+        <div className="p-3 space-y-3">
+          {/* Alerts Tab Content */}
+          {activeTab === 'alerts' && (
+            <>
+              {alertsLoading ? (
+                <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+                  <Loader2 className="w-8 h-8 animate-spin mb-3" />
+                  <p className="text-sm font-thai">กำลังโหลดการแจ้งเตือน...</p>
+                </div>
+              ) : alerts.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                  <CheckCircle2 className="w-16 h-16 mb-3 text-green-400" />
+                  <p className="text-lg font-bold text-green-600 mb-2 font-thai">ไม่มีการแจ้งเตือน</p>
+                  <p className="text-sm text-gray-500 font-thai">สต็อกในพื้นที่หยิบทุกตำแหน่งเพียงพอ</p>
+                </div>
+              ) : (
+                <>
+                  {alerts.map((alert) => (
+                    <AlertCard
+                      key={alert.alert_id}
+                      alert={alert}
+                      onStatusUpdate={handleAlertStatusUpdate}
+                    />
+                  ))}
+                </>
+              )}
+            </>
+          )}
+
+          {/* Moves Tab Content */}
+          {activeTab === 'moves' && (
+            <>
           {loading && !refreshing ? (
             <div className="flex flex-col items-center justify-center h-64 text-gray-500">
               <Loader2 className="w-8 h-8 animate-spin mb-3" />
@@ -768,18 +901,31 @@ export default function MobileTransferListPage() {
               })}
             </div>
           )}
+            </>
+          )}
         </div>
 
         {/* Results Count */}
-        {!loading && filteredMoves.length > 0 && (
-          <div className="px-4 py-3 bg-white border-t border-gray-200">
-            <p className="text-sm text-center text-gray-600">
-              แสดง <span className="font-semibold text-gray-900">{filteredMoves.length}</span> รายการ
-              {(searchTerm || selectedStatus !== 'all' || selectedType !== 'all') && (
-                <span> จากทั้งหมด <span className="font-semibold text-gray-900">{allMoves?.length || 0}</span> รายการ</span>
-              )}
-            </p>
-          </div>
+        {!loading && (
+          <>
+            {activeTab === 'alerts' && alerts.length > 0 && (
+              <div className="px-4 py-3 bg-white border-t border-gray-200">
+                <p className="text-sm text-center text-gray-600 font-thai">
+                  แสดง <span className="font-semibold text-gray-900">{alerts.length}</span> รายการแจ้งเตือน
+                </p>
+              </div>
+            )}
+            {activeTab === 'moves' && filteredMoves.length > 0 && (
+              <div className="px-4 py-3 bg-white border-t border-gray-200">
+                <p className="text-sm text-center text-gray-600 font-thai">
+                  แสดง <span className="font-semibold text-gray-900">{filteredMoves.length}</span> รายการ
+                  {(searchTerm || selectedStatus !== 'all' || selectedType !== 'all') && (
+                    <span> จากทั้งหมด <span className="font-semibold text-gray-900">{allMoves?.length || 0}</span> รายการ</span>
+                  )}
+                </p>
+              </div>
+            )}
+          </>
         )}
       </div>
 

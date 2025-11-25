@@ -109,31 +109,76 @@ export async function POST(
           throw new Error(`No active Dispatch location found for warehouse ${warehouseId}`);
         }
 
-        // 3. ตรวจสอบสต็อกที่ source location ว่าเพียงพอหรือไม่
+        // 3. ปลดจองสต็อก (unreserve) ตามหลัก FEFO + FIFO
+        // และเตรียมข้อมูลสำหรับการย้ายสต็อกจริง
         for (const item of picklistItems) {
           if (!item.source_location_id) {
-            console.warn(`Item ${item.sku_id} has no source_location_id, skipping stock validation`);
+            console.warn(`Item ${item.sku_id} has no source_location_id, skipping`);
             continue;
           }
 
-          const { data: balance, error: balanceError } = await supabase
+          // Query balances ที่มีการจอง พร้อมเรียงตาม FEFO + FIFO
+          const { data: balances, error: balanceError } = await supabase
             .from('wms_inventory_balances')
-            .select('total_piece_qty')
+            .select('balance_id, total_piece_qty, reserved_piece_qty, expiry_date, production_date')
             .eq('warehouse_id', warehouseId)
             .eq('location_id', item.source_location_id)
-            .eq('sku_id', item.sku_id);
+            .eq('sku_id', item.sku_id)
+            .gt('reserved_piece_qty', 0) // มีการจอง
+            .order('expiry_date', { ascending: true, nullsFirst: false }) // FEFO
+            .order('production_date', { ascending: true, nullsFirst: false }) // FIFO
+            .order('created_at', { ascending: true });
 
           if (balanceError) {
-            throw new Error(`Failed to check stock for SKU ${item.sku_id}: ${balanceError.message}`);
+            throw new Error(`Failed to query balances for SKU ${item.sku_id}: ${balanceError.message}`);
           }
 
-          const totalAvailable = balance?.reduce((sum, b) => sum + (b.total_piece_qty || 0), 0) || 0;
+          if (!balances || balances.length === 0) {
+            // ถ้าไม่มีการจอง ให้ check สต็อกปกติ
+            const { data: stockCheck } = await supabase
+              .from('wms_inventory_balances')
+              .select('total_piece_qty')
+              .eq('warehouse_id', warehouseId)
+              .eq('location_id', item.source_location_id)
+              .eq('sku_id', item.sku_id);
 
-          if (totalAvailable < item.quantity_picked) {
-            throw new Error(
-              `Insufficient stock at location ${item.source_location_id} for SKU ${item.sku_id}. ` +
-              `Available: ${totalAvailable}, Required: ${item.quantity_picked}`
-            );
+            const totalAvailable = stockCheck?.reduce((sum, b) => sum + (b.total_piece_qty || 0), 0) || 0;
+
+            if (totalAvailable < item.quantity_picked) {
+              throw new Error(
+                `Insufficient stock at ${item.source_location_id} for SKU ${item.sku_id}. ` +
+                `Available: ${totalAvailable}, Required: ${item.quantity_picked}`
+              );
+            }
+            continue;
+          }
+
+          // ปลดจองตามลำดับ FEFO + FIFO
+          let remainingQty = item.quantity_picked;
+
+          for (const balance of balances) {
+            if (remainingQty <= 0) break;
+
+            const reservedQty = balance.reserved_piece_qty || 0;
+            if (reservedQty <= 0) continue;
+
+            const qtyToUnreserve = Math.min(reservedQty, remainingQty);
+
+            // ปลดจอง
+            await supabase
+              .from('wms_inventory_balances')
+              .update({
+                reserved_piece_qty: Math.max(0, reservedQty - qtyToUnreserve),
+                updated_at: new Date().toISOString()
+              })
+              .eq('balance_id', balance.balance_id);
+
+            remainingQty -= qtyToUnreserve;
+          }
+
+          // ตรวจสอบว่าปลดจองครบหรือไม่
+          if (remainingQty > 0) {
+            console.warn(`Partial unreservation for SKU ${item.sku_id}: ${remainingQty} pieces remaining`);
           }
         }
 
@@ -171,9 +216,9 @@ export async function POST(
         }
 
         // 5. Auto-complete move items และบันทึก inventory movement
-        const moveItems = moveResult.data.wms_move_items || [];
+        const createdMoveItems = moveResult.data.wms_move_items || [];
 
-        for (const moveItem of moveItems) {
+        for (const moveItem of createdMoveItems) {
           // Update status to completed
           const statusResult = await moveService.updateMoveItemStatus(
             moveItem.move_item_id,
@@ -201,11 +246,11 @@ export async function POST(
           success: true,
           move_no: moveResult.data.move_no,
           move_id: moveResult.data.move_id,
-          items_transferred: moveItems.length,
+          items_transferred: createdMoveItems.length,
           dispatch_location: dispatchLocation.location_code
         };
 
-        console.log(`✅ Stock transfer completed: ${moveItems.length} items moved to ${dispatchLocation.location_code}`);
+        console.log(`✅ Stock transfer completed: ${createdMoveItems.length} items moved to ${dispatchLocation.location_code}`);
       }
     } catch (stockError) {
       // Log error แต่ไม่ fail ทั้ง request เพราะ picklist complete สำเร็จแล้ว

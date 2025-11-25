@@ -5,27 +5,6 @@ import { Upload, Download, AlertCircle, CheckCircle, X, FileText } from 'lucide-
 import Button from '@/components/ui/Button';
 import { masterSkuService } from '@/lib/database/master-sku';
 
-// Type for MasterSkuInsert
-type MasterSkuInsert = {
-  sku_id?: string
-  sku_name?: string
-  sku_description?: string
-  barcode?: string
-  category?: string
-  sub_category?: string
-  brand?: string
-  uom?: string
-  weight_kg?: number
-  length_cm?: number
-  width_cm?: number
-  height_cm?: number
-  supplier_id?: string
-  reorder_level?: number
-  storage_strategy_id?: number
-  is_active?: boolean
-  [key: string]: any
-}
-
 interface ImportDataFormProps {
   onSuccess: () => void;
   onCancel: () => void;
@@ -81,7 +60,7 @@ const ImportDataForm: React.FC<ImportDataFormProps> = ({ onSuccess, onCancel }) 
     return data;
   };
 
-  const mapRowToMasterSku = (row: any): MasterSkuInsert => {
+  const mapRowToMasterSku = (row: any): any => {
     return {
       sku_id: row['รหัส SKU'] || row['sku_id'] || '',
       sku_name: row['ชื่อสินค้า'] || row['sku_name'] || '',
@@ -149,7 +128,7 @@ const ImportDataForm: React.FC<ImportDataFormProps> = ({ onSuccess, onCancel }) 
             throw new Error(`แถวที่ ${i + 2}: ข้อมูลไม่ครบถ้วน (ต้องมี รหัส SKU, ชื่อสินค้า, หน่วย)`);
           }
 
-          const { error } = await masterSkuService.createMasterSku(masterSku);
+          const { error } = await masterSkuService.createMasterSku(masterSku as any);
           
           if (error) {
             throw new Error(`แถวที่ ${i + 2}: ${error}`);

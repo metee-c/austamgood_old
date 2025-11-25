@@ -7,25 +7,7 @@ import ComboBox from '@/components/ui/ComboBox';
 import { masterSkuService } from '@/lib/database/master-sku';
 import { useSkuOptions } from '@/hooks/useSkuOptions';
 import { useSuppliers, useStorageStrategies } from '@/hooks/useFormOptions';
-
-// Type for master_sku insert
-type MasterSkuInsert = {
-  sku_id?: string
-  sku_name?: string
-  barcode?: string
-  category?: string
-  uom?: string
-  weight_kg?: number
-  length_cm?: number
-  width_cm?: number
-  height_cm?: number
-  supplier_id?: string
-  reorder_level?: number
-  storage_strategy_id?: number
-  is_active?: boolean
-  created_at?: string
-  updated_at?: string
-}
+import { MasterSkuInsert } from '@/types/database/supabase';
 
 interface AddProductFormProps {
   onSuccess: () => void;
@@ -120,10 +102,10 @@ const AddProductForm: React.FC<AddProductFormProps> = ({ onSuccess, onCancel, in
       let result;
       if (initialData) {
         // Update existing product
-        result = await masterSkuService.updateMasterSku(submissionData.sku_id!, submissionData as MasterSkuInsert);
+        result = await masterSkuService.updateMasterSku(submissionData.sku_id!, submissionData as any);
       } else {
         // Create new product
-        result = await masterSkuService.createMasterSku(submissionData as MasterSkuInsert);
+        result = await masterSkuService.createMasterSku(submissionData as any);
       }
       
       if (result.error) {
