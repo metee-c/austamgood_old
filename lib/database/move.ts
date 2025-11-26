@@ -518,14 +518,21 @@ class MoveService {
         // For partial pallet moves, use parent_pallet_id to find source balance
         const sourcePalletId = (moveItem as any).parent_pallet_id || moveItem.pallet_id;
         
-        const { data: sourceBalance } = await this.supabase
+        let query = this.supabase
           .from('wms_inventory_balances')
-          .select('production_date, expiry_date, lot_no')
+          .select('production_date, expiry_date, lot_no, pallet_id')
           .eq('warehouse_id', warehouseId)
           .eq('location_id', moveItem.from_location_id)
-          .eq('sku_id', moveItem.sku_id)
-          .eq('pallet_id', sourcePalletId)
-          .maybeSingle();
+          .eq('sku_id', moveItem.sku_id);
+
+        // Handle null pallet_id
+        if (sourcePalletId === null || sourcePalletId === undefined) {
+          query = query.is('pallet_id', null);
+        } else {
+          query = query.eq('pallet_id', sourcePalletId);
+        }
+
+        const { data: sourceBalance } = await query.maybeSingle();
 
         if (sourceBalance) {
           productionDate = sourceBalance.production_date;

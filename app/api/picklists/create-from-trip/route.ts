@@ -250,14 +250,14 @@ export async function POST(request: NextRequest) {
 
     if (warehouseId) {
       try {
-        // จองสต็อกสำหรับแต่ละ item
+        // จองสต็อกสำหรับแต่ละ item (จำกัดเฉพาะที่ source_location_id เท่านั้น)
         for (const item of itemsToInsert) {
           if (!item.source_location_id || !item.quantity_to_pick) continue;
 
           // Query inventory balances ที่ source_location_id โดยเรียงตาม FEFO + FIFO
           const { data: balances } = await supabase
             .from('wms_inventory_balances')
-            .select('balance_id, pallet_id, total_piece_qty, reserved_piece_qty, expiry_date, production_date')
+            .select('balance_id, pallet_id, location_id, total_piece_qty, total_pack_qty, reserved_piece_qty, reserved_pack_qty, expiry_date, production_date')
             .eq('warehouse_id', warehouseId)
             .eq('location_id', item.source_location_id)
             .eq('sku_id', item.sku_id)
@@ -267,12 +267,15 @@ export async function POST(request: NextRequest) {
             .order('created_at', { ascending: true });
 
           if (!balances || balances.length === 0) {
-            console.warn(`No stock found for reservation: SKU ${item.sku_id} at ${item.source_location_id}`);
+            console.warn(`❌ No stock found for SKU ${item.sku_id} at ${item.source_location_id}`);
             continue;
           }
 
+          console.log(`🔍 Found ${balances.length} balance(s) for SKU ${item.sku_id} at ${item.source_location_id}`);
+
           // จัดสรรการจองตามลำดับ FEFO + FIFO
           let remainingQty = item.quantity_to_pick;
+          let reservedBalances = [];
 
           for (const balance of balances) {
             if (remainingQty <= 0) break;
@@ -282,20 +285,41 @@ export async function POST(request: NextRequest) {
 
             const qtyToReserve = Math.min(availableQty, remainingQty);
 
-            // อัพเดตการจอง
-            await supabase
+            // คำนวณ pack_qty จาก piece_qty
+            // ดึง qty_per_pack จาก master_sku
+            const { data: skuData } = await supabase
+              .from('master_sku')
+              .select('qty_per_pack')
+              .eq('sku_id', item.sku_id)
+              .single();
+
+            const qtyPerPack = skuData?.qty_per_pack || 1;
+            const packToReserve = qtyToReserve / qtyPerPack;
+
+            // อัพเดตการจอง (ทั้ง pack และ piece)
+            const { error: reserveError } = await supabase
               .from('wms_inventory_balances')
               .update({
+                reserved_pack_qty: (balance.reserved_pack_qty || 0) + packToReserve,
                 reserved_piece_qty: (balance.reserved_piece_qty || 0) + qtyToReserve,
                 updated_at: new Date().toISOString()
               })
               .eq('balance_id', balance.balance_id);
 
+            if (reserveError) {
+              console.error(`❌ Reservation error for balance ${balance.balance_id}:`, reserveError);
+            } else {
+              console.log(`✅ Reserved ${qtyToReserve} pieces from balance ${balance.balance_id} (pallet: ${balance.pallet_id})`);
+              reservedBalances.push({ balance_id: balance.balance_id, qty: qtyToReserve });
+            }
+
             remainingQty -= qtyToReserve;
           }
 
           if (remainingQty > 0) {
-            console.warn(`Partial reservation for SKU ${item.sku_id}: ${remainingQty} pieces not reserved`);
+            console.warn(`⚠️ Partial reservation for SKU ${item.sku_id}: ${remainingQty} pieces not reserved (reserved: ${item.quantity_to_pick - remainingQty}/${item.quantity_to_pick})`);
+          } else {
+            console.log(`✅ Fully reserved ${item.quantity_to_pick} pieces for SKU ${item.sku_id}`);
           }
         }
 

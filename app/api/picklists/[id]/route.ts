@@ -84,6 +84,20 @@ export async function PATCH(
     const { id } = await params;
     const body = await request.json();
 
+    // เช็คสถานะเดิมก่อน UPDATE (สำหรับตรวจสอบการจองสต็อก)
+    const { data: currentPicklist } = await supabase
+      .from('picklists')
+      .select('status')
+      .eq('id', id)
+      .single();
+
+    const wasAlreadyAssigned = currentPicklist?.status === 'assigned' ||
+                                currentPicklist?.status === 'picking' ||
+                                currentPicklist?.status === 'completed';
+
+    // ถ้าเปลี่ยนจาก assigned/picking → pending ต้องปลดจองสต็อก
+    const shouldUnreserve = wasAlreadyAssigned && body.status === 'pending';
+
     // อัปเดต picklist
     const { data, error } = await supabase
       .from('picklists')
@@ -103,13 +117,95 @@ export async function PATCH(
       );
     }
 
+    // ปลดจองสต็อกถ้าเปลี่ยนกลับเป็น pending
+    if (shouldUnreserve) {
+      console.log(`🔓 Unreserving stock for picklist ${id} (status changed to pending)`);
+      
+      const { data: picklistItems } = await supabase
+        .from('picklist_items')
+        .select('id, sku_id, quantity_to_pick')
+        .eq('picklist_id', id);
+
+      if (picklistItems && picklistItems.length > 0) {
+        // ดึง warehouse_id
+        const { data: picklistData } = await supabase
+          .from('picklists')
+          .select(`
+            trip_id,
+            receiving_route_trips!inner (
+              plan_id,
+              receiving_route_plans!inner (
+                warehouse_id
+              )
+            )
+          `)
+          .eq('id', id)
+          .single();
+
+        const warehouseId = (picklistData?.receiving_route_trips as any)?.receiving_route_plans?.warehouse_id;
+
+        if (warehouseId) {
+          for (const item of picklistItems) {
+            // Query balances ที่มีการจอง
+            const { data: balances } = await supabase
+              .from('wms_inventory_balances')
+              .select('balance_id, reserved_piece_qty, reserved_pack_qty')
+              .eq('warehouse_id', warehouseId)
+              .eq('sku_id', item.sku_id)
+              .gt('reserved_piece_qty', 0);
+
+            if (balances && balances.length > 0) {
+              let remainingQty = item.quantity_to_pick;
+
+              for (const balance of balances) {
+                if (remainingQty <= 0) break;
+
+                const reservedQty = balance.reserved_piece_qty || 0;
+                const qtyToUnreserve = Math.min(reservedQty, remainingQty);
+
+                // ดึง qty_per_pack
+                const { data: skuData } = await supabase
+                  .from('master_sku')
+                  .select('qty_per_pack')
+                  .eq('sku_id', item.sku_id)
+                  .single();
+
+                const qtyPerPack = skuData?.qty_per_pack || 1;
+                const packToUnreserve = qtyToUnreserve / qtyPerPack;
+
+                // ปลดจอง
+                await supabase
+                  .from('wms_inventory_balances')
+                  .update({
+                    reserved_pack_qty: Math.max(0, (balance.reserved_pack_qty || 0) - packToUnreserve),
+                    reserved_piece_qty: Math.max(0, reservedQty - qtyToUnreserve),
+                    updated_at: new Date().toISOString()
+                  })
+                  .eq('balance_id', balance.balance_id);
+
+                remainingQty -= qtyToUnreserve;
+              }
+
+              console.log(`✅ Unreserved stock for SKU ${item.sku_id}`);
+            }
+          }
+          console.log(`✅ Stock unreservation completed for picklist ${id}`);
+        }
+      }
+    }
+
     // ถ้าเปลี่ยนสถานะเป็น 'assigned' (มอบหมายแล้ว)
     // → อัปเดตสถานะออเดอร์ทั้งหมดใน picklist เป็น 'in_picking' (กำลังหยิบ)
+    // → จองสต็อกตาม FEFO + FIFO (เฉพาะครั้งแรกเท่านั้น)
     if (body.status === 'assigned') {
-      // ดึง order_id ทั้งหมดจาก picklist_items
+      if (wasAlreadyAssigned) {
+        console.log(`⏭️ Picklist ${id} was already assigned before - skipping stock reservation to prevent double booking`);
+      }
+
+      // ดึง picklist items พร้อม SKU และ source location
       const { data: picklistItems, error: itemsError } = await supabase
         .from('picklist_items')
-        .select('order_id')
+        .select('id, order_id, sku_id, source_location_id, quantity_to_pick, quantity_picked')
         .eq('picklist_id', id);
 
       if (itemsError) {
@@ -130,10 +226,197 @@ export async function PATCH(
 
         if (ordersUpdateError) {
           console.error('Error updating orders status:', ordersUpdateError);
-          // ไม่ return error เพราะ picklist อัปเดตสำเร็จแล้ว
-          // แค่ log ไว้เพื่อ debug
         } else {
-          console.log(`Updated ${orderIds.length} orders to in_picking status`);
+          console.log(`✅ Updated ${orderIds.length} orders to in_picking status`);
+        }
+
+        // จองสต็อกเฉพาะถ้ายังไม่เคยจองมาก่อน (ป้องกันการจองซ้ำ)
+        if (!wasAlreadyAssigned) {
+          // จองสต็อกสำหรับทุก item
+          // ดึง warehouse_id จาก picklist
+          const { data: picklistData } = await supabase
+          .from('picklists')
+          .select(`
+            trip_id,
+            receiving_route_trips!inner (
+              plan_id,
+              receiving_route_plans!inner (
+                warehouse_id
+              )
+            )
+          `)
+          .eq('id', id)
+          .single();
+
+        const warehouseId = (picklistData?.receiving_route_trips as any)?.receiving_route_plans?.warehouse_id;
+
+        if (warehouseId) {
+          console.log(`🔍 Starting stock reservation for picklist ${id} in warehouse ${warehouseId}`);
+
+          for (const item of picklistItems) {
+            if (!item.quantity_to_pick) {
+              console.warn(`⚠️ Skipping item ${item.id}: missing quantity_to_pick`);
+              continue;
+            }
+
+            // ค้นหา location ที่มีสต็อกจากทั้งคลัง (ไม่จำกัด location เพราะ source_location_id อาจเป็น preparation area code)
+            // เรียงตาม FEFO + FIFO
+            const { data: balances } = await supabase
+              .from('wms_inventory_balances')
+              .select('balance_id, pallet_id, location_id, total_piece_qty, total_pack_qty, reserved_piece_qty, reserved_pack_qty, expiry_date, production_date')
+              .eq('warehouse_id', warehouseId)
+              .eq('sku_id', item.sku_id)
+              .gt('total_piece_qty', 0)
+              .order('expiry_date', { ascending: true, nullsFirst: false }) // FEFO
+              .order('production_date', { ascending: true, nullsFirst: false }) // FIFO
+              .order('created_at', { ascending: true });
+
+            if (!balances || balances.length === 0) {
+              console.warn(`❌ No stock found for SKU ${item.sku_id} in warehouse ${warehouseId}`);
+              continue;
+            }
+
+            console.log(`🔍 Found ${balances.length} balance(s) for SKU ${item.sku_id} in warehouse ${warehouseId}`);
+
+            // จัดสรรการจองตามลำดับ FEFO + FIFO
+            let remainingQty = item.quantity_to_pick;
+            let reservedBalances = [];
+
+            for (const balance of balances) {
+              if (remainingQty <= 0) break;
+
+              const availableQty = (balance.total_piece_qty || 0) - (balance.reserved_piece_qty || 0);
+              if (availableQty <= 0) continue;
+
+              const qtyToReserve = Math.min(availableQty, remainingQty);
+
+              // คำนวณ pack_qty จาก piece_qty
+              // ดึง qty_per_pack จาก master_sku
+              const { data: skuData } = await supabase
+                .from('master_sku')
+                .select('qty_per_pack')
+                .eq('sku_id', item.sku_id)
+                .single();
+
+              const qtyPerPack = skuData?.qty_per_pack || 1;
+              const packToReserve = qtyToReserve / qtyPerPack;
+
+              // อัพเดตการจอง (ทั้ง pack และ piece)
+              const { error: reserveError } = await supabase
+                .from('wms_inventory_balances')
+                .update({
+                  reserved_pack_qty: (balance.reserved_pack_qty || 0) + packToReserve,
+                  reserved_piece_qty: (balance.reserved_piece_qty || 0) + qtyToReserve,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('balance_id', balance.balance_id);
+
+              if (reserveError) {
+                console.error(`❌ Reservation error for balance ${balance.balance_id}:`, reserveError);
+              } else {
+                console.log(`✅ Reserved ${qtyToReserve} pieces from balance ${balance.balance_id} (pallet: ${balance.pallet_id})`);
+                reservedBalances.push({ balance_id: balance.balance_id, qty: qtyToReserve });
+              }
+
+              remainingQty -= qtyToReserve;
+            }
+
+            if (remainingQty > 0) {
+              console.warn(`⚠️ Partial reservation for SKU ${item.sku_id}: ${remainingQty} pieces not reserved (reserved: ${item.quantity_to_pick - remainingQty}/${item.quantity_to_pick})`);
+            } else {
+              console.log(`✅ Fully reserved ${item.quantity_to_pick} pieces for item ${item.id} (SKU: ${item.sku_id})`);
+            }
+          }
+
+          console.log(`✅ Stock reservation completed for picklist ${id}`);
+        } else {
+          console.warn(`⚠️ No warehouse_id found for picklist ${id} - skipping stock reservation`);
+        }
+        } // ปิด if (!wasAlreadyAssigned)
+      }
+    }
+
+    // ถ้าเปลี่ยนสถานะเป็น 'cancelled' → ปลดล็อคการจองสต็อก
+    if (body.status === 'cancelled') {
+      console.log(`🔓 Releasing stock reservation for cancelled picklist ${id}`);
+
+      // ดึง picklist items
+      const { data: picklistItems } = await supabase
+        .from('picklist_items')
+        .select('id, sku_id, quantity_to_pick')
+        .eq('picklist_id', id);
+
+      if (picklistItems && picklistItems.length > 0) {
+        // ดึง warehouse_id
+        const { data: picklistData } = await supabase
+          .from('picklists')
+          .select(`
+            trip_id,
+            receiving_route_trips!inner (
+              plan_id,
+              receiving_route_plans!inner (
+                warehouse_id
+              )
+            )
+          `)
+          .eq('id', id)
+          .single();
+
+        const warehouseId = (picklistData?.receiving_route_trips as any)?.receiving_route_plans?.warehouse_id;
+
+        if (warehouseId) {
+          for (const item of picklistItems) {
+            if (!item.quantity_to_pick) continue;
+
+            // ดึง balances ที่มีการจอง
+            const { data: balances } = await supabase
+              .from('wms_inventory_balances')
+              .select('balance_id, sku_id, reserved_piece_qty, reserved_pack_qty')
+              .eq('warehouse_id', warehouseId)
+              .eq('sku_id', item.sku_id)
+              .gt('reserved_piece_qty', 0);
+
+            if (balances && balances.length > 0) {
+              // ดึง qty_per_pack
+              const { data: skuData } = await supabase
+                .from('master_sku')
+                .select('qty_per_pack')
+                .eq('sku_id', item.sku_id)
+                .single();
+
+              const qtyPerPack = skuData?.qty_per_pack || 1;
+              let remainingToRelease = item.quantity_to_pick;
+
+              // ปลดล็อคตาม FEFO (เหมือนตอนจอง)
+              for (const balance of balances) {
+                if (remainingToRelease <= 0) break;
+
+                const reservedQty = balance.reserved_piece_qty || 0;
+                if (reservedQty <= 0) continue;
+
+                const qtyToRelease = Math.min(reservedQty, remainingToRelease);
+                const packToRelease = qtyToRelease / qtyPerPack;
+
+                // อัพเดตลดการจอง
+                await supabase
+                  .from('wms_inventory_balances')
+                  .update({
+                    reserved_pack_qty: Math.max(0, (balance.reserved_pack_qty || 0) - packToRelease),
+                    reserved_piece_qty: Math.max(0, reservedQty - qtyToRelease),
+                    updated_at: new Date().toISOString()
+                  })
+                  .eq('balance_id', balance.balance_id);
+
+                console.log(`🔓 Released ${qtyToRelease} pieces from balance ${balance.balance_id}`);
+                remainingToRelease -= qtyToRelease;
+              }
+
+              if (remainingToRelease > 0) {
+                console.warn(`⚠️ Could not release full amount for SKU ${item.sku_id}: ${remainingToRelease} pieces still pending`);
+              }
+            }
+          }
+          console.log(`✅ Stock reservation released for cancelled picklist ${id}`);
         }
       }
     }
@@ -165,6 +448,84 @@ export async function DELETE(
     const supabase = await createClient();
     const { id } = await params;
 
+    console.log(`🔓 Deleting/Cancelling picklist ${id} - releasing stock reservations`);
+
+    // ปลดล็อคการจองสต็อกก่อนลบ/ยกเลิก
+    const { data: picklistItems } = await supabase
+      .from('picklist_items')
+      .select('id, sku_id, quantity_to_pick')
+      .eq('picklist_id', id);
+
+    if (picklistItems && picklistItems.length > 0) {
+      // ดึง warehouse_id
+      const { data: picklistData } = await supabase
+        .from('picklists')
+        .select(`
+          trip_id,
+          receiving_route_trips!inner (
+            plan_id,
+            receiving_route_plans!inner (
+              warehouse_id
+            )
+          )
+        `)
+        .eq('id', id)
+        .single();
+
+      const warehouseId = (picklistData?.receiving_route_trips as any)?.receiving_route_plans?.warehouse_id;
+
+      if (warehouseId) {
+        for (const item of picklistItems) {
+          if (!item.quantity_to_pick) continue;
+
+          // ดึง balances ที่มีการจอง
+          const { data: balances } = await supabase
+            .from('wms_inventory_balances')
+            .select('balance_id, sku_id, reserved_piece_qty, reserved_pack_qty')
+            .eq('warehouse_id', warehouseId)
+            .eq('sku_id', item.sku_id)
+            .gt('reserved_piece_qty', 0);
+
+          if (balances && balances.length > 0) {
+            // ดึง qty_per_pack
+            const { data: skuData } = await supabase
+              .from('master_sku')
+              .select('qty_per_pack')
+              .eq('sku_id', item.sku_id)
+              .single();
+
+            const qtyPerPack = skuData?.qty_per_pack || 1;
+            let remainingToRelease = item.quantity_to_pick;
+
+            // ปลดล็อคตาม FEFO
+            for (const balance of balances) {
+              if (remainingToRelease <= 0) break;
+
+              const reservedQty = balance.reserved_piece_qty || 0;
+              if (reservedQty <= 0) continue;
+
+              const qtyToRelease = Math.min(reservedQty, remainingToRelease);
+              const packToRelease = qtyToRelease / qtyPerPack;
+
+              // อัพเดตลดการจอง
+              await supabase
+                .from('wms_inventory_balances')
+                .update({
+                  reserved_pack_qty: Math.max(0, (balance.reserved_pack_qty || 0) - packToRelease),
+                  reserved_piece_qty: Math.max(0, reservedQty - qtyToRelease),
+                  updated_at: new Date().toISOString()
+                })
+                .eq('balance_id', balance.balance_id);
+
+              console.log(`🔓 Released ${qtyToRelease} pieces from balance ${balance.balance_id}`);
+              remainingToRelease -= qtyToRelease;
+            }
+          }
+        }
+        console.log(`✅ Stock reservations released for deleted picklist ${id}`);
+      }
+    }
+
     // เปลี่ยนสถานะเป็น cancelled แทนการลบ
     const { data, error } = await supabase
       .from('picklists')
@@ -186,7 +547,7 @@ export async function DELETE(
 
     return NextResponse.json({
       success: true,
-      message: 'Picklist cancelled successfully',
+      message: 'Picklist cancelled and stock reservations released successfully',
       data
     });
 

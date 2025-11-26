@@ -271,18 +271,43 @@ export default function MobilePickDetailPage({
     }
   };
 
-  const handleShopConfirm = (orderId: number) => {
-    setConfirmedShops((prev) => {
-      const newSet = new Set(prev);
-      newSet.add(orderId);
-      return newSet;
-    });
-
-    // เล่นเสียงสำเร็จ
+  const handleShopConfirm = async (orderId: number) => {
     try {
-      const audio = new Audio('/audio/success.mp3');
-      audio.play().catch(() => {});
-    } catch (e) {}
+      // เรียก API เพื่ออัพเดต quantity_picked
+      const response = await fetch(`/api/picklists/${picklist?.id}/items/confirm`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ order_id: orderId })
+      });
+
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.error || 'Failed to confirm items');
+      }
+
+      // อัพเดต state
+      setConfirmedShops((prev) => {
+        const newSet = new Set(prev);
+        newSet.add(orderId);
+        return newSet;
+      });
+
+      // เล่นเสียงสำเร็จ
+      try {
+        const audio = new Audio('/audio/success.mp3');
+        audio.play().catch(() => {});
+      } catch (e) {}
+    } catch (err: any) {
+      setError(err.message);
+      
+      // เล่นเสียง error
+      try {
+        const audio = new Audio('/audio/error.mp3');
+        audio.play().catch(() => {});
+      } catch (e) {}
+    }
   };
 
   const isShopConfirmed = (orderId: number) => {

@@ -154,12 +154,25 @@ const InventoryBalancesPage = () => {
   };
 
   const filteredData = balanceData.filter(item => {
-    const matchesSearch =
-      (item.sku_id?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (item.sku_name?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (item.lot_no?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (item.pallet_id_external?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (item.location_id?.toLowerCase().includes(searchTerm.toLowerCase()));
+    const searchLower = searchTerm.toLowerCase();
+    const matchesSearch = !searchTerm || (
+      (item.sku_id?.toLowerCase().includes(searchLower)) ||
+      (item.sku_name?.toLowerCase().includes(searchLower)) ||
+      (item.lot_no?.toLowerCase().includes(searchLower)) ||
+      (item.pallet_id?.toLowerCase().includes(searchLower)) ||
+      (item.pallet_id_external?.toLowerCase().includes(searchLower)) ||
+      (item.location_id?.toLowerCase().includes(searchLower)) ||
+      (item.location_name?.toLowerCase().includes(searchLower)) ||
+      (item.warehouse_id?.toLowerCase().includes(searchLower)) ||
+      (item.warehouse_name?.toLowerCase().includes(searchLower)) ||
+      (item.production_date?.includes(searchTerm)) ||
+      (item.expiry_date?.includes(searchTerm)) ||
+      (item.balance_id?.toString().includes(searchTerm)) ||
+      (item.total_pack_qty?.toString().includes(searchTerm)) ||
+      (item.total_piece_qty?.toString().includes(searchTerm)) ||
+      (item.reserved_pack_qty?.toString().includes(searchTerm)) ||
+      (item.reserved_piece_qty?.toString().includes(searchTerm))
+    );
 
     const matchesWarehouse = selectedWarehouse === 'all' || item.warehouse_id === selectedWarehouse;
     const matchesLowStock = !showLowStock || (item.total_piece_qty - item.reserved_piece_qty) <= 10;
@@ -257,7 +270,7 @@ const InventoryBalancesPage = () => {
                   type="text"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="ค้นหาด้วย SKU, Lot No, Pallet ID, Location..."
+                  placeholder="ค้นหาจากทุกคอลัมน์: SKU, Lot, Pallet, Location, คลัง, ปริมาณ, วันที่..."
                   className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm placeholder:text-thai-gray-400"
                 />
               </div>
@@ -384,11 +397,13 @@ const InventoryBalancesPage = () => {
                                 </button>
                               </td>
                               <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                                <span className="font-mono font-semibold text-thai-gray-700">{balance.sku_id}</span>
+                                <span className="text-thai-gray-500 font-thai text-[10px] italic">
+                                  {balance._groupItems.length} SKUs
+                                </span>
                               </td>
                               <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                                <span className="text-thai-gray-700 font-thai text-[11px]">
-                                  {(balance as any).master_sku?.sku_name || '-'}
+                                <span className="text-thai-gray-500 font-thai text-[10px] italic">
+                                  หลาย SKU
                                 </span>
                               </td>
                               <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">

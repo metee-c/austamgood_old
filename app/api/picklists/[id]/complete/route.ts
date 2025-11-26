@@ -69,7 +69,7 @@ export async function POST(
       const { data: picklistItems, error: itemsError } = await supabase
         .from('picklist_items')
         .select(`
-          picklist_item_id,
+          id,
           sku_id,
           source_location_id,
           quantity_picked,
@@ -86,7 +86,7 @@ export async function POST(
       if (!picklistItems || picklistItems.length === 0) {
         console.log('No items to transfer (no picked quantities)');
       } else {
-        // 2. ค้นหา Dispatch location (location_type = 'shipping')
+        // 2. ค้นหา Dispatch location (location_code = 'Dispatch')
         const warehouseId = (picklistItems[0].master_location as any)?.warehouse_id;
 
         if (!warehouseId) {
@@ -96,7 +96,7 @@ export async function POST(
         const { data: dispatchLocation, error: dispatchError } = await supabase
           .from('master_location')
           .select('location_id, warehouse_id, location_code')
-          .eq('location_type', 'shipping')
+          .eq('location_code', 'Dispatch')
           .eq('warehouse_id', warehouseId)
           .eq('active_status', 'active')
           .maybeSingle();
@@ -110,19 +110,15 @@ export async function POST(
         }
 
         // 3. ปลดจองสต็อก (unreserve) ตามหลัก FEFO + FIFO
-        // และเตรียมข้อมูลสำหรับการย้ายสต็อกจริง
-        for (const item of picklistItems) {
-          if (!item.source_location_id) {
-            console.warn(`Item ${item.sku_id} has no source_location_id, skipping`);
-            continue;
-          }
+        // และเก็บข้อมูล location ที่มีการจองจริงสำหรับการย้ายสต็อก
+        const itemsWithActualLocations = [];
 
-          // Query balances ที่มีการจอง พร้อมเรียงตาม FEFO + FIFO
+        for (const item of picklistItems) {
+          // Query balances ที่มีการจองจากทั้งคลัง (ไม่จำกัด location)
           const { data: balances, error: balanceError } = await supabase
             .from('wms_inventory_balances')
-            .select('balance_id, total_piece_qty, reserved_piece_qty, expiry_date, production_date')
+            .select('balance_id, location_id, total_piece_qty, reserved_piece_qty, expiry_date, production_date')
             .eq('warehouse_id', warehouseId)
-            .eq('location_id', item.source_location_id)
             .eq('sku_id', item.sku_id)
             .gt('reserved_piece_qty', 0) // มีการจอง
             .order('expiry_date', { ascending: true, nullsFirst: false }) // FEFO
@@ -134,27 +130,13 @@ export async function POST(
           }
 
           if (!balances || balances.length === 0) {
-            // ถ้าไม่มีการจอง ให้ check สต็อกปกติ
-            const { data: stockCheck } = await supabase
-              .from('wms_inventory_balances')
-              .select('total_piece_qty')
-              .eq('warehouse_id', warehouseId)
-              .eq('location_id', item.source_location_id)
-              .eq('sku_id', item.sku_id);
-
-            const totalAvailable = stockCheck?.reduce((sum, b) => sum + (b.total_piece_qty || 0), 0) || 0;
-
-            if (totalAvailable < item.quantity_picked) {
-              throw new Error(
-                `Insufficient stock at ${item.source_location_id} for SKU ${item.sku_id}. ` +
-                `Available: ${totalAvailable}, Required: ${item.quantity_picked}`
-              );
-            }
+            console.warn(`No reserved stock found for SKU ${item.sku_id}, skipping`);
             continue;
           }
 
-          // ปลดจองตามลำดับ FEFO + FIFO
+          // ปลดจองตามลำดับ FEFO + FIFO และเก็บ location ที่ใช้จริง
           let remainingQty = item.quantity_picked;
+          const locationsUsed = new Map<string, number>(); // location_id -> quantity
 
           for (const balance of balances) {
             if (remainingQty <= 0) break;
@@ -173,7 +155,20 @@ export async function POST(
               })
               .eq('balance_id', balance.balance_id);
 
+            // เก็บ location ที่ใช้
+            const currentQty = locationsUsed.get(balance.location_id) || 0;
+            locationsUsed.set(balance.location_id, currentQty + qtyToUnreserve);
+
             remainingQty -= qtyToUnreserve;
+          }
+
+          // สร้างรายการสำหรับแต่ละ location ที่มีการจอง
+          for (const [locationId, qty] of locationsUsed) {
+            itemsWithActualLocations.push({
+              sku_id: item.sku_id,
+              from_location_id: locationId,
+              quantity: qty
+            });
           }
 
           // ตรวจสอบว่าปลดจองครบหรือไม่
@@ -182,26 +177,24 @@ export async function POST(
           }
         }
 
-        // 4. สร้าง move document สำหรับการย้ายสต็อก
+        // 4. สร้าง move document สำหรับการย้ายสต็อก (ใช้ location จริงที่มีการจอง)
         const movePayload = {
           move_type: 'transfer' as const,
           status: 'pending' as const,
-          priority: 100, // ความสำคัญสูง
+          priority: 99, // ความสำคัญสูงสุด (1-99)
           source_document: `PICKLIST-${picklist.picklist_code}`,
           from_warehouse_id: warehouseId,
           to_warehouse_id: warehouseId,
           notes: `Auto-transfer from picklist completion: ${picklist.picklist_code}`,
-          items: picklistItems
-            .filter(item => item.source_location_id) // เฉพาะที่มี source_location
-            .map(item => ({
-              sku_id: item.sku_id,
-              from_location_id: item.source_location_id!,
-              to_location_id: dispatchLocation.location_id,
-              requested_piece_qty: item.quantity_picked,
-              confirmed_piece_qty: item.quantity_picked,
-              move_method: 'sku' as const,
-              remarks: `From picklist item ${item.picklist_item_id}`
-            }))
+          items: itemsWithActualLocations.map(item => ({
+            sku_id: item.sku_id,
+            from_location_id: item.from_location_id,
+            to_location_id: dispatchLocation.location_id,
+            requested_piece_qty: item.quantity,
+            confirmed_piece_qty: item.quantity,
+            move_method: 'sku' as const,
+            remarks: `From picklist ${picklist.picklist_code}`
+          }))
         };
 
         // สร้าง move document
@@ -231,8 +224,10 @@ export async function POST(
           }
 
           // Record inventory movement (OUT + IN ledger entries)
+          // ต้องส่ง moveItem ที่มี status = 'completed'
+          const completedMoveItem = { ...moveItem, status: 'completed' as const };
           const inventoryResult = await moveService.recordInventoryMovement(
-            moveItem,
+            completedMoveItem,
             moveResult.data
           );
 
