@@ -16,7 +16,16 @@ export async function GET(
     const { data, error } = await supabase
       .from('picklists')
       .select(`
-        *,
+        id,
+        picklist_code,
+        status,
+        created_at,
+        updated_at,
+        total_lines,
+        total_quantity,
+        trip_id,
+        plan_id,
+        loading_door_number,
         receiving_route_trips (
           trip_id,
           trip_sequence,
@@ -211,24 +220,9 @@ export async function PATCH(
       if (itemsError) {
         console.error('Error fetching picklist items:', itemsError);
       } else if (picklistItems && picklistItems.length > 0) {
-        // เอา order_id ที่ไม่ซ้ำกัน
-        const orderIds = [...new Set(picklistItems.map(item => item.order_id))];
-
-        // อัปเดตสถานะออเดอร์ทั้งหมด
-        const { error: ordersUpdateError } = await supabase
-          .from('wms_orders')
-          .update({
-            status: 'in_picking',
-            updated_at: new Date().toISOString()
-          })
-          .in('order_id', orderIds)
-          .eq('status', 'confirmed'); // อัปเดตเฉพาะออเดอร์ที่สถานะเป็น confirmed
-
-        if (ordersUpdateError) {
-          console.error('Error updating orders status:', ordersUpdateError);
-        } else {
-          console.log(`✅ Updated ${orderIds.length} orders to in_picking status`);
-        }
+        // ✅ ลบการอัปเดต Orders ออก - ให้ Trigger จัดการแทน
+        // Trigger: update_orders_on_picklist_assign() จะอัปเดต Orders เป็น 'in_picking' อัตโนมัติ
+        console.log(`✅ Picklist assigned. Trigger will update orders to in_picking status automatically.`);
 
         // จองสต็อกเฉพาะถ้ายังไม่เคยจองมาก่อน (ป้องกันการจองซ้ำ)
         if (!wasAlreadyAssigned) {
@@ -254,17 +248,18 @@ export async function PATCH(
           console.log(`🔍 Starting stock reservation for picklist ${id} in warehouse ${warehouseId}`);
 
           for (const item of picklistItems) {
-            if (!item.quantity_to_pick) {
-              console.warn(`⚠️ Skipping item ${item.id}: missing quantity_to_pick`);
+            if (!item.quantity_to_pick || !item.source_location_id) {
+              console.warn(`⚠️ Skipping item ${item.id}: missing quantity_to_pick or source_location_id`);
               continue;
             }
 
-            // ค้นหา location ที่มีสต็อกจากทั้งคลัง (ไม่จำกัด location เพราะ source_location_id อาจเป็น preparation area code)
+            // ✅ ค้นหา location ที่มีสต็อกจาก source_location_id ที่กำหนด
             // เรียงตาม FEFO + FIFO
             const { data: balances } = await supabase
               .from('wms_inventory_balances')
               .select('balance_id, pallet_id, location_id, total_piece_qty, total_pack_qty, reserved_piece_qty, reserved_pack_qty, expiry_date, production_date')
               .eq('warehouse_id', warehouseId)
+              .eq('location_id', item.source_location_id)  // ✅ จำกัดเฉพาะ location ที่กำหนด
               .eq('sku_id', item.sku_id)
               .gt('total_piece_qty', 0)
               .order('expiry_date', { ascending: true, nullsFirst: false }) // FEFO

@@ -1,53 +1,155 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 
+/**
+ * GET /api/loadlists/available-picklists
+ * Fetch picklists that are completed and not yet assigned to any loadlist
+ */
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createServerClient();
+    const supabase = await createClient();
 
-    // Fetch picklists that are completed and not already in a loadlist
+    // Step 1: Get all picklist IDs that are already in loadlists
+    const { data: loadlistPicklists, error: loadlistError } = await supabase
+      .from('wms_loadlist_picklists')
+      .select('picklist_id');
+
+    if (loadlistError) {
+      console.error('Error fetching loadlist picklists:', loadlistError);
+      return NextResponse.json(
+        { error: 'Failed to fetch loadlist picklists', details: loadlistError.message },
+        { status: 500 }
+      );
+    }
+
+    const usedPicklistIds = (loadlistPicklists || []).map((lp: any) => lp.picklist_id);
+
+    // Step 2: Fetch completed picklists that are NOT in the used list
     const { data: picklists, error } = await supabase
-      .from('wms_picklists')
+      .from('picklists')
       .select(`
-        picklist_id,
+        id,
         picklist_code,
         status,
         total_lines,
         total_quantity,
+        loading_door_number,
         created_at,
-        wms_trips (
+        trip:trip_id (
           trip_id,
           trip_code,
-          master_vehicle (
+          vehicle:vehicle_id (
             plate_number
           )
         )
       `)
       .eq('status', 'completed')
-      .is('wms_loadlist_picklists.picklist_id', null) // Not already in a loadlist
+      .not('id', 'in', `(${usedPicklistIds.length > 0 ? usedPicklistIds.join(',') : '0'})`)
       .order('created_at', { ascending: false });
 
     if (error) {
+      console.error('Error fetching picklists:', error);
       return NextResponse.json(
         { error: 'Failed to fetch available picklists', details: error.message },
         { status: 500 }
       );
     }
 
-    // Transform data to match expected format
-    const transformedPicklists = (picklists || []).map((picklist: any) => ({
-      id: picklist.picklist_id,
-      picklist_code: picklist.picklist_code,
-      status: picklist.status,
-      total_lines: picklist.total_lines,
-      total_quantity: picklist.total_quantity,
-      created_at: picklist.created_at,
-      trip: {
-        trip_id: picklist.wms_trips.trip_id,
-        trip_code: picklist.wms_trips.trip_code,
-        vehicle: picklist.wms_trips.master_vehicle
+    // Step 3: Get trip IDs to fetch provinces
+    const tripIds = picklists
+      ?.map((p: any) => p.trip?.trip_id)
+      .filter((id: any) => id != null) || [];
+
+    // Step 4: Fetch provinces from stops if we have trip IDs
+    let provinceMap: Record<number, string> = {};
+    if (tripIds.length > 0) {
+      const { data: stops } = await supabase
+        .from('receiving_route_stops')
+        .select('trip_id, order_id')
+        .in('trip_id', tripIds)
+        .order('sequence_no', { ascending: true });
+
+      if (stops && stops.length > 0) {
+        // Get unique order IDs
+        const orderIds = [...new Set(stops.map((s: any) => s.order_id).filter((id: any) => id != null))];
+        
+        if (orderIds.length > 0) {
+          const { data: orders } = await supabase
+            .from('wms_orders')
+            .select('order_id, province')
+            .in('order_id', orderIds);
+
+          // Create order to province map
+          const orderProvinceMap: Record<number, string> = {};
+          orders?.forEach((order: any) => {
+            if (order.province) {
+              orderProvinceMap[order.order_id] = order.province;
+            }
+          });
+
+          // Map trip to provinces (collect all unique provinces)
+          const tripProvinces: Record<number, Set<string>> = {};
+          stops.forEach((stop: any) => {
+            if (stop.trip_id && stop.order_id && orderProvinceMap[stop.order_id]) {
+              if (!tripProvinces[stop.trip_id]) {
+                tripProvinces[stop.trip_id] = new Set();
+              }
+              tripProvinces[stop.trip_id].add(orderProvinceMap[stop.order_id]);
+            }
+          });
+
+          // Convert sets to comma-separated strings
+          Object.keys(tripProvinces).forEach((tripId) => {
+            provinceMap[Number(tripId)] = Array.from(tripProvinces[Number(tripId)]).join(', ');
+          });
+        }
       }
-    }));
+    }
+
+    // Step 5: Get total stops and weight for each trip
+    const tripStatsMap: Record<number, { stops: number; weight: number }> = {};
+    if (tripIds.length > 0) {
+      const { data: tripStats } = await supabase
+        .from('receiving_route_trips')
+        .select('trip_id, total_stops, total_weight_kg')
+        .in('trip_id', tripIds);
+
+      tripStats?.forEach((trip: any) => {
+        if (trip.trip_id) {
+          tripStatsMap[trip.trip_id] = {
+            stops: trip.total_stops || 0,
+            weight: trip.total_weight_kg || 0
+          };
+        }
+      });
+    }
+
+    // Transform to match expected format
+    const transformedPicklists = (picklists || []).map((picklist: any) => {
+      const tripId = picklist.trip?.trip_id;
+      const province = tripId ? (provinceMap[tripId] || '-') : '-';
+      const tripStats = tripId ? tripStatsMap[tripId] : null;
+
+      return {
+        id: picklist.id,
+        picklist_code: picklist.picklist_code,
+        status: picklist.status,
+        total_lines: picklist.total_lines || 0,
+        total_quantity: picklist.total_quantity || 0,
+        total_stops: tripStats?.stops || 0,
+        total_weight: tripStats?.weight || 0,
+        loading_door_number: picklist.loading_door_number,
+        created_at: picklist.created_at,
+        province: province,
+        trip: {
+          trip_id: picklist.trip?.trip_id,
+          trip_code: picklist.trip?.trip_code || '-',
+          vehicle: {
+            plate_number: picklist.trip?.vehicle?.plate_number || '-'
+          }
+        }
+      };
+    });
 
     return NextResponse.json(transformedPicklists);
   } catch (error) {

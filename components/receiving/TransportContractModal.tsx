@@ -479,7 +479,7 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
             <thead className="bg-gray-200 page-header-repeat">
               {/* Header Info Row - Will repeat on every page */}
               <tr>
-                <th colSpan={11} className="border-b-2 border-gray-300 px-4 py-3">
+                <th colSpan={13} className="border-b-2 border-gray-300 px-4 py-3">
                   <div className="flex justify-between items-start mb-2">
                     <div className="flex items-center gap-3">
                       <Image
@@ -512,17 +512,19 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
               </tr>
               {/* Column Headers */}
               <tr>
-                <th className="border border-gray-300 px-1 py-2 text-left text-xs" style={{ width: '4%' }}>คันที่</th>
-                <th className="border border-gray-300 px-1 py-2 text-left text-xs" style={{ width: '4%' }}>จุดที่</th>
-                <th className="border border-gray-300 px-1 py-2 text-left text-xs" style={{ width: '6%' }}>จังหวัด</th>
-                <th className="border border-gray-300 px-1 py-2 text-left text-xs" style={{ width: '8%' }}>เลขที่ใบสั่งส่ง</th>
-                <th className="border border-gray-300 px-1 py-2 text-left text-xs" style={{ width: '7%' }}>รหัสลูกค้า</th>
-                <th className="border border-gray-300 px-1 py-2 text-left text-xs" style={{ width: '24%' }}>ชื่อร้านค้า</th>
-                <th className="border border-gray-300 px-1 py-2 text-right text-xs" style={{ width: '7%' }}>น้ำหนัก</th>
-                <th className="border border-gray-300 px-1 py-2 text-right text-xs" style={{ width: '6%' }}>จำนวน</th>
-                <th className="border border-gray-300 px-1 py-2 text-left text-xs" style={{ width: '7%' }}>เวลาปิด-เปิด</th>
-                <th className="border border-gray-300 px-1 py-2 text-left text-xs" style={{ width: '15%' }}>หมายเหตุ</th>
-                <th className="border border-gray-300 px-1 py-2 text-left text-xs" style={{ width: '12%' }}>(ละติจูด, ลองจิจูด)</th>
+                <th className="border border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '4%' }}>คันที่</th>
+                <th className="border border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '4%' }}>จุดที่</th>
+                <th className="border border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '5%' }}>จังหวัด</th>
+                <th className="border border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '7%' }}>เลขที่ใบสั่งส่ง</th>
+                <th className="border border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '6%' }}>รหัสลูกค้า</th>
+                <th className="border border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '20%' }}>ชื่อร้านค้า</th>
+                <th className="border border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '6%' }}>น้ำหนัก</th>
+                <th className="border border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '5%' }}>จำนวน</th>
+                <th className="border border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '5%' }}>ประตู</th>
+                <th className="border border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '4%' }}>คิว</th>
+                <th className="border border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '6%' }}>เปิด-ปิด</th>
+                <th className="border border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '16%' }}>หมายเหตุ</th>
+                <th className="border border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '12%' }}>(ละติจูด, ลองจิจูด)</th>
               </tr>
             </thead>
             <tbody>
@@ -538,7 +540,7 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                   <React.Fragment key={trip.trip_id}>
                     {/* Trip Info Header Row */}
                     <tr className="bg-blue-100 border-t-2 border-blue-400">
-                      <td colSpan={11} className="border border-gray-300 px-3 py-2">
+                      <td colSpan={13} className="border border-gray-300 px-3 py-2">
                         <div className="flex justify-between items-center">
                           <div>
                             <span className="font-bold text-sm">คันที่ {tripIndex + 1}</span>
@@ -652,6 +654,22 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                             </td>
                             {isFirstOrderInStop && (
                               <td
+                                className="border border-gray-300 px-1 py-2 text-xs bg-gray-50 text-center"
+                                rowSpan={orders.length}
+                              >
+                                {(trip as any).loading_door_number || '-'}
+                              </td>
+                            )}
+                            {isFirstOrderInStop && (
+                              <td
+                                className="border border-gray-300 px-1 py-2 text-xs bg-gray-50 text-center"
+                                rowSpan={orders.length}
+                              >
+                                {(trip as any).loading_queue_number || '-'}
+                              </td>
+                            )}
+                            {isFirstOrderInStop && (
+                              <td
                                 className="border border-gray-300 px-1 py-2 text-xs bg-gray-50"
                                 rowSpan={orders.length}
                               >
@@ -680,7 +698,7 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                         รวมคันที่ {tripIndex + 1}:
                       </td>
                       <td className="border border-gray-300 px-2 py-2 text-xs text-right">
-                        {(trip.total_weight_kg || 0).toFixed(1)} kg
+                        {(trip.total_weight_kg || 0).toFixed(1)}
                       </td>
                       <td className="border border-gray-300 px-2 py-2 text-xs text-right">
                         {trip.stops?.reduce((sum: number, stop: any) => {
@@ -688,9 +706,9 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                             ? stop.orders
                             : [];
                           return sum + orders.reduce((s: number, o: any) => s + (o.total_qty || 0), 0);
-                        }, 0)} ชิ้น
+                        }, 0)}
                       </td>
-                      <td colSpan={3} className="border border-gray-300 px-2 py-2 text-xs"></td>
+                      <td colSpan={5} className="border border-gray-300 px-2 py-2 text-xs"></td>
                     </tr>
                   </React.Fragment>
                 );

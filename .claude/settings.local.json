@@ -43,7 +43,12 @@
       "Bash(timeout 30 bash:*)",
       "Bash(npx ts-node:*)",
       "Bash(audioREADME.md)",
-      "Bash(types/database/supabase.ts)"
+      "Bash(types/database/supabase.ts)",
+      "Bash(git restore:*)",
+      "Bash(echo:*)",
+      "Bash(timeout 10 bash -c \"curl ''http://localhost:3000/api/mobile/loading/loadlist-detail?code=LD-20251127-0001'' 2>nul\")",
+      "Bash(timeout 5 bash -c \"curl ''http://localhost:3000/mobile/loading'' 2>nul | findstr /C:\"\"loading\"\" /C:\"\"error\"\" | head -n 3\")",
+      "Bash(timeout 10 bash -c \"curl ''http://localhost:3000/api/mobile/loading/loadlist-detail?code=LD-20251127-0001'' 2>nul | python -m json.tool\")"
     ],
     "deny": [],
     "ask": []

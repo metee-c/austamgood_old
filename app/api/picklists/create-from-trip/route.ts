@@ -6,7 +6,7 @@ export const dynamic = 'force-dynamic';
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
-    const { trip_id } = await request.json();
+    const { trip_id, loading_door_number } = await request.json();
 
     if (!trip_id) {
       return NextResponse.json(
@@ -161,6 +161,7 @@ export async function POST(request: NextRequest) {
         status: 'pending',
         total_lines: totalLines,
         total_quantity: totalQuantity,
+        loading_door_number: loading_door_number || null,
         created_by: user?.id,
         created_from: 'trip'
       })
@@ -254,12 +255,13 @@ export async function POST(request: NextRequest) {
         for (const item of itemsToInsert) {
           if (!item.source_location_id || !item.quantity_to_pick) continue;
 
-          // Query inventory balances ที่ source_location_id โดยเรียงตาม FEFO + FIFO
+          // ✅ Query inventory balances ที่ source_location_id โดยเรียงตาม FEFO + FIFO
+          // จำกัดเฉพาะ location ที่กำหนดใน source_location_id
           const { data: balances } = await supabase
             .from('wms_inventory_balances')
             .select('balance_id, pallet_id, location_id, total_piece_qty, total_pack_qty, reserved_piece_qty, reserved_pack_qty, expiry_date, production_date')
             .eq('warehouse_id', warehouseId)
-            .eq('location_id', item.source_location_id)
+            .eq('location_id', item.source_location_id)  // ✅ จำกัดเฉพาะ location นี้
             .eq('sku_id', item.sku_id)
             .gt('total_piece_qty', 0)
             .order('expiry_date', { ascending: true, nullsFirst: false }) // FEFO

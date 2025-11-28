@@ -45,6 +45,7 @@ interface Picklist {
   total_quantity: number;
   trip_id?: number;
   plan_id?: number;
+  loading_door_number?: string;
   receiving_route_trips?: {
     trip_sequence: number;
     vehicle_id: string;
@@ -305,9 +306,22 @@ const PicklistDetailPage = ({ params }: { params: Promise<{ id: string }> }) => 
 
             ${picklist.receiving_route_trips?.trip_sequence ? `
             <div style="text-align: center; margin: 15px 0; padding: 15px; background: #dbeafe; border: 2px solid #3b82f6; border-radius: 8px;">
-              <div style="font-size: 28px; font-weight: bold; color: #1e40af;">
-                รถที่ ${picklist.receiving_route_trips.trip_sequence}
-                ${picklist.receiving_route_trips.vehicle_id ? `<span style="font-size: 18px; color: #3b82f6; margin-left: 10px;">(${picklist.receiving_route_trips.vehicle_id})</span>` : ''}
+              <div style="display: flex; align-items: center; justify-content: center; gap: 20px;">
+                <div style="font-size: 28px; font-weight: bold; color: #1e40af;">
+                  รถที่ ${picklist.receiving_route_trips.trip_sequence}
+                  ${picklist.receiving_route_trips.vehicle_id ? `<span style="font-size: 18px; color: #3b82f6; margin-left: 10px;">(${picklist.receiving_route_trips.vehicle_id})</span>` : ''}
+                </div>
+                ${(picklist as any).loading_door_number ? `
+                <div style="height: 40px; width: 2px; background: #93c5fd;"></div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                  <span style="font-size: 16px; color: #1e40af; font-weight: 600;">ประตูโหลดสินค้า</span>
+                  <div style="padding: 8px 20px; background: #fed7aa; border: 2px solid #f97316; border-radius: 6px;">
+                    <span style="font-size: 32px; font-weight: bold; color: #ea580c; font-family: monospace;">
+                      ${(picklist as any).loading_door_number}
+                    </span>
+                  </div>
+                </div>
+                ` : ''}
               </div>
             </div>
             ` : ''}
@@ -510,33 +524,54 @@ const PicklistDetailPage = ({ params }: { params: Promise<{ id: string }> }) => 
 
         {/* Info Cards */}
         {picklist.receiving_route_trips && (
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm">
-              <div className="flex items-center space-x-2 mb-1">
-                <Truck className="w-4 h-4 text-blue-600" />
-                <span className="text-xs text-gray-600 font-thai">รถที่</span>
-              </div>
-              <div className="font-semibold text-gray-900 text-lg">
-                {picklist.receiving_route_trips.trip_sequence}
-                {picklist.receiving_route_trips.vehicle_id && (
-                  <span className="text-sm text-gray-500 ml-2 font-mono">
-                    ({picklist.receiving_route_trips.vehicle_id})
-                  </span>
+          <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-4 shadow-sm">
+            <div className="flex items-center justify-between gap-6">
+              {/* Left: Trip and Loading Door in one line */}
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-3">
+                  <Truck className="w-5 h-5 text-blue-600" />
+                  <div>
+                    <span className="text-sm text-gray-600 font-thai">รถที่ </span>
+                    <span className="font-bold text-gray-900 text-2xl">
+                      {picklist.receiving_route_trips.trip_sequence}
+                    </span>
+                    {picklist.receiving_route_trips.vehicle_id && (
+                      <span className="text-sm text-gray-500 ml-2 font-mono">
+                        ({picklist.receiving_route_trips.vehicle_id})
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {picklist.loading_door_number && (
+                  <>
+                    <div className="h-8 w-px bg-gray-300"></div>
+                    <div className="flex items-center gap-3">
+                      <Package className="w-5 h-5 text-orange-600" />
+                      <div>
+                        <span className="text-sm text-gray-600 font-thai">ประตูโหลดสินค้า </span>
+                        <span className="font-bold text-orange-600 text-2xl font-mono">
+                          {picklist.loading_door_number}
+                        </span>
+                      </div>
+                    </div>
+                  </>
                 )}
               </div>
-            </div>
 
-            {picklist.receiving_route_trips.receiving_route_plans && (
-              <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm">
-                <div className="flex items-center space-x-2 mb-1">
+              {/* Right: Plan Name */}
+              {picklist.receiving_route_trips.receiving_route_plans && (
+                <div className="flex items-center gap-2 text-right">
                   <MapPin className="w-4 h-4 text-purple-600" />
-                  <span className="text-xs text-gray-600 font-thai">แผนการส่ง</span>
+                  <div>
+                    <div className="text-xs text-gray-500 font-thai">แผนการส่ง</div>
+                    <div className="font-semibold text-gray-900 text-sm font-thai">
+                      {picklist.receiving_route_trips.receiving_route_plans.plan_name}
+                    </div>
+                  </div>
                 </div>
-                <div className="font-semibold text-gray-900 text-sm font-thai">
-                  {picklist.receiving_route_trips.receiving_route_plans.plan_name}
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         )}
 

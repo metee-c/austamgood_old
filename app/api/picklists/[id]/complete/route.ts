@@ -62,10 +62,13 @@ export async function POST(
       );
     }
 
-    // ========== เริ่มการย้ายสต็อกอัตโนมัติ ==========
+    // ========== ไม่ต้องย้ายสต็อกอีก เพราะย้ายแล้วตอนสแกนแต่ละรายการ ==========
+    // สต็อคถูกย้ายจาก source_location → Dispatch แล้วใน POST /api/mobile/pick/scan
+    // ดังนั้นเมื่อ complete picklist เราแค่ปลดจองสต็อคที่เหลือ (ถ้ามี)
+    
     let stockTransferResult = null;
     try {
-      // 1. ดึงข้อมูล picklist_items พร้อม source_location_id และ quantity_picked
+      // 1. ดึงข้อมูล picklist_items เพื่อตรวจสอบ
       const { data: picklistItems, error: itemsError } = await supabase
         .from('picklist_items')
         .select(`
@@ -73,10 +76,10 @@ export async function POST(
           sku_id,
           source_location_id,
           quantity_picked,
-          master_location!fk_picklist_items_location(warehouse_id)
+          quantity_to_pick,
+          status
         `)
-        .eq('picklist_id', id)
-        .gt('quantity_picked', 0);
+        .eq('picklist_id', id);
 
       if (itemsError) {
         console.error('Error fetching picklist items:', itemsError);
@@ -84,168 +87,27 @@ export async function POST(
       }
 
       if (!picklistItems || picklistItems.length === 0) {
-        console.log('No items to transfer (no picked quantities)');
+        console.log('No items found in picklist');
       } else {
-        // 2. ค้นหา Dispatch location (location_code = 'Dispatch')
-        const warehouseId = (picklistItems[0].master_location as any)?.warehouse_id;
-
-        if (!warehouseId) {
-          throw new Error('Cannot determine warehouse_id from source location');
+        // 2. ตรวจสอบว่าทุกรายการหยิบแล้วหรือยัง
+        const allPicked = picklistItems.every(item => item.status === 'picked');
+        const pickedCount = picklistItems.filter(item => item.status === 'picked').length;
+        
+        console.log(`✅ Picklist ${picklist.picklist_code}: ${pickedCount}/${picklistItems.length} items picked`);
+        
+        if (!allPicked) {
+          console.warn(`⚠️ Not all items picked yet. Picked: ${pickedCount}/${picklistItems.length}`);
         }
-
-        const { data: dispatchLocation, error: dispatchError } = await supabase
-          .from('master_location')
-          .select('location_id, warehouse_id, location_code')
-          .eq('location_code', 'Dispatch')
-          .eq('warehouse_id', warehouseId)
-          .eq('active_status', 'active')
-          .maybeSingle();
-
-        if (dispatchError) {
-          throw new Error(`Failed to find Dispatch location: ${dispatchError.message}`);
-        }
-
-        if (!dispatchLocation) {
-          throw new Error(`No active Dispatch location found for warehouse ${warehouseId}`);
-        }
-
-        // 3. ปลดจองสต็อก (unreserve) ตามหลัก FEFO + FIFO
-        // และเก็บข้อมูล location ที่มีการจองจริงสำหรับการย้ายสต็อก
-        const itemsWithActualLocations = [];
-
-        for (const item of picklistItems) {
-          // Query balances ที่มีการจองจากทั้งคลัง (ไม่จำกัด location)
-          const { data: balances, error: balanceError } = await supabase
-            .from('wms_inventory_balances')
-            .select('balance_id, location_id, total_piece_qty, reserved_piece_qty, expiry_date, production_date')
-            .eq('warehouse_id', warehouseId)
-            .eq('sku_id', item.sku_id)
-            .gt('reserved_piece_qty', 0) // มีการจอง
-            .order('expiry_date', { ascending: true, nullsFirst: false }) // FEFO
-            .order('production_date', { ascending: true, nullsFirst: false }) // FIFO
-            .order('created_at', { ascending: true });
-
-          if (balanceError) {
-            throw new Error(`Failed to query balances for SKU ${item.sku_id}: ${balanceError.message}`);
-          }
-
-          if (!balances || balances.length === 0) {
-            console.warn(`No reserved stock found for SKU ${item.sku_id}, skipping`);
-            continue;
-          }
-
-          // ปลดจองตามลำดับ FEFO + FIFO และเก็บ location ที่ใช้จริง
-          let remainingQty = item.quantity_picked;
-          const locationsUsed = new Map<string, number>(); // location_id -> quantity
-
-          for (const balance of balances) {
-            if (remainingQty <= 0) break;
-
-            const reservedQty = balance.reserved_piece_qty || 0;
-            if (reservedQty <= 0) continue;
-
-            const qtyToUnreserve = Math.min(reservedQty, remainingQty);
-
-            // ปลดจอง
-            await supabase
-              .from('wms_inventory_balances')
-              .update({
-                reserved_piece_qty: Math.max(0, reservedQty - qtyToUnreserve),
-                updated_at: new Date().toISOString()
-              })
-              .eq('balance_id', balance.balance_id);
-
-            // เก็บ location ที่ใช้
-            const currentQty = locationsUsed.get(balance.location_id) || 0;
-            locationsUsed.set(balance.location_id, currentQty + qtyToUnreserve);
-
-            remainingQty -= qtyToUnreserve;
-          }
-
-          // สร้างรายการสำหรับแต่ละ location ที่มีการจอง
-          for (const [locationId, qty] of locationsUsed) {
-            itemsWithActualLocations.push({
-              sku_id: item.sku_id,
-              from_location_id: locationId,
-              quantity: qty
-            });
-          }
-
-          // ตรวจสอบว่าปลดจองครบหรือไม่
-          if (remainingQty > 0) {
-            console.warn(`Partial unreservation for SKU ${item.sku_id}: ${remainingQty} pieces remaining`);
-          }
-        }
-
-        // 4. สร้าง move document สำหรับการย้ายสต็อก (ใช้ location จริงที่มีการจอง)
-        const movePayload = {
-          move_type: 'transfer' as const,
-          status: 'pending' as const,
-          priority: 99, // ความสำคัญสูงสุด (1-99)
-          source_document: `PICKLIST-${picklist.picklist_code}`,
-          from_warehouse_id: warehouseId,
-          to_warehouse_id: warehouseId,
-          notes: `Auto-transfer from picklist completion: ${picklist.picklist_code}`,
-          items: itemsWithActualLocations.map(item => ({
-            sku_id: item.sku_id,
-            from_location_id: item.from_location_id,
-            to_location_id: dispatchLocation.location_id,
-            requested_piece_qty: item.quantity,
-            confirmed_piece_qty: item.quantity,
-            move_method: 'sku' as const,
-            remarks: `From picklist ${picklist.picklist_code}`
-          }))
-        };
-
-        // สร้าง move document
-        const moveResult = await moveService.createMove(movePayload);
-
-        if (moveResult.error) {
-          throw new Error(`Failed to create move document: ${moveResult.error}`);
-        }
-
-        if (!moveResult.data) {
-          throw new Error('Move document created but no data returned');
-        }
-
-        // 5. Auto-complete move items และบันทึก inventory movement
-        const createdMoveItems = moveResult.data.wms_move_items || [];
-
-        for (const moveItem of createdMoveItems) {
-          // Update status to completed
-          const statusResult = await moveService.updateMoveItemStatus(
-            moveItem.move_item_id,
-            'completed'
-          );
-
-          if (statusResult.error) {
-            console.error(`Failed to update move item ${moveItem.move_item_id} status:`, statusResult.error);
-            throw new Error(`Failed to complete move item: ${statusResult.error}`);
-          }
-
-          // Record inventory movement (OUT + IN ledger entries)
-          // ต้องส่ง moveItem ที่มี status = 'completed'
-          const completedMoveItem = { ...moveItem, status: 'completed' as const };
-          const inventoryResult = await moveService.recordInventoryMovement(
-            completedMoveItem,
-            moveResult.data
-          );
-
-          if (inventoryResult.error) {
-            console.error(`Failed to record inventory for move item ${moveItem.move_item_id}:`, inventoryResult.error);
-            throw new Error(`Failed to record inventory movement: ${inventoryResult.error}`);
-          }
-        }
-
+        
+        // 3. สต็อคถูกย้ายแล้วตอนสแกนแต่ละรายการ ไม่ต้องย้ายอีก
         stockTransferResult = {
           success: true,
-          move_no: moveResult.data.move_no,
-          move_id: moveResult.data.move_id,
-          items_transferred: createdMoveItems.length,
-          dispatch_location: dispatchLocation.location_code
+          message: 'Stock already transferred during picking process',
+          items_picked: pickedCount,
+          total_items: picklistItems.length
         };
-
-        console.log(`✅ Stock transfer completed: ${createdMoveItems.length} items moved to ${dispatchLocation.location_code}`);
+        
+        console.log(`✅ Stock transfer already completed during picking process`);
       }
     } catch (stockError) {
       // Log error แต่ไม่ fail ทั้ง request เพราะ picklist complete สำเร็จแล้ว

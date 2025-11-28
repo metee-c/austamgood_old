@@ -29,10 +29,20 @@ export async function GET(
       );
     }
 
-    // Fetch trips first
+    // Fetch trips first with picklist and loadlist info
     const { data: trips, error: tripsError } = await supabase
       .from('receiving_route_trips')
-      .select('*')
+      .select(`
+        *,
+        picklists (
+          loading_door_number,
+          wms_loadlist_picklists (
+            loadlist:loadlists (
+              loading_queue_number
+            )
+          )
+        )
+      `)
       .eq('plan_id', planId)
       .order('trip_sequence', { ascending: true });
 
@@ -241,11 +251,21 @@ export async function GET(
       return acc;
     }, {});
 
-    // Combine trips with their stops
-    const tripsWithSortedStops = trips?.map(trip => ({
-      ...trip,
-      stops: stopsByTrip[trip.trip_id] || []
-    })) || [];
+    // Combine trips with their stops and extract loading door/queue info
+    const tripsWithSortedStops = trips?.map(trip => {
+      // Extract loading_door_number from picklists (first picklist)
+      const loadingDoorNumber = trip.picklists?.[0]?.loading_door_number || null;
+      
+      // Extract loading_queue_number from loadlist (first loadlist)
+      const loadingQueueNumber = trip.picklists?.[0]?.wms_loadlist_picklists?.[0]?.loadlist?.loading_queue_number || null;
+      
+      return {
+        ...trip,
+        loading_door_number: loadingDoorNumber,
+        loading_queue_number: loadingQueueNumber,
+        stops: stopsByTrip[trip.trip_id] || []
+      };
+    }) || [];
 
     console.log('Raw trips data:', {
       tripsCount: trips?.length || 0,

@@ -24,21 +24,21 @@ export async function POST(request: NextRequest) {
 
     if (verifyError || !loadlistPicklist) {
       return NextResponse.json(
-        { error: 'Picklist not found in this loadlist', details: verifyError?.message },
+        { error: 'ไม่พบใบจัดสินค้านี้ในใบโหลด', details: verifyError?.message },
         { status: 404 }
       );
     }
 
     // Get picklist details to verify the scanned code
     const { data: picklist, error: picklistError } = await supabase
-      .from('wms_picklists')
+      .from('picklists')
       .select('picklist_code, status')
-      .eq('picklist_id', picklist_id)
+      .eq('id', picklist_id)
       .single();
 
     if (picklistError || !picklist) {
       return NextResponse.json(
-        { error: 'Picklist not found', details: picklistError?.message },
+        { error: 'ไม่พบใบจัดสินค้า', details: picklistError?.message },
         { status: 404 }
       );
     }
@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
     // Verify the scanned code matches the picklist code
     if (picklist.picklist_code.toUpperCase() !== scanned_code.toUpperCase()) {
       return NextResponse.json(
-        { error: 'Scanned code does not match picklist code', details: 'Invalid QR code' },
+        { error: 'รหัสที่สแกนไม่ตรงกับใบจัดสินค้า', details: `คาดหวัง: ${picklist.picklist_code}, สแกน: ${scanned_code}` },
         { status: 400 }
       );
     }
@@ -54,73 +54,49 @@ export async function POST(request: NextRequest) {
     // Check if picklist is completed
     if (picklist.status !== 'completed') {
       return NextResponse.json(
-        { error: 'Picklist is not ready for loading', details: 'Picklist status: ' + picklist.status },
+        { error: 'ใบจัดสินค้ายังไม่พร้อมโหลด', details: `สถานะปัจจุบัน: ${picklist.status}` },
         { status: 400 }
       );
     }
 
     // Check if already loaded
-    const { data: existingStatus, error: statusError } = await supabase
-      .from('wms_picklist_loading_status')
-      .select('is_loaded')
-      .eq('picklist_id', picklist_id)
-      .single();
-
-    if (statusError && statusError.code !== 'PGRST116') { // PGRST116 = not found
+    if (loadlistPicklist.loaded_at) {
       return NextResponse.json(
-        { error: 'Failed to check loading status', details: statusError.message },
-        { status: 500 }
-      );
-    }
-
-    if (existingStatus?.is_loaded) {
-      return NextResponse.json(
-        { error: 'Picklist already loaded', details: 'This picklist has already been loaded' },
+        { error: 'ใบจัดสินค้านี้โหลดแล้ว', details: 'This picklist has already been loaded' },
         { status: 400 }
       );
     }
 
-    // Update or insert loading status
+    // Update loading status in wms_loadlist_picklists
     const { error: updateError } = await supabase
-      .from('wms_picklist_loading_status')
-      .upsert({
-        picklist_id: picklist_id,
-        is_loaded: true,
+      .from('wms_loadlist_picklists')
+      .update({
         loaded_at: new Date().toISOString(),
-        loaded_by: 'Mobile User' // In real app, get from auth
-      });
+        loaded_by_employee_id: null, // TODO: Get from auth
+        updated_at: new Date().toISOString()
+      })
+      .eq('loadlist_id', loadlist_id)
+      .eq('picklist_id', picklist_id);
 
     if (updateError) {
       return NextResponse.json(
-        { error: 'Failed to update loading status', details: updateError.message },
+        { error: 'ไม่สามารถอัปเดตสถานะการโหลดได้', details: updateError.message },
         { status: 500 }
       );
     }
 
-    // Update loadlist status to 'loading' if it's still 'pending'
-    const { error: loadlistStatusError } = await supabase
-      .from('wms_loadlists')
-      .update({ 
-        status: 'loading',
-        updated_at: new Date().toISOString()
-      })
-      .eq('loadlist_id', loadlist_id)
-      .eq('status', 'pending');
-
-    if (loadlistStatusError) {
-      console.error('Failed to update loadlist status:', loadlistStatusError);
-      // Don't return error here as the main operation succeeded
-    }
+    // No need to update loadlist status - we only have 'pending' and 'loaded'
+    // Status will be updated to 'loaded' when all picklists are loaded and confirmed
 
     return NextResponse.json({ 
       success: true,
-      message: 'Picklist loaded successfully'
+      message: 'โหลดใบจัดสินค้าสำเร็จ'
     });
 
   } catch (error) {
     console.error('API error:', error);
     return NextResponse.json(
-      { error: 'Internal server error' },
+      { error: 'เกิดข้อผิดพลาดภายในระบบ' },
       { status: 500 }
     );
   }

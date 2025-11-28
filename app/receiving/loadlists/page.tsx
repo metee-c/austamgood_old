@@ -4,12 +4,10 @@ import {
   Truck,
   Plus,
   Search,
-  Eye,
   Printer,
   Loader2,
   AlertCircle,
   Package,
-  QrCode,
   CheckCircle,
   Clock,
   ChevronUp,
@@ -19,22 +17,47 @@ import {
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
-import LoadlistPrintDocument from '@/components/receiving/LoadlistPrintDocument';
-import LoadlistQRCode from '@/components/ui/LoadlistQRCode';
+import DeliveryOrderDocument from '@/components/receiving/DeliveryOrderDocument';
 
 interface Loadlist {
   id: number;
   loadlist_code: string;
   status: string;
+  loading_door_number?: string;
+  loading_queue_number?: string;
+  vehicle_type?: string;
+  delivery_number?: string;
+  driver_phone?: string;
+  checker_employee?: {
+    first_name: string;
+    last_name: string;
+    employee_code: string;
+  };
+  helper_employee?: {
+    first_name: string;
+    last_name: string;
+    employee_code: string;
+  };
+  plan_id?: number;
+  route_plan?: {
+    plan_code: string;
+    plan_date: string;
+  };
+  trip_id?: number;
+  trip?: {
+    trip_code: string;
+  };
   total_picklists: number;
   total_packages: number;
   created_at: string;
   created_by: string;
   vehicle?: {
+    vehicle_id: string;
     plate_number: string;
     vehicle_type: string;
   };
   driver?: {
+    employee_id: number;
     first_name: string;
     last_name: string;
   };
@@ -43,10 +66,16 @@ interface Loadlist {
     picklist_code: string;
     status: string;
     total_lines: number;
+    loading_door_number?: string;
     trip: {
       trip_code: string;
       vehicle?: { plate_number: string };
     };
+    orders?: Array<{
+      order_no: string;
+      shop_name: string;
+      total_weight?: number;
+    }>;
   }>;
 }
 
@@ -56,7 +85,10 @@ interface AvailablePicklist {
   status: string;
   total_lines: number;
   total_quantity: number;
+  total_stops?: number;
+  total_weight?: number;
   created_at: string;
+  province?: string;
   trip: {
     trip_id: number;
     trip_code: string;
@@ -66,17 +98,25 @@ interface AvailablePicklist {
   };
 }
 
+interface Employee {
+  employee_id: number;
+  first_name: string;
+  last_name: string;
+  employee_code: string;
+}
+
 const statusMap: Record<string, { label: string; variant: 'default' | 'info' | 'warning' | 'success' | 'danger' }> = {
   pending: { label: 'รอโหลด', variant: 'warning' },
-  loading: { label: 'กำลังโหลด', variant: 'info' },
-  completed: { label: 'โหลดเสร็จ', variant: 'success' },
-  shipped: { label: 'จัดส่งแล้ว', variant: 'default' },
+  loaded: { label: 'โหลดเสร็จ', variant: 'success' },
   cancelled: { label: 'ยกเลิก', variant: 'danger' }
 };
 
 const LoadlistsPage = () => {
   const [loadlists, setLoadlists] = useState<Loadlist[]>([]);
   const [availablePicklists, setAvailablePicklists] = useState<AvailablePicklist[]>([]);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [vehicles, setVehicles] = useState<any[]>([]);
+  const [drivers, setDrivers] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -84,6 +124,14 @@ const LoadlistsPage = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [selectedPicklists, setSelectedPicklists] = useState<number[]>([]);
+
+  // Form fields
+  const [checkerEmployeeId, setCheckerEmployeeId] = useState<number | ''>('');
+  const [vehicleType, setVehicleType] = useState('');
+  const [deliveryNumber, setDeliveryNumber] = useState('');
+  const [vehicleId, setVehicleId] = useState<string>('');
+  const [driverEmployeeId, setDriverEmployeeId] = useState<number | ''>('');
+  const [loadingQueueNumber, setLoadingQueueNumber] = useState<string>('');
 
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [viewingLoadlist, setViewingLoadlist] = useState<Loadlist | null>(null);
@@ -110,6 +158,8 @@ const LoadlistsPage = () => {
 
   useEffect(() => {
     fetchLoadlists();
+    fetchEmployees();
+    fetchVehicles();
   }, []);
 
   const fetchAvailablePicklists = async () => {
@@ -122,6 +172,38 @@ const LoadlistsPage = () => {
       setAvailablePicklists(data);
     } catch (err: any) {
       setCreateError('Unable to load picklists: ' + (err.message ?? 'unknown error'));
+    }
+  };
+
+  const fetchEmployees = async () => {
+    try {
+      const response = await fetch('/api/master-employee');
+      if (!response.ok) {
+        throw new Error('Unable to load employees');
+      }
+      const result = await response.json();
+      // API returns { data: employees }
+      const employeeData = Array.isArray(result.data) ? result.data : [];
+      setEmployees(employeeData);
+      setDrivers(employeeData); // Use same employee list for drivers
+    } catch (err: any) {
+      console.error('Failed to fetch employees:', err);
+      setEmployees([]);
+      setDrivers([]);
+    }
+  };
+
+  const fetchVehicles = async () => {
+    try {
+      const response = await fetch('/api/master-vehicle');
+      if (!response.ok) {
+        throw new Error('Unable to load vehicles');
+      }
+      const result = await response.json();
+      setVehicles(Array.isArray(result.data) ? result.data : []);
+    } catch (err: any) {
+      console.error('Failed to fetch vehicles:', err);
+      setVehicles([]);
     }
   };
 
@@ -173,7 +255,14 @@ const LoadlistsPage = () => {
     setIsCreateModalOpen(true);
     setCreateError(null);
     setSelectedPicklists([]);
-    await fetchAvailablePicklists();
+    // Reset form fields
+    setCheckerEmployeeId('');
+    setVehicleType('');
+    setDeliveryNumber('');
+    setVehicleId('');
+    setDriverEmployeeId('');
+    setLoadingQueueNumber('');
+    await Promise.all([fetchAvailablePicklists(), fetchEmployees(), fetchVehicles()]);
   };
 
   const handleTogglePicklist = (picklistId: number) => {
@@ -194,7 +283,21 @@ const LoadlistsPage = () => {
 
   const handleCreateLoadlist = async () => {
     if (selectedPicklists.length === 0) {
-      setCreateError('Please select at least one picklist');
+      setCreateError('กรุณาเลือกใบจัดสินค้าอย่างน้อย 1 รายการ');
+      return;
+    }
+
+    // Validate required fields
+    if (!checkerEmployeeId) {
+      setCreateError('กรุณาเลือกผู้เช็คโหลดสินค้า');
+      return;
+    }
+    if (!vehicleType) {
+      setCreateError('กรุณาเลือกประเภทรถ');
+      return;
+    }
+    if (!deliveryNumber) {
+      setCreateError('กรุณาระบุเลขงานจัดส่ง');
       return;
     }
 
@@ -205,7 +308,15 @@ const LoadlistsPage = () => {
       const response = await fetch('/api/loadlists', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ picklist_ids: selectedPicklists })
+        body: JSON.stringify({
+          picklist_ids: selectedPicklists,
+          checker_employee_id: checkerEmployeeId,
+          vehicle_type: vehicleType,
+          delivery_number: deliveryNumber,
+          vehicle_id: vehicleId || null,
+          driver_employee_id: driverEmployeeId || null,
+          loading_queue_number: loadingQueueNumber || null
+        })
       });
       const result = await response.json();
       if (!response.ok) {
@@ -220,12 +331,10 @@ const LoadlistsPage = () => {
     }
   };
 
-  const handleViewLoadlist = (loadlist: Loadlist) => {
-    setViewingLoadlist(loadlist);
-    setIsViewModalOpen(true);
-  };
-
   const handlePrintLoadlist = async (loadlist: Loadlist) => {
+    console.log('Printing loadlist:', loadlist);
+    console.log('Loading door:', loadlist.loading_door_number);
+    console.log('Loading queue:', loadlist.loading_queue_number);
     setPrintLoadlist(loadlist);
     setIsPrintModalOpen(true);
 
@@ -242,9 +351,9 @@ const LoadlistsPage = () => {
       import('react-dom/client').then(({ createRoot }) => {
         const root = createRoot(tempDiv);
         root.render(
-          <LoadlistPrintDocument
+          <DeliveryOrderDocument
             loadlist={loadlist}
-            generatedAt={new Date().toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' })}
+            generatedAt={new Date().toLocaleString('th-TH', { dateStyle: 'medium', timeStyle: 'short' })}
           />
         );
 
@@ -350,6 +459,27 @@ const LoadlistsPage = () => {
                         รหัสใบโหลด{getSortIcon('loadlist_code')}
                       </th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                        รหัสแผนส่ง
+                      </th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                        รหัสเที่ยวรถ
+                      </th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                        เลขงานจัดส่ง
+                      </th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                        ประตูโหลด
+                      </th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                        คิว
+                      </th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                        ผู้เช็คโหลด
+                      </th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                        ประเภทรถ
+                      </th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
                         ทะเบียนรถ
                       </th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
@@ -367,9 +497,6 @@ const LoadlistsPage = () => {
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
                         สถานะ
                       </th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
-                        QR Code
-                      </th>
                       <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap">
                         ดำเนินการ
                       </th>
@@ -381,13 +508,116 @@ const LoadlistsPage = () => {
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap font-semibold text-green-600">
                           {loadlist.loadlist_code}
                         </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700">
-                          {loadlist.vehicle?.plate_number || '-'}
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-blue-600 font-mono text-xs">
+                          {loadlist.route_plan?.plan_code || '-'}
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-purple-600 font-mono text-xs">
+                          {loadlist.trip?.trip_code || '-'}
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700 font-medium">
+                          {loadlist.delivery_number || '-'}
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700">
-                          {loadlist.driver
-                            ? `${loadlist.driver.first_name} ${loadlist.driver.last_name}`
+                          {loadlist.picklists && loadlist.picklists.length > 0 
+                            ? loadlist.picklists[0].loading_door_number || '-'
                             : '-'}
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <select
+                            value={loadlist.loading_queue_number || ''}
+                            onChange={async (e) => {
+                              const newQueueNumber = e.target.value || null;
+                              try {
+                                const response = await fetch(`/api/loadlists/${loadlist.id}`, {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ loading_queue_number: newQueueNumber })
+                                });
+                                if (response.ok) {
+                                  await fetchLoadlists();
+                                }
+                              } catch (err) {
+                                console.error('Failed to update queue number:', err);
+                              }
+                            }}
+                            className="w-20 px-1 py-0.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-700"
+                          >
+                            <option value="">-- เลือก --</option>
+                            <option value="Q-01">Q-01</option>
+                            <option value="Q-02">Q-02</option>
+                            <option value="Q-03">Q-03</option>
+                            <option value="Q-04">Q-04</option>
+                            <option value="Q-05">Q-05</option>
+                            <option value="Q-06">Q-06</option>
+                            <option value="Q-07">Q-07</option>
+                            <option value="Q-08">Q-08</option>
+                            <option value="Q-09">Q-09</option>
+                            <option value="Q-10">Q-10</option>
+                          </select>
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700">
+                          {loadlist.checker_employee
+                            ? `${loadlist.checker_employee.first_name} ${loadlist.checker_employee.last_name}`
+                            : '-'}
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700">
+                          {loadlist.vehicle_type || '-'}
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <select
+                            value={loadlist.vehicle?.vehicle_id || ''}
+                            onChange={async (e) => {
+                              const newVehicleId = e.target.value || null;
+                              try {
+                                const response = await fetch(`/api/loadlists/${loadlist.id}`, {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ vehicle_id: newVehicleId })
+                                });
+                                if (response.ok) {
+                                  await fetchLoadlists();
+                                }
+                              } catch (err) {
+                                console.error('Failed to update vehicle:', err);
+                              }
+                            }}
+                            className="w-28 px-1 py-0.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-700"
+                          >
+                            <option value="">-- เลือก --</option>
+                            {vehicles.map((vehicle) => (
+                              <option key={vehicle.vehicle_id} value={vehicle.vehicle_id}>
+                                {vehicle.plate_number}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <select
+                            value={loadlist.driver?.employee_id || ''}
+                            onChange={async (e) => {
+                              const newDriverId = e.target.value ? Number(e.target.value) : null;
+                              try {
+                                const response = await fetch(`/api/loadlists/${loadlist.id}`, {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ driver_employee_id: newDriverId })
+                                });
+                                if (response.ok) {
+                                  await fetchLoadlists();
+                                }
+                              } catch (err) {
+                                console.error('Failed to update driver:', err);
+                              }
+                            }}
+                            className="w-32 px-1 py-0.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-700"
+                          >
+                            <option value="">-- เลือก --</option>
+                            {drivers.map((driver) => (
+                              <option key={driver.employee_id} value={driver.employee_id}>
+                                {driver.first_name} {driver.last_name}
+                              </option>
+                            ))}
+                          </select>
                         </td>
                         <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap font-semibold text-blue-600">
                           {loadlist.total_picklists.toLocaleString('en-US')}
@@ -401,24 +631,8 @@ const LoadlistsPage = () => {
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                           {getStatusBadge(loadlist.status)}
                         </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          <div className="flex justify-center">
-                            <LoadlistQRCode
-                              loadlistId={loadlist.id}
-                              loadlistCode={loadlist.loadlist_code}
-                              size={60}
-                            />
-                          </div>
-                        </td>
                         <td className="px-2 py-0.5 text-center whitespace-nowrap">
                           <div className="flex items-center justify-center space-x-1">
-                            <button
-                              onClick={() => handleViewLoadlist(loadlist)}
-                              className="p-1 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                              title="ดูรายละเอียด"
-                            >
-                              <Eye className="w-3 h-3" />
-                            </button>
                             <button
                               onClick={() => handlePrintLoadlist(loadlist)}
                               className="p-1 rounded hover:bg-green-50 hover:text-green-600 transition-colors"
@@ -452,6 +666,7 @@ const LoadlistsPage = () => {
             </div>
           )}
 
+          {/* Picklists Selection */}
           <div className="space-y-2">
             <div className="flex items-center justify-between bg-gray-50 px-4 py-2 rounded">
               <label className="flex items-center space-x-2 cursor-pointer">
@@ -462,13 +677,13 @@ const LoadlistsPage = () => {
                   className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
                 />
                 <span className="text-sm font-medium text-gray-700">
-                  เลือกทั้งหมด ({selectedPicklists.length}/{availablePicklists.length})
+                  เลือกใบจัดสินค้าทั้งหมด ({selectedPicklists.length}/{availablePicklists.length})
                 </span>
               </label>
             </div>
 
-            <div className="max-h-96 overflow-y-auto border rounded-lg">
-              <table className="w-auto border-collapse text-sm">
+            <div className="max-h-64 overflow-y-auto border rounded-lg">
+              <table className="w-full border-collapse text-sm">
                 <thead className="sticky top-0 z-10 bg-gray-100">
                   <tr>
                     <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap w-12">
@@ -476,42 +691,183 @@ const LoadlistsPage = () => {
                     </th>
                     <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสใบจัด</th>
                     <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">เที่ยวรถ</th>
+                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">จังหวัด</th>
+                    <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">จุดส่ง</th>
+                    <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">น้ำหนักรวม (kg)</th>
+                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ผู้เช็ค</th>
+                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ประเภทรถ</th>
                     <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ทะเบียนรถ</th>
-                    <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รายการ</th>
+                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">คนขับ</th>
+                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ประตูโหลด</th>
+                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">คิว</th>
+                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">เลขงานจัดส่ง</th>
                     <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap">สถานะ</th>
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
-                  {availablePicklists.map(picklist => (
-                    <tr
-                      key={picklist.id}
-                      className={`hover:bg-blue-50/30 transition-colors duration-150 cursor-pointer ${
-                        selectedPicklists.includes(picklist.id) ? 'bg-green-50' : ''
-                      }`}
-                      onClick={() => handleTogglePicklist(picklist.id)}
-                    >
-                      <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                        <input
-                          type="checkbox"
-                          checked={selectedPicklists.includes(picklist.id)}
-                          onChange={() => handleTogglePicklist(picklist.id)}
-                          className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
-                          onClick={(e) => e.stopPropagation()}
-                        />
-                      </td>
-                      <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap font-mono text-blue-600">{picklist.picklist_code}</td>
-                      <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700">{picklist.trip.trip_code}</td>
-                      <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700">
-                        {picklist.trip.vehicle?.plate_number || '-'}
-                      </td>
-                      <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap font-semibold text-blue-600">
-                        {picklist.total_lines.toLocaleString('en-US')}
-                      </td>
-                      <td className="px-3 py-2 text-gray-700">
-                        <Badge variant="success" size="sm">จัดเสร็จ</Badge>
+                  {availablePicklists.length === 0 ? (
+                    <tr>
+                      <td colSpan={14} className="px-4 py-8 text-center text-gray-500">
+                        ไม่พบใบจัดสินค้าที่สถานะ "เสร็จสิ้น"
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    availablePicklists.map((picklist, index) => (
+                      <tr
+                        key={picklist.id}
+                        className={`hover:bg-blue-50/30 transition-colors duration-150 ${
+                          selectedPicklists.includes(picklist.id) ? 'bg-green-50' : ''
+                        }`}
+                      >
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <input
+                            type="checkbox"
+                            checked={selectedPicklists.includes(picklist.id)}
+                            onChange={() => handleTogglePicklist(picklist.id)}
+                            className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                          />
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap font-mono text-blue-600">{picklist.picklist_code}</td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700">{picklist.trip.trip_code}</td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700 font-medium">
+                          {picklist.province || '-'}
+                        </td>
+                        <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap font-semibold text-blue-600">
+                          {picklist.total_stops?.toLocaleString('en-US') || '-'}
+                        </td>
+                        <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap font-semibold text-purple-600">
+                          {picklist.total_weight ? picklist.total_weight.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          {index === 0 ? (
+                            <select
+                              value={checkerEmployeeId}
+                              onChange={(e) => setCheckerEmployeeId(e.target.value ? Number(e.target.value) : '')}
+                              className="w-32 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                            >
+                              <option value="">-- เลือก --</option>
+                              {employees.map((emp) => (
+                                <option key={emp.employee_id} value={emp.employee_id}>
+                                  {emp.first_name} {emp.last_name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : checkerEmployeeId ? (
+                            <span className="text-gray-400 text-xs">
+                              {employees.find(e => e.employee_id === checkerEmployeeId)?.first_name || '-'}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 text-xs">-</span>
+                          )}
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          {index === 0 ? (
+                            <select
+                              value={vehicleType}
+                              onChange={(e) => setVehicleType(e.target.value)}
+                              className="w-24 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                            >
+                              <option value="">-- เลือก --</option>
+                              <option value="รถ 4 ล้อ">4 ล้อ</option>
+                              <option value="รถ 6 ล้อ">6 ล้อ</option>
+                              <option value="รถ 10 ล้อ">10 ล้อ</option>
+                              <option value="รถกระบะ">กระบะ</option>
+                              <option value="รถตู้">ตู้</option>
+                              <option value="รถเทรลเลอร์">เทรลเลอร์</option>
+                            </select>
+                          ) : (
+                            <span className="text-gray-400 text-xs">{vehicleType || '-'}</span>
+                          )}
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          {index === 0 ? (
+                            <select
+                              value={vehicleId}
+                              onChange={(e) => setVehicleId(e.target.value)}
+                              className="w-28 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                            >
+                              <option value="">-- เลือก --</option>
+                              {vehicles.map((vehicle) => (
+                                <option key={vehicle.vehicle_id} value={vehicle.vehicle_id}>
+                                  {vehicle.plate_number}
+                                </option>
+                              ))}
+                            </select>
+                          ) : vehicleId ? (
+                            <span className="text-gray-400 text-xs">
+                              {vehicles.find(v => v.vehicle_id === vehicleId)?.plate_number || '-'}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 text-xs">-</span>
+                          )}
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          {index === 0 ? (
+                            <select
+                              value={driverEmployeeId}
+                              onChange={(e) => setDriverEmployeeId(e.target.value ? Number(e.target.value) : '')}
+                              className="w-32 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                            >
+                              <option value="">-- เลือก --</option>
+                              {drivers.map((driver) => (
+                                <option key={driver.employee_id} value={driver.employee_id}>
+                                  {driver.first_name} {driver.last_name}
+                                </option>
+                              ))}
+                            </select>
+                          ) : driverEmployeeId ? (
+                            <span className="text-gray-400 text-xs">
+                              {drivers.find(d => d.employee_id === driverEmployeeId)?.first_name || '-'}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 text-xs">-</span>
+                          )}
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-center text-gray-700 text-xs">
+                          {(picklist as any).loading_door_number || '-'}
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          {index === 0 ? (
+                            <select
+                              value={loadingQueueNumber}
+                              onChange={(e) => setLoadingQueueNumber(e.target.value)}
+                              className="w-20 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                            >
+                              <option value="">-- เลือก --</option>
+                              <option value="Q-01">Q-01</option>
+                              <option value="Q-02">Q-02</option>
+                              <option value="Q-03">Q-03</option>
+                              <option value="Q-04">Q-04</option>
+                              <option value="Q-05">Q-05</option>
+                              <option value="Q-06">Q-06</option>
+                              <option value="Q-07">Q-07</option>
+                              <option value="Q-08">Q-08</option>
+                              <option value="Q-09">Q-09</option>
+                              <option value="Q-10">Q-10</option>
+                            </select>
+                          ) : (
+                            <span className="text-gray-400 text-xs">{loadingQueueNumber || '-'}</span>
+                          )}
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          {index === 0 ? (
+                            <input
+                              type="text"
+                              value={deliveryNumber}
+                              onChange={(e) => setDeliveryNumber(e.target.value)}
+                              placeholder="S002855"
+                              className="w-24 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                            />
+                          ) : (
+                            <span className="text-gray-400 text-xs">{deliveryNumber || '-'}</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-gray-700">
+                          <Badge variant="success" size="sm">เสร็จสิ้น</Badge>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>

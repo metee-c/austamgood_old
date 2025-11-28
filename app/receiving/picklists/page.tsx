@@ -13,7 +13,8 @@ import {
   ChevronUp,
   ChevronDown,
   ChevronsUpDown,
-  Plus
+  Plus,
+  Loader2
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
@@ -54,6 +55,7 @@ const PicklistsPage = () => {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [editingStatusPicklistId, setEditingStatusPicklistId] = useState<number | null>(null);
+  const [selectedPicklists, setSelectedPicklists] = useState<number[]>([]);
 
   // Fetcher function
   const fetcher = async (url: string) => {
@@ -192,6 +194,15 @@ const PicklistsPage = () => {
     { value: 'cancelled', label: 'ยกเลิก' }
   ];
 
+  // Toggle picklist selection for create modal
+  const handleTogglePicklist = (tripId: number) => {
+    setSelectedPicklists(prev =>
+      prev.includes(tripId)
+        ? prev.filter(id => id !== tripId)
+        : [...prev, tripId]
+    );
+  };
+
   return (
     <div className="h-screen overflow-hidden flex flex-col bg-gradient-to-br from-thai-gray-25 to-white">
       {/* Header */}
@@ -287,6 +298,7 @@ const PicklistsPage = () => {
                 <Table.Head width="120px">สถานะ</Table.Head>
                 <Table.Head>แผนการส่ง</Table.Head>
                 <Table.Head>รถที่</Table.Head>
+                <Table.Head>ประตูโหลด</Table.Head>
                 <Table.Head>จำนวนรายการ</Table.Head>
                 <Table.Head>จำนวนชิ้น</Table.Head>
                 <Table.Head onClick={() => handleSort('created_at')}>สร้างเมื่อ{getSortIcon('created_at')}</Table.Head>
@@ -296,7 +308,7 @@ const PicklistsPage = () => {
             <Table.Body>
               {isLoading ? (
                 <tr>
-                  <Table.Cell colSpan={7} className="px-4 py-8 text-center">
+                  <Table.Cell colSpan={9} className="px-4 py-8 text-center">
                     <div className="flex flex-col items-center justify-center text-thai-gray-400">
                       <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin mb-2"></div>
                       <p className="text-sm font-thai">กำลังโหลดข้อมูล...</p>
@@ -305,7 +317,7 @@ const PicklistsPage = () => {
                 </tr>
               ) : error ? (
                 <tr>
-                  <Table.Cell colSpan={7} className="px-4 py-8 text-center">
+                  <Table.Cell colSpan={9} className="px-4 py-8 text-center">
                     <div className="flex flex-col items-center justify-center text-red-500">
                       <AlertTriangle className="w-12 h-12 mb-2" />
                       <p className="text-sm font-thai">เกิดข้อผิดพลาด: {error.message}</p>
@@ -320,7 +332,7 @@ const PicklistsPage = () => {
                 </tr>
               ) : sortedPicklists.length === 0 ? (
                 <tr>
-                  <Table.Cell colSpan={7} className="px-4 py-8 text-center">
+                  <Table.Cell colSpan={9} className="px-4 py-8 text-center">
                     <div className="flex flex-col items-center justify-center text-thai-gray-400">
                       <ClipboardList className="w-12 h-12 mb-2" />
                       <p className="text-sm font-thai">ไม่พบข้อมูลรายการหยิบ</p>
@@ -403,6 +415,11 @@ const PicklistsPage = () => {
                       )}
                     </Table.Cell>
                     <Table.Cell>
+                      <span className="font-mono text-sm font-semibold text-blue-600">
+                        {(picklist as any).loading_door_number || '-'}
+                      </span>
+                    </Table.Cell>
+                    <Table.Cell>
                       <span className="font-semibold text-gray-900">{picklist.total_lines}</span>
                     </Table.Cell>
                     <Table.Cell>
@@ -446,6 +463,7 @@ const PicklistsPage = () => {
           isOpen={showCreateModal}
           onClose={() => setShowCreateModal(false)}
           title="สร้าง Picklist จากแผนรถที่เผยแพร่แล้ว"
+          size="4xl"
         >
           <div className="space-y-4">
             {!publishedPlans ? (
@@ -458,115 +476,178 @@ const PicklistsPage = () => {
                 <p className="font-thai">ไม่พบแผนรถที่เผยแพร่แล้ว</p>
               </div>
             ) : (
-              <div className="max-h-[60vh] overflow-y-auto space-y-4">
+              <div className="max-h-[70vh] overflow-y-auto space-y-4">
                 {publishedPlans.data?.map((plan: any) => (
                   <div key={plan.plan_id} className="border border-gray-200 rounded-lg p-4 space-y-3">
                     {/* Plan Header */}
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between bg-blue-50 p-3 rounded-lg">
                       <div>
                         <h3 className="font-bold text-gray-900 font-thai">{plan.plan_name}</h3>
                         <p className="text-xs text-gray-600 font-mono">{plan.plan_code}</p>
                       </div>
-                      <Badge variant={plan.status === 'published' ? 'success' : 'warning'}>
-                        {plan.status === 'published' ? 'เผยแพร่แล้ว' : 'รออนุมัติ'}
-                      </Badge>
-                    </div>
-
-                    {/* Plan Info */}
-                    <div className="grid grid-cols-3 gap-2 text-xs">
-                      <div>
-                        <p className="text-gray-600 font-thai">วันที่</p>
-                        <p className="font-semibold text-gray-900">{new Date(plan.plan_date).toLocaleDateString('th-TH')}</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-600 font-thai">จำนวนรถ</p>
-                        <p className="font-semibold text-gray-900">{plan.total_trips} คัน</p>
-                      </div>
-                      <div>
-                        <p className="text-gray-600 font-thai">ระยะทาง</p>
-                        <p className="font-semibold text-gray-900">{plan.total_distance_km?.toFixed(1) || 0} km</p>
+                      <div className="flex items-center gap-3">
+                        <Badge variant={plan.status === 'published' ? 'success' : 'warning'}>
+                          {plan.status === 'published' ? 'เผยแพร่แล้ว' : 'รออนุมัติ'}
+                        </Badge>
+                        <div className="text-xs text-gray-600">
+                          <span className="font-semibold">{new Date(plan.plan_date).toLocaleDateString('th-TH')}</span>
+                          {' • '}
+                          <span>{plan.total_trips} คัน</span>
+                          {' • '}
+                          <span>{plan.total_distance_km?.toFixed(1) || 0} km</span>
+                        </div>
                       </div>
                     </div>
 
-                    {/* Trips */}
-                    <div className="space-y-2">
-                      <p className="text-xs font-semibold text-gray-700 font-thai">รถในแผน:</p>
-                      {plan.trips?.map((trip: any, idx: number) => {
-                        const totalOrders = trip.stops?.reduce((sum: number, stop: any) => sum + (stop.orders?.length || 0), 0) || 0;
-                        const totalItems = trip.stops?.reduce((sum: number, stop: any) => {
-                          return sum + (stop.orders?.reduce((s: number, order: any) => s + (order.total_qty || 0), 0) || 0);
-                        }, 0) || 0;
-
-                        return (
-                          <div key={trip.trip_id} className="bg-gray-50 border border-gray-200 rounded p-3 space-y-2">
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center space-x-2">
-                                <Truck className="w-4 h-4 text-green-600" />
-                                <span className="font-semibold text-gray-900 font-thai">
-                                  รถที่ {trip.trip_sequence}
-                                </span>
-                                {trip.vehicle_id && (
-                                  <span className="text-xs text-gray-600 font-mono">({trip.vehicle_id})</span>
-                                )}
-                              </div>
-                              <Button
-                                size="sm"
-                                onClick={async () => {
-                                  setIsCreating(true);
-                                  try {
-                                    const response = await fetch('/api/picklists/create-from-trip', {
-                                      method: 'POST',
-                                      headers: { 'Content-Type': 'application/json' },
-                                      body: JSON.stringify({ trip_id: trip.trip_id })
-                                    });
-
-                                    if (!response.ok) {
-                                      const error = await response.json();
-                                      throw new Error(error.message || 'Failed to create picklist');
-                                    }
-
-                                    const result = await response.json();
-                                    await mutate();
-                                    setShowCreateModal(false);
-                                    alert(`สร้าง Picklist สำเร็จ: ${result.picklist_no}`);
-                                  } catch (error: any) {
-                                    alert(`เกิดข้อผิดพลาด: ${error.message}`);
-                                  } finally {
-                                    setIsCreating(false);
+                    {/* Trips Table */}
+                    <div className="overflow-x-auto">
+                      <table className="w-full border-collapse text-sm">
+                        <thead className="bg-gray-100">
+                          <tr>
+                            <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap w-12">
+                              <input
+                                type="checkbox"
+                                className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                                onChange={(e) => {
+                                  const allTripIds = plan.trips?.map((t: any) => t.trip_id) || [];
+                                  if (e.target.checked) {
+                                    setSelectedPicklists(prev => [...new Set([...prev, ...allTripIds])]);
+                                  } else {
+                                    setSelectedPicklists(prev => prev.filter(id => !allTripIds.includes(id)));
                                   }
                                 }}
-                                disabled={isCreating}
-                              >
-                                <Plus className="w-3 h-3 mr-1" />
-                                สร้าง Picklist
-                              </Button>
-                            </div>
-                            <div className="grid grid-cols-4 gap-2 text-xs">
-                              <div>
-                                <p className="text-gray-600 font-thai">จุดส่ง</p>
-                                <p className="font-semibold text-gray-900">{trip.stops?.length || 0} จุด</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600 font-thai">ออเดอร์</p>
-                                <p className="font-semibold text-gray-900">{totalOrders} รายการ</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600 font-thai">สินค้า</p>
-                                <p className="font-semibold text-gray-900">{totalItems} ชิ้น</p>
-                              </div>
-                              <div>
-                                <p className="text-gray-600 font-thai">น้ำหนัก</p>
-                                <p className="font-semibold text-gray-900">{trip.total_weight_kg?.toFixed(1) || 0} kg</p>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
+                                checked={plan.trips?.every((t: any) => selectedPicklists.includes(t.trip_id))}
+                              />
+                            </th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รถที่</th>
+                            <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">จุดส่ง</th>
+                            <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ออเดอร์</th>
+                            <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">สินค้า (ชิ้น)</th>
+                            <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">น้ำหนัก (kg)</th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold border-b border-gray-200 whitespace-nowrap">ประตูโหลด</th>
+                          </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-100">
+                          {plan.trips?.map((trip: any) => {
+                            const totalOrders = trip.stops?.reduce((sum: number, stop: any) => sum + (stop.orders?.length || 0), 0) || 0;
+                            const totalItems = trip.stops?.reduce((sum: number, stop: any) => {
+                              return sum + (stop.orders?.reduce((s: number, order: any) => s + (order.total_qty || 0), 0) || 0);
+                            }, 0) || 0;
+                            const isSelected = selectedPicklists.includes(trip.trip_id);
+
+                            return (
+                              <tr key={trip.trip_id} className={`hover:bg-blue-50/30 transition-colors ${isSelected ? 'bg-green-50' : ''}`}>
+                                <td className="px-3 py-2 border-r border-gray-100">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => handleTogglePicklist(trip.trip_id)}
+                                    className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                                  />
+                                </td>
+                                <td className="px-3 py-2 border-r border-gray-100 whitespace-nowrap">
+                                  <div className="flex items-center space-x-2">
+                                    <Truck className="w-4 h-4 text-green-600" />
+                                    <span className="font-semibold text-gray-900">รถที่ {trip.trip_sequence}</span>
+                                    {trip.vehicle_id && (
+                                      <span className="text-xs text-gray-500 font-mono">({trip.vehicle_id})</span>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2 text-center border-r border-gray-100 font-semibold text-blue-600">
+                                  {trip.stops?.length || 0}
+                                </td>
+                                <td className="px-3 py-2 text-center border-r border-gray-100 font-semibold text-purple-600">
+                                  {totalOrders}
+                                </td>
+                                <td className="px-3 py-2 text-center border-r border-gray-100 font-semibold text-gray-900">
+                                  {totalItems}
+                                </td>
+                                <td className="px-3 py-2 text-center border-r border-gray-100 font-semibold text-gray-900">
+                                  {trip.total_weight_kg?.toFixed(1) || 0}
+                                </td>
+                                <td className="px-3 py-2 border-gray-100">
+                                  <select
+                                    className="w-24 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                                    defaultValue=""
+                                    data-trip-id={trip.trip_id}
+                                  >
+                                    <option value="">-- เลือก --</option>
+                                    <option value="D01">D01</option>
+                                    <option value="D02">D02</option>
+                                    <option value="D03">D03</option>
+                                    <option value="D04">D04</option>
+                                    <option value="D05">D05</option>
+                                    <option value="D06">D06</option>
+                                  </select>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
                     </div>
                   </div>
                 ))}
               </div>
             )}
+
+            {/* Action Buttons */}
+            <div className="flex justify-end gap-2 pt-4 border-t">
+              <Button variant="outline" onClick={() => setShowCreateModal(false)} disabled={isCreating}>
+                ยกเลิก
+              </Button>
+              <Button
+                variant="primary"
+                onClick={async () => {
+                  if (selectedPicklists.length === 0) {
+                    alert('กรุณาเลือกรถที่ต้องการสร้าง Picklist');
+                    return;
+                  }
+
+                  setIsCreating(true);
+                  try {
+                    const results = [];
+                    for (const tripId of selectedPicklists) {
+                      // Get loading door from select element
+                      const selectElement = document.querySelector(`select[data-trip-id="${tripId}"]`) as HTMLSelectElement;
+                      const loadingDoor = selectElement?.value || null;
+
+                      const response = await fetch('/api/picklists/create-from-trip', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ 
+                          trip_id: tripId,
+                          loading_door_number: loadingDoor
+                        })
+                      });
+
+                      if (!response.ok) {
+                        const error = await response.json();
+                        throw new Error(error.message || 'Failed to create picklist');
+                      }
+
+                      const result = await response.json();
+                      results.push(result.picklist_no);
+                    }
+
+                    await mutate();
+                    setShowCreateModal(false);
+                    setSelectedPicklists([]);
+                    alert(`สร้าง Picklist สำเร็จ ${results.length} รายการ:\n${results.join('\n')}`);
+                  } catch (error: any) {
+                    alert(`เกิดข้อผิดพลาด: ${error.message}`);
+                  } finally {
+                    setIsCreating(false);
+                  }
+                }}
+                disabled={isCreating || selectedPicklists.length === 0}
+                className="bg-green-500 hover:bg-green-600"
+              >
+                {isCreating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
+                {isCreating ? 'กำลังสร้าง...' : `สร้าง Picklist (${selectedPicklists.length} รายการ)`}
+              </Button>
+            </div>
           </div>
         </Modal>
       )}

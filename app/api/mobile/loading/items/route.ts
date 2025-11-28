@@ -1,60 +1,65 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 
 export async function GET(request: NextRequest) {
   try {
-    const supabase = await createServerClient();
+    const supabase = await createClient();
     const { searchParams } = new URL(request.url);
-    const loadlistId = searchParams.get('loadlist_id');
+    const loadlist_id = searchParams.get('loadlist_id');
 
-    if (!loadlistId) {
+    if (!loadlist_id) {
       return NextResponse.json(
         { error: 'loadlist_id is required' },
         { status: 400 }
       );
     }
 
-    // Fetch picklists in this loadlist with loading status
+    // Get picklists in this loadlist with loading status
     const { data: loadlistPicklists, error } = await supabase
       .from('wms_loadlist_picklists')
       .select(`
+        id,
         picklist_id,
-        wms_picklists (
+        sequence,
+        loaded_at,
+        loaded_by_employee_id,
+        picklists:picklist_id (
+          id,
           picklist_code,
           status,
           total_lines,
-          wms_trips (
+          trip_id,
+          trip:trip_id (
             trip_code,
-            master_vehicle (
+            vehicle:vehicle_id (
               plate_number
             )
           )
-        ),
-        wms_picklist_loading_status (
-          is_loaded,
-          loaded_at,
-          loaded_by
         )
       `)
-      .eq('loadlist_id', parseInt(loadlistId));
+      .eq('loadlist_id', loadlist_id)
+      .order('sequence', { ascending: true });
 
     if (error) {
+      console.error('Database error:', error);
       return NextResponse.json(
         { error: 'Failed to fetch loadlist items', details: error.message },
         { status: 500 }
       );
     }
 
-    // Transform data to match expected format
-    const items = (loadlistPicklists || []).map((item: any) => ({
+    // Transform data
+    const items = loadlistPicklists?.map((item: any) => ({
       id: item.picklist_id,
-      picklist_code: item.wms_picklists.picklist_code,
-      status: item.wms_picklists.status,
-      total_lines: item.wms_picklists.total_lines,
-      trip_code: item.wms_picklists.wms_trips.trip_code,
-      vehicle_plate: item.wms_picklists.wms_trips.master_vehicle?.plate_number,
-      is_loaded: item.wms_picklist_loading_status?.is_loaded || false
-    }));
+      picklist_code: item.picklists?.picklist_code || '',
+      status: item.picklists?.status || 'pending',
+      total_lines: item.picklists?.total_lines || 0,
+      trip_code: item.picklists?.trip?.trip_code || '',
+      vehicle_plate: item.picklists?.trip?.vehicle?.plate_number || '',
+      is_loaded: !!item.loaded_at,
+      loaded_at: item.loaded_at,
+      loaded_by: item.loaded_by_employee_id
+    })) || [];
 
     return NextResponse.json({ data: items });
   } catch (error) {

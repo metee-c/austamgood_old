@@ -1,88 +1,101 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
+import { createClient } from '@/lib/supabase/server';
 
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const supabase = await createServerClient();
+    const supabase = await createClient();
     const { id } = await params;
-    const loadlistId = parseInt(id);
-
-    if (isNaN(loadlistId)) {
-      return NextResponse.json(
-        { error: 'Invalid loadlist ID' },
-        { status: 400 }
-      );
-    }
 
     const { data: loadlist, error } = await supabase
-      .from('wms_loadlists')
+      .from('loadlists')
       .select(`
-        loadlist_id,
+        id,
         loadlist_code,
         status,
-        total_picklists,
-        total_packages,
         created_at,
-        master_vehicle (
-          plate_number,
-          vehicle_type
-        ),
-        master_employee (
-          first_name,
-          last_name
-        ),
+        vehicle_id,
+        driver_employee_id,
         wms_loadlist_picklists (
           picklist_id,
-          wms_picklists (
+          picklists:picklist_id (
+            id,
             picklist_code,
             status,
             total_lines,
-            wms_trips (
+            trip:trip_id (
               trip_code,
-              master_vehicle (
+              vehicle:vehicle_id (
                 plate_number
               )
             )
           )
         )
       `)
-      .eq('loadlist_id', loadlistId)
+      .eq('id', id)
       .single();
 
     if (error) {
+      console.error('Database error:', error);
       return NextResponse.json(
         { error: 'Failed to fetch loadlist', details: error.message },
         { status: 500 }
       );
     }
 
-    // Transform data to match expected format
+    // Fetch vehicle if exists
+    let vehicle = null;
+    if (loadlist.vehicle_id) {
+      const { data: vehicleData } = await supabase
+        .from('master_vehicle')
+        .select('vehicle_id, plate_number, vehicle_type')
+        .eq('vehicle_id', loadlist.vehicle_id)
+        .single();
+      vehicle = vehicleData;
+    }
+
+    // Fetch driver if exists
+    let driver = null;
+    if (loadlist.driver_employee_id) {
+      const { data: driverData } = await supabase
+        .from('master_employee')
+        .select('employee_id, first_name, last_name')
+        .eq('employee_id', loadlist.driver_employee_id)
+        .single();
+      driver = driverData;
+    }
+
+    // Calculate total packages from picklists
     const picklists = loadlist.wms_loadlist_picklists || [];
-    const transformedLoadlist = {
-      loadlist_id: loadlist.loadlist_id,
+    const totalPackages = picklists.reduce((sum: number, p: any) => {
+      return sum + (p.picklists?.total_lines || 0);
+    }, 0);
+
+    // Transform data
+    const transformedData = {
+      loadlist_id: loadlist.id,
       loadlist_code: loadlist.loadlist_code,
       status: loadlist.status,
       total_picklists: picklists.length,
-      total_packages: picklists.reduce((sum: number, p: any) => sum + (p.wms_picklists?.total_lines || 0), 0),
+      total_packages: totalPackages,
       created_at: loadlist.created_at,
-      vehicle: loadlist.master_vehicle,
-      driver: loadlist.master_employee,
-      picklists: picklists.map((p: any) => ({
-        id: p.picklist_id,
-        picklist_code: p.wms_picklists.picklist_code,
-        status: p.wms_picklists.status,
-        total_lines: p.wms_picklists.total_lines,
+      vehicle: vehicle,
+      driver: driver,
+      picklists: picklists.map((lp: any) => ({
+        id: lp.picklists?.id,
+        picklist_code: lp.picklists?.picklist_code,
+        status: lp.picklists?.status,
+        total_lines: lp.picklists?.total_lines,
         trip: {
-          trip_code: p.wms_picklists.wms_trips.trip_code,
-          vehicle: p.wms_picklists.wms_trips.master_vehicle
+          trip_code: lp.picklists?.trip?.trip_code,
+          vehicle: lp.picklists?.trip?.vehicle
         }
       }))
     };
 
-    return NextResponse.json({ data: transformedLoadlist });
+    return NextResponse.json({ data: transformedData });
   } catch (error) {
     console.error('API error:', error);
     return NextResponse.json(

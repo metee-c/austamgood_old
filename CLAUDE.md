@@ -101,6 +101,7 @@ npm run build
 - `026_add_workflow_status_enums.sql` - Add workflow status enums
 - `027_create_workflow_status_triggers.sql` - Create 6 workflow triggers
 - `028_add_loadlist_rls_and_triggers.sql` - Add RLS policies for loadlists
+- `044_fix_loadlist_triggers.sql` - Fix triggers to use wms_loadlist_picklists junction table
 
 ## Environment Setup
 
@@ -251,9 +252,14 @@ API routes in `app/api/` follow REST patterns with standard HTTP methods:
   - `/api/loadlists/[id]/depart` - Mark loadlist as departed (POST)
 - `/api/picklists/*` - Picklist management
   - `/api/picklists/[id]/print` - Mark picklist as printing (POST)
+  - `/api/picklists/create-from-trip` - Create picklist from route trip with stock reservation
 - `/api/face-sheets/*` - Face sheet generation and delivery documents
 - `/api/route-plans/*` - Route planning, optimization, and draft orders
-- `/api/mobile/loading/*` - Mobile loading operations (tasks, items, status updates, completion)
+- `/api/mobile/pick/*` - **NEW**: Mobile picking operations
+  - `/api/mobile/pick/scan` - Scan and confirm item pick (POST)
+- `/api/mobile/loading/*` - Mobile loading operations
+  - `/api/mobile/loading/loadlist-detail` - Get loadlist with order details (GET)
+  - `/api/mobile/loading/complete` - Complete loading and move to delivery (POST)
 - `/api/moves/*` - Inventory movement operations and status updates
 - `/api/preparation-areas/*` - Preparation area management with import/export
 - `/api/storage-strategies/*` - Storage strategy configuration
@@ -350,29 +356,76 @@ Key files:
 4. Assign to locations
 5. Generate loadlists and face sheets
 
-### Delivery Workflow Status Management (NEW)
-The system implements an automated workflow with 6 database triggers that transition statuses automatically:
+### Picking & Loading Workflow (UPDATED 2025-11-28)
+Complete workflow for order fulfillment with automatic status transitions:
 
-**Complete Workflow:**
+**1. Picklist Creation & Assignment:**
 ```
-1. Import Orders → status: draft
-2. Create & Publish Route Plan → Orders: draft → confirmed (TRIGGER 1)
-3. Create Picklist → Orders: confirmed → in_picking (TRIGGER 2)
-4. Print Picklist API → Picklist: pending → picking
-5. Complete Picklist → Orders: in_picking → picked + Route: ready_to_load (TRIGGER 3)
-6. Scan to Loadlist → Orders: picked → loaded (TRIGGER 4)
-7. Loadlist Depart API → Orders: loaded → in_transit + Route: in_transit (TRIGGER 5)
-8. Mark Delivered → Orders: delivered + Loadlist/Route: completed (TRIGGER 6)
+- Create picklist from route plan trip
+- Stock reserved from source_location_id using FEFO + FIFO
+- Assign to worker → Orders: confirmed → in_picking (TRIGGER 2)
 ```
 
-**Key Features:**
-- Automatic status transitions via database triggers
-- `loadlists` table with `loadlist_items` for tracking scanned orders
-- API endpoints: `/api/picklists/[id]/print`, `/api/loadlists/[id]/scan`, `/api/loadlists/[id]/depart`
-- Status enums: `draft`, `confirmed`, `in_picking`, `picked`, `loaded`, `in_transit`, `delivered`
-- Route plan statuses: `draft`, `published`, `ready_to_load`, `in_transit`, `completed`
+**2. Picking Process (Mobile):**
+```
+- Worker scans picklist QR code
+- API: POST /api/mobile/pick/scan
+  ✅ Validate picklist and item
+  ✅ Unreserve stock from source_location (FEFO + FIFO)
+  ✅ Move stock: source_location → Dispatch
+  ✅ Create ledger entries (OUT + IN)
+  ✅ Update picklist_item.status = 'picked'
+  ✅ Auto-complete picklist when all items picked
+- When complete → Orders: in_picking → picked + Route: ready_to_load (TRIGGER 3)
+```
 
-**Documentation:** See `docs-archive/workflow/WORKFLOW_IMPLEMENTATION_SUMMARY.md` for complete details
+**3. Loading Process (Mobile):**
+```
+- Worker scans loadlist QR code
+- API: POST /api/mobile/loading/complete
+  ✅ Validate QR code
+  ✅ Check stock availability at Dispatch
+  ✅ Move stock: Dispatch → Delivery-In-Progress
+  ✅ Create ledger entries (OUT + IN)
+  ✅ Create alerts if stock insufficient
+  ✅ Update loadlist.status = 'loaded'
+- Orders: picked → loaded (TRIGGER 4)
+- Route: ready_to_load → in_transit (TRIGGER 5)
+```
+
+**4. Delivery & Completion:**
+```
+- Mark orders as delivered
+- When all delivered → Route: in_transit → completed (TRIGGER 6)
+```
+
+**Key Implementation Details:**
+- Stock reservation limited by `source_location_id` (not warehouse-wide)
+- Pack quantities calculated without `Math.floor()` to preserve fractional amounts
+- Database triggers use `wms_loadlist_picklists` junction table (not `loadlist_items`)
+- FEFO (First Expiry First Out) + FIFO (First In First Out) for stock allocation
+- Dual-entry ledger pattern for all stock movements (OUT + IN)
+
+**API Endpoints:**
+- `POST /api/mobile/pick/scan` - Scan and confirm item pick
+- `GET /api/mobile/loading/loadlist-detail` - Get loadlist with order details
+- `POST /api/mobile/loading/complete` - Complete loading and move to delivery
+
+**Status Enums:**
+- Orders: `draft` → `confirmed` → `in_picking` → `picked` → `loaded` → `in_transit` → `delivered`
+- Picklists: `pending` → `assigned` → `picking` → `completed`
+- Loadlists: `pending` → `loaded` → `completed`
+- Route Plans: `draft` → `published` → `ready_to_load` → `in_transit` → `completed`
+
+**Recent Fixes (Migration 044):**
+- Fixed triggers to work with `wms_loadlist_picklists` instead of non-existent `loadlist_items`
+- Added stock validation at Dispatch before loading
+- Fixed pack_qty calculation to preserve decimal values
+
+**Documentation:**
+- `WORKFLOW_FIX_SUMMARY.md` - Complete workflow with test cases
+- `WORKFLOW_FIXES_COMPLETED.md` - Recent fixes and implementation details
+- `docs-archive/workflow/WORKFLOW_IMPLEMENTATION_SUMMARY.md` - Original design
 
 ## Important Documentation Files
 
@@ -382,6 +435,9 @@ The codebase includes several important documentation files that provide detaile
 - **DESIGN_SYSTEM.md** - Complete UI/UX design system (colors, typography, components, spacing)
 - **README_VRP.md** - Vehicle Routing Problem system documentation
 - **GEMINI.md** - AI configuration and guidelines for Gemini AI
+- **WORKFLOW_FIX_SUMMARY.md** - **NEW**: Complete workflow fixes with test cases (Nov 2025)
+- **WORKFLOW_FIXES_COMPLETED.md** - **NEW**: Technical implementation details of recent fixes
+- **WORKFLOW_AUDIT_REPORT.md** - Comprehensive audit report identifying workflow issues
 - **docs-archive/workflow/WORKFLOW_IMPLEMENTATION_SUMMARY.md** - Delivery workflow status management system
 - **docs-archive/workflow/WORKFLOW_STATUS_DESIGN.md** - Workflow design specifications
 - **docs-archive/stock-import/STOCK_IMPORT_SUMMARY.md** - Stock import system documentation
@@ -557,6 +613,11 @@ The system includes recent migrations that add:
   - Created `loadlist_status_enum` and restructured `loadlists` table
   - 6 database triggers for automatic status transitions across workflow
   - Loadlist items tracking and RLS policies
+- Workflow trigger fixes (migration 044):
+  - Fixed triggers to use `wms_loadlist_picklists` junction table
+  - Updated `update_orders_on_loadlist_complete()` function
+  - Updated `update_orders_and_route_on_departure()` function
+  - Updated `update_route_on_delivery()` function
 
 ## Common Gotchas & Troubleshooting
 
