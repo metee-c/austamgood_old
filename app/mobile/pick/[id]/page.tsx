@@ -4,13 +4,9 @@ import React, { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft,
-  Package,
-  MapPin,
   CheckCircle,
   AlertCircle,
-  Loader2,
-  QrCode,
-  ChevronRight
+  Loader2
 } from 'lucide-react';
 import Badge from '@/components/ui/Badge';
 
@@ -20,10 +16,13 @@ interface PicklistItem {
   sku_name: string;
   uom: string;
   order_no: string;
+  order_id: number;
+  stop_id: number;
   quantity_to_pick: number;
   quantity_picked: number;
   source_location_id: string;
   status: 'pending' | 'picked' | 'shortage' | 'substituted';
+  shop_name?: string;
   master_sku?: {
     sku_name: string;
     barcode: string;
@@ -63,7 +62,6 @@ export default function MobilePickDetailPage() {
   const [loading, setLoading] = useState(true);
   const [picklist, setPicklist] = useState<Picklist | null>(null);
   const [scanning, setScanning] = useState(false);
-  const [selectedItem, setSelectedItem] = useState<PicklistItem | null>(null);
 
   useEffect(() => {
     if (id) {
@@ -79,89 +77,61 @@ export default function MobilePickDetailPage() {
 
       if (response.ok) {
         setPicklist(data);
-      } else {
-        console.error('Error:', data.error);
       }
     } catch (error) {
-      console.error('Error fetching picklist:', error);
+      // Silently handle error
     } finally {
       setLoading(false);
     }
   };
 
-  const handlePickItem = async (item: PicklistItem) => {
-    if (item.status === 'picked') {
-      alert('รายการนี้หยิบแล้ว');
+  const handleConfirmShop = async (shopItems: PicklistItem[]) => {
+    const unpickedItems = shopItems.filter(item => item.status !== 'picked');
+    
+    if (unpickedItems.length === 0) {
+      alert('รายการทั้งหมดหยิบแล้ว');
       return;
     }
 
-    const quantityPicked = prompt(
-      `จำนวนที่หยิบ (ต้องการ: ${item.quantity_to_pick} ${item.uom})`,
-      item.quantity_to_pick.toString()
-    );
-
-    if (!quantityPicked) return;
-
-    const qty = parseInt(quantityPicked);
-    if (isNaN(qty) || qty <= 0) {
-      alert('กรุณาระบุจำนวนที่ถูกต้อง');
-      return;
-    }
-
-    if (qty > item.quantity_to_pick) {
-      alert(`จำนวนที่หยิบ (${qty}) มากกว่าที่ต้องการ (${item.quantity_to_pick})`);
+    if (!confirm(`ยืนยันการหยิบสินค้าทั้งหมด ${unpickedItems.length} รายการ?`)) {
       return;
     }
 
     try {
       setScanning(true);
-      const response = await fetch('/api/mobile/pick/scan', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          picklist_id: picklist?.id,
-          item_id: item.id,
-          quantity_picked: qty,
-          scanned_code: picklist?.picklist_code
-        })
-      });
+      let hasError = false;
 
-      const result = await response.json();
+      for (const item of unpickedItems) {
+        const response = await fetch('/api/mobile/pick/scan', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            picklist_id: picklist?.id,
+            item_id: item.id,
+            quantity_picked: item.quantity_to_pick,
+            scanned_code: picklist?.picklist_code
+          })
+        });
 
-      if (response.ok) {
-        alert(result.message || 'บันทึกการหยิบสำเร็จ');
-        
-        if (result.picklist_completed) {
-          alert('หยิบสินค้าครบทุกรายการแล้ว!');
-          router.push('/mobile/pick');
-        } else {
-          fetchPicklist(); // Refresh data
+        const result = await response.json();
+
+        if (!response.ok) {
+          alert(`เกิดข้อผิดพลาด: ${result.error}`);
+          hasError = true;
+          break;
         }
-      } else {
-        alert(result.error || 'เกิดข้อผิดพลาด');
+      }
+
+      if (!hasError) {
+        alert('บันทึกการหยิบสำเร็จ');
+        fetchPicklist();
       }
     } catch (error) {
-      console.error('Error picking item:', error);
+      console.error('Error picking items:', error);
       alert('เกิดข้อผิดพลาดในการบันทึก');
     } finally {
       setScanning(false);
     }
-  };
-
-  const getStatusBadge = (status: string) => {
-    const statusMap: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'danger' }> = {
-      pending: { label: 'รอหยิบ', variant: 'default' },
-      picked: { label: 'หยิบแล้ว', variant: 'success' },
-      shortage: { label: 'ขาดสต็อค', variant: 'danger' },
-      substituted: { label: 'ทดแทน', variant: 'warning' }
-    };
-
-    const match = statusMap[status] || statusMap.pending;
-    return (
-      <Badge variant={match.variant} size="sm">
-        {match.label}
-      </Badge>
-    );
   };
 
   if (loading) {
@@ -190,6 +160,16 @@ export default function MobilePickDetailPage() {
   const pickedCount = picklist.picklist_items.filter(i => i.status === 'picked').length;
   const totalCount = picklist.picklist_items.length;
   const progress = totalCount > 0 ? (pickedCount / totalCount) * 100 : 0;
+
+  // Group items by shop
+  const itemsByShop = picklist.picklist_items.reduce((acc, item) => {
+    const shopKey = item.shop_name || item.order_no || 'ไม่ระบุร้าน';
+    if (!acc[shopKey]) {
+      acc[shopKey] = [];
+    }
+    acc[shopKey].push(item);
+    return acc;
+  }, {} as Record<string, PicklistItem[]>);
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
@@ -222,67 +202,85 @@ export default function MobilePickDetailPage() {
         </p>
       </div>
 
-      {/* Items List */}
-      <div className="p-4 space-y-3">
-        {picklist.picklist_items.map((item) => (
-          <div
-            key={item.id}
-            onClick={() => item.status !== 'picked' && handlePickItem(item)}
-            className={`bg-white rounded-lg shadow-sm border p-3 ${
-              item.status === 'picked'
-                ? 'border-green-200 bg-green-50 opacity-75'
-                : 'border-gray-200 active:scale-98 cursor-pointer'
-            } transition-all`}
-          >
-            {/* Header */}
-            <div className="flex items-start justify-between mb-2">
-              <div className="flex-1">
-                <h3 className="font-bold text-gray-900 font-thai text-sm">
-                  {item.master_sku?.sku_name || item.sku_name}
-                </h3>
-                <p className="text-xs text-gray-500 font-thai">
-                  SKU: {item.sku_id}
-                </p>
-                {item.master_sku?.barcode && (
-                  <p className="text-xs text-gray-500 font-thai">
-                    Barcode: {item.master_sku.barcode}
-                  </p>
+      {/* Items by Shop */}
+      <div className="p-3 space-y-4">
+        {Object.entries(itemsByShop).map(([shopName, items]) => {
+          const shopPicked = items.filter(i => i.status === 'picked').length;
+          const shopTotal = items.length;
+          const allPicked = shopPicked === shopTotal;
+
+          return (
+            <div key={shopName} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+              {/* Shop Header */}
+              <div className={`p-3 ${allPicked ? 'bg-green-50' : 'bg-gray-50'} border-b border-gray-200`}>
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="font-bold text-gray-900 font-thai text-sm">{shopName}</h3>
+                  {allPicked ? (
+                    <Badge variant="success" size="sm">
+                      <CheckCircle className="w-3 h-3 mr-1" />
+                      เสร็จสิ้น
+                    </Badge>
+                  ) : (
+                    <Badge variant="default" size="sm">
+                      {shopPicked}/{shopTotal}
+                    </Badge>
+                  )}
+                </div>
+                {!allPicked && (
+                  <button
+                    onClick={() => handleConfirmShop(items)}
+                    disabled={scanning}
+                    className="w-full py-2 bg-sky-500 text-white rounded-lg font-thai text-sm font-medium hover:bg-sky-600 active:scale-98 transition-all disabled:opacity-50"
+                  >
+                    ยืนยันการหยิบทั้งหมด
+                  </button>
                 )}
               </div>
-              {getStatusBadge(item.status)}
-            </div>
 
-            {/* Location */}
-            <div className="flex items-center space-x-2 mb-2 text-sm">
-              <MapPin className="w-4 h-4 text-gray-400" />
-              <span className="text-gray-700 font-thai">
-                {item.master_location?.location_code || item.source_location_id}
-              </span>
-            </div>
-
-            {/* Quantity */}
-            <div className="flex items-center justify-between text-sm">
-              <div className="flex items-center space-x-2">
-                <Package className="w-4 h-4 text-gray-400" />
-                <span className="text-gray-700 font-thai">
-                  จำนวน: {item.quantity_to_pick} {item.uom}
-                </span>
+              {/* Items Table */}
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead className="bg-gray-100 border-b border-gray-200">
+                    <tr>
+                      <th className="px-2 py-2 text-left font-thai text-gray-700">สินค้า</th>
+                      <th className="px-2 py-2 text-center font-thai text-gray-700">จำนวน</th>
+                      <th className="px-2 py-2 text-center font-thai text-gray-700">สถานะ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {items.map((item) => (
+                      <tr
+                        key={item.id}
+                        className={`border-b border-gray-100 ${
+                          item.status === 'picked' ? 'bg-green-50/50' : ''
+                        }`}
+                      >
+                        <td className="px-2 py-2">
+                          <div className="font-thai text-gray-900 font-medium">
+                            {item.master_sku?.sku_name || item.sku_name}
+                          </div>
+                          <div className="text-gray-500 mt-0.5">
+                            {item.sku_id}
+                          </div>
+                        </td>
+                        <td className="px-2 py-2 text-center font-thai text-gray-700">
+                          {item.quantity_to_pick} {item.uom}
+                        </td>
+                        <td className="px-2 py-2 text-center">
+                          {item.status === 'picked' ? (
+                            <CheckCircle className="w-4 h-4 text-green-500 mx-auto" />
+                          ) : (
+                            <div className="w-4 h-4 border-2 border-gray-300 rounded mx-auto" />
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-              {item.status === 'picked' ? (
-                <CheckCircle className="w-5 h-5 text-green-500" />
-              ) : (
-                <ChevronRight className="w-5 h-5 text-gray-400" />
-              )}
             </div>
-
-            {/* Order Info */}
-            {item.order_no && (
-              <div className="mt-2 pt-2 border-t border-gray-100 text-xs text-gray-500 font-thai">
-                ออเดอร์: {item.order_no}
-              </div>
-            )}
-          </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Scanning Overlay */}

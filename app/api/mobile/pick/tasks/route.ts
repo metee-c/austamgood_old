@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
         loading_door_number,
         created_at,
         updated_at,
-        assigned_employee_id,
+        assigned_to_employee_id,
         trip:trip_id (
           trip_code,
           vehicle:vehicle_id (
@@ -39,7 +39,7 @@ export async function GET(request: NextRequest) {
 
     // ถ้าระบุ employee_id ให้กรองเฉพาะงานที่มอบหมายให้พนักงานคนนั้น
     if (employee_id) {
-      query = query.eq('assigned_employee_id', employee_id);
+      query = query.eq('assigned_to_employee_id', employee_id);
     }
 
     const { data: picklists, error } = await query;

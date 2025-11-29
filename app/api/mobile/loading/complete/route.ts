@@ -1,6 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
+/**
+ * POST /api/mobile/loading/complete
+ * ยืนยันการโหลดสินค้าเสร็จสิ้น
+ *
+ * ✅ FIX #4 - ตรวจสอบสต็อคที่ Dispatch ก่อนการโหลด
+ *
+ * Workflow:
+ * 1. ตรวจสอบ loadlist และ QR code
+ * 2. ✅ PRE-VALIDATE: ตรวจสอบสต็อคที่ Dispatch ให้ครบทุกรายการก่อน (FAIL if insufficient)
+ * 3. ย้ายสต็อค: Dispatch → Delivery-In-Progress
+ * 4. บันทึก Inventory Ledger (OUT + IN)
+ * 5. อัปเดต loadlist status
+ */
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -63,24 +76,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ⚠️ CRITICAL: Update loadlist status to 'loaded' FIRST to prevent double processing
-    const now = new Date().toISOString();
-    const { error: updateStatusError } = await supabase
-      .from('loadlists')
-      .update({
-        status: 'loaded',
-        updated_at: now
-      })
-      .eq('id', loadlist.id)
-      .eq('status', 'pending'); // Only update if still 'pending'
-
-    if (updateStatusError) {
-      return NextResponse.json(
-        { error: 'ไม่สามารถอัปเดตสถานะใบโหลดได้', details: updateStatusError.message },
-        { status: 500 }
-      );
-    }
-
     // Get picklist IDs to fetch items
     const picklistIds = loadlist.wms_loadlist_picklists?.map((lp: any) => lp.picklist_id) || [];
 
@@ -90,13 +85,6 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-
-    // Update all picklists loaded_at
-    await supabase
-      .from('wms_loadlist_picklists')
-      .update({ loaded_at: now })
-      .in('picklist_id', picklistIds)
-      .eq('loadlist_id', loadlist.id);
 
     // Fetch picklists with items
     const { data: picklists, error: picklistsError } = await supabase
@@ -139,9 +127,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Prepare ledger entries and inventory movements
-    const ledgerEntries = [];
-    let itemsProcessed = 0;
+    const now = new Date().toISOString();
+
+    // ✅ FIX #4 - PRE-VALIDATION: ตรวจสอบสต็อคที่ Dispatch ก่อนเริ่มโหลด
+    const insufficientStockItems: any[] = [];
+    const itemsToProcess: any[] = [];
 
     for (const picklist of picklists) {
       if (!picklist.picklist_items) continue;
@@ -153,47 +143,15 @@ export async function POST(request: NextRequest) {
         // Get SKU info
         const { data: skuInfo } = await supabase
           .from('master_sku')
-          .select('qty_per_pack')
+          .select('qty_per_pack, sku_code, sku_name')
           .eq('sku_id', item.sku_id)
           .single();
 
         const qtyPerPack = skuInfo?.qty_per_pack || 1;
-        const qtyPack = qty / qtyPerPack;  // ✅ เก็บทศนิยมแทน Math.floor
+        const qtyPack = qty / qtyPerPack;
 
-        // Create ledger entries (OUT from Dispatch, IN to Delivery-In-Progress)
-        ledgerEntries.push(
-          {
-            movement_at: now,
-            transaction_type: 'ship',
-            direction: 'out',
-            warehouse_id: 'WH001',
-            location_id: dispatchLocation.location_id,
-            sku_id: item.sku_id,
-            pack_qty: qtyPack,
-            piece_qty: qty,
-            reference_no: loadlist.loadlist_code,
-            reference_doc_type: 'loadlist',
-            reference_doc_id: loadlist.id,
-            remarks: `ออกจาก Dispatch - ${picklist.picklist_code}`
-          },
-          {
-            movement_at: now,
-            transaction_type: 'ship',
-            direction: 'in',
-            warehouse_id: 'WH001',
-            location_id: deliveryLocation.location_id,
-            sku_id: item.sku_id,
-            pack_qty: qtyPack,
-            piece_qty: qty,
-            reference_no: loadlist.loadlist_code,
-            reference_doc_type: 'loadlist',
-            reference_doc_id: loadlist.id,
-            remarks: `เข้า Delivery-In-Progress - ${picklist.picklist_code}`
-          }
-        );
-
-        // Update Dispatch balance (decrease)
-        const { data: dispatchBalance } = await supabase
+        // Check Dispatch balance
+        const { data: dispatchBalance, error: balanceError } = await supabase
           .from('wms_inventory_balances')
           .select('balance_id, total_piece_qty, total_pack_qty')
           .eq('warehouse_id', 'WH001')
@@ -201,82 +159,191 @@ export async function POST(request: NextRequest) {
           .eq('sku_id', item.sku_id)
           .maybeSingle();
 
+        if (balanceError) {
+          console.error('Error checking dispatch balance:', balanceError);
+          return NextResponse.json(
+            { error: 'ไม่สามารถตรวจสอบสต็อคได้', details: balanceError.message },
+            { status: 500 }
+          );
+        }
+
+        const availableQty = dispatchBalance?.total_piece_qty || 0;
+
         // ✅ ตรวจสอบว่ามีสต็อคเพียงพอหรือไม่
-        if (dispatchBalance && dispatchBalance.total_piece_qty >= qty) {
-          const newPiece = dispatchBalance.total_piece_qty - qty;
-          const newPack = newPiece / qtyPerPack;  // ✅ เก็บทศนิยมแทน Math.floor
-
-          await supabase
-            .from('wms_inventory_balances')
-            .update({
-              total_pack_qty: newPack,
-              total_piece_qty: newPiece,
-              updated_at: now
-            })
-            .eq('balance_id', dispatchBalance.balance_id);
-        } else {
-          // ✅ เพิ่ม: จัดการกรณีสต็อคไม่พอ
-          console.error(`❌ Insufficient stock at Dispatch for SKU ${item.sku_id}`);
-          console.error(`Required: ${qty}, Available: ${dispatchBalance?.total_piece_qty || 0}`);
-          
-          // สร้าง alert
-          await supabase.from('stock_replenishment_alerts').insert({
-            alert_type: 'insufficient_stock',
-            warehouse_id: 'WH001',
-            location_id: dispatchLocation.location_id,
+        if (availableQty < qty) {
+          insufficientStockItems.push({
             sku_id: item.sku_id,
-            required_qty: qty,
-            current_qty: dispatchBalance?.total_piece_qty || 0,
-            shortage_qty: qty - (dispatchBalance?.total_piece_qty || 0),
-            priority: 'urgent',
-            status: 'pending',
-            reference_no: loadlist.loadlist_code,
-            reference_doc_type: 'loadlist',
-            created_at: now
-          }).select().maybeSingle();
-          
-          // ข้ามรายการนี้
-          continue;
-        }
-
-        // Update Delivery-In-Progress balance (increase)
-        const { data: deliveryBalance } = await supabase
-          .from('wms_inventory_balances')
-          .select('balance_id, total_piece_qty, total_pack_qty')
-          .eq('warehouse_id', 'WH001')
-          .eq('location_id', deliveryLocation.location_id)
-          .eq('sku_id', item.sku_id)
-          .maybeSingle();
-
-        if (deliveryBalance) {
-          const newPiece = deliveryBalance.total_piece_qty + qty;
-          const newPack = newPiece / qtyPerPack;  // ✅ เก็บทศนิยมแทน Math.floor
-
-          await supabase
-            .from('wms_inventory_balances')
-            .update({
-              total_pack_qty: newPack,
-              total_piece_qty: newPiece,
-              updated_at: now
-            })
-            .eq('balance_id', deliveryBalance.balance_id);
+            sku_code: skuInfo?.sku_code,
+            sku_name: skuInfo?.sku_name,
+            picklist_code: picklist.picklist_code,
+            required: qty,
+            available: availableQty,
+            shortage: qty - availableQty
+          });
         } else {
-          await supabase
-            .from('wms_inventory_balances')
-            .insert({
-              warehouse_id: 'WH001',
-              location_id: deliveryLocation.location_id,
-              sku_id: item.sku_id,
-              total_pack_qty: qtyPack,
-              total_piece_qty: qty,
-              reserved_pack_qty: 0,
-              reserved_piece_qty: 0,
-              last_movement_at: now
-            });
+          // เก็บข้อมูลไว้สำหรับ process ทีหลัง
+          itemsToProcess.push({
+            sku_id: item.sku_id,
+            qty,
+            qtyPack,
+            qtyPerPack,
+            picklist_code: picklist.picklist_code,
+            dispatchBalance
+          });
         }
-
-        itemsProcessed++;
       }
+    }
+
+    // ✅ FAIL EARLY: ถ้ามีรายการใดที่สต็อคไม่พอ ให้ fail ทั้งหมด
+    if (insufficientStockItems.length > 0) {
+      // สร้าง alerts สำหรับรายการที่ขาดสต็อค
+      const alerts = insufficientStockItems.map(item => ({
+        alert_type: 'insufficient_stock',
+        warehouse_id: 'WH001',
+        location_id: dispatchLocation.location_id,
+        sku_id: item.sku_id,
+        required_qty: item.required,
+        current_qty: item.available,
+        shortage_qty: item.shortage,
+        priority: 'urgent',
+        status: 'pending',
+        reference_no: loadlist.loadlist_code,
+        reference_doc_type: 'loadlist',
+        created_at: now
+      }));
+
+      await supabase
+        .from('stock_replenishment_alerts')
+        .insert(alerts)
+        .select()
+        .maybeSingle();
+
+      return NextResponse.json(
+        {
+          error: 'ไม่สามารถโหลดสินค้าได้: สต็อคที่ Dispatch ไม่เพียงพอ',
+          insufficient_items: insufficientStockItems,
+          message: 'กรุณาตรวจสอบและเติมสต็อคที่ Dispatch ก่อนโหลด',
+          total_items: insufficientStockItems.length,
+          alerts_created: alerts.length
+        },
+        { status: 400 }
+      );
+    }
+
+    // ✅ สต็อคเพียงพอทุกรายการ → เริ่ม process
+
+    // Update loadlist status to 'loaded' FIRST to prevent double processing
+    const { error: updateStatusError } = await supabase
+      .from('loadlists')
+      .update({
+        status: 'loaded',
+        updated_at: now
+      })
+      .eq('id', loadlist.id)
+      .eq('status', 'pending'); // Only update if still 'pending'
+
+    if (updateStatusError) {
+      return NextResponse.json(
+        { error: 'ไม่สามารถอัปเดตสถานะใบโหลดได้', details: updateStatusError.message },
+        { status: 500 }
+      );
+    }
+
+    // Update all picklists loaded_at
+    await supabase
+      .from('wms_loadlist_picklists')
+      .update({ loaded_at: now })
+      .in('picklist_id', picklistIds)
+      .eq('loadlist_id', loadlist.id);
+
+    // Process stock movements
+    const ledgerEntries = [];
+    let itemsProcessed = 0;
+
+    for (const itemData of itemsToProcess) {
+      const { sku_id, qty, qtyPack, qtyPerPack, picklist_code, dispatchBalance } = itemData;
+
+      // Update Dispatch balance (decrease)
+      const newPiece = dispatchBalance.total_piece_qty - qty;
+      const newPack = newPiece / qtyPerPack;
+
+      await supabase
+        .from('wms_inventory_balances')
+        .update({
+          total_pack_qty: newPack,
+          total_piece_qty: newPiece,
+          updated_at: now
+        })
+        .eq('balance_id', dispatchBalance.balance_id);
+
+      // Create ledger: OUT from Dispatch
+      ledgerEntries.push({
+        movement_at: now,
+        transaction_type: 'ship',
+        direction: 'out',
+        warehouse_id: 'WH001',
+        location_id: dispatchLocation.location_id,
+        sku_id,
+        pack_qty: qtyPack,
+        piece_qty: qty,
+        reference_no: loadlist.loadlist_code,
+        reference_doc_type: 'loadlist',
+        reference_doc_id: loadlist.id,
+        remarks: `ออกจาก Dispatch - ${picklist_code}`,
+        skip_balance_sync: true
+      });
+
+      // Update Delivery-In-Progress balance (increase)
+      const { data: deliveryBalance } = await supabase
+        .from('wms_inventory_balances')
+        .select('balance_id, total_piece_qty, total_pack_qty')
+        .eq('warehouse_id', 'WH001')
+        .eq('location_id', deliveryLocation.location_id)
+        .eq('sku_id', sku_id)
+        .maybeSingle();
+
+      if (deliveryBalance) {
+        await supabase
+          .from('wms_inventory_balances')
+          .update({
+            total_pack_qty: deliveryBalance.total_pack_qty + qtyPack,
+            total_piece_qty: deliveryBalance.total_piece_qty + qty,
+            updated_at: now
+          })
+          .eq('balance_id', deliveryBalance.balance_id);
+      } else {
+        await supabase
+          .from('wms_inventory_balances')
+          .insert({
+            warehouse_id: 'WH001',
+            location_id: deliveryLocation.location_id,
+            sku_id,
+            total_pack_qty: qtyPack,
+            total_piece_qty: qty,
+            reserved_pack_qty: 0,
+            reserved_piece_qty: 0,
+            last_movement_at: now
+          });
+      }
+
+      // Create ledger: IN to Delivery-In-Progress
+      ledgerEntries.push({
+        movement_at: now,
+        transaction_type: 'ship',
+        direction: 'in',
+        warehouse_id: 'WH001',
+        location_id: deliveryLocation.location_id,
+        sku_id,
+        pack_qty: qtyPack,
+        piece_qty: qty,
+        reference_no: loadlist.loadlist_code,
+        reference_doc_type: 'loadlist',
+        reference_doc_id: loadlist.id,
+        remarks: `เข้า Delivery-In-Progress - ${picklist_code}`,
+        skip_balance_sync: true
+      });
+
+      itemsProcessed++;
     }
 
     // Insert ledger entries
@@ -291,13 +358,12 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Status already updated at the beginning to prevent double processing
-
     return NextResponse.json({
       success: true,
       message: 'ยืนยันการโหลดสินค้าเสร็จสิ้น',
       loadlist_code: loadlist.loadlist_code,
-      items_moved: itemsProcessed
+      items_moved: itemsProcessed,
+      total_items: itemsToProcess.length
     });
 
   } catch (error) {

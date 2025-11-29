@@ -4,25 +4,23 @@ import { createClient } from '@/lib/supabase/server';
 /**
  * POST /api/mobile/pick/scan
  * สแกนและยืนยันการหยิบสินค้า
- *
- * ✅ FIX #3 - ใช้ picklist_item_reservations เพื่อหยิบจาก balance_id ที่จองไว้เดิม
- *
+ * 
  * Workflow:
- * 1. ดึงข้อมูลการจองจาก picklist_item_reservations
- * 2. ลดยอดจองและสต็อคจาก balance_id ที่จองไว้เท่านั้น (ไม่ query FEFO ใหม่)
+ * 1. ลดยอดจองใน Inventory Balance (source_location)
+ * 2. ลดสต็อคจริงจาก source_location
  * 3. เพิ่มสต็อคที่ Dispatch
  * 4. บันทึก Inventory Ledger (OUT + IN)
- * 5. อัปเดต picklist_items และ reservation status
+ * 5. อัปเดต picklist_items
  * 6. อัปเดต picklist status
  */
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
-    const {
-      picklist_id,
-      item_id,
-      quantity_picked,
-      scanned_code
+    const { 
+      picklist_id, 
+      item_id, 
+      quantity_picked, 
+      scanned_code 
     } = await request.json();
 
     // Validation
@@ -118,56 +116,46 @@ export async function POST(request: NextRequest) {
     const packQty = quantity_picked / qtyPerPack;
     const now = new Date().toISOString();
 
-    // ✅ FIX #3 - ดึงข้อมูลการจองที่สร้างไว้ตอน create picklist
-    const { data: reservations, error: reservationError } = await supabase
-      .from('picklist_item_reservations')
-      .select('reservation_id, balance_id, reserved_piece_qty, reserved_pack_qty')
-      .eq('picklist_item_id', item_id)
-      .eq('status', 'reserved')
-      .order('reservation_id', { ascending: true }); // ใช้ลำดับเดิมที่จองไว้
+    // 7. ลดยอดจองและสต็อคจาก source_location (ตามหลัก FEFO + FIFO)
+    const { data: balances, error: balanceError } = await supabase
+      .from('wms_inventory_balances')
+      .select('balance_id, total_piece_qty, reserved_piece_qty, total_pack_qty, reserved_pack_qty, expiry_date, production_date')
+      .eq('warehouse_id', warehouseId)
+      .eq('location_id', item.source_location_id)
+      .eq('sku_id', item.sku_id)
+      .gt('reserved_piece_qty', 0)
+      .order('expiry_date', { ascending: true, nullsFirst: false })
+      .order('production_date', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: true });
 
-    if (reservationError) {
+    if (balanceError) {
       return NextResponse.json(
-        { error: 'ไม่สามารถดึงข้อมูลการจองได้', details: reservationError.message },
+        { error: 'ไม่สามารถดึงข้อมูลสต็อคได้', details: balanceError.message },
         { status: 500 }
+      );
+    }
+
+    if (!balances || balances.length === 0) {
+      return NextResponse.json(
+        { error: `ไม่พบสต็อคที่จองไว้สำหรับ SKU ${item.sku_id} ที่ ${item.source_location_id}` },
+        { status: 400 }
       );
     }
 
     let remainingQty = quantity_picked;
     const ledgerEntries = [];
-    const processedReservations: number[] = [];
 
-    // ✅ กรณีที่ 1: มี reservations (picklist ใหม่)
-    if (reservations && reservations.length > 0) {
-      console.log(`✅ Using reservations: ${reservations.length} found`);
-
-      for (const reservation of reservations) {
+    // ลดยอดจองและสต็อคจริงตามลำดับ FEFO + FIFO
+    for (const balance of balances) {
       if (remainingQty <= 0) break;
 
-      const qtyToDeduct = Math.min(reservation.reserved_piece_qty, remainingQty);
+      const qtyToDeduct = Math.min(balance.reserved_piece_qty, remainingQty);
       const packToDeduct = qtyToDeduct / qtyPerPack;
-
-      // ดึงข้อมูล balance ปัจจุบัน
-      const { data: balance, error: balanceError } = await supabase
-        .from('wms_inventory_balances')
-        .select('balance_id, total_piece_qty, reserved_piece_qty, total_pack_qty, reserved_pack_qty')
-        .eq('balance_id', reservation.balance_id)
-        .single();
-
-      if (balanceError || !balance) {
-        console.error(`Cannot find balance ${reservation.balance_id}:`, balanceError);
-        return NextResponse.json(
-          { error: `ไม่พบข้อมูลสต็อคที่จองไว้ (balance_id: ${reservation.balance_id})` },
-          { status: 500 }
-        );
-      }
 
       // ตรวจสอบว่ามีสต็อคเพียงพอ
       if (balance.total_piece_qty < qtyToDeduct) {
-        return NextResponse.json(
-          { error: `สต็อคไม่เพียงพอ: ต้องการ ${qtyToDeduct} แต่มีเพียง ${balance.total_piece_qty} ชิ้น` },
-          { status: 400 }
-        );
+        console.error(`Insufficient stock at balance ${balance.balance_id}`);
+        continue;
       }
 
       // ลดยอดจองและสต็อคจริง
@@ -203,122 +191,21 @@ export async function POST(request: NextRequest) {
         reference_no: item.picklists.picklist_code,
         reference_doc_type: 'picklist',
         reference_doc_id: picklist_id,
-        remarks: `หยิบจาก ${item.source_location_id} (balance_id: ${balance.balance_id}) - ${item.picklists.picklist_code}`,
+        remarks: `หยิบจาก ${item.source_location_id} - ${item.picklists.picklist_code}`,
         skip_balance_sync: true  // ✅ API อัปเดต balance ด้วยตัวเองแล้ว
       });
 
-        processedReservations.push(reservation.reservation_id);
-        remainingQty -= qtyToDeduct;
-      }
-
-      if (remainingQty > 0) {
-        return NextResponse.json(
-          { error: `สต็อคที่จองไว้ไม่เพียงพอ ขาดอีก ${remainingQty} ชิ้น` },
-          { status: 400 }
-        );
-      }
-
-      // อัปเดตสถานะการจอง
-      if (processedReservations.length > 0) {
-        await supabase
-          .from('picklist_item_reservations')
-          .update({
-            status: 'picked',
-            picked_at: now,
-            updated_at: now
-          })
-          .in('reservation_id', processedReservations);
-      }
-    }
-    // ✅ กรณีที่ 2: ไม่มี reservations (picklist เก่า) - Query FEFO/FIFO ใหม่
-    else {
-      console.log(`⚠️ No reservations found, using FEFO/FIFO fallback`);
-
-      // Map area_code → zone → locations
-      const { data: prepArea } = await supabase
-        .from('preparation_area')
-        .select('zone')
-        .eq('area_code', item.source_location_id)
-        .maybeSingle();
-
-      let locationIds: string[] = [];
-      if (prepArea?.zone) {
-        const { data: locs } = await supabase
-          .from('master_location')
-          .select('location_id')
-          .eq('zone', prepArea.zone);
-        locationIds = locs?.map(l => l.location_id) || [];
-      }
-      
-      if (locationIds.length === 0) {
-        locationIds = [item.source_location_id];
-      }
-
-      // Query FEFO/FIFO
-      const { data: balances } = await supabase
-        .from('wms_inventory_balances')
-        .select('balance_id, location_id, total_piece_qty, total_pack_qty, reserved_piece_qty, reserved_pack_qty')
-        .eq('warehouse_id', warehouseId)
-        .in('location_id', locationIds)
-        .eq('sku_id', item.sku_id)
-        .gt('total_piece_qty', 0)
-        .order('expiry_date', { ascending: true, nullsFirst: false })
-        .order('production_date', { ascending: true, nullsFirst: false })
-        .order('created_at', { ascending: true });
-
-      if (!balances || balances.length === 0) {
-        return NextResponse.json(
-          { error: 'ไม่พบสต็อคในพื้นที่หยิบ' },
-          { status: 400 }
-        );
-      }
-
-      for (const balance of balances) {
-        if (remainingQty <= 0) break;
-
-        const availableQty = (balance.total_piece_qty || 0) - (balance.reserved_piece_qty || 0);
-        if (availableQty <= 0) continue;
-
-        const qtyToDeduct = Math.min(availableQty, remainingQty);
-        const packToDeduct = qtyToDeduct / qtyPerPack;
-
-        await supabase
-          .from('wms_inventory_balances')
-          .update({
-            total_piece_qty: Math.max(0, balance.total_piece_qty - qtyToDeduct),
-            total_pack_qty: Math.max(0, balance.total_pack_qty - packToDeduct),
-            updated_at: now
-          })
-          .eq('balance_id', balance.balance_id);
-
-        ledgerEntries.push({
-          movement_at: now,
-          transaction_type: 'pick',
-          direction: 'out',
-          warehouse_id: warehouseId,
-          location_id: balance.location_id,
-          sku_id: item.sku_id,
-          pack_qty: packToDeduct,
-          piece_qty: qtyToDeduct,
-          reference_no: item.picklists.picklist_code,
-          reference_doc_type: 'picklist',
-          reference_doc_id: picklist_id,
-          remarks: `หยิบจาก ${balance.location_id} (FEFO) - ${item.picklists.picklist_code}`,
-          skip_balance_sync: true
-        });
-
-        remainingQty -= qtyToDeduct;
-      }
-
-      if (remainingQty > 0) {
-        return NextResponse.json(
-          { error: `สต็อคไม่เพียงพอ ขาดอีก ${remainingQty} ชิ้น` },
-          { status: 400 }
-        );
-      }
+      remainingQty -= qtyToDeduct;
     }
 
-    // 7. เพิ่มสต็อคที่ Dispatch
+    if (remainingQty > 0) {
+      return NextResponse.json(
+        { error: `สต็อคไม่เพียงพอ ขาดอีก ${remainingQty} ชิ้น` },
+        { status: 400 }
+      );
+    }
+
+    // 8. เพิ่มสต็อคที่ Dispatch
     const { data: dispatchBalance, error: dispatchBalanceError } = await supabase
       .from('wms_inventory_balances')
       .select('balance_id, total_piece_qty, total_pack_qty')
@@ -375,7 +262,7 @@ export async function POST(request: NextRequest) {
       skip_balance_sync: true  // ✅ API อัปเดต balance ด้วยตัวเองแล้ว
     });
 
-    // 8. บันทึก ledger entries
+    // 9. บันทึก ledger entries
     const { error: ledgerError } = await supabase
       .from('wms_inventory_ledger')
       .insert(ledgerEntries);
@@ -385,33 +272,24 @@ export async function POST(request: NextRequest) {
       // ไม่ fail request แต่ log warning
     }
 
-    // 9. อัปเดต picklist_item
-    const { data: updatedItem, error: itemUpdateError } = await supabase
+    // 10. อัปเดต picklist_item
+    const { error: itemUpdateError } = await supabase
       .from('picklist_items')
       .update({
         quantity_picked: quantity_picked,
         status: 'picked',
-        picked_at: now
+        updated_at: now
       })
-      .eq('id', item_id)
-      .select()
-      .single();
+      .eq('id', item_id);
 
     if (itemUpdateError) {
-      console.error('❌ Error updating picklist_item:', {
-        item_id,
-        error: itemUpdateError,
-        update_data: { quantity_picked, status: 'picked' }
-      });
       return NextResponse.json(
-        { error: 'ไม่สามารถอัปเดตรายการสินค้าได้', details: itemUpdateError.message, code: itemUpdateError.code },
+        { error: 'ไม่สามารถอัปเดตรายการสินค้าได้', details: itemUpdateError.message },
         { status: 500 }
       );
     }
 
-    console.log('✅ Picklist item updated:', updatedItem);
-
-    // 10. เช็คว่าหยิบครบทุก item หรือยัง
+    // 11. เช็คว่าหยิบครบทุก item หรือยัง
     const { data: allItems } = await supabase
       .from('picklist_items')
       .select('status')
@@ -419,7 +297,7 @@ export async function POST(request: NextRequest) {
 
     const allPicked = allItems?.every(i => i.status === 'picked');
 
-    // 11. อัปเดตสถานะ picklist
+    // 12. อัปเดตสถานะ picklist
     const newStatus = allPicked ? 'completed' : 'picking';
     const { error: picklistUpdateError } = await supabase
       .from('picklists')
@@ -439,8 +317,7 @@ export async function POST(request: NextRequest) {
       message: 'บันทึกการหยิบสินค้าสำเร็จ',
       picklist_status: newStatus,
       picklist_completed: allPicked,
-      quantity_picked: quantity_picked,
-      reservations_processed: processedReservations.length
+      quantity_picked: quantity_picked
     });
 
   } catch (error) {

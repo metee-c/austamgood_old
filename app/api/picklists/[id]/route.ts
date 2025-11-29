@@ -48,11 +48,13 @@ export async function GET(
           stop_id,
           quantity_to_pick,
           quantity_picked,
+          source_location_id,
           status,
           notes,
           master_sku (
             sku_name,
-            barcode
+            barcode,
+            default_location
           )
         )
       `)
@@ -247,9 +249,17 @@ export async function PATCH(
         if (warehouseId) {
           console.log(`🔍 Starting stock reservation for picklist ${id} in warehouse ${warehouseId}`);
 
+          let skippedCount = 0;
+          const skippedReasons: string[] = [];
+
           for (const item of picklistItems) {
             if (!item.quantity_to_pick || !item.source_location_id) {
-              console.warn(`⚠️ Skipping item ${item.id}: missing quantity_to_pick or source_location_id`);
+              skippedCount++;
+              const reason = !item.quantity_to_pick
+                ? 'missing quantity_to_pick'
+                : 'missing source_location_id (SKU does not have preparation area configured in master data)';
+              skippedReasons.push(`Item ${item.id} (SKU: ${item.sku_id}): ${reason}`);
+              console.warn(`⚠️ Skipping item ${item.id} (SKU: ${item.sku_id}): ${reason}`);
               continue;
             }
 
@@ -323,7 +333,13 @@ export async function PATCH(
             }
           }
 
-          console.log(`✅ Stock reservation completed for picklist ${id}`);
+          if (skippedCount > 0) {
+            console.warn(`⚠️ Stock reservation completed for picklist ${id} - ${skippedCount} items skipped:`);
+            skippedReasons.forEach(reason => console.warn(`   - ${reason}`));
+            console.warn(`⚠️ TO FIX: Configure preparation area (default_location) for SKUs in master data at /master-data/products`);
+          } else {
+            console.log(`✅ Stock reservation completed for picklist ${id} - all items processed`);
+          }
         } else {
           console.warn(`⚠️ No warehouse_id found for picklist ${id} - skipping stock reservation`);
         }

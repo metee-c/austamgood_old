@@ -5,10 +5,8 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
 
-    // Get route plans with status 'published', 'pending_approval', or 'approved'
-    // published = เผยแพร่แล้ว (พร้อมสร้าง Picklist)
-    // pending_approval = รออนุมัติ (แผนที่พร้อมสร้าง Picklist แต่รออนุมัติ)
-    // approved = อนุมัติแล้ว (อนุมัติให้สร้าง Picklist ได้)
+    // Get route plans with status 'approved' only
+    // approved = อนุมัติแล้ว (ผู้จัดการอนุมัติใบว่าจ้างแล้ว - พร้อมสร้าง Picklist)
     const { data: plans, error } = await supabase
       .from('receiving_route_plans')
       .select(`
@@ -25,7 +23,7 @@ export async function GET(request: NextRequest) {
           warehouse_name
         )
       `)
-      .in('status', ['published', 'pending_approval', 'approved'])
+      .eq('status', 'approved')
       .order('plan_date', { ascending: false })
       .order('plan_code', { ascending: false });
 

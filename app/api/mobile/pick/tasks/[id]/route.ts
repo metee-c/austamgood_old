@@ -42,6 +42,7 @@ export async function GET(
           uom,
           order_no,
           order_id,
+          stop_id,
           quantity_to_pick,
           quantity_picked,
           source_location_id,
@@ -51,10 +52,6 @@ export async function GET(
             sku_name,
             barcode,
             qty_per_pack
-          ),
-          master_location:source_location_id (
-            location_code,
-            location_name
           )
         )
       `)
@@ -67,6 +64,58 @@ export async function GET(
         { error: 'Picklist not found', details: error.message },
         { status: 404 }
       );
+    }
+
+    // ✅ Map source_location_id (area_code) to zone name for display
+    if (picklist?.picklist_items) {
+      const areaCodeSet = new Set(
+        picklist.picklist_items
+          .map(item => item.source_location_id)
+          .filter(Boolean)
+      );
+
+      if (areaCodeSet.size > 0) {
+        const { data: prepAreas } = await supabase
+          .from('preparation_area')
+          .select('area_code, area_name, zone')
+          .in('area_code', Array.from(areaCodeSet));
+
+        const areaMap = new Map(
+          (prepAreas || []).map(area => [
+            area.area_code,
+            { area_name: area.area_name, zone: area.zone }
+          ])
+        );
+
+        // Add location info to each item
+        picklist.picklist_items = picklist.picklist_items.map(item => ({
+          ...item,
+          master_location: item.source_location_id
+            ? {
+                location_code: areaMap.get(item.source_location_id)?.zone || item.source_location_id,
+                location_name: areaMap.get(item.source_location_id)?.area_name || null
+              }
+            : null
+        }));
+      }
+
+      // ✅ Fetch shop names from stops
+      const stopIds = [...new Set(picklist.picklist_items.map(item => item.stop_id).filter(Boolean))];
+      if (stopIds.length > 0) {
+        const { data: stops } = await supabase
+          .from('receiving_route_stops')
+          .select('stop_id, stop_name, order_id')
+          .in('stop_id', stopIds);
+
+        const stopMap = new Map(
+          (stops || []).map(stop => [stop.stop_id, { stop_name: stop.stop_name, order_id: stop.order_id }])
+        );
+
+        picklist.picklist_items = picklist.picklist_items.map(item => ({
+          ...item,
+          shop_name: item.stop_id ? stopMap.get(item.stop_id)?.stop_name : null
+        }));
+      }
     }
 
     return NextResponse.json(picklist);

@@ -462,7 +462,7 @@ const PicklistsPage = () => {
         <Modal
           isOpen={showCreateModal}
           onClose={() => setShowCreateModal(false)}
-          title="สร้าง Picklist จากแผนรถที่เผยแพร่แล้ว"
+          title="สร้าง Picklist จากแผนรถที่อนุมัติแล้ว"
           size="4xl"
         >
           <div className="space-y-4">
@@ -473,7 +473,7 @@ const PicklistsPage = () => {
             ) : publishedPlans.data?.length === 0 ? (
               <div className="text-center py-8 text-gray-500">
                 <Truck className="w-12 h-12 mx-auto mb-2 text-gray-400" />
-                <p className="font-thai">ไม่พบแผนรถที่เผยแพร่แล้ว</p>
+                <p className="font-thai">ไม่พบแผนรถที่อนุมัติแล้ว</p>
               </div>
             ) : (
               <div className="max-h-[70vh] overflow-y-auto space-y-4">
@@ -486,8 +486,8 @@ const PicklistsPage = () => {
                         <p className="text-xs text-gray-600 font-mono">{plan.plan_code}</p>
                       </div>
                       <div className="flex items-center gap-3">
-                        <Badge variant={plan.status === 'published' ? 'success' : 'warning'}>
-                          {plan.status === 'published' ? 'เผยแพร่แล้ว' : 'รออนุมัติ'}
+                        <Badge variant={plan.status === 'approved' ? 'success' : 'warning'}>
+                          {plan.status === 'approved' ? 'อนุมัติแล้ว' : plan.status === 'published' ? 'เผยแพร่แล้ว' : 'รออนุมัติ'}
                         </Badge>
                         <div className="text-xs text-gray-600">
                           <span className="font-semibold">{new Date(plan.plan_date).toLocaleDateString('th-TH')}</span>

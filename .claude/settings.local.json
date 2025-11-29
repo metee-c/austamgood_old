@@ -48,7 +48,18 @@
       "Bash(echo:*)",
       "Bash(timeout 10 bash -c \"curl ''http://localhost:3000/api/mobile/loading/loadlist-detail?code=LD-20251127-0001'' 2>nul\")",
       "Bash(timeout 5 bash -c \"curl ''http://localhost:3000/mobile/loading'' 2>nul | findstr /C:\"\"loading\"\" /C:\"\"error\"\" | head -n 3\")",
-      "Bash(timeout 10 bash -c \"curl ''http://localhost:3000/api/mobile/loading/loadlist-detail?code=LD-20251127-0001'' 2>nul | python -m json.tool\")"
+      "Bash(timeout 10 bash -c \"curl ''http://localhost:3000/api/mobile/loading/loadlist-detail?code=LD-20251127-0001'' 2>nul | python -m json.tool\")",
+      "Bash(timeout 10 bash -c \"curl ''http://localhost:3000/api/master-sku?limit=5'' 2>nul | python -m json.tool | head -n 50\")",
+      "Bash(timeout 10 bash -c \"curl ''''http://localhost:3000/api/picklists/87'''' 2>nul | python -m json.tool\")",
+      "Bash(timeout 10 bash -c \"psql ''postgresql://postgres.iwlkslewdgenckuejbit:Austam@567890@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres'' -c \"\"SELECT id, sku_id, source_location_id, quantity_to_pick FROM picklist_items WHERE picklist_id = 87 LIMIT 5;\"\" 2>nul\")",
+      "Bash(timeout 10 bash -c \"curl ''''http://localhost:3000/api/warehouse/inventory-balances?location=PK001&limit=5'''' 2>nul | python -m json.tool\")",
+      "Bash(timeout 10 bash -c \"curl ''''http://localhost:3000/api/master-location?search=PK001'''' 2>nul | python -m json.tool\")",
+      "Bash(timeout 15 bash -c \"curl -X PATCH ''http://localhost:3000/api/picklists/87'' -H ''Content-Type: application/json'' -d ''{\"\"status\"\": \"\"pending\"\"}'' 2>nul\")",
+      "Bash(timeout 15 bash -c \"curl -X PATCH ''http://localhost:3000/api/picklists/87'' -H ''Content-Type: application/json'' -d ''{\"\"status\"\": \"\"assigned\"\", \"\"assigned_to_employee_id\"\": 1}'' 2>nul | python -m json.tool\")",
+      "Bash(timeout 10 bash -c \"curl ''''http://localhost:3000/api/master-employee?limit=1'''' 2>nul | python -m json.tool\")",
+      "Bash(timeout 15 bash -c \"curl -X PATCH ''http://localhost:3000/api/picklists/87'' -H ''Content-Type: application/json'' -d ''{\"\"status\"\": \"\"assigned\"\", \"\"assigned_to_employee_id\"\": 11}'' 2>nul | python -m json.tool\")",
+      "Bash(timeout 10 bash -c \"curl ''http://localhost:3000/api/warehouse/balances?sku_id=B-BEY-C|MNB|010'' 2>nul | python -m json.tool 2>nul || echo ''API not found''\")",
+      "Bash(timeout 10 bash -c \"psql ''postgresql://postgres.iwlkslewdgenckuejbit:Austam@567890@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres'' -c \"\"SELECT table_name FROM information_schema.tables WHERE table_name IN (''picklist_item_reservations'', ''stock_replenishment_alerts'') ORDER BY table_name;\"\" 2>nul\")"
     ],
     "deny": [],
     "ask": []

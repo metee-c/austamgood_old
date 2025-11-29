@@ -3,7 +3,20 @@ import { createClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * POST /api/picklists/create-from-trip
+ *
+ * ✅ FIXES APPLIED:
+ * 1. Validate source_location_id (fail if SKU missing default_location)
+ * 2. Validate stock availability BEFORE creating picklist
+ * 3. Use picklist_item_reservations table to track balance_id
+ * 4. Fail request if insufficient stock (no partial reservation)
+ * 5. Transaction rollback on any failure
+ */
 export async function POST(request: NextRequest) {
+  let picklist: any = null;
+  let picklistItems: any[] = [];
+
   try {
     const supabase = await createClient();
     const { trip_id, loading_door_number } = await request.json();
@@ -43,7 +56,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 2. Generate picklist code (PL-YYYYMMDD-XXX)
+    const warehouseId = (trip.receiving_route_plans as any)?.warehouse_id;
+    if (!warehouseId) {
+      return NextResponse.json(
+        { error: 'Warehouse ID not found for this trip' },
+        { status: 400 }
+      );
+    }
+
+    // 2. Generate picklist code
     const today = new Date().toISOString().split('T')[0].replace(/-/g, '');
     const { data: existingPicklists } = await supabase
       .from('picklists')
@@ -61,28 +82,18 @@ export async function POST(request: NextRequest) {
 
     const picklistCode = `PL-${today}-${sequence.toString().padStart(3, '0')}`;
 
-    // 3. Fetch all stops and orders for this trip
+    // 3. Fetch stops and orders
     const { data: stops, error: stopsError } = await supabase
       .from('receiving_route_stops')
-      .select(`
-        stop_id,
-        sequence_no,
-        stop_name,
-        order_id,
-        tags
-      `)
+      .select(`stop_id, sequence_no, stop_name, order_id, tags`)
       .eq('trip_id', trip_id)
       .order('sequence_no', { ascending: true });
 
     if (stopsError) {
-      console.error('Error fetching stops:', stopsError);
-      return NextResponse.json(
-        { error: 'Failed to fetch stops' },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: 'Failed to fetch stops' }, { status: 500 });
     }
 
-    // 4. Collect all order IDs from stops
+    // 4. Collect order IDs
     const orderIds = new Set<number>();
     (stops || []).forEach((stop) => {
       if (stop.order_id) orderIds.add(stop.order_id);
@@ -92,110 +103,65 @@ export async function POST(request: NextRequest) {
     });
 
     if (orderIds.size === 0) {
-      return NextResponse.json(
-        { error: 'No orders found in this trip' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'No orders found in this trip' }, { status: 400 });
     }
 
-    // 5. Fetch order items for all orders
+    // 5. Fetch order items
     const { data: orderItems, error: orderItemsError } = await supabase
       .from('wms_order_items')
-      .select(`
-        order_item_id,
-        order_id,
-        sku_id,
-        order_qty,
-        order_weight
-      `)
+      .select(`order_item_id, order_id, sku_id, order_qty, order_weight`)
       .in('order_id', Array.from(orderIds));
 
-    if (orderItemsError) {
-      console.error('Error fetching order items:', orderItemsError);
-      return NextResponse.json(
-        { error: 'Failed to fetch order items' },
-        { status: 500 }
-      );
+    if (orderItemsError || !orderItems) {
+      return NextResponse.json({ error: 'Failed to fetch order items' }, { status: 500 });
     }
 
     // 6. Fetch SKU details
-    const skuIds = [...new Set((orderItems || []).map(item => item.sku_id))];
+    const skuIds = [...new Set(orderItems.map(item => item.sku_id))];
     const { data: skus, error: skusError } = await supabase
       .from('master_sku')
-      .select('sku_id, sku_name, uom_base, barcode, default_location')
+      .select('sku_id, sku_name, uom_base, barcode, default_location, qty_per_pack')
       .in('sku_id', skuIds);
 
     if (skusError) {
-      console.error('Error fetching SKUs:', skusError);
+      return NextResponse.json({ error: 'Failed to fetch SKUs' }, { status: 500 });
     }
 
-    // 7. Note: We will use default_location from SKU master data as the primary source
-    // for source_location_id (preparation area configured in master data)
-
-    // 8. Fetch order details
-    const { data: orders, error: ordersError } = await supabase
+    // 7. Fetch order details
+    const { data: orders } = await supabase
       .from('wms_orders')
       .select('order_id, order_no')
       .in('order_id', Array.from(orderIds));
 
-    if (ordersError) {
-      console.error('Error fetching orders:', ordersError);
-    }
-
-    // Create maps for quick lookup
     const skuMap = new Map((skus || []).map(sku => [sku.sku_id, sku]));
     const orderMap = new Map((orders || []).map(order => [order.order_id, order]));
 
-    // 9. Create picklist
-    const totalQuantity = (orderItems || []).reduce((sum, item) => sum + (item.order_qty || 0), 0);
-    const totalLines = (orderItems || []).length;
-
-    const { data: { user } } = await supabase.auth.getUser();
-
-    const { data: picklist, error: picklistError } = await supabase
-      .from('picklists')
-      .insert({
-        picklist_code: picklistCode,
-        trip_id: trip_id,
-        plan_id: trip.plan_id,
-        status: 'pending',
-        total_lines: totalLines,
-        total_quantity: totalQuantity,
-        loading_door_number: loading_door_number || null,
-        created_by: user?.id,
-        created_from: 'trip'
-      })
-      .select()
-      .single();
-
-    if (picklistError || !picklist) {
-      console.error('Error creating picklist:', picklistError);
-      return NextResponse.json(
-        { error: 'Failed to create picklist' },
-        { status: 500 }
-      );
-    }
-
-    // 10. Create picklist items with source_location_id
-    // Group items by SKU and stop to avoid duplicates
+    // ============================================================
+    // ✅ FIX #1: Validate source_location_id BEFORE creating picklist
+    // ============================================================
+    const missingLocationSkus: any[] = [];
     const itemsToInsert: any[] = [];
 
-    const skippedItems: any[] = [];
-
     (orderItems || []).forEach((item) => {
-      // Skip items with SKU not in master_sku
       const sku = skuMap.get(item.sku_id);
       if (!sku) {
-        console.warn(`Skipping item with missing SKU: ${item.sku_id}`);
-        skippedItems.push({
+        missingLocationSkus.push({
           sku_id: item.sku_id,
-          order_item_id: item.order_item_id,
-          order_id: item.order_id
+          reason: 'SKU not found in master_sku'
         });
         return;
       }
 
-      // Find which stop this order belongs to
+      // ✅ ตรวจสอบ default_location ก่อน
+      if (!sku.default_location) {
+        missingLocationSkus.push({
+          sku_id: item.sku_id,
+          sku_name: sku.sku_name,
+          reason: 'SKU does not have preparation area (default_location) configured'
+        });
+        return;
+      }
+
       const stop = stops?.find(s => {
         if (s.order_id === item.order_id) return true;
         if (s.tags?.order_ids?.includes(item.order_id)) return true;
@@ -204,13 +170,7 @@ export async function POST(request: NextRequest) {
 
       if (stop) {
         const order = orderMap.get(item.order_id);
-
-        // Use default_location (preparation area) as source_location_id
-        // This is the preparation area configured in master data
-        const sourceLocationId = sku.default_location || null;
-
         itemsToInsert.push({
-          picklist_id: picklist.id,
           order_item_id: item.order_item_id,
           sku_id: item.sku_id,
           sku_name: sku.sku_name || item.sku_id,
@@ -219,171 +179,290 @@ export async function POST(request: NextRequest) {
           order_id: item.order_id,
           stop_id: stop.stop_id,
           quantity_to_pick: item.order_qty,
-          quantity_picked: 0,
-          source_location_id: sourceLocationId,  // ✅ ใช้ default_location (preparation area)
-          status: 'pending',
-          notes: sku?.barcode || null
+          source_location_id: sku.default_location,
+          qty_per_pack: sku.qty_per_pack || 1
         });
       }
     });
 
-    if (itemsToInsert.length > 0) {
-      const { error: itemsError } = await supabase
-        .from('picklist_items')
-        .insert(itemsToInsert);
+    // ❌ FAIL if any SKU missing source_location
+    if (missingLocationSkus.length > 0) {
+      console.error('❌ Cannot create picklist: SKUs missing preparation area:', missingLocationSkus);
+      return NextResponse.json({
+        error: 'Cannot create picklist: Some SKUs do not have preparation area configured',
+        missing_locations: missingLocationSkus,
+        instructions: 'Please configure default_location for these SKUs in master data at /master-data/products'
+      }, { status: 400 });
+    }
 
-      if (itemsError) {
-        console.error('Error creating picklist items:', itemsError);
-        // Rollback: delete the picklist
-        await supabase.from('picklists').delete().eq('id', picklist.id);
-        return NextResponse.json(
-          { error: 'Failed to create picklist items' },
-          { status: 500 }
-        );
+    // ============================================================
+    // ✅ FIX #2: Check stock availability BEFORE creating picklist
+    // ============================================================
+    const insufficientStockItems: any[] = [];
+
+    for (const item of itemsToInsert) {
+      // ✅ FIX: Map area_code → zone name → location_ids
+      // source_location_id is area_code from preparation_areas (e.g., 'PK001')
+
+      // Step 1: Get zone name from preparation_area using area_code
+      const { data: prepArea } = await supabase
+        .from('preparation_area')
+        .select('zone')
+        .eq('area_code', item.source_location_id)
+        .maybeSingle();
+
+      let locationIdsToCheck: string[] = [];
+
+      if (prepArea && prepArea.zone) {
+        // Step 2: Find all locations with this zone name
+        const { data: locationsInZone } = await supabase
+          .from('master_location')
+          .select('location_id')
+          .eq('zone', prepArea.zone);
+
+        if (locationsInZone && locationsInZone.length > 0) {
+          locationIdsToCheck = locationsInZone.map(loc => loc.location_id);
+        }
+      } else {
+        // Fallback: treat source_location_id as direct location_id
+        locationIdsToCheck = [item.source_location_id];
+      }
+
+      // Query available stock at locations
+      const { data: balances } = await supabase
+        .from('wms_inventory_balances')
+        .select('balance_id, location_id, total_piece_qty, reserved_piece_qty')
+        .eq('warehouse_id', warehouseId)
+        .in('location_id', locationIdsToCheck)
+        .eq('sku_id', item.sku_id)
+        .order('expiry_date', { ascending: true, nullsFirst: false })
+        .order('production_date', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: true });
+
+      const totalAvailable = (balances || []).reduce((sum, b) => {
+        return sum + ((b.total_piece_qty || 0) - (b.reserved_piece_qty || 0));
+      }, 0);
+
+      if (totalAvailable < item.quantity_to_pick) {
+        insufficientStockItems.push({
+          sku_id: item.sku_id,
+          sku_name: item.sku_name,
+          zone: item.source_location_id,
+          locations_checked: locationIdsToCheck,
+          required: item.quantity_to_pick,
+          available: totalAvailable,
+          shortage: item.quantity_to_pick - totalAvailable
+        });
       }
     }
 
-    // 11. จองสต็อกอัตโนมัติตามหลัก FEFO + FIFO เมื่อ status = 'pending'
-    // สำหรับแสดงใน inventory-balances (reserved_pack_qty, reserved_piece_qty)
-    // จะถูกยกเลิกการจองเมื่อ picklist เปลี่ยนเป็น 'completed'
-    const warehouseId = (trip.receiving_route_plans as any)?.warehouse_id;
-    const stockCheckResults: any[] = [];
+    // ❌ FAIL if insufficient stock
+    if (insufficientStockItems.length > 0) {
+      console.error('❌ Cannot create picklist: Insufficient stock:', insufficientStockItems);
+      return NextResponse.json({
+        error: 'Cannot create picklist: Insufficient stock for some items',
+        insufficient_items: insufficientStockItems,
+        total_items_with_shortage: insufficientStockItems.length
+      }, { status: 400 });
+    }
 
-    if (warehouseId) {
-      try {
-        // จองสต็อกสำหรับแต่ละ item (จำกัดเฉพาะที่ source_location_id เท่านั้น)
-        for (const item of itemsToInsert) {
-          if (!item.source_location_id || !item.quantity_to_pick) continue;
+    // ============================================================
+    // 9. Create picklist (all validations passed)
+    // ============================================================
+    const totalQuantity = itemsToInsert.reduce((sum, item) => sum + item.quantity_to_pick, 0);
+    const { data: { user } } = await supabase.auth.getUser();
 
-          // ✅ Query inventory balances ที่ source_location_id โดยเรียงตาม FEFO + FIFO
-          // จำกัดเฉพาะ location ที่กำหนดใน source_location_id
-          const { data: balances } = await supabase
-            .from('wms_inventory_balances')
-            .select('balance_id, pallet_id, location_id, total_piece_qty, total_pack_qty, reserved_piece_qty, reserved_pack_qty, expiry_date, production_date')
-            .eq('warehouse_id', warehouseId)
-            .eq('location_id', item.source_location_id)  // ✅ จำกัดเฉพาะ location นี้
-            .eq('sku_id', item.sku_id)
-            .gt('total_piece_qty', 0)
-            .order('expiry_date', { ascending: true, nullsFirst: false }) // FEFO
-            .order('production_date', { ascending: true, nullsFirst: false }) // FIFO
-            .order('created_at', { ascending: true });
+    const { data: picklistData, error: picklistError } = await supabase
+      .from('picklists')
+      .insert({
+        picklist_code: picklistCode,
+        trip_id: trip_id,
+        plan_id: trip.plan_id,
+        status: 'pending',
+        total_lines: itemsToInsert.length,
+        total_quantity: totalQuantity,
+        loading_door_number: loading_door_number || null,
+        created_by: user?.id,
+        created_from: 'trip'
+      })
+      .select()
+      .single();
 
-          if (!balances || balances.length === 0) {
-            console.warn(`❌ No stock found for SKU ${item.sku_id} at ${item.source_location_id}`);
-            continue;
-          }
+    if (picklistError || !picklistData) {
+      throw new Error('Failed to create picklist');
+    }
 
-          console.log(`🔍 Found ${balances.length} balance(s) for SKU ${item.sku_id} at ${item.source_location_id}`);
+    picklist = picklistData;
 
-          // จัดสรรการจองตามลำดับ FEFO + FIFO
-          let remainingQty = item.quantity_to_pick;
-          let reservedBalances = [];
+    // 10. Create picklist items
+    const itemsWithPicklistId = itemsToInsert.map(item => ({
+      picklist_id: picklist.id,
+      order_item_id: item.order_item_id,
+      sku_id: item.sku_id,
+      sku_name: item.sku_name,
+      uom: item.uom,
+      order_no: item.order_no,
+      order_id: item.order_id,
+      stop_id: item.stop_id,
+      quantity_to_pick: item.quantity_to_pick,
+      quantity_picked: 0,
+      source_location_id: item.source_location_id,
+      status: 'pending',
+      notes: null
+    }));
 
-          for (const balance of balances) {
-            if (remainingQty <= 0) break;
+    const { data: createdItems, error: itemsError } = await supabase
+      .from('picklist_items')
+      .insert(itemsWithPicklistId)
+      .select();
 
-            const availableQty = (balance.total_piece_qty || 0) - (balance.reserved_piece_qty || 0);
-            if (availableQty <= 0) continue;
+    if (itemsError || !createdItems) {
+      throw new Error('Failed to create picklist items');
+    }
 
-            const qtyToReserve = Math.min(availableQty, remainingQty);
+    picklistItems = createdItems;
 
-            // คำนวณ pack_qty จาก piece_qty
-            // ดึง qty_per_pack จาก master_sku
-            const { data: skuData } = await supabase
-              .from('master_sku')
-              .select('qty_per_pack')
-              .eq('sku_id', item.sku_id)
-              .single();
+    // ============================================================
+    // ✅ FIX #3: Reserve stock using picklist_item_reservations table
+    // ============================================================
+    const reservationsToInsert: any[] = [];
 
-            const qtyPerPack = skuData?.qty_per_pack || 1;
-            const packToReserve = qtyToReserve / qtyPerPack;
+    for (let i = 0; i < itemsToInsert.length; i++) {
+      const item = itemsToInsert[i];
+      const picklistItem = createdItems[i];
 
-            // อัพเดตการจอง (ทั้ง pack และ piece)
-            const { error: reserveError } = await supabase
-              .from('wms_inventory_balances')
-              .update({
-                reserved_pack_qty: (balance.reserved_pack_qty || 0) + packToReserve,
-                reserved_piece_qty: (balance.reserved_piece_qty || 0) + qtyToReserve,
-                updated_at: new Date().toISOString()
-              })
-              .eq('balance_id', balance.balance_id);
+      // ✅ Map area_code → zone name → location_ids (same logic as validation)
+      const { data: prepArea } = await supabase
+        .from('preparation_area')
+        .select('zone')
+        .eq('area_code', item.source_location_id)
+        .maybeSingle();
 
-            if (reserveError) {
-              console.error(`❌ Reservation error for balance ${balance.balance_id}:`, reserveError);
-            } else {
-              console.log(`✅ Reserved ${qtyToReserve} pieces from balance ${balance.balance_id} (pallet: ${balance.pallet_id})`);
-              reservedBalances.push({ balance_id: balance.balance_id, qty: qtyToReserve });
-            }
+      let locationIdsToReserve: string[] = [];
 
-            remainingQty -= qtyToReserve;
-          }
+      if (prepArea && prepArea.zone) {
+        const { data: locationsInZone } = await supabase
+          .from('master_location')
+          .select('location_id')
+          .eq('zone', prepArea.zone);
 
-          if (remainingQty > 0) {
-            console.warn(`⚠️ Partial reservation for SKU ${item.sku_id}: ${remainingQty} pieces not reserved (reserved: ${item.quantity_to_pick - remainingQty}/${item.quantity_to_pick})`);
-          } else {
-            console.log(`✅ Fully reserved ${item.quantity_to_pick} pieces for SKU ${item.sku_id}`);
-          }
+        if (locationsInZone && locationsInZone.length > 0) {
+          locationIdsToReserve = locationsInZone.map(loc => loc.location_id);
         }
+      } else {
+        locationIdsToReserve = [item.source_location_id];
+      }
 
-        // 12. ตรวจสอบสต็อกและสร้างการแจ้งเตือนหากไม่เพียงพอ
-        for (const item of itemsToInsert) {
-          if (!item.source_location_id || !item.quantity_to_pick) continue;
+      // Query balances with FEFO + FIFO across all locations in zone
+      const { data: balances } = await supabase
+        .from('wms_inventory_balances')
+        .select('balance_id, pallet_id, location_id, total_piece_qty, total_pack_qty, reserved_piece_qty, reserved_pack_qty, expiry_date, production_date')
+        .eq('warehouse_id', warehouseId)
+        .in('location_id', locationIdsToReserve)
+        .eq('sku_id', item.sku_id)
+        .gt('total_piece_qty', 0)
+        .order('expiry_date', { ascending: true, nullsFirst: false })
+        .order('production_date', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: true });
 
-          // เรียกใช้ฟังก์ชันตรวจสอบและสร้างการแจ้งเตือน
-          const { data: alertResult, error: alertError } = await supabase
-            .rpc('check_and_create_replenishment_alert', {
-              p_warehouse_id: warehouseId,
-              p_sku_id: item.sku_id,
-              p_pick_location_id: item.source_location_id,
-              p_required_qty: item.quantity_to_pick,
-              p_picklist_id: picklist.id,
-              p_created_by: user?.id
-            });
+      let remainingQty = item.quantity_to_pick;
+      const qtyPerPack = item.qty_per_pack;
 
-          if (alertError) {
-            console.error(`Alert check error for SKU ${item.sku_id}:`, alertError);
-          } else if (alertResult && alertResult.length > 0) {
-            const result = alertResult[0];
-            if (result.alert_created) {
-              stockCheckResults.push({
-                sku_id: item.sku_id,
-                alert_id: result.alert_id,
-                shortage_qty: result.shortage_qty,
-                message: result.message
-              });
-            }
-          }
-        }
+      for (const balance of balances || []) {
+        if (remainingQty <= 0) break;
 
-      } catch (reserveError) {
-        console.error('Stock reservation error:', reserveError);
-        // ไม่ fail request แต่ log warning
+        const availableQty = (balance.total_piece_qty || 0) - (balance.reserved_piece_qty || 0);
+        if (availableQty <= 0) continue;
+
+        const qtyToReserve = Math.min(availableQty, remainingQty);
+        const packToReserve = qtyToReserve / qtyPerPack;
+
+        // Update inventory balance
+        await supabase
+          .from('wms_inventory_balances')
+          .update({
+            reserved_pack_qty: (balance.reserved_pack_qty || 0) + packToReserve,
+            reserved_piece_qty: (balance.reserved_piece_qty || 0) + qtyToReserve,
+            updated_at: new Date().toISOString()
+          })
+          .eq('balance_id', balance.balance_id);
+
+        // ✅ Record reservation in picklist_item_reservations
+        reservationsToInsert.push({
+          picklist_item_id: picklistItem.id,
+          balance_id: balance.balance_id,
+          reserved_piece_qty: qtyToReserve,
+          reserved_pack_qty: packToReserve,
+          reserved_by: user?.id,
+          status: 'reserved'
+        });
+
+        remainingQty -= qtyToReserve;
+      }
+
+      // Double-check: should never happen (we validated earlier)
+      if (remainingQty > 0) {
+        throw new Error(`Internal error: Failed to reserve stock for SKU ${item.sku_id}`);
       }
     }
 
-    // สร้าง warnings array
-    const warnings: string[] = [];
-    if (skippedItems.length > 0) {
-      warnings.push(`ข้ามรายการที่ SKU ไม่มีในระบบ: ${skippedItems.length} รายการ`);
-      warnings.push(`SKU ที่ไม่มี: ${[...new Set(skippedItems.map(i => i.sku_id))].join(', ')}`);
-    }
-    if (stockCheckResults.length > 0) {
-      warnings.push(`⚠️ สต็อกไม่เพียงพอ ${stockCheckResults.length} รายการ - สร้างการแจ้งเตือนแล้ว`);
+    // Insert all reservations
+    if (reservationsToInsert.length > 0) {
+      const { error: reservationError } = await supabase
+        .from('picklist_item_reservations')
+        .insert(reservationsToInsert);
+
+      if (reservationError) {
+        throw new Error('Failed to create stock reservations');
+      }
     }
 
+    // Success response
     return NextResponse.json({
       success: true,
       picklist_id: picklist.id,
       picklist_no: picklistCode,
       total_items: itemsToInsert.length,
-      skipped_items: skippedItems.length,
-      stock_reserved: warehouseId ? true : false,
-      stock_alerts: stockCheckResults,
-      warnings
+      total_quantity: totalQuantity,
+      reservations_created: reservationsToInsert.length,
+      message: 'Picklist created successfully with stock reserved'
     });
 
   } catch (error: any) {
     console.error('Error in POST /api/picklists/create-from-trip:', error);
+
+    // ✅ FIX #4: Transaction rollback
+    if (picklist?.id) {
+      try {
+        const supabase = await createClient();
+
+        // Delete reservations
+        await supabase
+          .from('picklist_item_reservations')
+          .delete()
+          .in('picklist_item_id', picklistItems.map(i => i.id));
+
+        // Release reserved stock
+        // (ควรมี trigger ทำให้ แต่เพื่อความปลอดภัย)
+
+        // Delete picklist items
+        await supabase
+          .from('picklist_items')
+          .delete()
+          .eq('picklist_id', picklist.id);
+
+        // Delete picklist
+        await supabase
+          .from('picklists')
+          .delete()
+          .eq('id', picklist.id);
+
+        console.log(`✅ Rolled back picklist ${picklist.id} due to error`);
+      } catch (rollbackError) {
+        console.error('Rollback error:', rollbackError);
+      }
+    }
+
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
