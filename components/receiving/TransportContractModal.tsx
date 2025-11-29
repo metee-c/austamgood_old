@@ -73,6 +73,29 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
       setTimeout(async () => {
         if (selectedPlan) {
           try {
+            // ดึงข้อมูล plan ปัจจุบันเพื่อเช็คสถานะ
+            const supabase = createClient();
+            const { data: currentPlan } = await supabase
+              .from('receiving_route_plans')
+              .select('status')
+              .eq('plan_id', selectedPlan.plan_id)
+              .single();
+
+            // ถ้าสถานะเป็น optimizing ต้องเปลี่ยนเป็น published ก่อน
+            if (currentPlan?.status === 'optimizing') {
+              const publishResponse = await fetch(`/api/route-plans/${selectedPlan.plan_id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: 'published' })
+              });
+
+              if (!publishResponse.ok) {
+                const result = await publishResponse.json();
+                alert(`ไม่สามารถเปลี่ยนสถานะเป็น published ได้: ${result.error}`);
+                return;
+              }
+            }
+
             // เปลี่ยนสถานะเป็น pending_approval
             const response = await fetch(`/api/route-plans/${selectedPlan.plan_id}`, {
               method: 'PATCH',
@@ -88,10 +111,11 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
               onClose(); // ปิด modal
             } else {
               const result = await response.json();
-              console.error('Failed to update status:', result.error);
+              alert(`ไม่สามารถเปลี่ยนสถานะได้: ${result.error}`);
             }
           } catch (err) {
             console.error('Error updating plan status:', err);
+            alert('เกิดข้อผิดพลาดในการอัปเดตสถานะ');
           }
         }
       }, 500);

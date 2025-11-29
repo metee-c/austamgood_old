@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **Before starting any task, check if these files exist and read them:**
 - `supabase/DATABASE_DOCUMENTATION.md` - Complete database schema documentation (if available)
-- `DESIGN_SYSTEM.md` - Complete UI/UX design system (colors, typography, components, spacing)
+- `docs/guides/DESIGN_SYSTEM.md` - Complete UI/UX design system (colors, typography, components, spacing)
 - These files provide essential context for all development tasks
 
 ## Project Overview
@@ -423,21 +423,20 @@ Complete workflow for order fulfillment with automatic status transitions:
 - Fixed pack_qty calculation to preserve decimal values
 
 **Documentation:**
-- `WORKFLOW_FIX_SUMMARY.md` - Complete workflow with test cases
-- `WORKFLOW_FIXES_COMPLETED.md` - Recent fixes and implementation details
+- `docs/fixes/WORKFLOW_FIX_SUMMARY.md` - Complete workflow with test cases
+- `docs/fixes/WORKFLOW_FIXES_COMPLETED.md` - Recent fixes and implementation details
 - `docs-archive/workflow/WORKFLOW_IMPLEMENTATION_SUMMARY.md` - Original design
 
 ## Important Documentation Files
 
 The codebase includes several important documentation files that provide detailed context for specific features:
 
-- **DOCUMENTATION_INDEX.md** - Complete index of all 44+ documentation files organized by topic and role
-- **DESIGN_SYSTEM.md** - Complete UI/UX design system (colors, typography, components, spacing)
-- **README_VRP.md** - Vehicle Routing Problem system documentation
+- **docs/guides/DESIGN_SYSTEM.md** - Complete UI/UX design system (colors, typography, components, spacing)
+- **docs-archive/vrp/README_VRP.md** - Vehicle Routing Problem system documentation
 - **GEMINI.md** - AI configuration and guidelines for Gemini AI
-- **WORKFLOW_FIX_SUMMARY.md** - **NEW**: Complete workflow fixes with test cases (Nov 2025)
-- **WORKFLOW_FIXES_COMPLETED.md** - **NEW**: Technical implementation details of recent fixes
-- **WORKFLOW_AUDIT_REPORT.md** - Comprehensive audit report identifying workflow issues
+- **docs/fixes/WORKFLOW_FIX_SUMMARY.md** - Complete workflow fixes with test cases (Nov 2025)
+- **docs/fixes/WORKFLOW_FIXES_COMPLETED.md** - Technical implementation details of recent fixes
+- **docs/reports/WORKFLOW_AUDIT_REPORT.md** - Comprehensive audit report identifying workflow issues
 - **docs-archive/workflow/WORKFLOW_IMPLEMENTATION_SUMMARY.md** - Delivery workflow status management system
 - **docs-archive/workflow/WORKFLOW_STATUS_DESIGN.md** - Workflow design specifications
 - **docs-archive/stock-import/STOCK_IMPORT_SUMMARY.md** - Stock import system documentation
@@ -446,7 +445,7 @@ The codebase includes several important documentation files that provide detaile
 - **docs-archive/mobile/MOBILE_TRANSFER_GUIDE.md** - Mobile transfer operations guide
 - **docs-archive/workflow/WORKFLOW_QUICK_START.md** - Quick start guide for workflow system
 
-**Best Practice:** Always check DOCUMENTATION_INDEX.md first to find relevant documentation before starting work on a feature. These docs contain critical context about design decisions, implementation details, and common patterns.
+**Best Practice:** Check relevant documentation in `docs/`, `docs/fixes/`, `docs/reports/`, and `docs-archive/` before starting work on a feature. These docs contain critical context about design decisions, implementation details, and common patterns.
 
 ## Important Notes
 
@@ -729,8 +728,9 @@ npm run db:generate-types
 5. Manually test triggers with SQL if needed
 
 **Related Documentation:**
-- [docs-archive/workflow/WORKFLOW_IMPLEMENTATION_SUMMARY.md](docs-archive/workflow/WORKFLOW_IMPLEMENTATION_SUMMARY.md) - Complete workflow documentation
-- [docs-archive/workflow/WORKFLOW_STATUS_DESIGN.md](docs-archive/workflow/WORKFLOW_STATUS_DESIGN.md) - Design specifications
+- `docs-archive/workflow/WORKFLOW_IMPLEMENTATION_SUMMARY.md` - Complete workflow documentation
+- `docs-archive/workflow/WORKFLOW_STATUS_DESIGN.md` - Design specifications
+- `docs/fixes/WORKFLOW_FIX_SUMMARY.md` - Latest workflow fixes with test cases
 
 ## Performance Considerations
 

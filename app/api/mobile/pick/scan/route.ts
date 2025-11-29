@@ -136,6 +136,8 @@ export async function POST(request: NextRequest) {
     let remainingQty = quantity_picked;
     const ledgerEntries = [];
     const processedReservations: number[] = [];
+    let sourceProductionDate: string | null = null;
+    let sourceExpiryDate: string | null = null;
 
     // ✅ กรณีที่ 1: มี reservations (picklist ใหม่)
     if (reservations && reservations.length > 0) {
@@ -147,10 +149,10 @@ export async function POST(request: NextRequest) {
       const qtyToDeduct = Math.min(reservation.reserved_piece_qty, remainingQty);
       const packToDeduct = qtyToDeduct / qtyPerPack;
 
-      // ดึงข้อมูล balance ปัจจุบัน
+      // ดึงข้อมูล balance ปัจจุบัน (รวมวันที่)
       const { data: balance, error: balanceError } = await supabase
         .from('wms_inventory_balances')
-        .select('balance_id, total_piece_qty, reserved_piece_qty, total_pack_qty, reserved_pack_qty')
+        .select('balance_id, total_piece_qty, reserved_piece_qty, total_pack_qty, reserved_pack_qty, production_date, expiry_date')
         .eq('balance_id', reservation.balance_id)
         .single();
 
@@ -160,6 +162,14 @@ export async function POST(request: NextRequest) {
           { error: `ไม่พบข้อมูลสต็อคที่จองไว้ (balance_id: ${reservation.balance_id})` },
           { status: 500 }
         );
+      }
+
+      // เก็บวันที่จาก balance แรก
+      if (!sourceProductionDate && balance.production_date) {
+        sourceProductionDate = balance.production_date;
+      }
+      if (!sourceExpiryDate && balance.expiry_date) {
+        sourceExpiryDate = balance.expiry_date;
       }
 
       // ตรวจสอบว่ามีสต็อคเพียงพอ
@@ -254,10 +264,10 @@ export async function POST(request: NextRequest) {
         locationIds = [item.source_location_id];
       }
 
-      // Query FEFO/FIFO
+      // Query FEFO/FIFO (รวมวันที่)
       const { data: balances } = await supabase
         .from('wms_inventory_balances')
-        .select('balance_id, location_id, total_piece_qty, total_pack_qty, reserved_piece_qty, reserved_pack_qty')
+        .select('balance_id, location_id, total_piece_qty, total_pack_qty, reserved_piece_qty, reserved_pack_qty, production_date, expiry_date')
         .eq('warehouse_id', warehouseId)
         .in('location_id', locationIds)
         .eq('sku_id', item.sku_id)
@@ -278,6 +288,14 @@ export async function POST(request: NextRequest) {
 
         const availableQty = (balance.total_piece_qty || 0) - (balance.reserved_piece_qty || 0);
         if (availableQty <= 0) continue;
+
+        // เก็บวันที่จาก balance แรก
+        if (!sourceProductionDate && balance.production_date) {
+          sourceProductionDate = balance.production_date;
+        }
+        if (!sourceExpiryDate && balance.expiry_date) {
+          sourceExpiryDate = balance.expiry_date;
+        }
 
         const qtyToDeduct = Math.min(availableQty, remainingQty);
         const packToDeduct = qtyToDeduct / qtyPerPack;
@@ -343,7 +361,7 @@ export async function POST(request: NextRequest) {
         })
         .eq('balance_id', dispatchBalance.balance_id);
     } else {
-      // สร้างใหม่
+      // สร้างใหม่ (รวมวันที่จาก source)
       await supabase
         .from('wms_inventory_balances')
         .insert({
@@ -354,6 +372,8 @@ export async function POST(request: NextRequest) {
           total_piece_qty: quantity_picked,
           reserved_pack_qty: 0,
           reserved_piece_qty: 0,
+          production_date: sourceProductionDate,
+          expiry_date: sourceExpiryDate,
           last_movement_at: now
         });
     }

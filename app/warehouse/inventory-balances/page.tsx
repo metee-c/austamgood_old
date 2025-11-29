@@ -428,8 +428,11 @@ const InventoryBalancesPage = () => {
                               </td>
                               <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
                                 {(() => {
-                                  const weightPerPiece = (balance as any).master_sku?.weight_per_piece_kg || 0;
-                                  const totalWeight = (balance.total_piece_qty || 0) * weightPerPiece;
+                                  // คำนวณน้ำหนักรวมจาก items ทั้งหมด (เพราะแต่ละ SKU มี weight_per_piece_kg ต่างกัน)
+                                  const totalWeight = balance._groupItems.reduce((sum: number, item: any) => {
+                                    const weightPerPiece = item.master_sku?.weight_per_piece_kg || 0;
+                                    return sum + ((item.total_piece_qty || 0) * weightPerPiece);
+                                  }, 0);
                                   return totalWeight === 0 ? <span className="text-gray-400">-</span> : (
                                     <span className="font-bold text-blue-600">
                                       {totalWeight.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}

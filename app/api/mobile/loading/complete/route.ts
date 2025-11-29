@@ -86,7 +86,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Fetch picklists with items
+    // Fetch picklists with items (including order_id)
     const { data: picklists, error: picklistsError } = await supabase
       .from('picklists')
       .select(`
@@ -95,7 +95,8 @@ export async function POST(request: NextRequest) {
         picklist_items (
           sku_id,
           quantity_picked,
-          quantity_to_pick
+          quantity_to_pick,
+          order_id
         )
       `)
       .in('id', picklistIds);
@@ -105,6 +106,24 @@ export async function POST(request: NextRequest) {
         { error: 'ไม่พบข้อมูลใบจัดสินค้า', details: picklistsError?.message },
         { status: 404 }
       );
+    }
+
+    // Get unique order IDs from picklist items
+    const orderIds = [...new Set(
+      picklists.flatMap(p => 
+        p.picklist_items?.map((item: any) => item.order_id).filter(Boolean) || []
+      )
+    )];
+
+    // Fetch order details for loadlist_items
+    let orderDetails: any[] = [];
+    if (orderIds.length > 0) {
+      const { data: orders } = await supabase
+        .from('wms_orders')
+        .select('order_id, order_no, total_weight, total_volume')
+        .in('order_id', orderIds);
+      
+      orderDetails = orders || [];
     }
 
     // Get locations
@@ -141,14 +160,22 @@ export async function POST(request: NextRequest) {
         if (qty <= 0) continue;
 
         // Get SKU info
-        const { data: skuInfo } = await supabase
+        const { data: skuInfo, error: skuError } = await supabase
           .from('master_sku')
-          .select('qty_per_pack, sku_code, sku_name')
+          .select('qty_per_pack, sku_name')
           .eq('sku_id', item.sku_id)
           .single();
 
+        if (skuError) {
+          console.error(`❌ Error fetching SKU ${item.sku_id}:`, skuError);
+        }
+
+        console.log(`🔍 SKU Info for ${item.sku_id}:`, skuInfo);
+
         const qtyPerPack = skuInfo?.qty_per_pack || 1;
         const qtyPack = qty / qtyPerPack;
+
+        console.log(`📦 SKU: ${item.sku_id}, qty: ${qty}, qtyPerPack: ${qtyPerPack}, qtyPack: ${qtyPack}`);
 
         // Check Dispatch balance
         const { data: dispatchBalance, error: balanceError } = await supabase
@@ -173,7 +200,6 @@ export async function POST(request: NextRequest) {
         if (availableQty < qty) {
           insufficientStockItems.push({
             sku_id: item.sku_id,
-            sku_code: skuInfo?.sku_code,
             sku_name: skuInfo?.sku_name,
             picklist_code: picklist.picklist_code,
             required: qty,
@@ -264,14 +290,11 @@ export async function POST(request: NextRequest) {
       const { sku_id, qty, qtyPack, qtyPerPack, picklist_code, dispatchBalance } = itemData;
 
       // Update Dispatch balance (decrease)
-      const newPiece = dispatchBalance.total_piece_qty - qty;
-      const newPack = newPiece / qtyPerPack;
-
       await supabase
         .from('wms_inventory_balances')
         .update({
-          total_pack_qty: newPack,
-          total_piece_qty: newPiece,
+          total_pack_qty: dispatchBalance.total_pack_qty - qtyPack,
+          total_piece_qty: dispatchBalance.total_piece_qty - qty,
           updated_at: now
         })
         .eq('balance_id', dispatchBalance.balance_id);
@@ -312,6 +335,7 @@ export async function POST(request: NextRequest) {
           })
           .eq('balance_id', deliveryBalance.balance_id);
       } else {
+        console.log(`🆕 Creating new balance: SKU=${sku_id}, pack=${qtyPack}, piece=${qty}`);
         await supabase
           .from('wms_inventory_balances')
           .insert({
@@ -358,12 +382,33 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Insert loadlist_items for tracking
+    if (orderDetails.length > 0) {
+      const loadlistItems = orderDetails.map(order => ({
+        loadlist_id: loadlist.id,
+        order_id: order.order_id,
+        weight_kg: order.total_weight || 0,
+        volume_cbm: order.total_volume || 0,
+        scanned_at: now
+      }));
+
+      const { error: loadlistItemsError } = await supabase
+        .from('loadlist_items')
+        .insert(loadlistItems);
+
+      if (loadlistItemsError) {
+        console.error('Error inserting loadlist_items:', loadlistItemsError);
+        // Continue anyway, don't fail
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: 'ยืนยันการโหลดสินค้าเสร็จสิ้น',
       loadlist_code: loadlist.loadlist_code,
       items_moved: itemsProcessed,
-      total_items: itemsToProcess.length
+      total_items: itemsToProcess.length,
+      orders_loaded: orderDetails.length
     });
 
   } catch (error) {

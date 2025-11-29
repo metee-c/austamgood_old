@@ -114,7 +114,7 @@ const PicklistDetailPage = ({ params }: { params: Promise<{ id: string }> }) => 
   };
 
   // Print handler with QR code
-  const handlePrint = () => {
+  const handlePrint = async () => {
     if (!picklist || !items) return;
 
     const printWindow = window.open('', '_blank');
@@ -128,6 +128,29 @@ const PicklistDetailPage = ({ params }: { params: Promise<{ id: string }> }) => 
     setTimeout(() => {
       printWindow.print();
     }, 250);
+
+    // เปลี่ยนสถานะเป็น assigned ถ้าสถานะปัจจุบันเป็น pending
+    if (picklist.status === 'pending') {
+      try {
+        const response = await fetch(`/api/picklists/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            status: 'assigned'
+          })
+        });
+
+        if (response.ok) {
+          // Refresh data
+          window.location.reload();
+        } else {
+          const result = await response.json();
+          console.error('Error updating picklist:', result);
+        }
+      } catch (err) {
+        console.error('Error updating picklist status:', err);
+      }
+    }
   };
 
   const generatePrintHTML = (picklist: Picklist, items: PicklistItem[]) => {
