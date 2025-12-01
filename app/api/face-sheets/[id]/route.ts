@@ -105,3 +105,74 @@ export async function GET(
     );
   }
 }
+
+/**
+ * PATCH /api/face-sheets/[id]
+ * Update face sheet status
+ */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const supabase = await createClient();
+    const { id: idParam } = await params;
+    const id = parseInt(idParam);
+    const body = await request.json();
+    const { status } = body;
+
+    if (isNaN(id)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid face sheet ID' },
+        { status: 400 }
+      );
+    }
+
+    if (!status) {
+      return NextResponse.json(
+        { success: false, error: 'Status is required' },
+        { status: 400 }
+      );
+    }
+
+    // Validate status
+    const validStatuses = ['draft', 'generated', 'picking', 'completed', 'cancelled'];
+    if (!validStatuses.includes(status)) {
+      return NextResponse.json(
+        { success: false, error: `Invalid status. Must be one of: ${validStatuses.join(', ')}` },
+        { status: 400 }
+      );
+    }
+
+    // Update face sheet status
+    const { data, error } = await supabase
+      .from('face_sheets')
+      .update({ 
+        status,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Error updating face sheet status:', error);
+      return NextResponse.json(
+        { success: false, error: error.message },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      data
+    });
+
+  } catch (error: any) {
+    console.error('Error in PATCH /api/face-sheets/[id]:', error);
+    return NextResponse.json(
+      { success: false, error: error.message || 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}

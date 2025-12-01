@@ -154,14 +154,9 @@ const PicklistDetailPage = ({ params }: { params: Promise<{ id: string }> }) => 
   };
 
   const generatePrintHTML = (picklist: Picklist, items: PicklistItem[]) => {
-    // Generate QR code data
-    const qrCodeData = JSON.stringify({
-      type: 'picklist',
-      code: picklist.picklist_code,
-      tripSequence: picklist.receiving_route_trips?.trip_sequence,
-      planCode: picklist.receiving_route_trips?.receiving_route_plans?.plan_code,
-      timestamp: new Date(picklist.created_at).getTime()
-    });
+    // Generate QR code data - ใช้ URL แทน JSON เพื่อให้สแกนแล้วเปิดหน้าได้เลย
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+    const qrCodeData = `${baseUrl}/mobile/pick/${picklist.id}`;
     const qrCodeUrl = generateQRCode(qrCodeData);
 
     // Group items by stop
@@ -465,14 +460,9 @@ const PicklistDetailPage = ({ params }: { params: Promise<{ id: string }> }) => 
     );
   }
 
-  // Generate QR Code data for display
-  const qrCodeData = JSON.stringify({
-    type: 'picklist',
-    code: picklist.picklist_code,
-    tripSequence: picklist.receiving_route_trips?.trip_sequence,
-    planCode: picklist.receiving_route_trips?.receiving_route_plans?.plan_code,
-    timestamp: new Date(picklist.created_at).getTime()
-  });
+  // Generate QR Code data for display - ใช้ URL แทน JSON เพื่อให้สแกนแล้วเปิดหน้าได้เลย
+  const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+  const qrCodeData = `${baseUrl}/mobile/pick/${picklist.id}`;
   const qrCodeUrl = generateQRCode(qrCodeData);
 
   return (

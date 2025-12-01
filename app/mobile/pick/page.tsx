@@ -38,6 +38,19 @@ interface Picklist {
   };
 }
 
+interface FaceSheet {
+  id: number;
+  face_sheet_no: string;
+  status: 'generated' | 'picking' | 'completed' | 'cancelled';
+  created_at: string;
+  updated_at: string;
+  total_packages: number;
+  total_items: number;
+  warehouse_id: string;
+}
+
+type PickTask = (Picklist & { type: 'picklist' }) | (FaceSheet & { type: 'face_sheet' });
+
 const PICKLIST_STATUSES = [
   'all',
   'pending',
@@ -49,18 +62,18 @@ const PICKLIST_STATUSES = [
 export default function MobilePickPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [picklists, setPicklists] = useState<Picklist[]>([]);
+  const [tasks, setTasks] = useState<PickTask[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [showFilter, setShowFilter] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Fetch picklists
+  // Fetch both picklists and face sheets
   useEffect(() => {
-    fetchPicklists();
+    fetchTasks();
   }, [selectedStatus]);
 
-  const fetchPicklists = async () => {
+  const fetchTasks = async () => {
     try {
       setLoading(true);
       const params = new URLSearchParams();
@@ -68,14 +81,32 @@ export default function MobilePickPage() {
         params.append('status', selectedStatus);
       }
 
-      const response = await fetch(`/api/picklists?${params.toString()}`);
-      const data = await response.json();
+      // Fetch picklists
+      const picklistsResponse = await fetch(`/api/picklists?${params.toString()}`);
+      const picklistsData = await picklistsResponse.json();
 
-      if (data.data) {
-        setPicklists(data.data);
+      // Fetch face sheets
+      const faceSheetsResponse = await fetch(`/api/face-sheets/generate?${params.toString()}`);
+      const faceSheetsData = await faceSheetsResponse.json();
+
+      const allTasks: PickTask[] = [];
+
+      // Add picklists
+      if (picklistsData.data) {
+        allTasks.push(...picklistsData.data.map((p: Picklist) => ({ ...p, type: 'picklist' as const })));
       }
+
+      // Add face sheets
+      if (faceSheetsData.data) {
+        allTasks.push(...faceSheetsData.data.map((f: FaceSheet) => ({ ...f, type: 'face_sheet' as const })));
+      }
+
+      // Sort by updated_at descending
+      allTasks.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+
+      setTasks(allTasks);
     } catch (error) {
-      console.error('Error fetching picklists:', error);
+      console.error('Error fetching tasks:', error);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -84,18 +115,25 @@ export default function MobilePickPage() {
 
   const handleRefresh = () => {
     setRefreshing(true);
-    fetchPicklists();
+    fetchTasks();
   };
 
-  // Filter picklists
-  const filteredPicklists = picklists.filter(picklist => {
+  // Filter tasks
+  const filteredTasks = tasks.filter(task => {
     const searchLower = searchTerm.toLowerCase();
-    const matchesSearch =
-      picklist.picklist_code.toLowerCase().includes(searchLower) ||
-      picklist.receiving_route_trips?.receiving_route_plans?.plan_code?.toLowerCase().includes(searchLower) ||
-      picklist.receiving_route_trips?.vehicle_id?.toLowerCase().includes(searchLower);
-
-    return matchesSearch;
+    
+    if (task.type === 'picklist') {
+      const matchesSearch =
+        task.picklist_code.toLowerCase().includes(searchLower) ||
+        task.receiving_route_trips?.receiving_route_plans?.plan_code?.toLowerCase().includes(searchLower) ||
+        task.receiving_route_trips?.vehicle_id?.toLowerCase().includes(searchLower);
+      return matchesSearch;
+    } else {
+      const matchesSearch =
+        task.face_sheet_no.toLowerCase().includes(searchLower) ||
+        task.warehouse_id.toLowerCase().includes(searchLower);
+      return matchesSearch;
+    }
   });
 
   // Get status badge
@@ -165,11 +203,16 @@ export default function MobilePickPage() {
         {/* Stats Summary */}
         <div className="grid grid-cols-2 gap-2 mb-3">
           <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
-            <div className="text-xl font-bold">{picklists.filter(p => p.status === 'assigned').length}</div>
-            <div className="text-[10px] opacity-90">มอบหมายแล้ว</div>
+            <div className="text-xl font-bold">
+              {tasks.filter(t => 
+                (t.type === 'picklist' && t.status === 'assigned') || 
+                (t.type === 'face_sheet' && t.status === 'generated')
+              ).length}
+            </div>
+            <div className="text-[10px] opacity-90">รอหยิบ</div>
           </div>
           <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
-            <div className="text-xl font-bold">{picklists.filter(p => p.status === 'completed').length}</div>
+            <div className="text-xl font-bold">{tasks.filter(t => t.status === 'completed').length}</div>
             <div className="text-[10px] opacity-90">เสร็จสิ้น</div>
           </div>
         </div>
@@ -241,42 +284,53 @@ export default function MobilePickPage() {
       )}
 
       {/* Empty State */}
-      {!loading && filteredPicklists.length === 0 && (
+      {!loading && filteredTasks.length === 0 && (
         <div className="flex flex-col items-center justify-center py-12 text-center px-4">
           <ClipboardList className="w-16 h-16 text-gray-300 mb-4" />
-          <p className="text-gray-500 font-thai text-lg mb-2">ไม่พบรายการ Picklist</p>
+          <p className="text-gray-500 font-thai text-lg mb-2">ไม่พบรายการ</p>
           <p className="text-gray-400 text-sm font-thai">
             {searchTerm ? 'ลองค้นหาด้วยคำอื่น' : 'ยังไม่มีรายการที่ต้องเช็ค'}
           </p>
         </div>
       )}
 
-      {/* Picklist List */}
-      {!loading && filteredPicklists.length > 0 && (
+      {/* Task List */}
+      {!loading && filteredTasks.length > 0 && (
         <div className="p-4 space-y-3">
-          {filteredPicklists.map((picklist) => (
+          {filteredTasks.map((task) => (
             <div
-              key={picklist.id}
-              onClick={() => router.push(`/mobile/pick/${picklist.id}`)}
+              key={`${task.type}-${task.id}`}
+              onClick={() => {
+                if (task.type === 'picklist') {
+                  router.push(`/mobile/pick/${task.id}`);
+                } else {
+                  router.push(`/mobile/face-sheet/${task.id}`);
+                }
+              }}
               className="bg-white rounded-lg shadow-sm border border-gray-200 p-2.5 active:scale-98 transition-all cursor-pointer"
             >
               {/* Header */}
               <div className="flex items-start justify-between mb-3">
                 <div className="flex items-center space-x-2">
-                  {getStatusIcon(picklist.status)}
+                  {getStatusIcon(task.status)}
                   <div>
                     <h3 className="font-bold text-gray-900 font-thai">
-                      {picklist.picklist_code}
+                      {task.type === 'picklist' ? task.picklist_code : task.face_sheet_no}
                     </h3>
-                    {picklist.receiving_route_trips?.receiving_route_plans && (
+                    {task.type === 'picklist' && task.receiving_route_trips?.receiving_route_plans && (
                       <p className="text-xs text-gray-500 font-thai">
-                        {picklist.receiving_route_trips.receiving_route_plans.plan_code}
+                        {task.receiving_route_trips.receiving_route_plans.plan_code}
+                      </p>
+                    )}
+                    {task.type === 'face_sheet' && (
+                      <p className="text-xs text-gray-500 font-thai">
+                        ใบปะหน้าสินค้า
                       </p>
                     )}
                   </div>
                 </div>
                 <div className="flex items-center space-x-2">
-                  {getStatusBadge(picklist.status)}
+                  {getStatusBadge(task.status)}
                   <ChevronRight className="w-5 h-5 text-gray-400" />
                 </div>
               </div>
@@ -286,19 +340,32 @@ export default function MobilePickPage() {
                 <div className="flex items-center space-x-2">
                   <Package className="w-4 h-4 text-gray-400" />
                   <div>
-                    <p className="text-xs text-gray-500 font-thai">จำนวนรายการ</p>
+                    <p className="text-xs text-gray-500 font-thai">
+                      {task.type === 'picklist' ? 'จำนวนรายการ' : 'จำนวนแพ็ค'}
+                    </p>
                     <p className="font-semibold text-gray-900 font-thai">
-                      {picklist.total_lines} รายการ
+                      {task.type === 'picklist' ? `${task.total_lines} รายการ` : `${task.total_packages} แพ็ค`}
                     </p>
                   </div>
                 </div>
-                {picklist.receiving_route_trips?.vehicle_id && (
+                {task.type === 'picklist' && task.receiving_route_trips?.vehicle_id && (
                   <div className="flex items-center space-x-2">
                     <Truck className="w-4 h-4 text-gray-400" />
                     <div>
                       <p className="text-xs text-gray-500 font-thai">รถ</p>
                       <p className="font-semibold text-gray-900 font-thai">
-                        {picklist.receiving_route_trips.vehicle_id}
+                        {task.receiving_route_trips.vehicle_id}
+                      </p>
+                    </div>
+                  </div>
+                )}
+                {task.type === 'face_sheet' && (
+                  <div className="flex items-center space-x-2">
+                    <Package className="w-4 h-4 text-gray-400" />
+                    <div>
+                      <p className="text-xs text-gray-500 font-thai">รายการสินค้า</p>
+                      <p className="font-semibold text-gray-900 font-thai">
+                        {task.total_items} รายการ
                       </p>
                     </div>
                   </div>
@@ -307,7 +374,7 @@ export default function MobilePickPage() {
 
               {/* Footer */}
               <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500 font-thai">
-                อัปเดต: {formatDate(picklist.updated_at)}
+                อัปเดต: {formatDate(task.updated_at)}
               </div>
             </div>
           ))}

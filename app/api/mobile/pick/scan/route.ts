@@ -22,7 +22,9 @@ export async function POST(request: NextRequest) {
       picklist_id,
       item_id,
       quantity_picked,
-      scanned_code
+      scanned_code,
+      checker_ids,
+      picker_ids
     } = await request.json();
 
     // Validation
@@ -439,15 +441,28 @@ export async function POST(request: NextRequest) {
 
     const allPicked = allItems?.every(i => i.status === 'picked');
 
-    // 11. อัปเดตสถานะ picklist
+    // 11. อัปเดตสถานะ picklist และบันทึกข้อมูลพนักงาน (ถ้ามี)
     const newStatus = allPicked ? 'completed' : 'picking';
+    const picklistUpdate: any = {
+      status: newStatus,
+      ...(allPicked && { picking_completed_at: now }),
+      updated_at: now
+    };
+
+    // ✅ บันทึกข้อมูลพนักงานเมื่อหยิบครบทุกรายการ
+    if (allPicked && (checker_ids || picker_ids)) {
+      if (checker_ids && Array.isArray(checker_ids) && checker_ids.length > 0) {
+        picklistUpdate.checker_employee_ids = checker_ids;
+      }
+      if (picker_ids && Array.isArray(picker_ids) && picker_ids.length > 0) {
+        picklistUpdate.picker_employee_ids = picker_ids;
+      }
+      console.log('✅ Recording employee data:', { checker_ids, picker_ids });
+    }
+
     const { error: picklistUpdateError } = await supabase
       .from('picklists')
-      .update({
-        status: newStatus,
-        ...(allPicked && { picking_completed_at: now }),
-        updated_at: now
-      })
+      .update(picklistUpdate)
       .eq('id', picklist_id);
 
     if (picklistUpdateError) {

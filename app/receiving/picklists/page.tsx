@@ -35,6 +35,10 @@ interface Picklist {
   total_quantity: number;
   trip_id?: number;
   plan_id?: number;
+  checker_employee_ids?: number[];
+  picker_employee_ids?: number[];
+  checker_employees?: Array<{ first_name: string; last_name: string; nickname?: string }>;
+  picker_employees?: Array<{ first_name: string; last_name: string; nickname?: string }>;
   receiving_route_trips?: {
     trip_sequence: number;
     vehicle_id: string;
@@ -301,6 +305,8 @@ const PicklistsPage = () => {
                 <Table.Head>ประตูโหลด</Table.Head>
                 <Table.Head>จำนวนรายการ</Table.Head>
                 <Table.Head>จำนวนชิ้น</Table.Head>
+                <Table.Head>ผู้เช็ค</Table.Head>
+                <Table.Head>ผู้จัดสินค้า</Table.Head>
                 <Table.Head onClick={() => handleSort('created_at')}>สร้างเมื่อ{getSortIcon('created_at')}</Table.Head>
                 <Table.Head width="150px">การดำเนินการ</Table.Head>
               </tr>
@@ -308,7 +314,7 @@ const PicklistsPage = () => {
             <Table.Body>
               {isLoading ? (
                 <tr>
-                  <Table.Cell colSpan={9} className="px-4 py-8 text-center">
+                  <Table.Cell colSpan={11} className="px-4 py-8 text-center">
                     <div className="flex flex-col items-center justify-center text-thai-gray-400">
                       <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin mb-2"></div>
                       <p className="text-sm font-thai">กำลังโหลดข้อมูล...</p>
@@ -317,7 +323,7 @@ const PicklistsPage = () => {
                 </tr>
               ) : error ? (
                 <tr>
-                  <Table.Cell colSpan={9} className="px-4 py-8 text-center">
+                  <Table.Cell colSpan={11} className="px-4 py-8 text-center">
                     <div className="flex flex-col items-center justify-center text-red-500">
                       <AlertTriangle className="w-12 h-12 mb-2" />
                       <p className="text-sm font-thai">เกิดข้อผิดพลาด: {error.message}</p>
@@ -332,7 +338,7 @@ const PicklistsPage = () => {
                 </tr>
               ) : sortedPicklists.length === 0 ? (
                 <tr>
-                  <Table.Cell colSpan={9} className="px-4 py-8 text-center">
+                  <Table.Cell colSpan={11} className="px-4 py-8 text-center">
                     <div className="flex flex-col items-center justify-center text-thai-gray-400">
                       <ClipboardList className="w-12 h-12 mb-2" />
                       <p className="text-sm font-thai">ไม่พบข้อมูลรายการหยิบ</p>
@@ -424,6 +430,32 @@ const PicklistsPage = () => {
                     </Table.Cell>
                     <Table.Cell>
                       <span className="font-semibold text-gray-900">{picklist.total_quantity}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      {picklist.checker_employees && picklist.checker_employees.length > 0 ? (
+                        <div className="text-xs">
+                          {picklist.checker_employees.map((emp, idx) => (
+                            <div key={idx} className="text-gray-700">
+                              {emp.nickname || `${emp.first_name} ${emp.last_name}`}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-xs">-</span>
+                      )}
+                    </Table.Cell>
+                    <Table.Cell>
+                      {picklist.picker_employees && picklist.picker_employees.length > 0 ? (
+                        <div className="text-xs">
+                          {picklist.picker_employees.map((emp, idx) => (
+                            <div key={idx} className="text-gray-700">
+                              {emp.nickname || `${emp.first_name} ${emp.last_name}`}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-xs">-</span>
+                      )}
                     </Table.Cell>
                     <Table.Cell>
                       <span className="font-mono text-xs">{formatDate(picklist.created_at)}</span>

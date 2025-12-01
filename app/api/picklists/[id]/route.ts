@@ -207,7 +207,7 @@ export async function PATCH(
 
     // ถ้าเปลี่ยนสถานะเป็น 'assigned' (มอบหมายแล้ว)
     // → อัปเดตสถานะออเดอร์ทั้งหมดใน picklist เป็น 'in_picking' (กำลังหยิบ)
-    // → จองสต็อกตาม FEFO + FIFO (เฉพาะครั้งแรกเท่านั้น)
+    // → จองสต็อกตาม FEFO + FIFO (เฉพาะถ้ายังไม่มีการจองจาก create-from-trip)
     if (body.status === 'assigned') {
       if (wasAlreadyAssigned) {
         console.log(`⏭️ Picklist ${id} was already assigned before - skipping stock reservation to prevent double booking`);
@@ -226,8 +226,20 @@ export async function PATCH(
         // Trigger: update_orders_on_picklist_assign() จะอัปเดต Orders เป็น 'in_picking' อัตโนมัติ
         console.log(`✅ Picklist assigned. Trigger will update orders to in_picking status automatically.`);
 
-        // จองสต็อกเฉพาะถ้ายังไม่เคยจองมาก่อน (ป้องกันการจองซ้ำ)
-        if (!wasAlreadyAssigned) {
+        // ✅ เช็คว่ามีการจองสต็อกไปแล้วหรือยัง (จาก create-from-trip)
+        const { data: existingReservations, error: reservationCheckError } = await supabase
+          .from('picklist_item_reservations')
+          .select('picklist_item_id')
+          .in('picklist_item_id', picklistItems.map(item => item.id))
+          .limit(1);
+
+        const hasExistingReservations = existingReservations && existingReservations.length > 0;
+
+        if (hasExistingReservations) {
+          console.log(`✅ Stock already reserved during picklist creation - skipping reservation`);
+        } else if (!wasAlreadyAssigned) {
+          console.log(`⚠️ No existing reservations found - will attempt to reserve stock (legacy picklist)`);
+          // จองสต็อกเฉพาะถ้ายังไม่เคยจองมาก่อน (สำหรับ picklist เก่าที่สร้างก่อนมี reservation system)
           // จองสต็อกสำหรับทุก item
           // ดึง warehouse_id จาก picklist
           const { data: picklistData } = await supabase
@@ -343,7 +355,7 @@ export async function PATCH(
         } else {
           console.warn(`⚠️ No warehouse_id found for picklist ${id} - skipping stock reservation`);
         }
-        } // ปิด if (!wasAlreadyAssigned)
+        } // ปิด if (!wasAlreadyAssigned && !hasExistingReservations)
       }
     }
 

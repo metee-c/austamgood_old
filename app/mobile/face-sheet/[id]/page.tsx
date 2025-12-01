@@ -6,149 +6,89 @@ import {
   ArrowLeft,
   CheckCircle,
   AlertCircle,
-  Loader2
+  Loader2,
+  Package
 } from 'lucide-react';
 import Badge from '@/components/ui/Badge';
 import EmployeeSelectionModal from '@/components/mobile/EmployeeSelectionModal';
 
-interface PicklistItem {
+interface FaceSheetItem {
   id: number;
   sku_id: string;
   sku_name: string;
   uom: string;
-  order_no: string;
-  order_id: number;
-  stop_id: number;
   quantity_to_pick: number;
   quantity_picked: number;
   source_location_id: string;
   status: 'pending' | 'picked' | 'shortage' | 'substituted';
-  shop_name?: string;
-  master_sku?: {
-    sku_name: string;
-    barcode: string;
-    qty_per_pack: number;
-  };
-  master_location?: {
-    location_code: string;
-    location_name: string;
-  };
+  package_number?: number;
+  barcode_id?: string;
 }
 
-interface Picklist {
+interface FaceSheet {
   id: number;
-  picklist_code: string;
+  face_sheet_no: string;
   status: string;
-  total_lines: number;
-  total_quantity: number;
-  loading_door_number?: string;
-  trip?: {
-    trip_code: string;
-    vehicle?: {
-      plate_number: string;
-    };
-  };
-  plan?: {
-    plan_code: string;
-    plan_name: string;
-  };
-  picklist_items: PicklistItem[];
+  total_packages: number;
+  total_items: number;
+  items: FaceSheetItem[];
 }
 
-export default function MobilePickDetailPage() {
+export default function MobileFaceSheetPickPage() {
   const router = useRouter();
   const params = useParams();
   const id = params?.id as string;
 
   const [loading, setLoading] = useState(true);
-  const [picklist, setPicklist] = useState<Picklist | null>(null);
+  const [faceSheet, setFaceSheet] = useState<FaceSheet | null>(null);
   const [scanning, setScanning] = useState(false);
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
-  const [pendingShopItems, setPendingShopItems] = useState<PicklistItem[]>([]);
+  const [pendingItems, setPendingItems] = useState<FaceSheetItem[]>([]);
 
   useEffect(() => {
     if (id) {
-      fetchPicklist();
+      fetchFaceSheet();
     }
   }, [id]);
 
-  const fetchPicklist = async () => {
+  const fetchFaceSheet = async () => {
     try {
       setLoading(true);
-      const response = await fetch(`/api/mobile/pick/tasks/${id}`);
+      const response = await fetch(`/api/mobile/face-sheet/tasks/${id}`);
       const data = await response.json();
 
       if (response.ok) {
-        setPicklist(data);
+        setFaceSheet(data);
       }
     } catch (error) {
-      // Silently handle error
+      console.error('Error fetching face sheet:', error);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleConfirmShop = async (shopItems: PicklistItem[], shopName: string) => {
-    const unpickedItems = shopItems.filter(item => item.status !== 'picked');
+  const handleConfirmAll = async () => {
+    if (!faceSheet) return;
+
+    const unpickedItems = faceSheet.items.filter(item => item.status !== 'picked');
     
     if (unpickedItems.length === 0) {
       alert('รายการทั้งหมดหยิบแล้ว');
       return;
     }
 
-    // ตรวจสอบว่าหลังจากหยิบร้านนี้แล้ว จะเหลือร้านที่ยังไม่หยิบหรือไม่
-    const allItems = picklist?.picklist_items || [];
-    const itemsAfterPicking = allItems.map(item => {
-      // ถ้าเป็น item ในร้านนี้ ให้ถือว่าหยิบแล้ว
-      const itemShopName = item.shop_name || item.order_no || 'ไม่ระบุร้าน';
-      if (itemShopName === shopName) {
-        return { ...item, status: 'picked' as const };
-      }
-      return item;
-    });
-
-    // นับว่ายังมีร้านที่ยังไม่หยิบครบหรือไม่
-    const shopsAfter = itemsAfterPicking.reduce((acc, item) => {
-      const itemShopName = item.shop_name || item.order_no || 'ไม่ระบุร้าน';
-      if (!acc[itemShopName]) {
-        acc[itemShopName] = { total: 0, picked: 0 };
-      }
-      acc[itemShopName].total++;
-      if (item.status === 'picked') {
-        acc[itemShopName].picked++;
-      }
-      return acc;
-    }, {} as Record<string, { total: number; picked: number }>);
-
-    const hasUnpickedShops = Object.values(shopsAfter).some(
-      shop => shop.picked < shop.total
-    );
-
-    // ถ้าไม่มีร้านที่ยังไม่หยิบแล้ว = ร้านนี้เป็นร้านสุดท้าย
-    const isLastShop = !hasUnpickedShops;
-
-    console.log('🔍 Shop check:', { shopName, isLastShop, hasUnpickedShops, shopsAfter });
-
-    // ถ้าเป็นร้านสุดท้าย แสดง modal เลือกพนักงาน
-    if (isLastShop) {
-      setPendingShopItems(unpickedItems);
-      setShowEmployeeModal(true);
-    } else {
-      // ร้านอื่นๆ ยืนยันตามปกติ
-      if (!confirm(`ยืนยันการหยิบสินค้าทั้งหมด ${unpickedItems.length} รายการ?`)) {
-        return;
-      }
-      await processPickItems(unpickedItems, [], []);
-    }
+    // แสดง modal เลือกพนักงาน
+    setPendingItems(unpickedItems);
+    setShowEmployeeModal(true);
   };
 
   const handleEmployeeConfirm = async (checkerIds: string[], pickerIds: string[]) => {
     setShowEmployeeModal(false);
-    await processPickItems(pendingShopItems, checkerIds, pickerIds);
+    await processPickItems(pendingItems, checkerIds, pickerIds);
   };
 
   const processPickItems = async (
-    items: PicklistItem[], 
+    items: FaceSheetItem[], 
     checkerIds: string[], 
     pickerIds: string[]
   ) => {
@@ -157,14 +97,14 @@ export default function MobilePickDetailPage() {
       let hasError = false;
 
       for (const item of items) {
-        const response = await fetch('/api/mobile/pick/scan', {
+        const response = await fetch('/api/mobile/face-sheet/scan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            picklist_id: picklist?.id,
+            face_sheet_id: faceSheet?.id,
             item_id: item.id,
             quantity_picked: item.quantity_to_pick,
-            scanned_code: picklist?.picklist_code,
+            scanned_code: faceSheet?.face_sheet_no,
             checker_ids: checkerIds.length > 0 ? checkerIds : undefined,
             picker_ids: pickerIds.length > 0 ? pickerIds : undefined
           })
@@ -181,14 +121,14 @@ export default function MobilePickDetailPage() {
 
       if (!hasError) {
         alert('บันทึกการหยิบสำเร็จ');
-        fetchPicklist();
+        fetchFaceSheet();
       }
     } catch (error) {
       console.error('Error picking items:', error);
       alert('เกิดข้อผิดพลาดในการบันทึก');
     } finally {
       setScanning(false);
-      setPendingShopItems([]);
+      setPendingItems([]);
     }
   };
 
@@ -200,13 +140,13 @@ export default function MobilePickDetailPage() {
     );
   }
 
-  if (!picklist) {
+  if (!faceSheet) {
     return (
       <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
         <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
-        <p className="text-gray-700 font-thai text-lg">ไม่พบข้อมูลใบหยิบ</p>
+        <p className="text-gray-700 font-thai text-lg">ไม่พบข้อมูลใบปะหน้า</p>
         <button
-          onClick={() => router.push('/mobile/pick')}
+          onClick={() => router.push('/receiving/picklists/face-sheets')}
           className="mt-4 px-4 py-2 bg-sky-500 text-white rounded-lg font-thai"
         >
           กลับ
@@ -215,36 +155,35 @@ export default function MobilePickDetailPage() {
     );
   }
 
-  const pickedCount = picklist.picklist_items.filter(i => i.status === 'picked').length;
-  const totalCount = picklist.picklist_items.length;
+  const pickedCount = faceSheet.items.filter(i => i.status === 'picked').length;
+  const totalCount = faceSheet.items.length;
   const progress = totalCount > 0 ? (pickedCount / totalCount) * 100 : 0;
+  const allPicked = pickedCount === totalCount;
 
-  // Group items by shop
-  const itemsByShop = picklist.picklist_items.reduce((acc, item) => {
-    const shopKey = item.shop_name || item.order_no || 'ไม่ระบุร้าน';
-    if (!acc[shopKey]) {
-      acc[shopKey] = [];
+  // Group items by package
+  const itemsByPackage = faceSheet.items.reduce((acc, item) => {
+    const packageKey = item.package_number || 0;
+    if (!acc[packageKey]) {
+      acc[packageKey] = [];
     }
-    acc[shopKey].push(item);
+    acc[packageKey].push(item);
     return acc;
-  }, {} as Record<string, PicklistItem[]>);
+  }, {} as Record<number, FaceSheetItem[]>);
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
+    <div className="min-h-screen bg-gray-50 pb-32">
       {/* Header */}
       <div className="bg-gradient-to-br from-sky-400 to-sky-500 text-white p-4 sticky top-0 z-10 shadow-lg">
         <div className="flex items-center space-x-3 mb-3">
           <button
-            onClick={() => router.push('/mobile/pick')}
+            onClick={() => router.push('/receiving/picklists/face-sheets')}
             className="p-1.5 bg-white/20 rounded-lg hover:bg-white/30 transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
           <div className="flex-1">
-            <h1 className="text-lg font-bold font-thai">{picklist.picklist_code}</h1>
-            {picklist.plan && (
-              <p className="text-xs opacity-90 font-thai">{picklist.plan.plan_code}</p>
-            )}
+            <h1 className="text-lg font-bold font-thai">{faceSheet.face_sheet_no}</h1>
+            <p className="text-xs opacity-90 font-thai">ใบปะหน้าสินค้า</p>
           </div>
         </div>
 
@@ -260,39 +199,47 @@ export default function MobilePickDetailPage() {
         </p>
       </div>
 
-      {/* Items by Shop */}
+      {/* Summary */}
+      <div className="p-3 bg-white border-b border-gray-200">
+        <div className="flex items-center justify-between">
+          <div className="text-sm font-thai text-gray-600">
+            จำนวนแพ็คเกจ: <span className="font-bold text-gray-900">{faceSheet.total_packages}</span>
+          </div>
+          <div className="text-sm font-thai text-gray-600">
+            จำนวนรายการ: <span className="font-bold text-gray-900">{faceSheet.total_items}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Items by Package */}
       <div className="p-3 space-y-4">
-        {Object.entries(itemsByShop).map(([shopName, items]) => {
-          const shopPicked = items.filter(i => i.status === 'picked').length;
-          const shopTotal = items.length;
-          const allPicked = shopPicked === shopTotal;
+        {Object.entries(itemsByPackage).map(([packageNum, items]) => {
+          const packagePicked = items.filter(i => i.status === 'picked').length;
+          const packageTotal = items.length;
+          const packageAllPicked = packagePicked === packageTotal;
 
           return (
-            <div key={shopName} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-              {/* Shop Header */}
-              <div className={`p-3 ${allPicked ? 'bg-green-50' : 'bg-gray-50'} border-b border-gray-200`}>
+            <div key={packageNum} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+              {/* Package Header */}
+              <div className={`p-3 ${packageAllPicked ? 'bg-green-50' : 'bg-gray-50'} border-b border-gray-200`}>
                 <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-bold text-gray-900 font-thai text-sm">{shopName}</h3>
-                  {allPicked ? (
+                  <div className="flex items-center space-x-2">
+                    <Package className="w-4 h-4 text-gray-600" />
+                    <h3 className="font-bold text-gray-900 font-thai text-sm">
+                      แพ็คเกจที่ {packageNum}
+                    </h3>
+                  </div>
+                  {packageAllPicked ? (
                     <Badge variant="success" size="sm">
                       <CheckCircle className="w-3 h-3 mr-1" />
                       เสร็จสิ้น
                     </Badge>
                   ) : (
                     <Badge variant="default" size="sm">
-                      {shopPicked}/{shopTotal}
+                      {packagePicked}/{packageTotal}
                     </Badge>
                   )}
                 </div>
-                {!allPicked && (
-                  <button
-                    onClick={() => handleConfirmShop(items, shopName)}
-                    disabled={scanning}
-                    className="w-full py-2 bg-sky-500 text-white rounded-lg font-thai text-sm font-medium hover:bg-sky-600 active:scale-98 transition-all disabled:opacity-50"
-                  >
-                    ยืนยันการหยิบทั้งหมด
-                  </button>
-                )}
               </div>
 
               {/* Items Table */}
@@ -315,7 +262,7 @@ export default function MobilePickDetailPage() {
                       >
                         <td className="px-2 py-2">
                           <div className="font-thai text-gray-900 font-medium">
-                            {item.master_sku?.sku_name || item.sku_name}
+                            {item.sku_name}
                           </div>
                           <div className="text-gray-500 mt-0.5">
                             {item.sku_id}
@@ -341,12 +288,25 @@ export default function MobilePickDetailPage() {
         })}
       </div>
 
+      {/* Confirm Button */}
+      {!allPicked && (
+        <div className="fixed bottom-16 left-0 right-0 p-4 bg-white border-t border-gray-200 shadow-lg z-40">
+          <button
+            onClick={handleConfirmAll}
+            disabled={scanning}
+            className="w-full py-3 bg-sky-500 text-white rounded-lg font-thai text-base font-medium hover:bg-sky-600 active:scale-98 transition-all disabled:opacity-50"
+          >
+            ยืนยันการหยิบทั้งหมด
+          </button>
+        </div>
+      )}
+
       {/* Employee Selection Modal */}
       <EmployeeSelectionModal
         isOpen={showEmployeeModal}
         onClose={() => {
           setShowEmployeeModal(false);
-          setPendingShopItems([]);
+          setPendingItems([]);
         }}
         onConfirm={handleEmployeeConfirm}
         title="เลือกพนักงาน"

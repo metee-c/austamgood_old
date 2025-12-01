@@ -132,7 +132,7 @@ const DeliveryOrderDocument: React.FC<DeliveryOrderDocumentProps> = ({
             backgroundColor: '#fff'
           }}>
             <QRCodeSVG
-              value={loadlist.loadlist_code}
+              value={`${typeof window !== 'undefined' ? window.location.origin : ''}/mobile/loading/${loadlist.loadlist_code}`}
               size={80}
               level="M"
             />

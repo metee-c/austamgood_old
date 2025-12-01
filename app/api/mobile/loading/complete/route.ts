@@ -177,10 +177,10 @@ export async function POST(request: NextRequest) {
 
         console.log(`📦 SKU: ${item.sku_id}, qty: ${qty}, qtyPerPack: ${qtyPerPack}, qtyPack: ${qtyPack}`);
 
-        // Check Dispatch balance
+        // Check Dispatch balance (include production_date and expiry_date)
         const { data: dispatchBalance, error: balanceError } = await supabase
           .from('wms_inventory_balances')
-          .select('balance_id, total_piece_qty, total_pack_qty')
+          .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
           .eq('warehouse_id', 'WH001')
           .eq('location_id', dispatchLocation.location_id)
           .eq('sku_id', item.sku_id)
@@ -289,6 +289,8 @@ export async function POST(request: NextRequest) {
     for (const itemData of itemsToProcess) {
       const { sku_id, qty, qtyPack, qtyPerPack, picklist_code, dispatchBalance } = itemData;
 
+      console.log(`📦 Processing item: SKU=${sku_id}, production_date=${dispatchBalance.production_date}, expiry_date=${dispatchBalance.expiry_date}`);
+
       // Update Dispatch balance (decrease)
       await supabase
         .from('wms_inventory_balances')
@@ -317,15 +319,20 @@ export async function POST(request: NextRequest) {
       });
 
       // Update Delivery-In-Progress balance (increase)
+      // ✅ ต้องหา balance ที่ match ทั้ง sku_id, production_date, expiry_date, และ lot_no
       const { data: deliveryBalance } = await supabase
         .from('wms_inventory_balances')
         .select('balance_id, total_piece_qty, total_pack_qty')
         .eq('warehouse_id', 'WH001')
         .eq('location_id', deliveryLocation.location_id)
         .eq('sku_id', sku_id)
+        .eq('production_date', dispatchBalance.production_date || null)
+        .eq('expiry_date', dispatchBalance.expiry_date || null)
+        .eq('lot_no', dispatchBalance.lot_no || null)
         .maybeSingle();
 
       if (deliveryBalance) {
+        console.log(`✅ Updating existing Delivery-In-Progress balance: ${deliveryBalance.balance_id}`);
         await supabase
           .from('wms_inventory_balances')
           .update({
@@ -335,13 +342,16 @@ export async function POST(request: NextRequest) {
           })
           .eq('balance_id', deliveryBalance.balance_id);
       } else {
-        console.log(`🆕 Creating new balance: SKU=${sku_id}, pack=${qtyPack}, piece=${qty}`);
+        console.log(`🆕 Creating new Delivery-In-Progress balance: SKU=${sku_id}, production_date=${dispatchBalance.production_date}, expiry_date=${dispatchBalance.expiry_date}, lot_no=${dispatchBalance.lot_no}`);
         await supabase
           .from('wms_inventory_balances')
           .insert({
             warehouse_id: 'WH001',
             location_id: deliveryLocation.location_id,
             sku_id,
+            production_date: dispatchBalance.production_date,
+            expiry_date: dispatchBalance.expiry_date,
+            lot_no: dispatchBalance.lot_no,
             total_pack_qty: qtyPack,
             total_piece_qty: qty,
             reserved_pack_qty: 0,

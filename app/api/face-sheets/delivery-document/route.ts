@@ -20,6 +20,7 @@ interface PackageDetails {
   hub?: string;
   notes?: string;
   productGroup?: string;
+  unitWeight?: number;
 }
 
 interface FaceSheetDetails {
@@ -78,10 +79,11 @@ function aggregateData(packages: PackageDetails[]): {
   summaryByHub: SummaryByHub[];
   summaryByGroup: SummaryByGroup[];
 } {
-  // Summary A: Total Packages per Product (SKU + Size)
+  // Summary A: Total Packages per Product (SKU + Unit Weight)
   const productMap = new Map<string, SummaryByProduct>();
   packages.forEach(pkg => {
-    const key = `${pkg.product_code}-${pkg.size}`;
+    const unitWeight = pkg.unitWeight || 0;
+    const key = `${pkg.product_code}-${unitWeight}`;
     const existing = productMap.get(key);
     if (existing) {
       existing.count++;
@@ -89,7 +91,7 @@ function aggregateData(packages: PackageDetails[]): {
       productMap.set(key, {
         productCode: pkg.product_code || '',
         productName: pkg.product_name || '',
-        size: pkg.size?.toString() || '',
+        size: `${unitWeight} กก.`,
         count: 1
       });
     }
@@ -428,18 +430,34 @@ function generateDeliveryHTML(
     <div class="content">
         <div class="container">
             <!-- Document Info -->
-            <div class="document-info">
-                <div class="info-item">
-                    <div class="info-label">วันที่</div>
-                    <div>${currentDate}</div>
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
+                <!-- Left: Document Details -->
+                <div style="flex: 1;">
+                    <div class="document-info" style="display: block; padding: 10px; border: 1px solid #ccc; background-color: #f9f9f9;">
+                        <div style="margin-bottom: 8px;">
+                            <span style="font-weight: 600;">เลขที่ใบปะหน้า:</span> ${faceSheetDetails.face_sheet_no}
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <span style="font-weight: 600;">เลขที่เอกสาร:</span> ${documentId}
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <span style="font-weight: 600;">วันที่:</span> ${currentDate}
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <span style="font-weight: 600;">จำนวนแพ็คทั้งหมด:</span> ${totalPackages} แพ็ค
+                        </div>
+                        <div style="margin-bottom: 8px;">
+                            <span style="font-weight: 600;">จำนวนรายการสินค้า:</span> ${faceSheetDetails.total_items} รายการ
+                        </div>
+                        <div>
+                            <span style="font-weight: 600;">จำนวนออเดอร์:</span> ${faceSheetDetails.total_orders} ออเดอร์
+                        </div>
+                    </div>
                 </div>
-                <div class="info-item">
-                    <div class="info-label">เลขที่เอกสาร</div>
-                    <div>${documentId}</div>
-                </div>
-                <div class="info-item">
-                    <div class="info-label">จำนวนแพ็คทั้งหมด</div>
-                    <div>${totalPackages} แพ็ค</div>
+                <!-- Right: QR Code -->
+                <div style="text-align: center; margin-left: 20px;">
+                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=120x120&data=${encodeURIComponent(`http://localhost:3000/mobile/loading`)}" alt="QR Code" style="width: 120px; height: 120px; border: 2px solid #000;" />
+                    <div style="font-size: 11px; margin-top: 5px; font-weight: 600;">สแกนเพื่อเข้าหน้าโหลดสินค้า</div>
                 </div>
             </div>
 
@@ -626,10 +644,29 @@ export async function POST(
       }
     }
 
-    // Add productGroup to packages (this might need to be adjusted based on your data structure)
+    // Get unique product codes to fetch from master_sku
+    const productCodes = [...new Set(packages.map(pkg => pkg.product_code).filter(Boolean))];
+
+    // Fetch weight_per_piece from master_sku
+    const { data: skuData, error: skuError } = await supabase
+      .from('master_sku')
+      .select('sku_id, weight_per_piece_kg')
+      .in('sku_id', productCodes);
+
+    if (skuError) {
+      console.error('Error loading SKU data:', skuError);
+    }
+
+    // Create a map for quick lookup
+    const skuWeightMap = new Map(
+      (skuData || []).map((sku: any) => [sku.sku_id, sku.weight_per_piece_kg])
+    );
+
+    // Add productGroup and unit weight to packages
     packages = packages.map(pkg => ({
       ...pkg,
-      productGroup: pkg.productGroup || 'General' // Default group if not specified
+      productGroup: pkg.productGroup || 'General', // Default group if not specified
+      unitWeight: skuWeightMap.get(pkg.product_code || '') || 0
     }));
 
     // Aggregate data

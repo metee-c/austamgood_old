@@ -13,7 +13,8 @@ import {
   FileText,
   Printer,
   AlertCircle,
-  Loader2
+  Loader2,
+  ClipboardCheck
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
@@ -101,18 +102,46 @@ const FaceSheetsPage = () => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
   const [printingId, setPrintingId] = useState<number | null>(null);
+  const [editingStatusId, setEditingStatusId] = useState<number | null>(null);
+  const [checklistingId, setChecklistingId] = useState<number | null>(null);
+  const [warehouses, setWarehouses] = useState<Array<{ warehouse_id: string; warehouse_name: string }>>([]);
+  const [selectedWarehouse, setSelectedWarehouse] = useState('WH01');
 
   const statuses = [
     { value: 'all', label: 'ทั้งหมด' },
     { value: 'draft', label: 'แบบร่าง' },
     { value: 'generated', label: 'สร้างแล้ว' },
-    { value: 'printed', label: 'พิมพ์แล้ว' },
-    { value: 'completed', label: 'เสร็จสิ้น' }
+    { value: 'picking', label: 'กำลังหยิบ' },
+    { value: 'completed', label: 'เสร็จสิ้น' },
+    { value: 'cancelled', label: 'ยกเลิก' }
+  ];
+
+  const statusOptions = [
+    { value: 'generated', label: 'สร้างแล้ว' },
+    { value: 'picking', label: 'กำลังหยิบ' },
+    { value: 'completed', label: 'เสร็จสิ้น' },
+    { value: 'cancelled', label: 'ยกเลิก' }
   ];
 
   useEffect(() => {
     fetchFaceSheets();
+    fetchWarehouses();
   }, []);
+
+  const fetchWarehouses = async () => {
+    try {
+      const response = await fetch('/api/warehouses');
+      const result = await response.json();
+      if (result.success && result.data) {
+        setWarehouses(result.data);
+        if (result.data.length > 0) {
+          setSelectedWarehouse(result.data[0].warehouse_id);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching warehouses:', error);
+    }
+  };
 
   const fetchFaceSheets = async () => {
     try {
@@ -142,12 +171,37 @@ const FaceSheetsPage = () => {
     fetchFaceSheets();
   }, [selectedStatus, selectedDate]);
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'draft': return <Badge variant="default" size="sm">แบบร่าง</Badge>;
-      case 'printed': return <Badge variant="info" size="sm">พิมพ์แล้ว</Badge>;
-      case 'completed': return <Badge variant="success" size="sm">เสร็จสิ้น</Badge>;
-      default: return <Badge variant="default" size="sm">{status}</Badge>;
+  const getStatusLabel = (status: string) => {
+    const statusMap: Record<string, string> = {
+      draft: 'แบบร่าง',
+      generated: 'สร้างแล้ว',
+      picking: 'กำลังหยิบ',
+      completed: 'เสร็จสิ้น',
+      cancelled: 'ยกเลิก'
+    };
+    return statusMap[status] || status;
+  };
+
+  const handleStatusChange = async (faceSheetId: number, newStatus: string) => {
+    try {
+      setEditingStatusId(faceSheetId);
+      const response = await fetch(`/api/face-sheets/${faceSheetId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+
+      const result = await response.json();
+      if (!response.ok || result.error) {
+        alert('เกิดข้อผิดพลาดในการอัปเดตสถานะ: ' + (result.error || 'Unknown error'));
+      } else {
+        await fetchFaceSheets();
+      }
+    } catch (error: any) {
+      console.error('Error updating status:', error);
+      alert('เกิดข้อผิดพลาดในการอัปเดตสถานะ');
+    } finally {
+      setEditingStatusId(null);
     }
   };
 
@@ -176,6 +230,10 @@ const FaceSheetsPage = () => {
     setPreviewOrders([]);
     setSelectedOrderIds([]); // Reset selected orders
     setPreviewError(null);
+    // Reset to first warehouse if available
+    if (warehouses.length > 0) {
+      setSelectedWarehouse(warehouses[0].warehouse_id);
+    }
     setShowCreateModal(true);
   };
 
@@ -285,7 +343,7 @@ const FaceSheetsPage = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          warehouse_id: 'WH01',
+          warehouse_id: selectedWarehouse,
           created_by: 'System',
           delivery_date: creationDate,
           order_ids: selectedOrderIds // Send only selected order IDs
@@ -492,6 +550,51 @@ const FaceSheetsPage = () => {
     }
   };
 
+  const handleGenerateChecklist = async (id: number) => {
+    setChecklistingId(id);
+    setError(null);
+    console.log(`[Checklist] Generating for ID: ${id}`);
+
+    try {
+      const response = await fetch('/api/face-sheets/checklist', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ faceSheetId: id })
+      });
+
+      const result = await response.json();
+      console.log('[Checklist] API response:', result);
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || `HTTP error! status: ${response.status}`);
+      }
+
+      const { html, documentId } = result.data;
+
+      // Create a new window for printing
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        throw new Error('กรุณาอนุญาตป๊อปอัพเพื่อใช้งานการพิมพ์เอกสาร');
+      }
+
+      // Write the HTML content to the new window
+      printWindow.document.write(html);
+      printWindow.document.close();
+      printWindow.focus();
+
+      // Wait a bit for the content to load before printing
+      setTimeout(() => {
+        printWindow.print();
+      }, 500);
+
+    } catch (err: any) {
+      console.error('Error generating checklist:', err);
+      setError(err.message || 'ไม่สามารถสร้างใบเช็คสินค้าได้');
+    } finally {
+      setChecklistingId(null);
+    }
+  };
+
   const handleGenerateDeliveryDocument = async (id: number) => {
     setDownloadingId(id);
     setError(null);
@@ -661,6 +764,8 @@ const FaceSheetsPage = () => {
                   <th className="px-4 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">ขนาดใหญ่</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">รายการสินค้า</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">จำนวนออเดอร์</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">ผู้เช็ค</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">ผู้จัดสินค้า</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">จัดการ</th>
                 </tr>
               </thead>
@@ -680,13 +785,53 @@ const FaceSheetsPage = () => {
                     <tr key={sheet.id} className="hover:bg-gray-50/80 transition-colors duration-200">
                       <td className="px-4 py-3 text-xs whitespace-nowrap"><div className="font-semibold text-blue-600 font-mono">{sheet.face_sheet_no}</div></td>
                       <td className="px-4 py-3 text-xs whitespace-nowrap"><Badge variant="secondary" size="sm">{sheet.warehouse_id}</Badge></td>
-                      <td className="px-4 py-3 text-xs whitespace-nowrap">{getStatusBadge(sheet.status)}</td>
+                      <td className="px-4 py-3 text-xs whitespace-nowrap">
+                        <select
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-xs font-thai text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+                          value={sheet.status}
+                          disabled={editingStatusId === sheet.id}
+                          onChange={(e) => handleStatusChange(sheet.id, e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {statusOptions.map((status) => (
+                            <option key={status.value} value={status.value}>
+                              {status.label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
                       <td className="px-4 py-3 text-xs whitespace-nowrap">{new Date(sheet.created_date).toLocaleDateString('th-TH', { year: '2-digit', month: '2-digit', day: '2-digit' })}</td>
                       <td className="px-4 py-3 text-xs text-center whitespace-nowrap"><div className="font-bold text-purple-600">{sheet.total_packages}</div></td>
                       <td className="px-4 py-3 text-xs text-center whitespace-nowrap"><div className="font-bold text-green-600">{sheet.small_size_count}</div></td>
                       <td className="px-4 py-3 text-xs text-center whitespace-nowrap"><div className="font-bold text-orange-600">{sheet.large_size_count}</div></td>
                       <td className="px-4 py-3 text-xs text-center whitespace-nowrap"><div className="font-bold text-blue-600">{sheet.total_items}</div></td>
                       <td className="px-4 py-3 text-xs text-center whitespace-nowrap"><div className="font-bold text-gray-700">{sheet.total_orders}</div></td>
+                      <td className="px-4 py-3 text-xs whitespace-nowrap">
+                        {(sheet as any).checker_employees && (sheet as any).checker_employees.length > 0 ? (
+                          <div className="text-xs">
+                            {(sheet as any).checker_employees.map((emp: any, idx: number) => (
+                              <div key={idx} className="text-gray-700">
+                                {emp.nickname || `${emp.first_name} ${emp.last_name}`}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400 text-xs">-</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs whitespace-nowrap">
+                        {(sheet as any).picker_employees && (sheet as any).picker_employees.length > 0 ? (
+                          <div className="text-xs">
+                            {(sheet as any).picker_employees.map((emp: any, idx: number) => (
+                              <div key={idx} className="text-gray-700">
+                                {emp.nickname || `${emp.first_name} ${emp.last_name}`}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-gray-400 text-xs">-</span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-xs whitespace-nowrap">
                         <div className="flex items-center space-x-1">
                           <button className="p-1 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors" title="ดูรายละเอียด" onClick={() => handleViewDetails(sheet.id)}><Eye className="w-4 h-4" /></button>
@@ -701,6 +846,14 @@ const FaceSheetsPage = () => {
                             ) : (
                               <Printer className="w-4 h-4" />
                             )}
+                          </button>
+                          <button 
+                            className="p-1 rounded hover:bg-orange-50 hover:text-orange-600 transition-colors disabled:opacity-60" 
+                            title="ใบเช็คสินค้า" 
+                            onClick={() => handleGenerateChecklist(sheet.id)} 
+                            disabled={checklistingId === sheet.id}
+                          >
+                            {checklistingId === sheet.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardCheck className="w-4 h-4" />}
                           </button>
                           <button className="p-1 rounded hover:bg-purple-50 hover:text-purple-600 transition-colors" title="ใบส่งมอบ" onClick={() => handleGenerateDeliveryDocument(sheet.id)} disabled={downloadingId === sheet.id}>
                             {downloadingId === sheet.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
@@ -749,11 +902,22 @@ const FaceSheetsPage = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">คลังสินค้า</label>
-              <select className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" defaultValue="WH01" disabled>
-                <option value="WH01">WH01 - คลังหลัก</option>
-                <option value="WH02">WH02 - คลังรอง</option>
+              <select 
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                value={selectedWarehouse}
+                onChange={(e) => setSelectedWarehouse(e.target.value)}
+              >
+                {warehouses.length > 0 ? (
+                  warehouses.map((wh) => (
+                    <option key={wh.warehouse_id} value={wh.warehouse_id}>
+                      {wh.warehouse_id} - {wh.warehouse_name}
+                    </option>
+                  ))
+                ) : (
+                  <option value="WH01">WH01 - คลังหลัก</option>
+                )}
               </select>
-              <p className="text-xs text-gray-500 mt-1">คลังสินค้าจะถูกกำหนดตามค่าเริ่มต้น</p>
+              <p className="text-xs text-gray-500 mt-1">เลือกคลังสินค้าที่ต้องการสร้างใบปะหน้า</p>
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">แหล่งที่มีข้อมูล</label>

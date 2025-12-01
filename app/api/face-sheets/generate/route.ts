@@ -5,7 +5,7 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
     const body = await request.json();
-    const { warehouse_id = 'WH01', created_by, delivery_date, order_ids } = body;
+    const { warehouse_id = 'WH001', created_by, delivery_date, order_ids } = body;
 
     if (!delivery_date) {
       return NextResponse.json(
@@ -142,6 +142,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Reserve stock for face sheet items
+    try {
+      console.log(`📦 Reserving stock for face sheet ${result.face_sheet_id}...`);
+      const { data: reserveResult, error: reserveError } = await supabase
+        .rpc('reserve_stock_for_face_sheet_items', {
+          p_face_sheet_id: result.face_sheet_id,
+          p_warehouse_id: warehouse_id,
+          p_reserved_by: created_by || 'System'
+        });
+
+      if (reserveError) {
+        console.error('❌ Error reserving stock:', reserveError);
+      } else if (reserveResult && reserveResult.length > 0) {
+        const reserve = reserveResult[0];
+        if (reserve.success) {
+          console.log(`✅ Stock reserved: ${reserve.items_reserved} items`);
+        } else {
+          console.error('❌ Stock reservation failed:', reserve.message);
+        }
+      }
+    } catch (reserveError) {
+      console.error('❌ Exception reserving stock:', reserveError);
+    }
+
     // Update order statuses from 'draft' to 'confirmed' for orders included in this face sheet
     try {
       let updateQuery = supabase
@@ -222,6 +246,47 @@ export async function GET(request: NextRequest) {
         { error: 'Failed to fetch face sheets', details: error.message },
         { status: 500 }
       );
+    }
+
+    // ✅ ดึงข้อมูลพนักงานสำหรับ face sheets ที่มี employee IDs
+    if (data && data.length > 0) {
+      // รวม employee IDs ทั้งหมด
+      const allEmployeeIds = new Set<number>();
+      data.forEach((sheet: any) => {
+        if (sheet.checker_employee_ids) {
+          sheet.checker_employee_ids.forEach((id: number) => allEmployeeIds.add(id));
+        }
+        if (sheet.picker_employee_ids) {
+          sheet.picker_employee_ids.forEach((id: number) => allEmployeeIds.add(id));
+        }
+      });
+
+      // ดึงข้อมูลพนักงานทั้งหมดในครั้งเดียว
+      if (allEmployeeIds.size > 0) {
+        const { data: employees } = await supabase
+          .from('master_employee')
+          .select('employee_id, first_name, last_name, nickname')
+          .in('employee_id', Array.from(allEmployeeIds));
+
+        // สร้าง map สำหรับ lookup
+        const employeeMap = new Map(
+          employees?.map(emp => [emp.employee_id, emp]) || []
+        );
+
+        // เพิ่มข้อมูลพนักงานเข้าไปใน face sheets
+        data.forEach((sheet: any) => {
+          if (sheet.checker_employee_ids) {
+            sheet.checker_employees = sheet.checker_employee_ids
+              .map((id: number) => employeeMap.get(id))
+              .filter(Boolean);
+          }
+          if (sheet.picker_employee_ids) {
+            sheet.picker_employees = sheet.picker_employee_ids
+              .map((id: number) => employeeMap.get(id))
+              .filter(Boolean);
+          }
+        });
+      }
     }
 
     return NextResponse.json({

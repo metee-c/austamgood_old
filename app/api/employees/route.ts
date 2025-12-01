@@ -1,28 +1,35 @@
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { NextResponse } from 'next/server';
 
-export async function GET(request: Request) {
-  const supabase = await createClient();
+/**
+ * GET /api/employees
+ * ดึงรายชื่อพนักงานทั้งหมด
+ */
+export async function GET(request: NextRequest) {
+  try {
+    const supabase = await createClient();
 
-  const { searchParams } = new URL(request.url);
-  const search = searchParams.get('search');
+    const { data, error } = await supabase
+      .from('master_employee')
+      .select('employee_id, first_name, last_name, nickname, wms_role')
+      .order('first_name', { ascending: true });
 
-  let query = supabase
-    .from('master_employee')
-    .select('employee_id, employee_name, employee_code, position, department')
-    .eq('is_active', true)
-    .order('employee_name', { ascending: true });
+    if (error) {
+      console.error('Error fetching employees:', error);
+      return NextResponse.json(
+        { error: error.message },
+        { status: 500 }
+      );
+    }
 
-  // Apply search filter if provided
-  if (search) {
-    query = query.or(`employee_name.ilike.%${search}%,employee_code.ilike.%${search}%`);
+    return NextResponse.json({ data });
+
+  } catch (error) {
+    console.error('API Error in GET /api/employees:', error);
+    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+    return NextResponse.json(
+      { error: errorMessage },
+      { status: 500 }
+    );
   }
-
-  const { data, error } = await query;
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json(data);
 }
