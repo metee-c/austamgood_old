@@ -158,13 +158,10 @@ function generateDeliveryHTML(
         }
         
         .page-header {
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
             text-align: center;
             border-bottom: 2px solid #000;
             padding-bottom: 8px;
+            margin-bottom: 20px;
             background-color: #fff;
         }
         
@@ -200,7 +197,6 @@ function generateDeliveryHTML(
         }
         
         .content {
-            margin-top: 120px;
             margin-bottom: 40px;
         }
         
@@ -211,25 +207,13 @@ function generateDeliveryHTML(
             
             .page-header {
                 page-break-inside: avoid;
+                position: static;
             }
             
             .page-number {
                 page-break-inside: avoid;
-            }
-            
-            /* Page numbering using CSS counters */
-            @page {
-                @bottom-center {
-                    content: "หน้า " counter(page) " / " counter(pages);
-                    font-family: 'Sarabun', 'Noto Sans Thai', sans-serif;
-                    font-size: 12px;
-                    font-weight: 600;
-                }
-            }
-            
-            /* Hide the manual page number div in print */
-            .page-number {
-                display: none;
+                position: fixed;
+                bottom: 0.5cm;
             }
         }
         
@@ -415,6 +399,14 @@ function generateDeliveryHTML(
             }
         }
     </style>
+    <script>
+        window.onload = function() {
+            // Auto print when page loads
+            setTimeout(function() {
+                window.print();
+            }, 500);
+        };
+    </script>
 </head>
 <body>
     <!-- Fixed Header for All Pages -->
@@ -433,24 +425,18 @@ function generateDeliveryHTML(
             <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px;">
                 <!-- Left: Document Details -->
                 <div style="flex: 1;">
-                    <div class="document-info" style="display: block; padding: 10px; border: 1px solid #ccc; background-color: #f9f9f9;">
-                        <div style="margin-bottom: 8px;">
-                            <span style="font-weight: 600;">เลขที่ใบปะหน้า:</span> ${faceSheetDetails.face_sheet_no}
-                        </div>
-                        <div style="margin-bottom: 8px;">
-                            <span style="font-weight: 600;">เลขที่เอกสาร:</span> ${documentId}
-                        </div>
-                        <div style="margin-bottom: 8px;">
-                            <span style="font-weight: 600;">วันที่:</span> ${currentDate}
-                        </div>
-                        <div style="margin-bottom: 8px;">
-                            <span style="font-weight: 600;">จำนวนแพ็คทั้งหมด:</span> ${totalPackages} แพ็ค
-                        </div>
-                        <div style="margin-bottom: 8px;">
-                            <span style="font-weight: 600;">จำนวนรายการสินค้า:</span> ${faceSheetDetails.total_items} รายการ
+                    <div class="document-info" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 10px; border: 1px solid #ccc; background-color: #f9f9f9; font-size: 12px;">
+                        <div>
+                            <span style="font-weight: 600;">ใบปะหน้า:</span> ${faceSheetDetails.face_sheet_no}
                         </div>
                         <div>
-                            <span style="font-weight: 600;">จำนวนออเดอร์:</span> ${faceSheetDetails.total_orders} ออเดอร์
+                            <span style="font-weight: 600;">เอกสาร:</span> ${documentId}
+                        </div>
+                        <div>
+                            <span style="font-weight: 600;">วันที่:</span> ${currentDate}
+                        </div>
+                        <div>
+                            <span style="font-weight: 600;">แพ็ค:</span> ${totalPackages} | <span style="font-weight: 600;">รายการ:</span> ${faceSheetDetails.total_items} | <span style="font-weight: 600;">ออเดอร์:</span> ${faceSheetDetails.total_orders}
                         </div>
                     </div>
                 </div>
@@ -597,6 +583,123 @@ function generateDeliveryHTML(
 </body>
 </html>
   `;
+}
+
+export async function GET(request: NextRequest) {
+  try {
+    const { searchParams } = new URL(request.url);
+    const faceSheetIds = searchParams.get('face_sheet_ids');
+
+    if (!faceSheetIds) {
+      return NextResponse.json({ error: 'Face Sheet IDs are required' }, { status: 400 });
+    }
+
+    const ids = faceSheetIds.split(',').map(id => Number.parseInt(id.trim(), 10)).filter(id => !isNaN(id));
+    
+    if (ids.length === 0) {
+      return NextResponse.json({ error: 'Invalid Face Sheet IDs' }, { status: 400 });
+    }
+
+    const supabase = await createClient();
+    const allFaceSheets: FaceSheetDetails[] = [];
+
+    // Fetch details for each face sheet
+    for (const sheetId of ids) {
+      const { data, error } = await supabase
+        .rpc('get_face_sheet_details', { p_face_sheet_id: sheetId });
+
+      if (!error && data && data.length > 0) {
+        allFaceSheets.push(data[0]);
+      }
+    }
+
+    if (allFaceSheets.length === 0) {
+      return NextResponse.json({ error: 'No face sheets found' }, { status: 404 });
+    }
+
+    // Combine all packages from all face sheets
+    let allPackages: PackageDetails[] = [];
+    for (const faceSheet of allFaceSheets) {
+      let packages: PackageDetails[] = [];
+      if (Array.isArray(faceSheet.packages)) {
+        packages = faceSheet.packages;
+      } else if (typeof faceSheet.packages === 'string') {
+        try {
+          const parsed = JSON.parse(faceSheet.packages);
+          packages = Array.isArray(parsed) ? parsed : [];
+        } catch {
+          packages = [];
+        }
+      }
+      allPackages = allPackages.concat(packages);
+    }
+
+    // Get unique product codes
+    const productCodes = [...new Set(allPackages.map(pkg => pkg.product_code).filter(Boolean))];
+
+    // Fetch weight data
+    let weightMap: Record<string, number> = {};
+    if (productCodes.length > 0) {
+      const { data: skuData } = await supabase
+        .from('master_sku')
+        .select('sku_id, weight_per_piece_kg')
+        .in('sku_id', productCodes);
+
+      if (skuData) {
+        skuData.forEach((sku: any) => {
+          if (sku.sku_id && sku.weight_per_piece_kg) {
+            weightMap[sku.sku_id] = sku.weight_per_piece_kg;
+          }
+        });
+      }
+    }
+
+    // Add weight to packages
+    allPackages = allPackages.map(pkg => ({
+      ...pkg,
+      unitWeight: pkg.product_code ? weightMap[pkg.product_code] : undefined
+    }));
+
+    // Aggregate data from all packages
+    const { summaryByProduct, summaryByHub, summaryByGroup } = aggregateData(allPackages);
+
+    // Generate document ID
+    const documentId = generateDocumentId();
+
+    // Combine face sheet details for display
+    const combinedDetails: FaceSheetDetails = {
+      face_sheet_no: allFaceSheets.map(fs => fs.face_sheet_no).join(', '),
+      status: allFaceSheets[0].status,
+      created_date: allFaceSheets[0].created_date,
+      total_packages: allFaceSheets.reduce((sum, fs) => sum + fs.total_packages, 0),
+      total_items: allFaceSheets.reduce((sum, fs) => sum + fs.total_items, 0),
+      total_orders: allFaceSheets.reduce((sum, fs) => sum + fs.total_orders, 0),
+      small_size_count: allFaceSheets.reduce((sum, fs) => sum + fs.small_size_count, 0),
+      large_size_count: allFaceSheets.reduce((sum, fs) => sum + fs.large_size_count, 0),
+      packages: allPackages
+    };
+
+    // Generate HTML
+    const htmlContent = generateDeliveryHTML(
+      combinedDetails,
+      summaryByProduct,
+      summaryByHub,
+      summaryByGroup,
+      documentId
+    );
+    
+    return new NextResponse(htmlContent, {
+      headers: {
+        'Content-Type': 'text/html; charset=utf-8',
+      },
+    });
+  } catch (error) {
+    console.error('Error generating delivery document:', error);
+    return NextResponse.json(
+      { error: 'Failed to generate delivery document' },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(

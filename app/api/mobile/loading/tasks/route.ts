@@ -13,9 +13,10 @@ export async function GET(request: NextRequest) {
         loadlist_code,
         status,
         created_at,
+        updated_at,
         vehicle_id,
         driver_employee_id,
-        wms_loadlist_picklists (
+        loadlist_picklists (
           picklist_id,
           picklists:picklist_id (
             id,
@@ -27,6 +28,17 @@ export async function GET(request: NextRequest) {
               vehicle:vehicle_id (
                 plate_number
               )
+            )
+          )
+        ),
+        loadlist_face_sheets (
+          face_sheet_id,
+          face_sheets:face_sheet_id (
+            id,
+            face_sheet_no,
+            status,
+            face_sheet_items (
+              id
             )
           )
         )
@@ -71,34 +83,86 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Transform data
-    const transformedData = loadlists?.map((loadlist: any) => {
-      const picklists = loadlist.wms_loadlist_picklists || [];
-      const totalPackages = picklists.reduce((sum: number, p: any) => {
-        return sum + (p.picklists?.total_lines || 0);
-      }, 0);
+    // Transform data with summary calculations
+    const transformedData = await Promise.all(loadlists?.map(async (loadlist: any) => {
+      const picklists = loadlist.loadlist_picklists || [];
+      const faceSheets = loadlist.loadlist_face_sheets || [];
+      
+      // Get picklist IDs and face sheet IDs
+      const picklistIds = picklists.map((p: any) => p.picklist_id).filter(Boolean);
+      const faceSheetIds = faceSheets.map((fs: any) => fs.face_sheet_id).filter(Boolean);
+      
+      let totalItems = 0;
+      let totalPieces = 0;
+      let totalPacks = 0;
+      let totalWeight = 0;
+      
+      // Calculate from picklists
+      if (picklistIds.length > 0) {
+        const { data: picklistItems } = await supabase
+          .from('picklist_items')
+          .select(`
+            quantity_picked,
+            sku_id,
+            master_sku!inner (
+              qty_per_pack,
+              weight_per_piece_kg
+            )
+          `)
+          .in('picklist_id', picklistIds);
+        
+        picklistItems?.forEach((item: any) => {
+          const qty = parseFloat(item.quantity_picked) || 0;
+          const qtyPerPack = item.master_sku?.qty_per_pack || 1;
+          const weightPerPiece = item.master_sku?.weight_per_piece_kg || 0;
+          
+          totalItems += 1;
+          totalPieces += qty;
+          totalPacks += Math.ceil(qty / qtyPerPack);
+          totalWeight += qty * weightPerPiece;
+        });
+      }
+      
+      // Calculate from face sheets
+      if (faceSheetIds.length > 0) {
+        const { data: faceSheetItems } = await supabase
+          .from('face_sheet_items')
+          .select(`
+            quantity_picked,
+            sku_id,
+            master_sku!inner (
+              qty_per_pack,
+              weight_per_piece_kg
+            )
+          `)
+          .in('face_sheet_id', faceSheetIds);
+        
+        faceSheetItems?.forEach((item: any) => {
+          const qty = parseFloat(item.quantity_picked) || 0;
+          const qtyPerPack = item.master_sku?.qty_per_pack || 1;
+          const weightPerPiece = item.master_sku?.weight_per_piece_kg || 0;
+          
+          totalItems += 1;
+          totalPieces += qty;
+          totalPacks += Math.ceil(qty / qtyPerPack);
+          totalWeight += qty * weightPerPiece;
+        });
+      }
 
       return {
         loadlist_id: loadlist.id,
         loadlist_code: loadlist.loadlist_code,
         status: loadlist.status,
-        total_picklists: picklists.length,
-        total_packages: totalPackages,
+        total_items: totalItems,
+        total_pieces: totalPieces,
+        total_packs: totalPacks,
+        total_weight: Math.round(totalWeight * 100) / 100, // Round to 2 decimals
         created_at: loadlist.created_at,
+        updated_at: loadlist.updated_at,
         vehicle: loadlist.vehicle_id ? vehicleMap[loadlist.vehicle_id] : null,
-        driver: loadlist.driver_employee_id ? driverMap[loadlist.driver_employee_id] : null,
-        picklists: picklists.map((p: any) => ({
-          id: p.picklist_id,
-          picklist_code: p.picklists?.picklist_code,
-          status: p.picklists?.status,
-          total_lines: p.picklists?.total_lines,
-          trip: {
-            trip_code: p.picklists?.trip?.trip_code,
-            vehicle: p.picklists?.trip?.vehicle
-          }
-        }))
+        driver: loadlist.driver_employee_id ? driverMap[loadlist.driver_employee_id] : null
       };
-    }) || [];
+    }) || []);
 
     return NextResponse.json({ data: transformedData });
   } catch (error) {

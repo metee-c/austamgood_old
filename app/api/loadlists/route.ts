@@ -39,12 +39,21 @@ export async function GET(request: NextRequest) {
             picklist_items (
               order_id,
               order_no,
-              wms_orders:order_id (
+              wms_orders (
                 order_no,
                 shop_name,
                 total_weight
               )
             )
+          )
+        ),
+        loadlist_face_sheets (
+          face_sheet_id,
+          face_sheets:face_sheet_id (
+            face_sheet_no,
+            status,
+            total_packages,
+            total_items
           )
         )
       `)
@@ -118,6 +127,7 @@ export async function GET(request: NextRequest) {
     // Transform data to match expected format
     const transformedLoadlists = (loadlists || []).map((loadlist: any) => {
       const picklists = loadlist.wms_loadlist_picklists || [];
+      const faceSheets = loadlist.loadlist_face_sheets || [];
       const tripCode = loadlist.trip_id ? tripMap[loadlist.trip_id] : null;
       const vehicle = loadlist.vehicle_id ? vehicleMap[loadlist.vehicle_id] : null;
       const driver = loadlist.driver_employee_id ? driverMap[loadlist.driver_employee_id] : null;
@@ -138,11 +148,19 @@ export async function GET(request: NextRequest) {
         trip_id: loadlist.trip_id,
         trip: tripCode ? { trip_code: tripCode } : null,
         total_picklists: picklists.length,
+        total_face_sheets: faceSheets.length,
         total_packages: picklists.reduce((sum: number, p: any) => sum + (p.picklists?.total_lines || 0), 0),
         created_at: loadlist.created_at,
         created_by: loadlist.created_by,
         vehicle: vehicle,
         driver: driver,
+        face_sheets: faceSheets.map((fs: any) => ({
+          id: fs.face_sheet_id,
+          face_sheet_no: fs.face_sheets?.face_sheet_no,
+          status: fs.face_sheets?.status,
+          total_packages: fs.face_sheets?.total_packages,
+          total_items: fs.face_sheets?.total_items
+        })),
         picklists: picklists.map((p: any) => {
           // Extract unique orders from picklist items
           const picklistItems = p.picklists?.picklist_items || [];
@@ -191,6 +209,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const {
       picklist_ids,
+      face_sheet_ids,
       checker_employee_id,
       vehicle_type,
       delivery_number,
@@ -201,9 +220,13 @@ export async function POST(request: NextRequest) {
       loading_queue_number
     } = body;
 
-    if (!picklist_ids || !Array.isArray(picklist_ids) || picklist_ids.length === 0) {
+    // Validation - ต้องมีอย่างน้อย picklist_ids หรือ face_sheet_ids
+    const hasPicklists = picklist_ids && Array.isArray(picklist_ids) && picklist_ids.length > 0;
+    const hasFaceSheets = face_sheet_ids && Array.isArray(face_sheet_ids) && face_sheet_ids.length > 0;
+    
+    if (!hasPicklists && !hasFaceSheets) {
       return NextResponse.json(
-        { error: 'picklist_ids is required and must be a non-empty array' },
+        { error: 'Either picklist_ids or face_sheet_ids is required and must be a non-empty array' },
         { status: 400 }
       );
     }
@@ -291,28 +314,54 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Link picklists to loadlist
-    const loadlistPicklistsData = picklist_ids.map((picklist_id: number, index: number) => ({
-      loadlist_id: loadlist.id,
-      picklist_id: picklist_id,
-      sequence: index + 1
-    }));
+    // Link picklists to loadlist (if any)
+    if (hasPicklists) {
+      const loadlistPicklistsData = picklist_ids.map((picklist_id: number) => ({
+        loadlist_id: loadlist.id,
+        picklist_id: picklist_id
+      }));
 
-    const { error: linkError } = await supabase
-      .from('wms_loadlist_picklists')
-      .insert(loadlistPicklistsData);
+      const { error: linkError } = await supabase
+        .from('loadlist_picklists')
+        .insert(loadlistPicklistsData);
 
-    if (linkError) {
-      // Cleanup: delete the loadlist if linking failed
-      await supabase
-        .from('loadlists')
-        .delete()
-        .eq('id', loadlist.id);
+      if (linkError) {
+        // Cleanup: delete the loadlist if linking failed
+        await supabase
+          .from('loadlists')
+          .delete()
+          .eq('id', loadlist.id);
 
-      return NextResponse.json(
-        { error: 'Failed to link picklists to loadlist', details: linkError.message },
-        { status: 500 }
-      );
+        return NextResponse.json(
+          { error: 'Failed to link picklists to loadlist', details: linkError.message },
+          { status: 500 }
+        );
+      }
+    }
+
+    // Link face sheets to loadlist (if any)
+    if (hasFaceSheets) {
+      const loadlistFaceSheetsData = face_sheet_ids.map((face_sheet_id: number) => ({
+        loadlist_id: loadlist.id,
+        face_sheet_id: face_sheet_id
+      }));
+
+      const { error: linkError } = await supabase
+        .from('loadlist_face_sheets')
+        .insert(loadlistFaceSheetsData);
+
+      if (linkError) {
+        // Cleanup: delete the loadlist if linking failed
+        await supabase
+          .from('loadlists')
+          .delete()
+          .eq('id', loadlist.id);
+
+        return NextResponse.json(
+          { error: 'Failed to link face sheets to loadlist', details: linkError.message },
+          { status: 500 }
+        );
+      }
     }
 
     // Fetch the complete loadlist with relations

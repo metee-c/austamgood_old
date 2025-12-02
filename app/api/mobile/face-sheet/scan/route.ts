@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 6. ดึง Dispatch location
+    // 6. ดึง Dispatch location (เหมือน Picklist)
     const { data: dispatchLocation, error: dispatchError } = await supabase
       .from('master_location')
       .select('location_id, location_code')
@@ -269,44 +269,59 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 9. เพิ่มสต็อคที่ Dispatch
-    const { data: dispatchBalance } = await supabase
-      .from('wms_inventory_balances')
-      .select('balance_id, total_piece_qty, total_pack_qty')
-      .eq('warehouse_id', warehouseId)
-      .eq('location_id', dispatchLocation.location_id)
-      .eq('sku_id', item.sku_id)
-      .eq('production_date', sourceProductionDate || null)
-      .eq('expiry_date', sourceExpiryDate || null)
-      .eq('lot_no', sourceLotNo || null)
-      .maybeSingle();
+    // 9. เพิ่มสต็อคที่ Dispatch (ใช้ raw SQL เพื่อ UPSERT และหลีกเลี่ยง race condition)
+    const { error: upsertError } = await supabase.rpc('upsert_dispatch_balance', {
+      p_warehouse_id: warehouseId,
+      p_location_id: dispatchLocation.location_id,
+      p_sku_id: item.sku_id,
+      p_production_date: sourceProductionDate,
+      p_expiry_date: sourceExpiryDate,
+      p_lot_no: sourceLotNo,
+      p_pack_qty: packQty,
+      p_piece_qty: quantity_picked
+    });
 
-    if (dispatchBalance) {
-      await supabase
+    if (upsertError) {
+      console.error('❌ Error upserting dispatch balance:', upsertError);
+      // Fallback to manual upsert
+      const { data: dispatchBalance } = await supabase
         .from('wms_inventory_balances')
-        .update({
-          total_piece_qty: dispatchBalance.total_piece_qty + quantity_picked,
-          total_pack_qty: dispatchBalance.total_pack_qty + packQty,
-          last_movement_at: now,
-          updated_at: now
-        })
-        .eq('balance_id', dispatchBalance.balance_id);
-    } else {
-      await supabase
-        .from('wms_inventory_balances')
-        .insert({
-          warehouse_id: warehouseId,
-          location_id: dispatchLocation.location_id,
-          sku_id: item.sku_id,
-          total_pack_qty: packQty,
-          total_piece_qty: quantity_picked,
-          reserved_pack_qty: 0,
-          reserved_piece_qty: 0,
-          production_date: sourceProductionDate,
-          expiry_date: sourceExpiryDate,
-          lot_no: sourceLotNo,
-          last_movement_at: now
-        });
+        .select('balance_id, total_piece_qty, total_pack_qty')
+        .eq('warehouse_id', warehouseId)
+        .eq('location_id', dispatchLocation.location_id)
+        .eq('sku_id', item.sku_id)
+        .eq('production_date', sourceProductionDate || null)
+        .eq('expiry_date', sourceExpiryDate || null)
+        .eq('lot_no', sourceLotNo || null)
+        .maybeSingle();
+
+      if (dispatchBalance) {
+        await supabase
+          .from('wms_inventory_balances')
+          .update({
+            total_piece_qty: dispatchBalance.total_piece_qty + quantity_picked,
+            total_pack_qty: dispatchBalance.total_pack_qty + packQty,
+            last_movement_at: now,
+            updated_at: now
+          })
+          .eq('balance_id', dispatchBalance.balance_id);
+      } else {
+        await supabase
+          .from('wms_inventory_balances')
+          .insert({
+            warehouse_id: warehouseId,
+            location_id: dispatchLocation.location_id,
+            sku_id: item.sku_id,
+            total_pack_qty: packQty,
+            total_piece_qty: quantity_picked,
+            reserved_pack_qty: 0,
+            reserved_piece_qty: 0,
+            production_date: sourceProductionDate,
+            expiry_date: sourceExpiryDate,
+            lot_no: sourceLotNo,
+            last_movement_at: now
+          });
+      }
     }
 
     // บันทึก ledger: IN ไปยัง Dispatch (skip sync เพราะ update balance เองแล้ว)

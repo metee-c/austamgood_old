@@ -20,6 +20,8 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { loadlist_id, loadlist_code, scanned_code } = body;
 
+    console.log('🔍 Complete request:', { loadlist_id, loadlist_code, scanned_code });
+
     if (!loadlist_id && !loadlist_code) {
       return NextResponse.json(
         { error: 'กรุณาระบุ loadlist_id หรือ loadlist_code' },
@@ -34,7 +36,7 @@ export async function POST(request: NextRequest) {
         id,
         loadlist_code,
         status,
-        wms_loadlist_picklists (
+        loadlist_picklists (
           picklist_id,
           loaded_at
         )
@@ -48,7 +50,10 @@ export async function POST(request: NextRequest) {
 
     const { data: loadlist, error: loadlistError } = await query.single();
 
+    console.log('📦 Loadlist query result:', { loadlist, error: loadlistError });
+
     if (loadlistError || !loadlist) {
+      console.error('❌ Loadlist not found:', loadlistError);
       return NextResponse.json(
         { error: 'ไม่พบใบโหลดสินค้า', details: loadlistError?.message },
         { status: 404 }
@@ -76,44 +81,108 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get picklist IDs to fetch items
-    const picklistIds = loadlist.wms_loadlist_picklists?.map((lp: any) => lp.picklist_id) || [];
+    // Get picklist IDs and face sheet IDs
+    const { data: picklistLinks } = await supabase
+      .from('loadlist_picklists')
+      .select('picklist_id')
+      .eq('loadlist_id', loadlist.id);
+    
+    const { data: faceSheetLinks } = await supabase
+      .from('loadlist_face_sheets')
+      .select('face_sheet_id')
+      .eq('loadlist_id', loadlist.id);
 
-    if (picklistIds.length === 0) {
+    const picklistIds = picklistLinks?.map(lp => lp.picklist_id) || [];
+    const faceSheetIds = faceSheetLinks?.map(fs => fs.face_sheet_id) || [];
+
+    console.log('📋 Document IDs:', { picklistIds, faceSheetIds });
+
+    if (picklistIds.length === 0 && faceSheetIds.length === 0) {
+      console.error('❌ No picklists or face sheets found');
       return NextResponse.json(
-        { error: 'ไม่พบใบจัดสินค้าในใบโหลดนี้' },
+        { error: 'ไม่พบใบจัดสินค้าหรือใบปะหน้าในใบโหลดนี้' },
         { status: 400 }
       );
     }
 
     // Fetch picklists with items (including order_id)
-    const { data: picklists, error: picklistsError } = await supabase
-      .from('picklists')
-      .select(`
-        id,
-        picklist_code,
-        picklist_items (
-          sku_id,
-          quantity_picked,
-          quantity_to_pick,
-          order_id
-        )
-      `)
-      .in('id', picklistIds);
+    let picklists: any[] = [];
+    if (picklistIds.length > 0) {
+      const { data: picklistData, error: picklistsError } = await supabase
+        .from('picklists')
+        .select(`
+          id,
+          picklist_code,
+          picklist_items (
+            sku_id,
+            quantity_picked,
+            quantity_to_pick,
+            order_id
+          )
+        `)
+        .in('id', picklistIds);
 
-    if (picklistsError || !picklists || picklists.length === 0) {
+      if (picklistsError) {
+        return NextResponse.json(
+          { error: 'ไม่พบข้อมูลใบจัดสินค้า', details: picklistsError?.message },
+          { status: 404 }
+        );
+      }
+      picklists = picklistData || [];
+    }
+
+    // Fetch face sheets with items (including order_id)
+    let faceSheets: any[] = [];
+    if (faceSheetIds.length > 0) {
+      console.log('🔍 Fetching face sheets:', faceSheetIds);
+      const { data: faceSheetData, error: faceSheetsError } = await supabase
+        .from('face_sheets')
+        .select(`
+          id,
+          face_sheet_no,
+          face_sheet_items (
+            sku_id,
+            quantity_picked,
+            quantity_to_pick,
+            order_id
+          )
+        `)
+        .in('id', faceSheetIds);
+
+      console.log('📄 Face sheets result:', { data: faceSheetData, error: faceSheetsError });
+
+      if (faceSheetsError) {
+        console.error('❌ Face sheets error:', faceSheetsError);
+        return NextResponse.json(
+          { error: 'ไม่พบข้อมูลใบปะหน้า', details: faceSheetsError?.message },
+          { status: 404 }
+        );
+      }
+      faceSheets = faceSheetData || [];
+    }
+
+    console.log('📄 Documents fetched:', { 
+      picklists: picklists.length, 
+      faceSheets: faceSheets.length 
+    });
+
+    if (picklists.length === 0 && faceSheets.length === 0) {
+      console.error('❌ No document data found');
       return NextResponse.json(
-        { error: 'ไม่พบข้อมูลใบจัดสินค้า', details: picklistsError?.message },
+        { error: 'ไม่พบข้อมูลใบจัดสินค้าหรือใบปะหน้า' },
         { status: 404 }
       );
     }
 
-    // Get unique order IDs from picklist items
-    const orderIds = [...new Set(
-      picklists.flatMap(p => 
+    // Get unique order IDs from both picklist items and face sheet items
+    const orderIds = [...new Set([
+      ...picklists.flatMap(p => 
         p.picklist_items?.map((item: any) => item.order_id).filter(Boolean) || []
+      ),
+      ...faceSheets.flatMap(fs => 
+        fs.face_sheet_items?.map((item: any) => item.order_id).filter(Boolean) || []
       )
-    )];
+    ])];
 
     // Fetch order details for loadlist_items
     let orderDetails: any[] = [];
@@ -152,6 +221,7 @@ export async function POST(request: NextRequest) {
     const insufficientStockItems: any[] = [];
     const itemsToProcess: any[] = [];
 
+    // Process picklist items
     for (const picklist of picklists) {
       if (!picklist.picklist_items) continue;
 
@@ -204,7 +274,8 @@ export async function POST(request: NextRequest) {
             picklist_code: picklist.picklist_code,
             required: qty,
             available: availableQty,
-            shortage: qty - availableQty
+            shortage: qty - availableQty,
+            location: 'Dispatch'
           });
         } else {
           // เก็บข้อมูลไว้สำหรับ process ทีหลัง
@@ -214,150 +285,297 @@ export async function POST(request: NextRequest) {
             qtyPack,
             qtyPerPack,
             picklist_code: picklist.picklist_code,
-            dispatchBalance
+            sourceBalance: dispatchBalance,
+            sourceLocation: dispatchLocation.location_id,
+            isFromFaceSheet: false
+          });
+        }
+      }
+    }
+
+    // Process face sheet items (from Dispatch, same as picklists)
+    for (const faceSheet of faceSheets) {
+      if (!faceSheet.face_sheet_items) continue;
+
+      console.log(`🔍 Processing face sheet ${faceSheet.face_sheet_no} with ${faceSheet.face_sheet_items.length} items`);
+
+      for (const item of faceSheet.face_sheet_items) {
+        const qty = item.quantity_picked || item.quantity_to_pick || 0;
+        console.log(`📦 Face sheet item: sku=${item.sku_id}, qty_picked=${item.quantity_picked}, qty_to_pick=${item.quantity_to_pick}, final_qty=${qty}`);
+        
+        if (qty <= 0) {
+          console.log(`⚠️ Skipping item with qty=${qty}`);
+          continue;
+        }
+
+        // Get SKU info
+        console.log(`🔍 Fetching SKU info for ${item.sku_id}`);
+        const { data: skuInfo, error: skuError } = await supabase
+          .from('master_sku')
+          .select('qty_per_pack, sku_name')
+          .eq('sku_id', item.sku_id)
+          .single();
+
+        if (skuError) {
+          console.error(`❌ Error fetching SKU ${item.sku_id}:`, skuError);
+          return NextResponse.json(
+            { error: `ไม่พบข้อมูล SKU: ${item.sku_id}`, details: skuError.message },
+            { status: 500 }
+          );
+        }
+
+        const qtyPerPack = skuInfo?.qty_per_pack || 1;
+        const qtyPack = qty / qtyPerPack;
+        console.log(`✅ SKU info: qty_per_pack=${qtyPerPack}, qtyPack=${qtyPack}`);
+
+        // Check Dispatch balance for face sheets (same as picklists)
+        console.log(`🔍 Checking Dispatch balance for ${item.sku_id}`);
+        const { data: dispatchBalance, error: balanceError } = await supabase
+          .from('wms_inventory_balances')
+          .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
+          .eq('warehouse_id', 'WH001')
+          .eq('location_id', dispatchLocation.location_id)
+          .eq('sku_id', item.sku_id)
+          .maybeSingle();
+
+        if (balanceError) {
+          console.error('❌ Error checking dispatch balance:', balanceError);
+          return NextResponse.json(
+            { error: 'ไม่สามารถตรวจสอบสต็อคได้', details: balanceError.message },
+            { status: 500 }
+          );
+        }
+
+        console.log(`📊 Dispatch balance: ${dispatchBalance ? `${dispatchBalance.total_piece_qty} pieces` : 'not found'}`);
+
+        const availableQty = dispatchBalance?.total_piece_qty || 0;
+
+        // ✅ ตรวจสอบว่ามีสต็อคเพียงพอหรือไม่
+        if (availableQty < qty) {
+          insufficientStockItems.push({
+            sku_id: item.sku_id,
+            sku_name: skuInfo?.sku_name,
+            face_sheet_no: faceSheet.face_sheet_no,
+            required: qty,
+            available: availableQty,
+            shortage: qty - availableQty,
+            location: 'Dispatch'
+          });
+        } else {
+          // เก็บข้อมูลไว้สำหรับ process ทีหลัง
+          itemsToProcess.push({
+            sku_id: item.sku_id,
+            qty,
+            qtyPack,
+            qtyPerPack,
+            face_sheet_no: faceSheet.face_sheet_no,
+            sourceBalance: dispatchBalance,
+            sourceLocation: dispatchLocation.location_id,
+            isFromFaceSheet: true
           });
         }
       }
     }
 
     // ✅ FAIL EARLY: ถ้ามีรายการใดที่สต็อคไม่พอ ให้ fail ทั้งหมด
+    console.log(`✅ Stock check complete. Insufficient items: ${insufficientStockItems.length}, Items to process: ${itemsToProcess.length}`);
+    
     if (insufficientStockItems.length > 0) {
-      // สร้าง alerts สำหรับรายการที่ขาดสต็อค
-      const alerts = insufficientStockItems.map(item => ({
-        alert_type: 'insufficient_stock',
-        warehouse_id: 'WH001',
-        location_id: dispatchLocation.location_id,
-        sku_id: item.sku_id,
-        required_qty: item.required,
-        current_qty: item.available,
-        shortage_qty: item.shortage,
-        priority: 'urgent',
-        status: 'pending',
-        reference_no: loadlist.loadlist_code,
-        reference_doc_type: 'loadlist',
-        created_at: now
-      }));
-
-      await supabase
-        .from('stock_replenishment_alerts')
-        .insert(alerts)
-        .select()
-        .maybeSingle();
-
+      console.error(`❌ Insufficient stock for ${insufficientStockItems.length} items`);
       return NextResponse.json(
         {
-          error: 'ไม่สามารถโหลดสินค้าได้: สต็อคที่ Dispatch ไม่เพียงพอ',
+          error: 'ไม่สามารถโหลดสินค้าได้: สต็อคไม่เพียงพอ',
           insufficient_items: insufficientStockItems,
-          message: 'กรุณาตรวจสอบและเติมสต็อคที่ Dispatch ก่อนโหลด',
-          total_items: insufficientStockItems.length,
-          alerts_created: alerts.length
+          message: 'กรุณาตรวจสอบและเติมสต็อคก่อนโหลด',
+          total_items: insufficientStockItems.length
         },
         { status: 400 }
       );
     }
 
     // ✅ สต็อคเพียงพอทุกรายการ → เริ่ม process
+    console.log(`✅ All stock sufficient. Starting to group items...`);
 
-    // Update loadlist status to 'loaded' FIRST to prevent double processing
-    const { error: updateStatusError } = await supabase
-      .from('loadlists')
-      .update({
-        status: 'loaded',
-        updated_at: now
-      })
-      .eq('id', loadlist.id)
-      .eq('status', 'pending'); // Only update if still 'pending'
-
-    if (updateStatusError) {
-      return NextResponse.json(
-        { error: 'ไม่สามารถอัปเดตสถานะใบโหลดได้', details: updateStatusError.message },
-        { status: 500 }
-      );
-    }
-
-    // Update all picklists loaded_at
-    await supabase
-      .from('wms_loadlist_picklists')
-      .update({ loaded_at: now })
-      .in('picklist_id', picklistIds)
-      .eq('loadlist_id', loadlist.id);
-
-    // Process stock movements
+    // Declare groupedItems outside try block so it's accessible in catch
+    const groupedItems = new Map<string, any>();
     const ledgerEntries = [];
     let itemsProcessed = 0;
 
-    for (const itemData of itemsToProcess) {
-      const { sku_id, qty, qtyPack, qtyPerPack, picklist_code, dispatchBalance } = itemData;
+    try {
+      // Update loadlist status to 'loaded' FIRST to prevent double processing
+      console.log(`🔄 Updating loadlist status to loaded...`);
+      const { error: updateStatusError } = await supabase
+        .from('loadlists')
+        .update({
+          status: 'loaded',
+          updated_at: now
+        })
+        .eq('id', loadlist.id)
+        .eq('status', 'pending'); // Only update if still 'pending'
 
-      console.log(`📦 Processing item: SKU=${sku_id}, production_date=${dispatchBalance.production_date}, expiry_date=${dispatchBalance.expiry_date}`);
+      if (updateStatusError) {
+        console.error(`❌ Error updating loadlist status:`, updateStatusError);
+        return NextResponse.json(
+          { error: 'ไม่สามารถอัปเดตสถานะใบโหลดได้', details: updateStatusError.message },
+          { status: 500 }
+        );
+      }
+      console.log(`✅ Loadlist status updated to loaded`);
 
-      // Update Dispatch balance (decrease)
+      // Update all picklists loaded_at
+      if (picklistIds.length > 0) {
+        console.log(`🔄 Updating ${picklistIds.length} picklists loaded_at...`);
+        await supabase
+          .from('wms_loadlist_picklists')
+          .update({ loaded_at: now })
+          .in('picklist_id', picklistIds)
+          .eq('loadlist_id', loadlist.id);
+      }
+
+      // Update all face sheets loaded_at
+      if (faceSheetIds.length > 0) {
+        console.log(`🔄 Updating ${faceSheetIds.length} face sheets loaded_at...`);
+        await supabase
+          .from('loadlist_face_sheets')
+          .update({ loaded_at: now })
+          .in('face_sheet_id', faceSheetIds)
+          .eq('loadlist_id', loadlist.id);
+      }
+
+      // Group items by SKU + production_date + expiry_date + lot_no to handle duplicates
+      // (ไม่ต้อง group by source_location เพราะทั้ง picklist และ face sheet ใช้ Dispatch เหมือนกัน)
+      console.log(`🔄 Grouping ${itemsToProcess.length} items...`);
+      
+      for (const itemData of itemsToProcess) {
+        const { sku_id, qty, qtyPack, picklist_code, face_sheet_no, sourceBalance, sourceLocation } = itemData;
+        const docCode = picklist_code || face_sheet_no;
+        
+        const key = `${sku_id}|${sourceBalance.production_date}|${sourceBalance.expiry_date}|${sourceBalance.lot_no}`;
+        
+        if (groupedItems.has(key)) {
+          const existing = groupedItems.get(key);
+          existing.qty += qty;
+          existing.qtyPack += qtyPack;
+          existing.docCodes.push(docCode);
+        } else {
+          groupedItems.set(key, {
+            sku_id,
+            qty,
+            qtyPack,
+            sourceBalance,
+            sourceLocation,
+            docCodes: [docCode]
+          });
+        }
+      }
+    } catch (groupError: any) {
+      console.error(`❌ Error during grouping/status update:`, groupError);
+      throw groupError;
+    }
+
+    console.log(`📦 Grouped ${itemsToProcess.length} items into ${groupedItems.size} unique SKU batches`);
+    console.log(`📋 Items to process:`, itemsToProcess.map(i => ({ sku: i.sku_id, qty: i.qty })));
+
+    // Process each unique SKU batch
+    console.log(`🔄 Starting to process ${groupedItems.size} batches...`);
+    for (const [key, itemData] of groupedItems) {
+      console.log(`🔄 Processing batch: ${key}`);
+      const { sku_id, qty, qtyPack, sourceBalance, sourceLocation, docCodes } = itemData;
+      const docCode = docCodes.join(', ');
+      const sourceLocationName = sourceLocation === dispatchLocation.location_id ? 'Dispatch' : 'Prep-Area';
+
+      console.log(`📦 Processing item: SKU=${sku_id}, qty=${qty}, from=${sourceLocationName}, production_date=${sourceBalance.production_date}, expiry_date=${sourceBalance.expiry_date}`);
+
+      // Update source balance (decrease)
       await supabase
         .from('wms_inventory_balances')
         .update({
-          total_pack_qty: dispatchBalance.total_pack_qty - qtyPack,
-          total_piece_qty: dispatchBalance.total_piece_qty - qty,
+          total_pack_qty: sourceBalance.total_pack_qty - qtyPack,
+          total_piece_qty: sourceBalance.total_piece_qty - qty,
           updated_at: now
         })
-        .eq('balance_id', dispatchBalance.balance_id);
+        .eq('balance_id', sourceBalance.balance_id);
 
-      // Create ledger: OUT from Dispatch
+      // Create ledger: OUT from source location
       ledgerEntries.push({
         movement_at: now,
         transaction_type: 'ship',
         direction: 'out',
         warehouse_id: 'WH001',
-        location_id: dispatchLocation.location_id,
+        location_id: sourceLocation,
         sku_id,
         pack_qty: qtyPack,
         piece_qty: qty,
         reference_no: loadlist.loadlist_code,
         reference_doc_type: 'loadlist',
         reference_doc_id: loadlist.id,
-        remarks: `ออกจาก Dispatch - ${picklist_code}`,
+        remarks: `ออกจาก ${sourceLocationName} - ${docCode}`,
         skip_balance_sync: true
       });
 
       // Update Delivery-In-Progress balance (increase)
       // ✅ ต้องหา balance ที่ match ทั้ง sku_id, production_date, expiry_date, และ lot_no
-      const { data: deliveryBalance } = await supabase
+      const { data: deliveryBalances } = await supabase
         .from('wms_inventory_balances')
-        .select('balance_id, total_piece_qty, total_pack_qty')
+        .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
         .eq('warehouse_id', 'WH001')
         .eq('location_id', deliveryLocation.location_id)
-        .eq('sku_id', sku_id)
-        .eq('production_date', dispatchBalance.production_date || null)
-        .eq('expiry_date', dispatchBalance.expiry_date || null)
-        .eq('lot_no', dispatchBalance.lot_no || null)
-        .maybeSingle();
+        .eq('sku_id', sku_id);
 
-      if (deliveryBalance) {
-        console.log(`✅ Updating existing Delivery-In-Progress balance: ${deliveryBalance.balance_id}`);
-        await supabase
+      // Find exact match with proper NULL handling
+      const exactMatch = deliveryBalances?.find((b: any) => {
+        const prodMatch = sourceBalance.production_date 
+          ? b.production_date === sourceBalance.production_date
+          : !b.production_date;
+        const expMatch = sourceBalance.expiry_date
+          ? b.expiry_date === sourceBalance.expiry_date
+          : !b.expiry_date;
+        const lotMatch = sourceBalance.lot_no
+          ? b.lot_no === sourceBalance.lot_no
+          : !b.lot_no;
+        return prodMatch && expMatch && lotMatch;
+      });
+
+      if (exactMatch) {
+        console.log(`✅ Updating existing Delivery-In-Progress balance: ${exactMatch.balance_id}, current: ${exactMatch.total_piece_qty} pcs, adding: ${qty} pcs`);
+        const { error: updateError } = await supabase
           .from('wms_inventory_balances')
           .update({
-            total_pack_qty: deliveryBalance.total_pack_qty + qtyPack,
-            total_piece_qty: deliveryBalance.total_piece_qty + qty,
-            updated_at: now
+            total_pack_qty: exactMatch.total_pack_qty + qtyPack,
+            total_piece_qty: exactMatch.total_piece_qty + qty,
+            last_movement_at: now
           })
-          .eq('balance_id', deliveryBalance.balance_id);
+          .eq('balance_id', exactMatch.balance_id);
+        
+        if (updateError) {
+          console.error(`❌ Error updating Delivery-In-Progress balance:`, updateError);
+          throw new Error(`Failed to update delivery balance: ${updateError.message}`);
+        }
       } else {
-        console.log(`🆕 Creating new Delivery-In-Progress balance: SKU=${sku_id}, production_date=${dispatchBalance.production_date}, expiry_date=${dispatchBalance.expiry_date}, lot_no=${dispatchBalance.lot_no}`);
-        await supabase
+        console.log(`🆕 Creating new Delivery-In-Progress balance: SKU=${sku_id}, prod=${sourceBalance.production_date}, exp=${sourceBalance.expiry_date}, lot=${sourceBalance.lot_no}`);
+        
+        const { error: insertError } = await supabase
           .from('wms_inventory_balances')
           .insert({
             warehouse_id: 'WH001',
             location_id: deliveryLocation.location_id,
             sku_id,
-            production_date: dispatchBalance.production_date,
-            expiry_date: dispatchBalance.expiry_date,
-            lot_no: dispatchBalance.lot_no,
+            production_date: sourceBalance.production_date || null,
+            expiry_date: sourceBalance.expiry_date || null,
+            lot_no: sourceBalance.lot_no || null,
+            pallet_id: null,
+            pallet_id_external: null,
             total_pack_qty: qtyPack,
             total_piece_qty: qty,
             reserved_pack_qty: 0,
             reserved_piece_qty: 0,
             last_movement_at: now
           });
+        
+        if (insertError) {
+          console.error(`❌ Error creating Delivery-In-Progress balance:`, insertError);
+          throw new Error(`Failed to create delivery balance: ${insertError.message}`);
+        }
       }
 
       // Create ledger: IN to Delivery-In-Progress
@@ -373,7 +591,7 @@ export async function POST(request: NextRequest) {
         reference_no: loadlist.loadlist_code,
         reference_doc_type: 'loadlist',
         reference_doc_id: loadlist.id,
-        remarks: `เข้า Delivery-In-Progress - ${picklist_code}`,
+        remarks: `เข้า Delivery-In-Progress - ${docCode}`,
         skip_balance_sync: true
       });
 
@@ -421,10 +639,15 @@ export async function POST(request: NextRequest) {
       orders_loaded: orderDetails.length
     });
 
-  } catch (error) {
-    console.error('API error:', error);
+  } catch (error: any) {
+    console.error('❌ API error:', error);
+    console.error('Error stack:', error.stack);
     return NextResponse.json(
-      { error: 'เกิดข้อผิดพลาดภายในระบบ' },
+      { 
+        error: 'เกิดข้อผิดพลาดภายในระบบ',
+        details: error.message,
+        stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+      },
       { status: 500 }
     );
   }

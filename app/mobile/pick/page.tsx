@@ -49,6 +49,8 @@ interface FaceSheet {
   warehouse_id: string;
 }
 
+// Face Sheet Statuses: generated (สร้างแล้ว), picking (กำลังหยิบ), completed (เสร็จสิ้น), cancelled (ยกเลิก)
+
 type PickTask = (Picklist & { type: 'picklist' }) | (FaceSheet & { type: 'face_sheet' });
 
 const PICKLIST_STATUSES = [
@@ -96,9 +98,12 @@ export default function MobilePickPage() {
         allTasks.push(...picklistsData.data.map((p: Picklist) => ({ ...p, type: 'picklist' as const })));
       }
 
-      // Add face sheets
+      // Add face sheets (เฉพาะสถานะ picking ขึ้นไป - ไม่แสดง generated)
       if (faceSheetsData.data) {
-        allTasks.push(...faceSheetsData.data.map((f: FaceSheet) => ({ ...f, type: 'face_sheet' as const })));
+        const filteredFaceSheets = faceSheetsData.data.filter((f: FaceSheet) => 
+          f.status !== 'generated'
+        );
+        allTasks.push(...filteredFaceSheets.map((f: FaceSheet) => ({ ...f, type: 'face_sheet' as const })));
       }
 
       // Sort by updated_at descending
@@ -139,6 +144,7 @@ export default function MobilePickPage() {
   // Get status badge
   const getStatusBadge = (status: string) => {
     const statusMap: Record<string, { label: string; variant: 'default' | 'primary' | 'success' | 'warning' | 'danger' | 'info' }> = {
+      generated: { label: 'สร้างแล้ว', variant: 'default' },
       pending: { label: 'รอดำเนินการ', variant: 'default' },
       assigned: { label: 'มอบหมายแล้ว', variant: 'info' },
       picking: { label: 'กำลังหยิบ', variant: 'warning' },

@@ -2307,7 +2307,22 @@ const RoutesPage = () => {
                                                                                 ? '✅ ดู/แก้ไขค่าขนส่ง (กรอกเสร็จแล้ว)'
                                                                                 : '📋 ดูค่าขนส่ง (สถานะ: ' + plan.status + ')'
                                                                         }
-                                                                        onClick={() => {
+                                                                        onClick={async () => {
+                                                                            // ถ้าสถานะเป็น draft ให้เปลี่ยนเป็น optimizing ก่อน
+                                                                            if (plan.status === 'draft') {
+                                                                                try {
+                                                                                    const res = await fetch(`/api/route-plans/${plan.plan_id}`, {
+                                                                                        method: 'PATCH',
+                                                                                        headers: { 'Content-Type': 'application/json' },
+                                                                                        body: JSON.stringify({ status: 'optimizing' })
+                                                                                    });
+                                                                                    if (res.ok) {
+                                                                                        await fetchRoutePlans(); // Refresh data
+                                                                                    }
+                                                                                } catch (error) {
+                                                                                    console.error('Error updating status:', error);
+                                                                                }
+                                                                            }
                                                                             setSelectedPlanIdForShippingCost(plan.plan_id);
                                                                             setShowEditShippingCostModal(true);
                                                                         }}

@@ -12,7 +12,8 @@ import {
   Clock,
   ChevronUp,
   ChevronDown,
-  ChevronsUpDown
+  ChevronsUpDown,
+  Layers
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
@@ -48,6 +49,7 @@ interface Loadlist {
     trip_code: string;
   };
   total_picklists: number;
+  total_face_sheets?: number;
   total_packages: number;
   created_at: string;
   created_by: string;
@@ -77,6 +79,13 @@ interface Loadlist {
       total_weight?: number;
     }>;
   }>;
+  face_sheets?: Array<{
+    id: number;
+    face_sheet_no: string;
+    status: string;
+    total_packages: number;
+    total_items: number;
+  }>;
 }
 
 interface AvailablePicklist {
@@ -98,6 +107,18 @@ interface AvailablePicklist {
   };
 }
 
+interface AvailableFaceSheet {
+  id: number;
+  face_sheet_no: string;
+  status: string;
+  total_packages: number;
+  total_items: number;
+  total_orders: number;
+  warehouse_id: string;
+  created_at: string;
+  picking_completed_at?: string;
+}
+
 interface Employee {
   employee_id: number;
   first_name: string;
@@ -114,6 +135,7 @@ const statusMap: Record<string, { label: string; variant: 'default' | 'info' | '
 const LoadlistsPage = () => {
   const [loadlists, setLoadlists] = useState<Loadlist[]>([]);
   const [availablePicklists, setAvailablePicklists] = useState<AvailablePicklist[]>([]);
+  const [availableFaceSheets, setAvailableFaceSheets] = useState<AvailableFaceSheet[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [drivers, setDrivers] = useState<Employee[]>([]);
@@ -124,6 +146,8 @@ const LoadlistsPage = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [selectedPicklists, setSelectedPicklists] = useState<number[]>([]);
+  const [selectedFaceSheets, setSelectedFaceSheets] = useState<number[]>([]);
+  const [activeTab, setActiveTab] = useState<'picklists' | 'face-sheets'>('picklists');
 
   // Form fields
   const [checkerEmployeeId, setCheckerEmployeeId] = useState<number | ''>('');
@@ -138,6 +162,9 @@ const LoadlistsPage = () => {
 
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [printLoadlist, setPrintLoadlist] = useState<Loadlist | null>(null);
+  
+  const [showDeliveryDocModal, setShowDeliveryDocModal] = useState(false);
+  const [createdLoadlistId, setCreatedLoadlistId] = useState<number | null>(null);
 
   const fetchLoadlists = async () => {
     setLoading(true);
@@ -172,6 +199,21 @@ const LoadlistsPage = () => {
       setAvailablePicklists(data);
     } catch (err: any) {
       setCreateError('Unable to load picklists: ' + (err.message ?? 'unknown error'));
+    }
+  };
+
+  const fetchAvailableFaceSheets = async () => {
+    try {
+      const response = await fetch('/api/loadlists/available-face-sheets');
+      if (!response.ok) {
+        throw new Error('Unable to load available face sheets');
+      }
+      const result = await response.json();
+      if (result.success) {
+        setAvailableFaceSheets(result.data || []);
+      }
+    } catch (err: any) {
+      setCreateError('Unable to load face sheets: ' + (err.message ?? 'unknown error'));
     }
   };
 
@@ -255,6 +297,8 @@ const LoadlistsPage = () => {
     setIsCreateModalOpen(true);
     setCreateError(null);
     setSelectedPicklists([]);
+    setSelectedFaceSheets([]);
+    setActiveTab('picklists');
     // Reset form fields
     setCheckerEmployeeId('');
     setVehicleType('');
@@ -262,7 +306,7 @@ const LoadlistsPage = () => {
     setVehicleId('');
     setDriverEmployeeId('');
     setLoadingQueueNumber('');
-    await Promise.all([fetchAvailablePicklists(), fetchEmployees(), fetchVehicles()]);
+    await Promise.all([fetchAvailablePicklists(), fetchAvailableFaceSheets(), fetchEmployees(), fetchVehicles()]);
   };
 
   const handleTogglePicklist = (picklistId: number) => {
@@ -282,8 +326,11 @@ const LoadlistsPage = () => {
   };
 
   const handleCreateLoadlist = async () => {
-    if (selectedPicklists.length === 0) {
-      setCreateError('กรุณาเลือกใบจัดสินค้าอย่างน้อย 1 รายการ');
+    const hasPicklists = selectedPicklists.length > 0;
+    const hasFaceSheets = selectedFaceSheets.length > 0;
+    
+    if (!hasPicklists && !hasFaceSheets) {
+      setCreateError('กรุณาเลือกใบจัดสินค้าหรือใบปะหน้าอย่างน้อย 1 รายการ');
       return;
     }
 
@@ -292,38 +339,60 @@ const LoadlistsPage = () => {
       setCreateError('กรุณาเลือกผู้เช็คโหลดสินค้า');
       return;
     }
-    if (!vehicleType) {
-      setCreateError('กรุณาเลือกประเภทรถ');
-      return;
-    }
-    if (!deliveryNumber) {
-      setCreateError('กรุณาระบุเลขงานจัดส่ง');
-      return;
+    
+    // For picklists, require vehicle type and delivery number
+    if (hasPicklists) {
+      if (!vehicleType) {
+        setCreateError('กรุณาเลือกประเภทรถ');
+        return;
+      }
+      if (!deliveryNumber) {
+        setCreateError('กรุณาระบุเลขงานจัดส่ง');
+        return;
+      }
     }
 
     setIsCreating(true);
     setCreateError(null);
 
     try {
+      const requestBody: any = {
+        checker_employee_id: checkerEmployeeId,
+        vehicle_type: vehicleType || 'N/A',
+        delivery_number: deliveryNumber || `FS-${Date.now()}`,
+        vehicle_id: vehicleId || null,
+        driver_employee_id: driverEmployeeId || null,
+        loading_queue_number: loadingQueueNumber || null
+      };
+      
+      if (hasPicklists) {
+        requestBody.picklist_ids = selectedPicklists;
+      }
+      
+      if (hasFaceSheets) {
+        requestBody.face_sheet_ids = selectedFaceSheets;
+      }
+
       const response = await fetch('/api/loadlists', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          picklist_ids: selectedPicklists,
-          checker_employee_id: checkerEmployeeId,
-          vehicle_type: vehicleType,
-          delivery_number: deliveryNumber,
-          vehicle_id: vehicleId || null,
-          driver_employee_id: driverEmployeeId || null,
-          loading_queue_number: loadingQueueNumber || null
-        })
+        body: JSON.stringify(requestBody)
       });
       const result = await response.json();
       if (!response.ok) {
         throw new Error(result.error || 'Unable to create loadlist');
       }
+      
       setIsCreateModalOpen(false);
+      setSelectedPicklists([]);
+      setSelectedFaceSheets([]);
       await fetchLoadlists();
+      
+      // If created from face sheets, show delivery document option
+      if (hasFaceSheets && result.id) {
+        setCreatedLoadlistId(result.id);
+        setShowDeliveryDocModal(true);
+      }
     } catch (err: any) {
       setCreateError(err.message ?? 'Unable to create loadlist');
     } finally {
@@ -332,6 +401,20 @@ const LoadlistsPage = () => {
   };
 
   const handlePrintLoadlist = async (loadlist: Loadlist) => {
+    // Check if this loadlist has face sheets
+    const hasFaceSheets = (loadlist as any).face_sheets && (loadlist as any).face_sheets.length > 0;
+    
+    if (hasFaceSheets) {
+      // Open delivery document for face sheets
+      const faceSheetIds = (loadlist as any).face_sheets.map((fs: any) => fs.id).join(',');
+      window.open(
+        `/api/face-sheets/delivery-document?face_sheet_ids=${faceSheetIds}`,
+        '_blank'
+      );
+      return;
+    }
+    
+    // Original print logic for picklists
     console.log('Printing loadlist:', loadlist);
     console.log('Loading door:', loadlist.loading_door_number);
     console.log('Loading queue:', loadlist.loading_queue_number);
@@ -517,10 +600,38 @@ const LoadlistsPage = () => {
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700 font-medium">
                           {loadlist.delivery_number || '-'}
                         </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700">
-                          {loadlist.picklists && loadlist.picklists.length > 0 
-                            ? loadlist.picklists[0].loading_door_number || '-'
-                            : '-'}
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <select
+                            value={loadlist.loading_door_number || ''}
+                            onChange={async (e) => {
+                              const newDoorNumber = e.target.value || null;
+                              try {
+                                const response = await fetch(`/api/loadlists/${loadlist.id}`, {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ loading_door_number: newDoorNumber })
+                                });
+                                if (response.ok) {
+                                  await fetchLoadlists();
+                                }
+                              } catch (err) {
+                                console.error('Failed to update door number:', err);
+                              }
+                            }}
+                            className="w-20 px-1 py-0.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-700"
+                          >
+                            <option value="">-- เลือก --</option>
+                            <option value="D-01">D-01</option>
+                            <option value="D-02">D-02</option>
+                            <option value="D-03">D-03</option>
+                            <option value="D-04">D-04</option>
+                            <option value="D-05">D-05</option>
+                            <option value="D-06">D-06</option>
+                            <option value="D-07">D-07</option>
+                            <option value="D-08">D-08</option>
+                            <option value="D-09">D-09</option>
+                            <option value="D-10">D-10</option>
+                          </select>
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                           <select
@@ -560,8 +671,33 @@ const LoadlistsPage = () => {
                             ? `${loadlist.checker_employee.first_name} ${loadlist.checker_employee.last_name}`
                             : '-'}
                         </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700">
-                          {loadlist.vehicle_type || '-'}
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <select
+                            value={loadlist.vehicle_type || ''}
+                            onChange={async (e) => {
+                              const newVehicleType = e.target.value || null;
+                              try {
+                                const response = await fetch(`/api/loadlists/${loadlist.id}`, {
+                                  method: 'PUT',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({ vehicle_type: newVehicleType })
+                                });
+                                if (response.ok) {
+                                  await fetchLoadlists();
+                                }
+                              } catch (err) {
+                                console.error('Failed to update vehicle type:', err);
+                              }
+                            }}
+                            className="w-24 px-1 py-0.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-700"
+                          >
+                            <option value="">-- เลือก --</option>
+                            <option value="รถ 4 ล้อ">รถ 4 ล้อ</option>
+                            <option value="รถ 6 ล้อ">รถ 6 ล้อ</option>
+                            <option value="รถ 10 ล้อ">รถ 10 ล้อ</option>
+                            <option value="รถกระบะ">รถกระบะ</option>
+                            <option value="รถตู้">รถตู้</option>
+                          </select>
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                           <select
@@ -666,21 +802,50 @@ const LoadlistsPage = () => {
             </div>
           )}
 
-          {/* Picklists Selection */}
-          <div className="space-y-2">
-            <div className="flex items-center justify-between bg-gray-50 px-4 py-2 rounded">
-              <label className="flex items-center space-x-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={selectedPicklists.length === availablePicklists.length && availablePicklists.length > 0}
-                  onChange={handleToggleAllPicklists}
-                  className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
-                />
-                <span className="text-sm font-medium text-gray-700">
-                  เลือกใบจัดสินค้าทั้งหมด ({selectedPicklists.length}/{availablePicklists.length})
-                </span>
-              </label>
+          {/* Tabs for Picklists and Face Sheets */}
+          <div className="border-b border-gray-200">
+            <div className="flex space-x-4">
+              <button
+                onClick={() => setActiveTab('picklists')}
+                className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+                  activeTab === 'picklists'
+                    ? 'border-green-500 text-green-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <Package className="w-4 h-4 inline-block mr-2" />
+                ใบจัดสินค้า ({selectedPicklists.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('face-sheets')}
+                className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+                  activeTab === 'face-sheets'
+                    ? 'border-green-500 text-green-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <Layers className="w-4 h-4 inline-block mr-2" />
+                ใบปะหน้า ({selectedFaceSheets.length})
+              </button>
             </div>
+          </div>
+
+          {/* Picklists Tab */}
+          {activeTab === 'picklists' && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between bg-gray-50 px-4 py-2 rounded">
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedPicklists.length === availablePicklists.length && availablePicklists.length > 0}
+                    onChange={handleToggleAllPicklists}
+                    className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                  />
+                  <span className="text-sm font-medium text-gray-700">
+                    เลือกใบจัดสินค้าทั้งหมด ({selectedPicklists.length}/{availablePicklists.length})
+                  </span>
+                </label>
+              </div>
 
             <div className="max-h-64 overflow-y-auto border rounded-lg">
               <table className="w-full border-collapse text-sm">
@@ -871,7 +1036,125 @@ const LoadlistsPage = () => {
                 </tbody>
               </table>
             </div>
-          </div>
+            </div>
+          )}
+
+          {/* Face Sheets Tab */}
+          {activeTab === 'face-sheets' && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between bg-gray-50 px-4 py-2 rounded">
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedFaceSheets.length === availableFaceSheets.length && availableFaceSheets.length > 0}
+                    onChange={() => {
+                      if (selectedFaceSheets.length === availableFaceSheets.length) {
+                        setSelectedFaceSheets([]);
+                      } else {
+                        setSelectedFaceSheets(availableFaceSheets.map(fs => fs.id));
+                      }
+                    }}
+                    className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                  />
+                  <span className="text-sm font-medium text-gray-700">
+                    เลือกใบปะหน้าทั้งหมด ({selectedFaceSheets.length}/{availableFaceSheets.length})
+                  </span>
+                </label>
+              </div>
+
+              <div className="max-h-64 overflow-y-auto border rounded-lg">
+                <table className="w-full border-collapse text-sm">
+                  <thead className="sticky top-0 z-10 bg-gray-100">
+                    <tr>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap w-12">
+                        <span className="sr-only">เลือก</span>
+                      </th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสใบปะหน้า</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">แพ็ค</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชิ้น</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ออเดอร์</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">คลัง</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ผู้เช็ค</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap">สถานะ</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
+                    {availableFaceSheets.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
+                          ไม่พบใบปะหน้าที่สถานะ "เสร็จสิ้น"
+                        </td>
+                      </tr>
+                    ) : (
+                      availableFaceSheets.map((faceSheet, index) => (
+                        <tr
+                          key={faceSheet.id}
+                          className={`hover:bg-blue-50/30 transition-colors duration-150 ${
+                            selectedFaceSheets.includes(faceSheet.id) ? 'bg-green-50' : ''
+                          }`}
+                        >
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                            <input
+                              type="checkbox"
+                              checked={selectedFaceSheets.includes(faceSheet.id)}
+                              onChange={() => {
+                                if (selectedFaceSheets.includes(faceSheet.id)) {
+                                  setSelectedFaceSheets(selectedFaceSheets.filter(id => id !== faceSheet.id));
+                                } else {
+                                  setSelectedFaceSheets([...selectedFaceSheets, faceSheet.id]);
+                                }
+                              }}
+                              className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                            />
+                          </td>
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap font-mono text-blue-600">
+                            {faceSheet.face_sheet_no}
+                          </td>
+                          <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap font-semibold text-blue-600">
+                            {faceSheet.total_packages}
+                          </td>
+                          <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap font-semibold text-purple-600">
+                            {faceSheet.total_items}
+                          </td>
+                          <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap font-semibold text-green-600">
+                            {faceSheet.total_orders}
+                          </td>
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700">
+                            {faceSheet.warehouse_id}
+                          </td>
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                            {index === 0 ? (
+                              <select
+                                value={checkerEmployeeId}
+                                onChange={(e) => setCheckerEmployeeId(e.target.value ? Number(e.target.value) : '')}
+                                className="w-32 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                              >
+                                <option value="">-- เลือก --</option>
+                                {employees.map((emp) => (
+                                  <option key={emp.employee_id} value={emp.employee_id}>
+                                    {emp.first_name} {emp.last_name}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : checkerEmployeeId ? (
+                              <span className="text-gray-400 text-xs">
+                                {employees.find(e => e.employee_id === checkerEmployeeId)?.first_name || '-'}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 text-xs">-</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <Badge variant="success" size="sm">เสร็จสิ้น</Badge>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
 
           <div className="flex justify-end gap-2 pt-4 border-t">
             <Button variant="outline" onClick={() => setIsCreateModalOpen(false)} disabled={isCreating}>
@@ -880,7 +1163,7 @@ const LoadlistsPage = () => {
             <Button
               variant="primary"
               onClick={handleCreateLoadlist}
-              disabled={isCreating || selectedPicklists.length === 0}
+              disabled={isCreating || (selectedPicklists.length === 0 && selectedFaceSheets.length === 0)}
               className="bg-green-500 hover:bg-green-600"
             >
               {isCreating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
@@ -977,6 +1260,59 @@ const LoadlistsPage = () => {
           <Button variant="outline" onClick={() => setIsPrintModalOpen(false)}>
             ปิด
           </Button>
+        </div>
+      </Modal>
+
+      {/* Delivery Document Modal for Face Sheets */}
+      <Modal
+        isOpen={showDeliveryDocModal}
+        onClose={() => {
+          setShowDeliveryDocModal(false);
+          setCreatedLoadlistId(null);
+        }}
+        title="สร้างใบโหลดสำเร็จ"
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="text-center py-4">
+            <CheckCircle className="w-16 h-16 text-green-500 mx-auto mb-4" />
+            <p className="text-lg font-medium text-gray-900 mb-2">
+              สร้างใบโหลดสินค้าสำเร็จ
+            </p>
+            <p className="text-sm text-gray-600">
+              ต้องการพิมพ์ใบส่งมอบหรือไม่?
+            </p>
+          </div>
+          
+          <div className="flex gap-3 justify-center">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setShowDeliveryDocModal(false);
+                setCreatedLoadlistId(null);
+              }}
+            >
+              ไม่พิมพ์
+            </Button>
+            <Button
+              variant="primary"
+              onClick={async () => {
+                if (createdLoadlistId && selectedFaceSheets.length > 0) {
+                  // Open delivery document in new window
+                  const faceSheetIds = selectedFaceSheets.join(',');
+                  window.open(
+                    `/api/face-sheets/delivery-document?face_sheet_ids=${faceSheetIds}`,
+                    '_blank'
+                  );
+                }
+                setShowDeliveryDocModal(false);
+                setCreatedLoadlistId(null);
+              }}
+              className="bg-green-500 hover:bg-green-600"
+            >
+              พิมพ์ใบส่งมอบ
+            </Button>
+          </div>
         </div>
       </Modal>
     </>

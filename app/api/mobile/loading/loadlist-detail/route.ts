@@ -14,38 +14,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get loadlist with picklists and orders
+    // Get loadlist basic info
     const { data: loadlist, error: loadlistError } = await supabase
       .from('loadlists')
-      .select(`
-        id,
-        loadlist_code,
-        status,
-        wms_loadlist_picklists (
-          picklist_id,
-          picklists (
-            picklist_code,
-            trip_id,
-            picklist_items (
-              order_id,
-              order_no,
-              sku_id,
-              quantity_picked,
-              quantity_to_pick,
-              master_sku (
-                sku_name,
-                weight_per_piece_kg
-              ),
-              wms_orders (
-                order_id,
-                order_no,
-                shop_name,
-                total_weight
-              )
-            )
-          )
-        )
-      `)
+      .select('id, loadlist_code, status')
       .eq('loadlist_code', code.toUpperCase())
       .single();
 
@@ -64,21 +36,46 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Calculate total weight and extract unique orders with items
     let totalWeight = 0;
     const ordersMap = new Map();
 
-    for (const lp of loadlist.wms_loadlist_picklists || []) {
+    // Get picklists
+    const { data: picklistData } = await supabase
+      .from('loadlist_picklists')
+      .select(`
+        picklist_id,
+        picklists:picklist_id (
+          picklist_code,
+          picklist_items (
+            order_id,
+            order_no,
+            sku_id,
+            quantity_picked,
+            quantity_to_pick,
+            master_sku:sku_id (
+              sku_name,
+              weight_per_piece_kg
+            ),
+            wms_orders:order_id (
+              order_id,
+              order_no,
+              shop_name
+            )
+          )
+        )
+      `)
+      .eq('loadlist_id', loadlist.id);
+
+    // Process picklist items
+    for (const lp of picklistData || []) {
       const picklist = lp.picklists as any;
       if (!picklist) continue;
 
-      // Extract unique orders from picklist items
       for (const item of picklist.picklist_items || []) {
         const qty = item.quantity_picked || item.quantity_to_pick || 0;
         const weight = item.master_sku?.weight_per_piece_kg || 0;
         totalWeight += qty * weight;
 
-        // Add order to map (using order_id as key to avoid duplicates)
         if (item.wms_orders && item.order_id) {
           if (!ordersMap.has(item.order_id)) {
             ordersMap.set(item.order_id, {
@@ -87,7 +84,59 @@ export async function GET(request: NextRequest) {
               items: []
             });
           }
-          // Add SKU item to this order
+          const orderData = ordersMap.get(item.order_id);
+          orderData.items.push({
+            sku_name: item.master_sku?.sku_name || '-',
+            quantity: qty,
+            weight: weight
+          });
+        }
+      }
+    }
+
+    // Get face sheets
+    const { data: faceSheetData } = await supabase
+      .from('loadlist_face_sheets')
+      .select(`
+        face_sheet_id,
+        face_sheets:face_sheet_id (
+          face_sheet_no,
+          face_sheet_items (
+            sku_id,
+            quantity,
+            order_id,
+            master_sku:sku_id (
+              sku_name,
+              weight_per_piece_kg
+            ),
+            wms_orders:order_id (
+              order_id,
+              order_no,
+              shop_name
+            )
+          )
+        )
+      `)
+      .eq('loadlist_id', loadlist.id);
+
+    // Process face sheet items
+    for (const fs of faceSheetData || []) {
+      const faceSheet = fs.face_sheets as any;
+      if (!faceSheet) continue;
+
+      for (const item of faceSheet.face_sheet_items || []) {
+        const qty = item.quantity || 0;
+        const weight = item.master_sku?.weight_per_piece_kg || 0;
+        totalWeight += qty * weight;
+
+        if (item.wms_orders && item.order_id) {
+          if (!ordersMap.has(item.order_id)) {
+            ordersMap.set(item.order_id, {
+              order_code: item.wms_orders.order_no,
+              customer_name: item.wms_orders.shop_name || '-',
+              items: []
+            });
+          }
           const orderData = ordersMap.get(item.order_id);
           orderData.items.push({
             sku_name: item.master_sku?.sku_name || '-',

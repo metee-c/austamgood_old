@@ -102,6 +102,11 @@ npm run build
 - `027_create_workflow_status_triggers.sql` - Create 6 workflow triggers
 - `028_add_loadlist_rls_and_triggers.sql` - Add RLS policies for loadlists
 - `044_fix_loadlist_triggers.sql` - Fix triggers to use wms_loadlist_picklists junction table
+- `054_add_face_sheet_reservations.sql` - Add face sheet stock reservation tables
+- `055_enhance_face_sheet_items.sql` - Add columns for face sheet picking
+- `056_add_stock_reservation_to_face_sheets.sql` - Add FEFO/FIFO reservation function
+- `057_add_face_sheet_stock_reservation_trigger.sql` - Auto-reserve stock on face sheet creation
+- `070-077_face_sheet_*.sql` - Face sheet workflow improvements and fixes
 
 ## Environment Setup
 
@@ -125,11 +130,11 @@ The application uses Next.js 15 App Router with the following main sections:
 - `/dashboard` - Main dashboard with statistics and overview
 - `/master-data` - Master data management (products, customers, suppliers, locations, etc.)
 - `/warehouse` - Warehouse operations (inbound, inventory balances/ledger, transfer)
-- `/receiving` - Receiving operations (orders, loadlists, picklists, routes)
+- `/receiving` - Receiving operations (orders, loadlists, picklists, routes, face sheets)
 - `/shipping` - Shipping operations
 - `/reports` - Reporting interface
 - `/production` - Production order management
-- `/mobile` - Mobile-optimized interfaces for warehouse operations
+- `/mobile` - Mobile-optimized interfaces for warehouse operations (pick, loading, receive, transfer, face-sheet)
 - `/online-packing` - **NEW**: E-commerce order packing system (9 sub-pages)
 - `/stock-management` - Stock transfer, count, and adjustment
 
@@ -168,6 +173,16 @@ Inventory management operations for stock movements and adjustments:
 **Type Definitions:** `types/stock-import.ts`
 **Database Service:** `lib/database/stock-import.ts`
 **Key Features:** Batch processing, validation, error tracking, multi-warehouse support
+
+### Face Sheet Stock Reservation System
+Complete stock reservation and movement system for express delivery face sheets:
+- `/receiving/picklists/face-sheets` - Face sheet list and management
+- `/mobile/face-sheet/[id]` - Mobile picking interface for face sheets
+
+**Database Tables:** `face_sheet_item_reservations`, enhanced `face_sheet_items` and `face_sheets`
+**API Endpoints:** `/api/mobile/face-sheet/scan`, `/api/mobile/face-sheet/tasks/[id]`
+**Key Features:** Auto-reservation on creation (FEFO/FIFO), stock movement tracking, employee tracking, date/lot tracking
+**Documentation:** `docs/FACE_SHEET_STOCK_RESERVATION_COMPLETE.md`, `docs/FACE_SHEET_AUDIT_REPORT.md`
 
 ### Component Organization
 
@@ -260,6 +275,9 @@ API routes in `app/api/` follow REST patterns with standard HTTP methods:
 - `/api/mobile/loading/*` - Mobile loading operations
   - `/api/mobile/loading/loadlist-detail` - Get loadlist with order details (GET)
   - `/api/mobile/loading/complete` - Complete loading and move to delivery (POST)
+- `/api/mobile/face-sheet/*` - **NEW**: Mobile face sheet operations
+  - `/api/mobile/face-sheet/scan` - Scan and confirm face sheet pick (POST)
+  - `/api/mobile/face-sheet/tasks/[id]` - Get face sheet task details (GET)
 - `/api/moves/*` - Inventory movement operations and status updates
 - `/api/preparation-areas/*` - Preparation area management with import/export
 - `/api/storage-strategies/*` - Storage strategy configuration
@@ -427,6 +445,61 @@ Complete workflow for order fulfillment with automatic status transitions:
 - `docs/fixes/WORKFLOW_FIXES_COMPLETED.md` - Recent fixes and implementation details
 - `docs-archive/workflow/WORKFLOW_IMPLEMENTATION_SUMMARY.md` - Original design
 
+### Face Sheet Workflow ✅
+Complete workflow for express delivery face sheets with automatic stock reservation:
+
+**1. Face Sheet Creation & Stock Reservation:**
+```
+- Create face sheet (status = 'generated')
+- Trigger: trigger_reserve_stock_after_face_sheet_created
+  ✅ Map preparation area → zone → locations
+  ✅ Query balances ตาม FEFO/FIFO
+  ✅ Reserve stock (update reserved_piece_qty)
+  ✅ Record in face_sheet_item_reservations (store balance_id)
+```
+
+**2. Picking Process (Mobile):**
+```
+- Worker scans face sheet QR code
+- API: POST /api/mobile/face-sheet/scan
+  ✅ Validate face sheet and item
+  ✅ Use reserved balance_id (not query FEFO/FIFO again)
+  ✅ Move stock: Preparation Area → Dispatch
+  ✅ Copy production_date, expiry_date, lot_no
+  ✅ Create ledger entries (OUT + IN)
+  ✅ Update item status and reservation status
+  ✅ Record employee data when all items picked
+```
+
+**3. Loading Process (Mobile):**
+```
+- Same as picklist loading process
+- Move stock: Dispatch → Delivery-In-Progress
+```
+
+**Key Implementation Details:**
+- Stock reserved on face sheet creation (trigger-based)
+- Uses FEFO (First Expiry First Out) + FIFO (First In First Out)
+- Stores balance_id in reservations for exact stock tracking
+- Copy production_date, expiry_date, lot_no throughout flow
+- Employee tracking (checker + picker)
+- Dual-entry ledger pattern (OUT + IN)
+
+**API Endpoints:**
+- `POST /api/mobile/face-sheet/scan` - Pick items and move stock
+- `GET /api/mobile/face-sheet/tasks/[id]` - Get face sheet details
+
+**Status Flow:**
+- Face Sheets: `generated` → `picking` → `completed`
+- Items: `pending` → `picked`
+- Reservations: `reserved` → `picked`
+
+**Documentation:**
+- `docs/FACE_SHEET_STOCK_RESERVATION_COMPLETE.md` - Complete implementation guide
+- `docs/FACE_SHEET_AUDIT_REPORT.md` - Audit report (100% complete)
+- `docs/FACE_SHEET_IMPLEMENTATION_GUIDE.md` - Development guidelines
+- `docs/PICKLIST_STOCK_RESERVATION_FLOW.md` - Reference implementation
+
 ## Important Documentation Files
 
 The codebase includes several important documentation files that provide detailed context for specific features:
@@ -444,6 +517,10 @@ The codebase includes several important documentation files that provide detaile
 - **docs-archive/mobile/MOBILE_RECEIVE_GUIDE.md** - Mobile receiving operations guide
 - **docs-archive/mobile/MOBILE_TRANSFER_GUIDE.md** - Mobile transfer operations guide
 - **docs-archive/workflow/WORKFLOW_QUICK_START.md** - Quick start guide for workflow system
+- **docs/FACE_SHEET_STOCK_RESERVATION_COMPLETE.md** - ✅ Face sheet system implementation (Dec 2025)
+- **docs/FACE_SHEET_AUDIT_REPORT.md** - ✅ Face sheet audit report (100% complete)
+- **docs/FACE_SHEET_IMPLEMENTATION_GUIDE.md** - Face sheet development guidelines
+- **docs/PICKLIST_STOCK_RESERVATION_FLOW.md** - Picklist reservation flow (reference for face sheets)
 
 **Best Practice:** Check relevant documentation in `docs/`, `docs/fixes/`, `docs/reports/`, and `docs-archive/` before starting work on a feature. These docs contain critical context about design decisions, implementation details, and common patterns.
 
@@ -586,15 +663,16 @@ const { count, error } = await supabase
 
 ## Database Schema Overview
 
-The system has **80+ tables** across 7 main modules:
+The system has **85+ tables** across 8 main modules:
 1. **Master Data** (11 tables) - Products, customers, suppliers, locations, vehicles, employees, etc.
 2. **Warehouse Operations** (14 tables) - Receiving, inventory, movements, locations
-3. **Order & Logistics** (9 tables) - Orders, picklists, loadlists, route plans, face sheets
+3. **Order & Logistics** (10 tables) - Orders, picklists, loadlists, route plans, face sheets, reservations
 4. **Production** (4 tables) - Production orders, BOM, material issues
 5. **File & User Management** (10 tables) - Files, import/export jobs, users, roles, permissions
 6. **Online Packing** (15 tables) - E-commerce packing system with `packing_*` prefix
 7. **Inventory Ledger** (15 tables) - Complete inventory tracking with ledger system
 8. **Stock Import** (2 tables) - Legacy system data import with `wms_stock_import_*` prefix
+9. **Stock Reservations** (3 tables) - `picklist_item_reservations`, `face_sheet_item_reservations`, enhanced items tables
 
 **Important**: If `supabase/DATABASE_DOCUMENTATION.md` exists, always refer to it for complete schema details including all tables, relationships, and constraints.
 
@@ -617,6 +695,14 @@ The system includes recent migrations that add:
   - Updated `update_orders_on_loadlist_complete()` function
   - Updated `update_orders_and_route_on_departure()` function
   - Updated `update_route_on_delivery()` function
+- Face sheet stock reservation system (migrations 054-057, 070-077):
+  - Created `face_sheet_item_reservations` table for stock tracking
+  - Enhanced `face_sheet_items` with sku_id, source_location_id, picking fields
+  - Added `checker_employee_ids` and `picker_employee_ids` to `face_sheets`
+  - `reserve_stock_for_face_sheet_items()` function with FEFO/FIFO logic
+  - `trigger_reserve_stock_after_face_sheet_created` for auto-reservation
+  - Balance update fixes and upsert functions (070-077)
+  - Face sheet workflow triggers and status management
 
 ## Common Gotchas & Troubleshooting
 

@@ -20,7 +20,10 @@ interface LoadlistTask {
   loadlist_id: number;
   loadlist_code: string;
   status: string;
-  total_picklists: number;
+  total_items: number;
+  total_pieces: number;
+  total_packs: number;
+  total_weight: number;
   created_at: string;
   updated_at: string;
   vehicle?: { plate_number: string };
@@ -262,28 +265,24 @@ export default function MobileLoadingPage() {
                 </div>
               </div>
 
-              {/* Details */}
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="flex items-center space-x-2">
-                  <Package className="w-4 h-4 text-gray-400" />
-                  <div>
-                    <p className="text-xs text-gray-500 font-thai">จำนวนใบจัด</p>
-                    <p className="font-semibold text-gray-900 font-thai">
-                      {loadlist.total_picklists} ใบ
-                    </p>
-                  </div>
+              {/* Details - Summary */}
+              <div className="grid grid-cols-4 gap-1.5 text-xs">
+                <div className="bg-blue-50 rounded p-1.5 text-center">
+                  <p className="text-[9px] text-blue-600 font-thai mb-0.5">รายการ</p>
+                  <p className="font-bold text-blue-700 font-thai">{loadlist.total_items}</p>
                 </div>
-                {loadlist.driver && (
-                  <div className="flex items-center space-x-2">
-                    <div className="w-4 h-4 text-gray-400 flex items-center justify-center">👤</div>
-                    <div>
-                      <p className="text-xs text-gray-500 font-thai">พนักงานขับรถ</p>
-                      <p className="font-semibold text-gray-900 font-thai">
-                        {loadlist.driver.first_name}
-                      </p>
-                    </div>
-                  </div>
-                )}
+                <div className="bg-purple-50 rounded p-1.5 text-center">
+                  <p className="text-[9px] text-purple-600 font-thai mb-0.5">ชิ้น</p>
+                  <p className="font-bold text-purple-700 font-thai">{loadlist.total_pieces}</p>
+                </div>
+                <div className="bg-green-50 rounded p-1.5 text-center">
+                  <p className="text-[9px] text-green-600 font-thai mb-0.5">แพ็ค</p>
+                  <p className="font-bold text-green-700 font-thai">{loadlist.total_packs}</p>
+                </div>
+                <div className="bg-orange-50 rounded p-1.5 text-center">
+                  <p className="text-[9px] text-orange-600 font-thai mb-0.5">น้ำหนัก</p>
+                  <p className="font-bold text-orange-700 font-thai text-[10px]">{loadlist.total_weight.toFixed(1)}</p>
+                </div>
               </div>
 
               {/* Footer */}

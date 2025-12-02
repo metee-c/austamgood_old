@@ -393,6 +393,22 @@ const FaceSheetsPage = () => {
     let cleanup: (() => void) | null = null;
 
     try {
+      // เปลี่ยนสถานะจาก generated → picking ก่อนพิมพ์
+      const faceSheet = faceSheets.find(fs => fs.id === id);
+      if (faceSheet && faceSheet.status === 'generated') {
+        const statusResponse = await fetch(`/api/face-sheets/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'picking' })
+        });
+        
+        if (statusResponse.ok) {
+          console.log(`✅ Face sheet ${id} status changed to picking`);
+          // Refresh list
+          fetchFaceSheets();
+        }
+      }
+
       const response = await fetch(`/api/face-sheets/${id}`);
       const result = await response.json();
 
@@ -854,9 +870,6 @@ const FaceSheetsPage = () => {
                             disabled={checklistingId === sheet.id}
                           >
                             {checklistingId === sheet.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardCheck className="w-4 h-4" />}
-                          </button>
-                          <button className="p-1 rounded hover:bg-purple-50 hover:text-purple-600 transition-colors" title="ใบส่งมอบ" onClick={() => handleGenerateDeliveryDocument(sheet.id)} disabled={downloadingId === sheet.id}>
-                            {downloadingId === sheet.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
                           </button>
                         </div>
                       </td>
