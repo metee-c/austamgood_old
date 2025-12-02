@@ -101,12 +101,12 @@ export async function GET(request: NextRequest) {
 
       if (!routeInputsError && routeInputsData) {
         console.log(`[Route Plans] Found ${routeInputsData.length} plan inputs for ${orderIds.length} orders`);
-        
+
         // Process all inputs - each order_id gets its route plan info
         routeInputsData.forEach((input: any) => {
           const planData = input.receiving_route_plans;
           const plan = Array.isArray(planData) ? planData[0] : planData;
-          
+
           // Only set if not already set and plan is in optimizing or later status
           if (!routePlansMap.has(input.order_id) && plan?.plan_code) {
             routePlansMap.set(input.order_id, {
@@ -116,7 +116,7 @@ export async function GET(request: NextRequest) {
             });
           }
         });
-        
+
         // Now fetch trip info from stops for orders that have been assigned to trips
         const { data: routeStopsData, error: routeStopsError } = await supabase
           .from('receiving_route_stops')
@@ -134,21 +134,21 @@ export async function GET(request: NextRequest) {
 
         if (!routeStopsError && routeStopsData) {
           console.log(`[Route Plans] Found ${routeStopsData.length} stops with trip info`);
-          
+
           let updatedCount = 0;
           routeStopsData.forEach((stop: any) => {
             const tripData = Array.isArray(stop.receiving_route_trips)
               ? stop.receiving_route_trips[0]
               : stop.receiving_route_trips;
-            
+
             // Get all order IDs for this stop (including consolidated orders)
             const stopOrderIds: number[] = [];
-            
+
             // Add primary order_id
             if (stop.order_id) {
               stopOrderIds.push(stop.order_id);
             }
-            
+
             // Add additional order_ids from tags if consolidated
             if (stop.tags?.order_ids && Array.isArray(stop.tags.order_ids)) {
               stop.tags.order_ids.forEach((orderId: number) => {
@@ -157,7 +157,7 @@ export async function GET(request: NextRequest) {
                 }
               });
             }
-            
+
             // Update trip info for all orders in this stop
             stopOrderIds.forEach(orderId => {
               if (routePlansMap.has(orderId)) {
@@ -171,39 +171,85 @@ export async function GET(request: NextRequest) {
               }
             });
           });
-          
+
           console.log(`[Route Plans] Updated ${updatedCount} orders with trip info`);
         } else if (routeStopsError) {
           console.error('Error fetching route stops:', routeStopsError);
         }
-        
+
         console.log(`[Route Plans] Mapped ${routePlansMap.size} orders to route plans`);
       } else if (routeInputsError) {
         console.error('Error fetching route inputs:', routeInputsError);
       }
     }
 
-    // Merge customer data and route plan data into orders
+    // Fetch face sheet information for express orders
+    let faceSheetsMap = new Map();
+    if (orderIds.length > 0) {
+      const { data: faceSheetPackagesData, error: faceSheetError } = await supabase
+        .from('face_sheet_packages')
+        .select(`
+          order_id,
+          face_sheets!face_sheet_id (
+            face_sheet_no,
+            status
+          )
+        `)
+        .in('order_id', orderIds)
+        .not('order_id', 'is', null);
+
+      if (!faceSheetError && faceSheetPackagesData) {
+        console.log(`[Face Sheets] Found ${faceSheetPackagesData.length} face sheet packages for ${orderIds.length} orders`);
+
+        // Process face sheet data - use face_sheet_no as the "plan document"
+        faceSheetPackagesData.forEach((pkg: any) => {
+          const faceSheetData = pkg.face_sheets;
+          const faceSheet = Array.isArray(faceSheetData) ? faceSheetData[0] : faceSheetData;
+
+          // Set face sheet info if not already set
+          if (!faceSheetsMap.has(pkg.order_id) && faceSheet?.face_sheet_no) {
+            faceSheetsMap.set(pkg.order_id, {
+              plan_code: faceSheet.face_sheet_no,  // Use face_sheet_no as plan_code for express orders
+              trip_code: null,  // Face sheets don't have trip codes
+              trip_sequence: null
+            });
+          }
+        });
+
+        console.log(`[Face Sheets] Mapped ${faceSheetsMap.size} orders to face sheets`);
+      } else if (faceSheetError) {
+        console.error('Error fetching face sheets:', faceSheetError);
+      }
+    }
+
+    // Merge customer data, route plan data, and face sheet data into orders
     const ordersWithCustomer = ordersData?.map(order => {
-      const routePlan = routePlansMap.get(order.order_id);
+      // For express orders, use face sheet data; for other types, use route plan data
+      const planInfo = order.order_type === 'express'
+        ? faceSheetsMap.get(order.order_id)
+        : routePlansMap.get(order.order_id);
+
       return {
         ...order,
         customer: customersMap.get(order.customer_id) || null,
-        plan_code: routePlan?.plan_code || null,
-        trip_code: routePlan?.trip_code || null,
-        trip_sequence: routePlan?.trip_sequence || null
+        plan_code: planInfo?.plan_code || null,
+        trip_code: planInfo?.trip_code || null,
+        trip_sequence: planInfo?.trip_sequence || null
       };
     }) || [];
 
     // Debug: Log sample merged data
-    console.log('[Route Plans] Sample merged order:', {
+    console.log('[API] Sample merged order:', {
       order_id: ordersWithCustomer[0]?.order_id,
       order_no: ordersWithCustomer[0]?.order_no,
+      order_type: ordersWithCustomer[0]?.order_type,
       plan_code: ordersWithCustomer[0]?.plan_code,
       trip_code: ordersWithCustomer[0]?.trip_code
     });
-    console.log('[Route Plans] Orders with plan_code:', ordersWithCustomer.filter(o => o.plan_code).length);
-    console.log('[Route Plans] Orders with trip_code:', ordersWithCustomer.filter(o => o.trip_code).length);
+    console.log('[API] Orders with plan_code (all types):', ordersWithCustomer.filter(o => o.plan_code).length);
+    console.log('[API] Orders with plan_code (express):', ordersWithCustomer.filter(o => o.order_type === 'express' && o.plan_code).length);
+    console.log('[API] Orders with plan_code (route_planning):', ordersWithCustomer.filter(o => o.order_type === 'route_planning' && o.plan_code).length);
+    console.log('[API] Orders with trip_code:', ordersWithCustomer.filter(o => o.trip_code).length);
 
     return NextResponse.json({ data: ordersWithCustomer, error: null });
   } catch (error) {

@@ -60,7 +60,22 @@
       "Bash(timeout 15 bash -c \"curl -X PATCH ''http://localhost:3000/api/picklists/87'' -H ''Content-Type: application/json'' -d ''{\"\"status\"\": \"\"assigned\"\", \"\"assigned_to_employee_id\"\": 11}'' 2>nul | python -m json.tool\")",
       "Bash(timeout 10 bash -c \"curl ''http://localhost:3000/api/warehouse/balances?sku_id=B-BEY-C|MNB|010'' 2>nul | python -m json.tool 2>nul || echo ''API not found''\")",
       "Bash(timeout 10 bash -c \"psql ''postgresql://postgres.iwlkslewdgenckuejbit:Austam@567890@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres'' -c \"\"SELECT table_name FROM information_schema.tables WHERE table_name IN (''picklist_item_reservations'', ''stock_replenishment_alerts'') ORDER BY table_name;\"\" 2>nul\")",
-      "Bash(timeout 10 bash -c \"psql ''postgresql://postgres.iwlkslewdgenckuejbit:Austam@567890@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres'' -c \"\"SELECT tgname, tgenabled FROM pg_trigger WHERE tgname LIKE ''%face_sheet%'' ORDER BY tgname;\"\" 2>nul\")"
+      "Bash(timeout 10 bash -c \"psql ''postgresql://postgres.iwlkslewdgenckuejbit:Austam@567890@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres'' -c \"\"SELECT tgname, tgenabled FROM pg_trigger WHERE tgname LIKE ''%face_sheet%'' ORDER BY tgname;\"\" 2>nul\")",
+      "Bash(supabase --version:*)",
+      "Bash(supabase db dump:*)",
+      "Bash(supabase link:*)",
+      "Bash(for:*)",
+      "Bash(do if [ \"$f\" != \"999_complete_database_schema_dump.sql\" ])",
+      "Bash(then rm -f \"$f\")",
+      "Bash(fi)",
+      "Bash(done)",
+      "Bash(timeout 10 bash -c \"curl -s ''http://localhost:3000/api/orders/with-items?order_type=express'' 2>nul | head -c 500\")",
+      "Bash(timeout 10 bash -c \"psql ''postgresql://postgres.iwlkslewdgenckuejbit:Austam@567890@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres'' -c \"\"SELECT COUNT(*) as face_sheet_count FROM face_sheets;\"\" 2>nul\")",
+      "Bash(timeout 10 bash -c \"curl -s ''http://localhost:3000/api/face-sheets'' 2>nul | python -m json.tool | head -n 30\")",
+      "Bash(timeout 10 bash -c \"curl -s ''http://localhost:3000/api/face-sheets/generate?limit=5'' 2>nul | python -m json.tool\")",
+      "Bash(timeout 10 bash -c \"curl -s ''http://localhost:3000/api/face-sheets/54'' 2>nul | python -m json.tool | head -n 100\")",
+      "Bash(timeout 10 bash -c \"curl -s ''http://localhost:3000/api/orders/with-items?order_type=express'' 2>nul | python -m json.tool 2>&1 | grep -A 10 -B 2 ''IV25120055'' | head -n 20\")",
+      "Bash(timeout 10 bash -c \"curl -s ''http://localhost:3000/api/orders/with-items?order_type=express'' 2>nul | python -m json.tool 2>&1 | grep -i ''plan_code\\|trip_code'' | head -n 5\")"
     ],
     "deny": [],
     "ask": []

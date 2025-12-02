@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
         status,
         loadlist_picklists (
           picklist_id,
-          loaded_at
+          added_at
         )
       `);
 
