@@ -55,6 +55,16 @@ export async function GET(request: NextRequest) {
             total_packages,
             total_items
           )
+        ),
+        wms_loadlist_bonus_face_sheets (
+          bonus_face_sheet_id,
+          bonus_face_sheets:bonus_face_sheet_id (
+            face_sheet_no,
+            status,
+            total_packages,
+            total_items,
+            total_orders
+          )
         )
       `)
       .order('created_at', { ascending: false });
@@ -128,9 +138,13 @@ export async function GET(request: NextRequest) {
     const transformedLoadlists = (loadlists || []).map((loadlist: any) => {
       const picklists = loadlist.wms_loadlist_picklists || [];
       const faceSheets = loadlist.loadlist_face_sheets || [];
+      const bonusFaceSheets = loadlist.wms_loadlist_bonus_face_sheets || [];
       const tripCode = loadlist.trip_id ? tripMap[loadlist.trip_id] : null;
       const vehicle = loadlist.vehicle_id ? vehicleMap[loadlist.vehicle_id] : null;
       const driver = loadlist.driver_employee_id ? driverMap[loadlist.driver_employee_id] : null;
+
+      // คำนวณจำนวนพัสดุจาก picklists เท่านั้น (ไม่นับ face sheets และ bonus face sheets)
+      const totalPackages = picklists.reduce((sum: number, p: any) => sum + (p.picklists?.total_lines || 0), 0);
 
       return {
         id: loadlist.id,
@@ -149,7 +163,8 @@ export async function GET(request: NextRequest) {
         trip: tripCode ? { trip_code: tripCode } : null,
         total_picklists: picklists.length,
         total_face_sheets: faceSheets.length,
-        total_packages: picklists.reduce((sum: number, p: any) => sum + (p.picklists?.total_lines || 0), 0),
+        total_bonus_face_sheets: bonusFaceSheets.length,
+        total_packages: totalPackages,
         created_at: loadlist.created_at,
         created_by: loadlist.created_by,
         vehicle: vehicle,
@@ -160,6 +175,14 @@ export async function GET(request: NextRequest) {
           status: fs.face_sheets?.status,
           total_packages: fs.face_sheets?.total_packages,
           total_items: fs.face_sheets?.total_items
+        })),
+        bonus_face_sheets: bonusFaceSheets.map((bfs: any) => ({
+          id: bfs.bonus_face_sheet_id,
+          face_sheet_no: bfs.bonus_face_sheets?.face_sheet_no,
+          status: bfs.bonus_face_sheets?.status,
+          total_packages: bfs.bonus_face_sheets?.total_packages,
+          total_items: bfs.bonus_face_sheets?.total_items,
+          total_orders: bfs.bonus_face_sheets?.total_orders
         })),
         picklists: picklists.map((p: any) => {
           // Extract unique orders from picklist items
@@ -210,6 +233,7 @@ export async function POST(request: NextRequest) {
     const {
       picklist_ids,
       face_sheet_ids,
+      bonus_face_sheet_ids,
       checker_employee_id,
       vehicle_type,
       delivery_number,
@@ -220,13 +244,14 @@ export async function POST(request: NextRequest) {
       loading_queue_number
     } = body;
 
-    // Validation - ต้องมีอย่างน้อย picklist_ids หรือ face_sheet_ids
+    // Validation - ต้องมีอย่างน้อย picklist_ids, face_sheet_ids หรือ bonus_face_sheet_ids
     const hasPicklists = picklist_ids && Array.isArray(picklist_ids) && picklist_ids.length > 0;
     const hasFaceSheets = face_sheet_ids && Array.isArray(face_sheet_ids) && face_sheet_ids.length > 0;
-    
-    if (!hasPicklists && !hasFaceSheets) {
+    const hasBonusFaceSheets = bonus_face_sheet_ids && Array.isArray(bonus_face_sheet_ids) && bonus_face_sheet_ids.length > 0;
+
+    if (!hasPicklists && !hasFaceSheets && !hasBonusFaceSheets) {
       return NextResponse.json(
-        { error: 'Either picklist_ids or face_sheet_ids is required and must be a non-empty array' },
+        { error: 'At least one of picklist_ids, face_sheet_ids, or bonus_face_sheet_ids is required and must be a non-empty array' },
         { status: 400 }
       );
     }
@@ -359,6 +384,31 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json(
           { error: 'Failed to link face sheets to loadlist', details: linkError.message },
+          { status: 500 }
+        );
+      }
+    }
+
+    // Link bonus face sheets to loadlist (if any)
+    if (hasBonusFaceSheets) {
+      const loadlistBonusFaceSheetsData = bonus_face_sheet_ids.map((bonus_face_sheet_id: number) => ({
+        loadlist_id: loadlist.id,
+        bonus_face_sheet_id: bonus_face_sheet_id
+      }));
+
+      const { error: linkError } = await supabase
+        .from('wms_loadlist_bonus_face_sheets')
+        .insert(loadlistBonusFaceSheetsData);
+
+      if (linkError) {
+        // Cleanup: delete the loadlist if linking failed
+        await supabase
+          .from('loadlists')
+          .delete()
+          .eq('id', loadlist.id);
+
+        return NextResponse.json(
+          { error: 'Failed to link bonus face sheets to loadlist', details: linkError.message },
           { status: 500 }
         );
       }

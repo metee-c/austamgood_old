@@ -107,6 +107,7 @@ npm run build
 - `056_add_stock_reservation_to_face_sheets.sql` - Add FEFO/FIFO reservation function
 - `057_add_face_sheet_stock_reservation_trigger.sql` - Auto-reserve stock on face sheet creation
 - `070-077_face_sheet_*.sql` - Face sheet workflow improvements and fixes
+- `100-107_bonus_face_sheet_*.sql` - Bonus Face Sheet system (stock reservation, triggers, loadlist integration)
 
 ## Environment Setup
 
@@ -500,6 +501,78 @@ Complete workflow for express delivery face sheets with automatic stock reservat
 - `docs/FACE_SHEET_IMPLEMENTATION_GUIDE.md` - Development guidelines
 - `docs/PICKLIST_STOCK_RESERVATION_FLOW.md` - Reference implementation
 
+### Bonus Face Sheet Workflow ✅ (NEW - Dec 2025)
+Complete workflow for special order bonus items with automatic stock reservation:
+
+**Order Type:** `special` (ออเดอร์พิเศษ - สินค้าของแถม)
+
+**1. Creation & Stock Reservation:**
+```
+POST /api/bonus-face-sheets
+  ↓
+- Create bonus_face_sheet (status = 'generated')
+- Auto-call RPC: reserve_stock_for_bonus_face_sheet_items()
+  ✅ Query balances using FEFO/FIFO (any location if source_location_id IS NULL)
+  ✅ Update wms_inventory_balances.reserved_piece_qty
+  ✅ Insert bonus_face_sheet_item_reservations (with balance_id)
+- Update orders: draft → confirmed
+```
+
+**2. Mobile Picking:**
+```
+Mobile: /mobile/bonus-face-sheet/[id]
+  ↓
+POST /api/mobile/bonus-face-sheet/scan
+  ✅ Move stock: Preparation Area → Dispatch
+  ✅ Unreserve + deduct from source (using reserved balance_id)
+  ✅ Create ledger entries (OUT + IN)
+  ✅ Update item.status = 'picked'
+  ✅ Update orders: confirmed → picking → picked
+  ✅ Record checker_ids, picker_ids when complete
+```
+
+**3. Loadlist Integration:**
+```
+POST /api/loadlists with bonus_face_sheet_ids
+  ↓
+- Link via wms_loadlist_bonus_face_sheets
+- Process alongside picklists and regular face sheets
+```
+
+**4. Loading Complete:**
+```
+POST /api/mobile/loading/complete
+  ✅ Validate stock at Dispatch
+  ✅ Move stock: Dispatch → Delivery-In-Progress
+  ✅ Create ledger entries
+  ✅ Update orders: picked → loaded
+  ✅ Update loaded_at timestamp
+```
+
+**Key Implementation Details:**
+- Copy 100% of Face Sheet logic with `bonus_` prefix tables
+- Support NULL source_location_id (use all warehouse locations)
+- Separate junction table: `wms_loadlist_bonus_face_sheets`
+- Mobile UI uses purple gradient (vs blue for face sheets)
+- Order status auto-updates at each workflow step
+
+**API Endpoints:**
+- `POST /api/bonus-face-sheets` - Create bonus face sheet + reserve stock
+- `POST /api/mobile/bonus-face-sheet/scan` - Pick items
+- `GET /api/mobile/bonus-face-sheet/tasks/[id]` - Get task details
+- Loadlist APIs updated to support `bonus_face_sheet_ids` parameter
+
+**Database Tables:**
+- `bonus_face_sheets`, `bonus_face_sheet_packages`, `bonus_face_sheet_items`
+- `bonus_face_sheet_item_reservations` - Stock tracking
+- `wms_loadlist_bonus_face_sheets` - Junction table
+
+**Migrations:** 100-107 (schema, functions, triggers, loadlist integration)
+
+**Documentation:**
+- `docs/BONUS_FACE_SHEET_IMPLEMENTATION_COMPLETE.md` - Complete guide
+- `docs/COMPLETE_ORDER_TYPE_ANALYSIS.md` - 3 order type comparison
+
 ## Important Documentation Files
 
 The codebase includes several important documentation files that provide detailed context for specific features:
@@ -521,6 +594,9 @@ The codebase includes several important documentation files that provide detaile
 - **docs/FACE_SHEET_AUDIT_REPORT.md** - ✅ Face sheet audit report (100% complete)
 - **docs/FACE_SHEET_IMPLEMENTATION_GUIDE.md** - Face sheet development guidelines
 - **docs/PICKLIST_STOCK_RESERVATION_FLOW.md** - Picklist reservation flow (reference for face sheets)
+- **docs/BONUS_FACE_SHEET_FINAL_SUMMARY.md** - ✅ Bonus face sheet final summary (Dec 2025)
+- **docs/BONUS_FACE_SHEET_IMPLEMENTATION_COMPLETE.md** - Bonus face sheet complete implementation guide
+- **docs/COMPLETE_ORDER_TYPE_ANALYSIS.md** - Comparative analysis of all 3 order types
 
 **Best Practice:** Check relevant documentation in `docs/`, `docs/fixes/`, `docs/reports/`, and `docs-archive/` before starting work on a feature. These docs contain critical context about design decisions, implementation details, and common patterns.
 

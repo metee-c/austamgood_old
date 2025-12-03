@@ -41,6 +41,17 @@ export async function GET(request: NextRequest) {
               id
             )
           )
+        ),
+        wms_loadlist_bonus_face_sheets (
+          bonus_face_sheet_id,
+          bonus_face_sheets:bonus_face_sheet_id (
+            id,
+            face_sheet_no,
+            status,
+            bonus_face_sheet_items (
+              id
+            )
+          )
         )
       `)
       .order('created_at', { ascending: false });
@@ -87,10 +98,12 @@ export async function GET(request: NextRequest) {
     const transformedData = await Promise.all(loadlists?.map(async (loadlist: any) => {
       const picklists = loadlist.loadlist_picklists || [];
       const faceSheets = loadlist.loadlist_face_sheets || [];
+      const bonusFaceSheets = loadlist.wms_loadlist_bonus_face_sheets || [];
       
-      // Get picklist IDs and face sheet IDs
+      // Get picklist IDs, face sheet IDs, and bonus face sheet IDs
       const picklistIds = picklists.map((p: any) => p.picklist_id).filter(Boolean);
       const faceSheetIds = faceSheets.map((fs: any) => fs.face_sheet_id).filter(Boolean);
+      const bonusFaceSheetIds = bonusFaceSheets.map((bfs: any) => bfs.bonus_face_sheet_id).filter(Boolean);
       
       let totalItems = 0;
       let totalPieces = 0;
@@ -147,6 +160,45 @@ export async function GET(request: NextRequest) {
           totalPacks += Math.ceil(qty / qtyPerPack);
           totalWeight += qty * weightPerPiece;
         });
+      }
+      
+      // Calculate from bonus face sheets
+      if (bonusFaceSheetIds.length > 0) {
+        // Fetch bonus face sheet items
+        const { data: bonusFaceSheetItems } = await supabase
+          .from('bonus_face_sheet_items')
+          .select('quantity_picked, sku_id')
+          .in('face_sheet_id', bonusFaceSheetIds);
+        
+        if (bonusFaceSheetItems && bonusFaceSheetItems.length > 0) {
+          // Get unique SKU IDs
+          const skuIds = [...new Set(bonusFaceSheetItems.map((item: any) => item.sku_id))];
+          
+          // Fetch SKU data
+          const { data: skuData } = await supabase
+            .from('master_sku')
+            .select('sku_id, qty_per_pack, weight_per_piece_kg')
+            .in('sku_id', skuIds);
+          
+          // Create SKU map
+          const skuMap: Record<string, any> = {};
+          skuData?.forEach((sku: any) => {
+            skuMap[sku.sku_id] = sku;
+          });
+          
+          // Calculate totals
+          bonusFaceSheetItems.forEach((item: any) => {
+            const qty = parseFloat(item.quantity_picked) || 0;
+            const sku = skuMap[item.sku_id];
+            const qtyPerPack = sku?.qty_per_pack || 1;
+            const weightPerPiece = parseFloat(sku?.weight_per_piece_kg) || 0;
+            
+            totalItems += 1;
+            totalPieces += qty;
+            totalPacks += Math.ceil(qty / qtyPerPack);
+            totalWeight += qty * weightPerPiece;
+          });
+        }
       }
 
       return {

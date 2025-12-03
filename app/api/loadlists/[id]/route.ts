@@ -14,6 +14,8 @@ export async function PUT(
     const { id } = await params;
     const body = await request.json();
 
+    console.log('📝 Updating loadlist:', { id, body });
+
     // Update loadlist
     const { data, error } = await supabase
       .from('loadlists')
@@ -26,19 +28,21 @@ export async function PUT(
       .single();
 
     if (error) {
-      console.error('Error updating loadlist:', error);
+      console.error('❌ Error updating loadlist:', error);
       return NextResponse.json(
         { error: error.message },
         { status: 500 }
       );
     }
 
+    console.log('✅ Loadlist updated successfully:', data);
+
     return NextResponse.json({
       success: true,
       data
     });
   } catch (error) {
-    console.error('API Error in PUT /api/loadlists/[id]:', error);
+    console.error('❌ API Error in PUT /api/loadlists/[id]:', error);
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
     return NextResponse.json(
       { error: errorMessage },

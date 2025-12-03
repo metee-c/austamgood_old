@@ -11,6 +11,7 @@ import {
   Truck
 } from 'lucide-react';
 import Badge from '@/components/ui/Badge';
+import EmployeeSelectionModal from '@/components/mobile/EmployeeSelectionModal';
 
 interface LoadlistItem {
   order_code: string;
@@ -19,7 +20,8 @@ interface LoadlistItem {
     sku_id: string;
     sku_name: string;
     quantity: number;
-    uom: string;
+    uom?: string;
+    package_number?: string | number;
   }>;
 }
 
@@ -47,6 +49,8 @@ export default function MobileLoadingDetailPage() {
   const [confirming, setConfirming] = useState(false);
   const [successMessage, setSuccessMessage] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [showEmployeeModal, setShowEmployeeModal] = useState(false);
+  const [selectedEmployee, setSelectedEmployee] = useState<{ employee_id: number; first_name: string; last_name: string } | null>(null);
 
   useEffect(() => {
     if (code) {
@@ -72,10 +76,32 @@ export default function MobileLoadingDetailPage() {
     }
   };
 
-  const handleConfirmLoading = async () => {
+  const handleConfirmLoading = () => {
     if (!loadlist || confirming) return;
+    // Show employee selection modal
+    setShowEmployeeModal(true);
+  };
 
-    if (!confirm('ยืนยันการโหลดสินค้าทั้งหมด?')) {
+  const handleEmployeeConfirm = async (checkerIds: string[], pickerIds: string[]) => {
+    if (checkerIds.length === 0) {
+      setErrorMessage('กรุณาเลือกผู้เช็คสินค้า');
+      return;
+    }
+
+    const checkerId = checkerIds[0];
+    setShowEmployeeModal(false);
+
+    // Find employee details
+    const response = await fetch('/api/employees');
+    const result = await response.json();
+    const employee = result.data?.find((e: any) => e.employee_id === checkerId);
+
+    if (!employee) {
+      setErrorMessage('ไม่พบข้อมูลพนักงาน');
+      return;
+    }
+
+    if (!confirm(`ยืนยันการโหลดสินค้าโดย ${employee.first_name} ${employee.last_name}?`)) {
       return;
     }
 
@@ -83,13 +109,16 @@ export default function MobileLoadingDetailPage() {
       setConfirming(true);
       setErrorMessage('');
 
-      const response = await fetch('/api/mobile/loading/complete', {
+      const apiResponse = await fetch('/api/mobile/loading/complete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ loadlist_code: loadlist.loadlist_code })
+        body: JSON.stringify({ 
+          loadlist_code: loadlist.loadlist_code,
+          checker_employee_id: parseInt(checkerId)
+        })
       });
 
-      const data = await response.json();
+      const data = await apiResponse.json();
 
       if (data.success) {
         setSuccessMessage('โหลดสินค้าเสร็จสิ้น');
@@ -214,6 +243,7 @@ export default function MobileLoadingDetailPage() {
                 <thead className="bg-gray-100 border-b border-gray-200">
                   <tr>
                     <th className="px-2 py-2 text-left font-thai text-gray-700">สินค้า</th>
+                    <th className="px-2 py-2 text-center font-thai text-gray-700">แพ็ค</th>
                     <th className="px-2 py-2 text-center font-thai text-gray-700">จำนวน</th>
                   </tr>
                 </thead>
@@ -232,8 +262,15 @@ export default function MobileLoadingDetailPage() {
                         </div>
                       </td>
                       <td className="px-2 py-2 text-center">
+                        {item.package_number && (
+                          <span className="inline-block bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-xs font-medium">
+                            #{item.package_number}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-2 py-2 text-center">
                         <span className="font-semibold text-sky-600 font-thai">
-                          {item.quantity} {item.uom}
+                          {item.quantity}
                         </span>
                       </td>
                     </tr>
@@ -274,6 +311,14 @@ export default function MobileLoadingDetailPage() {
           </div>
         </div>
       )}
+
+      {/* Employee Selection Modal */}
+      <EmployeeSelectionModal
+        isOpen={showEmployeeModal}
+        onClose={() => setShowEmployeeModal(false)}
+        onConfirm={handleEmployeeConfirm}
+        title="เลือกผู้เช็คสินค้า"
+      />
     </div>
   );
 }

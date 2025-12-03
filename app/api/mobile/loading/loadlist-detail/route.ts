@@ -147,6 +147,111 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Get bonus face sheets
+    const { data: bonusFaceSheetData } = await supabase
+      .from('wms_loadlist_bonus_face_sheets')
+      .select(`
+        bonus_face_sheet_id,
+        bonus_face_sheets:bonus_face_sheet_id (
+          face_sheet_no,
+          bonus_face_sheet_items (
+            sku_id,
+            quantity_picked,
+            package_id
+          )
+        )
+      `)
+      .eq('loadlist_id', loadlist.id);
+
+    // Process bonus face sheet items
+    for (const bfs of bonusFaceSheetData || []) {
+      const bonusFaceSheet = bfs.bonus_face_sheets as any;
+      if (!bonusFaceSheet) continue;
+
+      const items = bonusFaceSheet.bonus_face_sheet_items || [];
+
+      // Get unique SKU IDs and package IDs from bonus face sheet items
+      const skuIds = [...new Set(items.map((item: any) => item.sku_id).filter(Boolean))];
+      const packageIds = [...new Set(items.map((item: any) => item.package_id).filter(Boolean))];
+      
+      // Create item to package mapping
+      const itemPackageMap: Record<string, number> = {};
+      items.forEach((item: any) => {
+        itemPackageMap[item.sku_id] = item.package_id;
+      });
+      
+      // Fetch SKU data separately
+      let skuMap: Record<string, any> = {};
+      if (skuIds.length > 0) {
+        const { data: skuData } = await supabase
+          .from('master_sku')
+          .select('sku_id, sku_name, weight_per_piece_kg')
+          .in('sku_id', skuIds);
+        
+        skuData?.forEach((sku: any) => {
+          skuMap[sku.sku_id] = sku;
+        });
+      }
+
+      // Fetch package data to get order_id and package_number
+      let packageOrderMap: Record<number, number> = {};
+      let packageNumberMap: Record<number, string> = {};
+      if (packageIds.length > 0) {
+        const { data: packageData } = await supabase
+          .from('bonus_face_sheet_packages')
+          .select('id, order_id, package_number')
+          .in('id', packageIds);
+        
+        packageData?.forEach((pkg: any) => {
+          packageOrderMap[pkg.id] = pkg.order_id;
+          packageNumberMap[pkg.id] = pkg.package_number;
+        });
+      }
+
+      // Get unique order IDs
+      const orderIds = [...new Set(Object.values(packageOrderMap).filter(Boolean))];
+
+      // Fetch order data separately
+      let orderMap: Record<number, any> = {};
+      if (orderIds.length > 0) {
+        const { data: orderData } = await supabase
+          .from('wms_orders')
+          .select('order_id, order_no, shop_name')
+          .in('order_id', orderIds);
+        
+        orderData?.forEach((order: any) => {
+          orderMap[order.order_id] = order;
+        });
+      }
+
+      for (const item of items) {
+        const qty = item.quantity_picked || 0;
+        const sku = skuMap[item.sku_id];
+        const orderId = packageOrderMap[item.package_id];
+        const order = orderMap[orderId];
+        const weight = parseFloat(sku?.weight_per_piece_kg) || 0;
+        totalWeight += qty * weight;
+
+        if (order && orderId) {
+          if (!ordersMap.has(orderId)) {
+            ordersMap.set(orderId, {
+              order_code: order.order_no,
+              customer_name: order.shop_name || '-',
+              items: []
+            });
+          }
+          const orderData = ordersMap.get(orderId);
+          orderData.items.push({
+            sku_id: item.sku_id,
+            sku_name: sku?.sku_name || '-',
+            quantity: qty,
+            weight: weight,
+            package_number: packageNumberMap[item.package_id] || '-'
+          });
+        }
+      }
+    }
+
     const orders = Array.from(ordersMap.values());
 
     return NextResponse.json({

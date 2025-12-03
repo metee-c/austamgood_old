@@ -18,9 +18,9 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
     const body = await request.json();
-    const { loadlist_id, loadlist_code, scanned_code } = body;
+    const { loadlist_id, loadlist_code, scanned_code, checker_employee_id } = body;
 
-    console.log('🔍 Complete request:', { loadlist_id, loadlist_code, scanned_code });
+    console.log('🔍 Complete request:', { loadlist_id, loadlist_code, scanned_code, checker_employee_id });
 
     if (!loadlist_id && !loadlist_code) {
       return NextResponse.json(
@@ -81,26 +81,32 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get picklist IDs and face sheet IDs
+    // Get picklist IDs, face sheet IDs, and bonus face sheet IDs
     const { data: picklistLinks } = await supabase
       .from('loadlist_picklists')
       .select('picklist_id')
       .eq('loadlist_id', loadlist.id);
-    
+
     const { data: faceSheetLinks } = await supabase
       .from('loadlist_face_sheets')
       .select('face_sheet_id')
       .eq('loadlist_id', loadlist.id);
 
+    const { data: bonusFaceSheetLinks } = await supabase
+      .from('wms_loadlist_bonus_face_sheets')
+      .select('bonus_face_sheet_id')
+      .eq('loadlist_id', loadlist.id);
+
     const picklistIds = picklistLinks?.map(lp => lp.picklist_id) || [];
     const faceSheetIds = faceSheetLinks?.map(fs => fs.face_sheet_id) || [];
+    const bonusFaceSheetIds = bonusFaceSheetLinks?.map(bfs => bfs.bonus_face_sheet_id) || [];
 
-    console.log('📋 Document IDs:', { picklistIds, faceSheetIds });
+    console.log('📋 Document IDs:', { picklistIds, faceSheetIds, bonusFaceSheetIds });
 
-    if (picklistIds.length === 0 && faceSheetIds.length === 0) {
-      console.error('❌ No picklists or face sheets found');
+    if (picklistIds.length === 0 && faceSheetIds.length === 0 && bonusFaceSheetIds.length === 0) {
+      console.error('❌ No picklists, face sheets, or bonus face sheets found');
       return NextResponse.json(
-        { error: 'ไม่พบใบจัดสินค้าหรือใบปะหน้าในใบโหลดนี้' },
+        { error: 'ไม่พบใบจัดสินค้า ใบปะหน้า หรือใบปะหน้าของแถมในใบโหลดนี้' },
         { status: 400 }
       );
     }
@@ -161,15 +167,46 @@ export async function POST(request: NextRequest) {
       faceSheets = faceSheetData || [];
     }
 
-    console.log('📄 Documents fetched:', { 
-      picklists: picklists.length, 
-      faceSheets: faceSheets.length 
+    // Fetch bonus face sheets with items (including order_item_id from bonus_face_sheet_items)
+    let bonusFaceSheets: any[] = [];
+    if (bonusFaceSheetIds.length > 0) {
+      console.log('🔍 Fetching bonus face sheets:', bonusFaceSheetIds);
+      const { data: bonusFaceSheetData, error: bonusFaceSheetsError } = await supabase
+        .from('bonus_face_sheets')
+        .select(`
+          id,
+          face_sheet_no,
+          bonus_face_sheet_items (
+            sku_id,
+            quantity_picked,
+            quantity_to_pick,
+            order_item_id
+          )
+        `)
+        .in('id', bonusFaceSheetIds);
+
+      console.log('📄 Bonus face sheets result:', { data: bonusFaceSheetData, error: bonusFaceSheetsError });
+
+      if (bonusFaceSheetsError) {
+        console.error('❌ Bonus face sheets error:', bonusFaceSheetsError);
+        return NextResponse.json(
+          { error: 'ไม่พบข้อมูลใบปะหน้าของแถม', details: bonusFaceSheetsError?.message },
+          { status: 404 }
+        );
+      }
+      bonusFaceSheets = bonusFaceSheetData || [];
+    }
+
+    console.log('📄 Documents fetched:', {
+      picklists: picklists.length,
+      faceSheets: faceSheets.length,
+      bonusFaceSheets: bonusFaceSheets.length
     });
 
-    if (picklists.length === 0 && faceSheets.length === 0) {
+    if (picklists.length === 0 && faceSheets.length === 0 && bonusFaceSheets.length === 0) {
       console.error('❌ No document data found');
       return NextResponse.json(
-        { error: 'ไม่พบข้อมูลใบจัดสินค้าหรือใบปะหน้า' },
+        { error: 'ไม่พบข้อมูลใบจัดสินค้า ใบปะหน้า หรือใบปะหน้าของแถม' },
         { status: 404 }
       );
     }
@@ -377,6 +414,90 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // Process bonus face sheet items (from Dispatch, same as face sheets)
+    for (const bonusFaceSheet of bonusFaceSheets) {
+      if (!bonusFaceSheet.bonus_face_sheet_items) continue;
+
+      console.log(`🔍 Processing bonus face sheet ${bonusFaceSheet.face_sheet_no} with ${bonusFaceSheet.bonus_face_sheet_items.length} items`);
+
+      for (const item of bonusFaceSheet.bonus_face_sheet_items) {
+        const qty = item.quantity_picked || item.quantity_to_pick || 0;
+        console.log(`📦 Bonus face sheet item: sku=${item.sku_id}, qty_picked=${item.quantity_picked}, qty_to_pick=${item.quantity_to_pick}, final_qty=${qty}`);
+
+        if (qty <= 0) {
+          console.log(`⚠️ Skipping item with qty=${qty}`);
+          continue;
+        }
+
+        // Get SKU info
+        console.log(`🔍 Fetching SKU info for ${item.sku_id}`);
+        const { data: skuInfo, error: skuError } = await supabase
+          .from('master_sku')
+          .select('qty_per_pack, sku_name')
+          .eq('sku_id', item.sku_id)
+          .single();
+
+        if (skuError) {
+          console.error(`❌ Error fetching SKU ${item.sku_id}:`, skuError);
+          return NextResponse.json(
+            { error: `ไม่พบข้อมูล SKU: ${item.sku_id}`, details: skuError.message },
+            { status: 500 }
+          );
+        }
+
+        const qtyPerPack = skuInfo?.qty_per_pack || 1;
+        const qtyPack = qty / qtyPerPack;
+        console.log(`✅ SKU info: qty_per_pack=${qtyPerPack}, qtyPack=${qtyPack}`);
+
+        // Check Dispatch balance for bonus face sheets (same as regular face sheets)
+        console.log(`🔍 Checking Dispatch balance for ${item.sku_id}`);
+        const { data: dispatchBalance, error: balanceError } = await supabase
+          .from('wms_inventory_balances')
+          .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
+          .eq('warehouse_id', 'WH001')
+          .eq('location_id', dispatchLocation.location_id)
+          .eq('sku_id', item.sku_id)
+          .maybeSingle();
+
+        if (balanceError) {
+          console.error('❌ Error checking dispatch balance:', balanceError);
+          return NextResponse.json(
+            { error: 'ไม่สามารถตรวจสอบสต็อคได้', details: balanceError.message },
+            { status: 500 }
+          );
+        }
+
+        console.log(`📊 Dispatch balance: ${dispatchBalance ? `${dispatchBalance.total_piece_qty} pieces` : 'not found'}`);
+
+        const availableQty = dispatchBalance?.total_piece_qty || 0;
+
+        // ✅ ตรวจสอบว่ามีสต็อคเพียงพอหรือไม่
+        if (availableQty < qty) {
+          insufficientStockItems.push({
+            sku_id: item.sku_id,
+            sku_name: skuInfo?.sku_name,
+            bonus_face_sheet_no: bonusFaceSheet.face_sheet_no,
+            required: qty,
+            available: availableQty,
+            shortage: qty - availableQty,
+            location: 'Dispatch'
+          });
+        } else {
+          // เก็บข้อมูลไว้สำหรับ process ทีหลัง
+          itemsToProcess.push({
+            sku_id: item.sku_id,
+            qty,
+            qtyPack,
+            qtyPerPack,
+            bonus_face_sheet_no: bonusFaceSheet.face_sheet_no,
+            sourceBalance: dispatchBalance,
+            sourceLocation: dispatchLocation.location_id,
+            isFromBonusFaceSheet: true
+          });
+        }
+      }
+    }
+
     // ✅ FAIL EARLY: ถ้ามีรายการใดที่สต็อคไม่พอ ให้ fail ทั้งหมด
     console.log(`✅ Stock check complete. Insufficient items: ${insufficientStockItems.length}, Items to process: ${itemsToProcess.length}`);
     
@@ -404,12 +525,19 @@ export async function POST(request: NextRequest) {
     try {
       // Update loadlist status to 'loaded' FIRST to prevent double processing
       console.log(`🔄 Updating loadlist status to loaded...`);
+      const updateData: any = {
+        status: 'loaded',
+        updated_at: now
+      };
+      
+      // Add checker_employee_id if provided
+      if (checker_employee_id) {
+        updateData.checker_employee_id = checker_employee_id;
+      }
+      
       const { error: updateStatusError } = await supabase
         .from('loadlists')
-        .update({
-          status: 'loaded',
-          updated_at: now
-        })
+        .update(updateData)
         .eq('id', loadlist.id)
         .eq('status', 'pending'); // Only update if still 'pending'
 
@@ -442,13 +570,23 @@ export async function POST(request: NextRequest) {
           .eq('loadlist_id', loadlist.id);
       }
 
+      // Update all bonus face sheets loaded_at
+      if (bonusFaceSheetIds.length > 0) {
+        console.log(`🔄 Updating ${bonusFaceSheetIds.length} bonus face sheets loaded_at...`);
+        await supabase
+          .from('wms_loadlist_bonus_face_sheets')
+          .update({ loaded_at: now })
+          .in('bonus_face_sheet_id', bonusFaceSheetIds)
+          .eq('loadlist_id', loadlist.id);
+      }
+
       // Group items by SKU + production_date + expiry_date + lot_no to handle duplicates
       // (ไม่ต้อง group by source_location เพราะทั้ง picklist และ face sheet ใช้ Dispatch เหมือนกัน)
       console.log(`🔄 Grouping ${itemsToProcess.length} items...`);
       
       for (const itemData of itemsToProcess) {
-        const { sku_id, qty, qtyPack, picklist_code, face_sheet_no, sourceBalance, sourceLocation } = itemData;
-        const docCode = picklist_code || face_sheet_no;
+        const { sku_id, qty, qtyPack, picklist_code, face_sheet_no, bonus_face_sheet_no, sourceBalance, sourceLocation } = itemData;
+        const docCode = picklist_code || face_sheet_no || bonus_face_sheet_no;
         
         const key = `${sku_id}|${sourceBalance.production_date}|${sourceBalance.expiry_date}|${sourceBalance.lot_no}`;
         

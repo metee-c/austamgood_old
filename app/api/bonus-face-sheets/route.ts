@@ -62,7 +62,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     
     const {
-      warehouse_id = 'WH01',
+      warehouse_id = 'WH001',
       created_by = 'System',
       delivery_date,
       packages = []
@@ -97,6 +97,16 @@ export async function POST(request: NextRequest) {
     const total_orders = new Set(packages.map((pkg: any) => pkg.order_id)).size;
     
     // สร้าง face sheet header
+    console.log('🔵 [Bonus FS] Creating face sheet with:', {
+      face_sheet_no,
+      warehouse_id,
+      status: 'generated',
+      delivery_date,
+      total_packages,
+      total_items,
+      total_orders
+    });
+
     const { data: faceSheet, error: faceSheetError } = await supabase
       .from('bonus_face_sheets')
       .insert({
@@ -113,12 +123,40 @@ export async function POST(request: NextRequest) {
       .single();
     
     if (faceSheetError || !faceSheet) {
-      console.error('Error creating face sheet:', faceSheetError);
+      console.error('❌ [Bonus FS] Error creating face sheet:', faceSheetError);
       return NextResponse.json(
         { success: false, error: 'ไม่สามารถสร้างใบปะหน้าได้' },
         { status: 500 }
       );
     }
+
+    console.log('✅ [Bonus FS] Face sheet created:', {
+      id: faceSheet.id,
+      face_sheet_no: faceSheet.face_sheet_no,
+      warehouse_id: faceSheet.warehouse_id,
+      status: faceSheet.status
+    });
+
+    // รอ trigger ทำงาน (trigger จะ run หลัง INSERT)
+    await new Promise(resolve => setTimeout(resolve, 500));
+
+    // ตรวจสอบว่า trigger จองสต็อคหรือยัง
+    const { data: reservations, error: reservationCheckError } = await supabase
+      .from('bonus_face_sheet_item_reservations')
+      .select('reservation_id, bonus_face_sheet_item_id, reserved_piece_qty')
+      .in('bonus_face_sheet_item_id', 
+        (await supabase
+          .from('bonus_face_sheet_items')
+          .select('id')
+          .eq('face_sheet_id', faceSheet.id)
+        ).data?.map(i => i.id) || []
+      );
+
+    console.log('📊 [Bonus FS] Stock reservations check:', {
+      face_sheet_id: faceSheet.id,
+      reservations_count: reservations?.length || 0,
+      reservations: reservations
+    });
     
     // สร้าง packages และ items
     for (let i = 0; i < packages.length; i++) {
@@ -163,10 +201,15 @@ export async function POST(request: NextRequest) {
           face_sheet_id: faceSheet.id,
           package_id: packageData.id,
           order_item_id: item.order_item_id,
+          sku_id: item.product_code, // ✅ เพิ่ม sku_id สำหรับ stock reservation
           product_code: item.product_code,
           product_name: item.product_name,
           quantity: item.quantity,
+          quantity_to_pick: item.quantity, // ✅ เพิ่ม quantity_to_pick
+          source_location_id: item.preparation_area || null, // ✅ เพิ่ม source_location_id (preparation area)
+          status: 'pending', // ✅ เพิ่ม status เริ่มต้น
           unit: 'ชิ้น',
+          uom: 'ชิ้น', // ✅ เพิ่ม uom
           weight: item.weight
         }));
         
@@ -179,11 +222,47 @@ export async function POST(request: NextRequest) {
         }
       }
     }
+
+    console.log('🔄 [Bonus FS] All items created, now calling stock reservation...');
     
+    // เรียก function จองสต็อคด้วยตนเอง (เพราะ trigger ทำงานก่อนที่จะมี items)
+    const { data: reservationResult, error: reservationError } = await supabase
+      .rpc('reserve_stock_for_bonus_face_sheet_items', {
+        p_bonus_face_sheet_id: faceSheet.id,
+        p_warehouse_id: warehouse_id,
+        p_reserved_by: created_by
+      });
+
+    if (reservationError) {
+      console.error('❌ [Bonus FS] Reservation error:', reservationError);
+    } else {
+      console.log('✅ [Bonus FS] Reservation result:', reservationResult);
+    }
+
+    // ✅ อัปเดตสถานะ orders เป็น 'confirmed' สำหรับทุก order ในใบปะหน้า
+    const orderIds = packages.map(pkg => pkg.order_id).filter(Boolean);
+    if (orderIds.length > 0) {
+      const { error: orderUpdateError } = await supabase
+        .from('wms_orders')
+        .update({
+          status: 'confirmed',
+          updated_at: new Date().toISOString()
+        })
+        .in('order_id', orderIds)
+        .eq('order_type', 'special');
+
+      if (orderUpdateError) {
+        console.error('❌ [Bonus FS] Order status update error:', orderUpdateError);
+      } else {
+        console.log(`✅ [Bonus FS] Updated ${orderIds.length} orders to 'confirmed'`);
+      }
+    }
+
     return NextResponse.json({
       success: true,
       face_sheet_no,
       total_packages,
+      reservation_result: reservationResult?.[0],
       message: `สร้างใบปะหน้าของแถม ${face_sheet_no} สำเร็จ`
     });
   } catch (error: any) {

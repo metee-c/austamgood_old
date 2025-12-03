@@ -49,9 +49,21 @@ interface FaceSheet {
   warehouse_id: string;
 }
 
+interface BonusFaceSheet {
+  id: number;
+  face_sheet_no: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  total_packages: number;
+  total_items: number;
+  total_orders: number;
+  warehouse_id: string;
+}
+
 // Face Sheet Statuses: generated (สร้างแล้ว), picking (กำลังหยิบ), completed (เสร็จสิ้น), cancelled (ยกเลิก)
 
-type PickTask = (Picklist & { type: 'picklist' }) | (FaceSheet & { type: 'face_sheet' });
+type PickTask = (Picklist & { type: 'picklist' }) | (FaceSheet & { type: 'face_sheet' }) | (BonusFaceSheet & { type: 'bonus_face_sheet' });
 
 const PICKLIST_STATUSES = [
   'all',
@@ -91,6 +103,10 @@ export default function MobilePickPage() {
       const faceSheetsResponse = await fetch(`/api/face-sheets/generate?${params.toString()}`);
       const faceSheetsData = await faceSheetsResponse.json();
 
+      // Fetch bonus face sheets
+      const bonusFaceSheetsResponse = await fetch(`/api/bonus-face-sheets?${params.toString()}`);
+      const bonusFaceSheetsData = await bonusFaceSheetsResponse.json();
+
       const allTasks: PickTask[] = [];
 
       // Add picklists
@@ -104,6 +120,14 @@ export default function MobilePickPage() {
           f.status !== 'generated'
         );
         allTasks.push(...filteredFaceSheets.map((f: FaceSheet) => ({ ...f, type: 'face_sheet' as const })));
+      }
+
+      // Add bonus face sheets (เฉพาะสถานะ picking ขึ้นไป - ไม่แสดง generated)
+      if (bonusFaceSheetsData.data) {
+        const filteredBonusFaceSheets = bonusFaceSheetsData.data.filter((f: FaceSheet) => 
+          f.status !== 'generated'
+        );
+        allTasks.push(...filteredBonusFaceSheets.map((f: FaceSheet) => ({ ...f, type: 'bonus_face_sheet' as const })));
       }
 
       // Sort by updated_at descending
@@ -309,6 +333,8 @@ export default function MobilePickPage() {
               onClick={() => {
                 if (task.type === 'picklist') {
                   router.push(`/mobile/pick/${task.id}`);
+                } else if (task.type === 'bonus_face_sheet') {
+                  router.push(`/mobile/bonus-face-sheet/${task.id}`);
                 } else {
                   router.push(`/mobile/face-sheet/${task.id}`);
                 }

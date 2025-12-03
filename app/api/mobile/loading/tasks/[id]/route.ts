@@ -32,6 +32,27 @@ export async function GET(
               )
             )
           )
+        ),
+        loadlist_face_sheets (
+          face_sheet_id,
+          face_sheets:face_sheet_id (
+            id,
+            face_sheet_no,
+            status,
+            total_packages,
+            total_items
+          )
+        ),
+        wms_loadlist_bonus_face_sheets (
+          bonus_face_sheet_id,
+          bonus_face_sheets:bonus_face_sheet_id (
+            id,
+            face_sheet_no,
+            status,
+            total_packages,
+            total_items,
+            total_orders
+          )
         )
       `)
       .eq('id', id)
@@ -67,11 +88,16 @@ export async function GET(
       driver = driverData;
     }
 
-    // Calculate total packages from picklists
+    // Get picklists, face sheets, and bonus face sheets
     const picklists = loadlist.wms_loadlist_picklists || [];
-    const totalPackages = picklists.reduce((sum: number, p: any) => {
-      return sum + (p.picklists?.total_lines || 0);
-    }, 0);
+    const faceSheets = loadlist.loadlist_face_sheets || [];
+    const bonusFaceSheets = loadlist.wms_loadlist_bonus_face_sheets || [];
+    
+    // Calculate total packages from all sources
+    const totalPackages = 
+      picklists.reduce((sum: number, p: any) => sum + (p.picklists?.total_lines || 0), 0) +
+      faceSheets.reduce((sum: number, fs: any) => sum + (fs.face_sheets?.total_packages || 0), 0) +
+      bonusFaceSheets.reduce((sum: number, bfs: any) => sum + (bfs.bonus_face_sheets?.total_packages || 0), 0);
 
     // Transform data
     const transformedData = {
@@ -79,6 +105,8 @@ export async function GET(
       loadlist_code: loadlist.loadlist_code,
       status: loadlist.status,
       total_picklists: picklists.length,
+      total_face_sheets: faceSheets.length,
+      total_bonus_face_sheets: bonusFaceSheets.length,
       total_packages: totalPackages,
       created_at: loadlist.created_at,
       vehicle: vehicle,
@@ -92,6 +120,21 @@ export async function GET(
           trip_code: lp.picklists?.trip?.trip_code,
           vehicle: lp.picklists?.trip?.vehicle
         }
+      })),
+      face_sheets: faceSheets.map((fs: any) => ({
+        id: fs.face_sheets?.id,
+        face_sheet_no: fs.face_sheets?.face_sheet_no,
+        status: fs.face_sheets?.status,
+        total_packages: fs.face_sheets?.total_packages,
+        total_items: fs.face_sheets?.total_items
+      })),
+      bonus_face_sheets: bonusFaceSheets.map((bfs: any) => ({
+        id: bfs.bonus_face_sheets?.id,
+        face_sheet_no: bfs.bonus_face_sheets?.face_sheet_no,
+        status: bfs.bonus_face_sheets?.status,
+        total_packages: bfs.bonus_face_sheets?.total_packages,
+        total_items: bfs.bonus_face_sheets?.total_items,
+        total_orders: bfs.bonus_face_sheets?.total_orders
       }))
     };
 

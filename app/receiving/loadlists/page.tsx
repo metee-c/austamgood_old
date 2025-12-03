@@ -119,6 +119,18 @@ interface AvailableFaceSheet {
   picking_completed_at?: string;
 }
 
+interface AvailableBonusFaceSheet {
+  id: number;
+  face_sheet_no: string;
+  status: string;
+  total_packages: number;
+  total_items: number;
+  total_orders: number;
+  warehouse_id: string;
+  created_at: string;
+  picking_completed_at?: string;
+}
+
 interface Employee {
   employee_id: number;
   first_name: string;
@@ -136,6 +148,7 @@ const LoadlistsPage = () => {
   const [loadlists, setLoadlists] = useState<Loadlist[]>([]);
   const [availablePicklists, setAvailablePicklists] = useState<AvailablePicklist[]>([]);
   const [availableFaceSheets, setAvailableFaceSheets] = useState<AvailableFaceSheet[]>([]);
+  const [availableBonusFaceSheets, setAvailableBonusFaceSheets] = useState<AvailableBonusFaceSheet[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [vehicles, setVehicles] = useState<any[]>([]);
   const [drivers, setDrivers] = useState<Employee[]>([]);
@@ -147,7 +160,8 @@ const LoadlistsPage = () => {
   const [createError, setCreateError] = useState<string | null>(null);
   const [selectedPicklists, setSelectedPicklists] = useState<number[]>([]);
   const [selectedFaceSheets, setSelectedFaceSheets] = useState<number[]>([]);
-  const [activeTab, setActiveTab] = useState<'picklists' | 'face-sheets'>('picklists');
+  const [selectedBonusFaceSheets, setSelectedBonusFaceSheets] = useState<number[]>([]);
+  const [activeTab, setActiveTab] = useState<'picklists' | 'face-sheets' | 'bonus-face-sheets'>('picklists');
 
   // Form fields
   const [checkerEmployeeId, setCheckerEmployeeId] = useState<number | ''>('');
@@ -214,6 +228,21 @@ const LoadlistsPage = () => {
       }
     } catch (err: any) {
       setCreateError('Unable to load face sheets: ' + (err.message ?? 'unknown error'));
+    }
+  };
+
+  const fetchAvailableBonusFaceSheets = async () => {
+    try {
+      const response = await fetch('/api/loadlists/available-bonus-face-sheets');
+      if (!response.ok) {
+        throw new Error('Unable to load available bonus face sheets');
+      }
+      const result = await response.json();
+      if (result.success) {
+        setAvailableBonusFaceSheets(result.data || []);
+      }
+    } catch (err: any) {
+      setCreateError('Unable to load bonus face sheets: ' + (err.message ?? 'unknown error'));
     }
   };
 
@@ -298,6 +327,7 @@ const LoadlistsPage = () => {
     setCreateError(null);
     setSelectedPicklists([]);
     setSelectedFaceSheets([]);
+    setSelectedBonusFaceSheets([]);
     setActiveTab('picklists');
     // Reset form fields
     setCheckerEmployeeId('');
@@ -306,7 +336,13 @@ const LoadlistsPage = () => {
     setVehicleId('');
     setDriverEmployeeId('');
     setLoadingQueueNumber('');
-    await Promise.all([fetchAvailablePicklists(), fetchAvailableFaceSheets(), fetchEmployees(), fetchVehicles()]);
+    await Promise.all([
+      fetchAvailablePicklists(),
+      fetchAvailableFaceSheets(),
+      fetchAvailableBonusFaceSheets(),
+      fetchEmployees(),
+      fetchVehicles()
+    ]);
   };
 
   const handleTogglePicklist = (picklistId: number) => {
@@ -328,9 +364,10 @@ const LoadlistsPage = () => {
   const handleCreateLoadlist = async () => {
     const hasPicklists = selectedPicklists.length > 0;
     const hasFaceSheets = selectedFaceSheets.length > 0;
+    const hasBonusFaceSheets = selectedBonusFaceSheets.length > 0;
     
-    if (!hasPicklists && !hasFaceSheets) {
-      setCreateError('กรุณาเลือกใบจัดสินค้าหรือใบปะหน้าอย่างน้อย 1 รายการ');
+    if (!hasPicklists && !hasFaceSheets && !hasBonusFaceSheets) {
+      setCreateError('กรุณาเลือกใบจัดสินค้า, ใบปะหน้า หรือใบปะหน้าของแถมอย่างน้อย 1 รายการ');
       return;
     }
 
@@ -373,6 +410,10 @@ const LoadlistsPage = () => {
         requestBody.face_sheet_ids = selectedFaceSheets;
       }
 
+      if (hasBonusFaceSheets) {
+        requestBody.bonus_face_sheet_ids = selectedBonusFaceSheets;
+      }
+
       const response = await fetch('/api/loadlists', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -386,10 +427,11 @@ const LoadlistsPage = () => {
       setIsCreateModalOpen(false);
       setSelectedPicklists([]);
       setSelectedFaceSheets([]);
+      setSelectedBonusFaceSheets([]);
       await fetchLoadlists();
       
-      // If created from face sheets, show delivery document option
-      if (hasFaceSheets && result.id) {
+      // If created from face sheets or bonus face sheets, show delivery document option
+      if ((hasFaceSheets || hasBonusFaceSheets) && result.id) {
         setCreatedLoadlistId(result.id);
         setShowDeliveryDocModal(true);
       }
@@ -401,14 +443,25 @@ const LoadlistsPage = () => {
   };
 
   const handlePrintLoadlist = async (loadlist: Loadlist) => {
-    // Check if this loadlist has face sheets
+    // Check if this loadlist has face sheets or bonus face sheets
     const hasFaceSheets = (loadlist as any).face_sheets && (loadlist as any).face_sheets.length > 0;
+    const hasBonusFaceSheets = (loadlist as any).bonus_face_sheets && (loadlist as any).bonus_face_sheets.length > 0;
     
     if (hasFaceSheets) {
       // Open delivery document for face sheets
       const faceSheetIds = (loadlist as any).face_sheets.map((fs: any) => fs.id).join(',');
       window.open(
         `/api/face-sheets/delivery-document?face_sheet_ids=${faceSheetIds}`,
+        '_blank'
+      );
+      return;
+    }
+
+    if (hasBonusFaceSheets) {
+      // Open delivery document for bonus face sheets
+      const bonusFaceSheetIds = (loadlist as any).bonus_face_sheets.map((bfs: any) => bfs.id).join(',');
+      window.open(
+        `/api/bonus-face-sheets/delivery-document?bonus_face_sheet_ids=${bonusFaceSheetIds}&loadlist_id=${loadlist.id}`,
         '_blank'
       );
       return;
@@ -567,12 +620,6 @@ const LoadlistsPage = () => {
                       </th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
                         คนขับ
-                      </th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
-                        จำนวนใบจัด
-                      </th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
-                        จำนวนพัสดุ
                       </th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('created_at')}>
                         วันที่สร้าง{getSortIcon('created_at')}
@@ -755,12 +802,6 @@ const LoadlistsPage = () => {
                             ))}
                           </select>
                         </td>
-                        <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap font-semibold text-blue-600">
-                          {loadlist.total_picklists.toLocaleString('en-US')}
-                        </td>
-                        <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap font-semibold text-purple-600">
-                          {loadlist.total_packages.toLocaleString('en-US')}
-                        </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700">
                           {new Date(loadlist.created_at).toLocaleString()}
                         </td>
@@ -802,7 +843,7 @@ const LoadlistsPage = () => {
             </div>
           )}
 
-          {/* Tabs for Picklists and Face Sheets */}
+          {/* Tabs for Picklists, Face Sheets, and Bonus Face Sheets */}
           <div className="border-b border-gray-200">
             <div className="flex space-x-4">
               <button
@@ -826,6 +867,17 @@ const LoadlistsPage = () => {
               >
                 <Layers className="w-4 h-4 inline-block mr-2" />
                 ใบปะหน้า ({selectedFaceSheets.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('bonus-face-sheets')}
+                className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
+                  activeTab === 'bonus-face-sheets'
+                    ? 'border-green-500 text-green-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                <Layers className="w-4 h-4 inline-block mr-2" />
+                ใบปะหน้าของแถม ({selectedBonusFaceSheets.length})
               </button>
             </div>
           </div>
@@ -1156,6 +1208,123 @@ const LoadlistsPage = () => {
             </div>
           )}
 
+          {/* Bonus Face Sheets Tab */}
+          {activeTab === 'bonus-face-sheets' && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between bg-gray-50 px-4 py-2 rounded">
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedBonusFaceSheets.length === availableBonusFaceSheets.length && availableBonusFaceSheets.length > 0}
+                    onChange={() => {
+                      if (selectedBonusFaceSheets.length === availableBonusFaceSheets.length) {
+                        setSelectedBonusFaceSheets([]);
+                      } else {
+                        setSelectedBonusFaceSheets(availableBonusFaceSheets.map(bfs => bfs.id));
+                      }
+                    }}
+                    className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                  />
+                  <span className="text-sm font-medium text-gray-700">
+                    เลือกใบปะหน้าของแถมทั้งหมด ({selectedBonusFaceSheets.length}/{availableBonusFaceSheets.length})
+                  </span>
+                </label>
+              </div>
+
+              <div className="max-h-64 overflow-y-auto border rounded-lg">
+                <table className="w-full border-collapse text-sm">
+                  <thead className="sticky top-0 z-10 bg-gray-100">
+                    <tr>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap w-12">
+                        <span className="sr-only">เลือก</span>
+                      </th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสใบปะหน้าของแถม</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">แพ็ค</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชิ้น</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ออเดอร์</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">คลัง</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ผู้เช็ค</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap">สถานะ</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
+                    {availableBonusFaceSheets.length === 0 ? (
+                      <tr>
+                        <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
+                          ไม่พบใบปะหน้าของแถมที่สถานะ "เสร็จสิ้น"
+                        </td>
+                      </tr>
+                    ) : (
+                      availableBonusFaceSheets.map((bonusFaceSheet, index) => (
+                        <tr
+                          key={bonusFaceSheet.id}
+                          className={`hover:bg-blue-50/30 transition-colors duration-150 ${
+                            selectedBonusFaceSheets.includes(bonusFaceSheet.id) ? 'bg-green-50' : ''
+                          }`}
+                        >
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                            <input
+                              type="checkbox"
+                              checked={selectedBonusFaceSheets.includes(bonusFaceSheet.id)}
+                              onChange={() => {
+                                if (selectedBonusFaceSheets.includes(bonusFaceSheet.id)) {
+                                  setSelectedBonusFaceSheets(selectedBonusFaceSheets.filter(id => id !== bonusFaceSheet.id));
+                                } else {
+                                  setSelectedBonusFaceSheets([...selectedBonusFaceSheets, bonusFaceSheet.id]);
+                                }
+                              }}
+                              className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                            />
+                          </td>
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap font-mono text-purple-600">
+                            {bonusFaceSheet.face_sheet_no}
+                          </td>
+                          <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap font-semibold text-blue-600">
+                            {bonusFaceSheet.total_packages}
+                          </td>
+                          <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap font-semibold text-purple-600">
+                            {bonusFaceSheet.total_items}
+                          </td>
+                          <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap font-semibold text-green-600">
+                            {bonusFaceSheet.total_orders}
+                          </td>
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700">
+                            {bonusFaceSheet.warehouse_id}
+                          </td>
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                            {index === 0 ? (
+                              <select
+                                value={checkerEmployeeId}
+                                onChange={(e) => setCheckerEmployeeId(e.target.value ? Number(e.target.value) : '')}
+                                className="w-32 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                              >
+                                <option value="">-- เลือก --</option>
+                                {employees.map((emp) => (
+                                  <option key={emp.employee_id} value={emp.employee_id}>
+                                    {emp.first_name} {emp.last_name}
+                                  </option>
+                                ))}
+                              </select>
+                            ) : checkerEmployeeId ? (
+                              <span className="text-gray-400 text-xs">
+                                {employees.find(e => e.employee_id === checkerEmployeeId)?.first_name || '-'}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400 text-xs">-</span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <Badge variant="success" size="sm">เสร็จสิ้น</Badge>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           <div className="flex justify-end gap-2 pt-4 border-t">
             <Button variant="outline" onClick={() => setIsCreateModalOpen(false)} disabled={isCreating}>
               ยกเลิก
@@ -1163,11 +1332,11 @@ const LoadlistsPage = () => {
             <Button
               variant="primary"
               onClick={handleCreateLoadlist}
-              disabled={isCreating || (selectedPicklists.length === 0 && selectedFaceSheets.length === 0)}
+              disabled={isCreating || (selectedPicklists.length === 0 && selectedFaceSheets.length === 0 && selectedBonusFaceSheets.length === 0)}
               className="bg-green-500 hover:bg-green-600"
             >
               {isCreating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              {isCreating ? 'กำลังสร้าง...' : `สร้าง (${selectedPicklists.length} ใบจัด)`}
+              {isCreating ? 'กำลังสร้าง...' : `สร้าง (${selectedPicklists.length + selectedFaceSheets.length + selectedBonusFaceSheets.length} รายการ)`}
             </Button>
           </div>
         </div>

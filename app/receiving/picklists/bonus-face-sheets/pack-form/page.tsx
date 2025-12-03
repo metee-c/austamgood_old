@@ -383,7 +383,7 @@ const BonusFaceSheetPackFormPage = () => {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            warehouse_id: 'WH01',
+            warehouse_id: 'WH001',
             created_by: 'System',
             delivery_date: deliveryDate,
             packages

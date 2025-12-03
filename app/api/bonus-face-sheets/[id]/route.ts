@@ -83,6 +83,66 @@ export async function GET(
 }
 
 /**
+ * PATCH /api/bonus-face-sheets/[id]
+ * อัปเดตสถานะของใบปะหน้าของแถม
+ */
+export async function PATCH(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const supabase = await createClient();
+    const { id: idParam } = await params;
+    const id = parseInt(idParam);
+    
+    if (isNaN(id)) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid ID' },
+        { status: 400 }
+      );
+    }
+
+    const body = await request.json();
+    const { status } = body;
+
+    if (!status) {
+      return NextResponse.json(
+        { success: false, error: 'Status is required' },
+        { status: 400 }
+      );
+    }
+
+    // อัปเดตสถานะ
+    const { error: updateError } = await supabase
+      .from('bonus_face_sheets')
+      .update({
+        status,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', id);
+
+    if (updateError) {
+      console.error('Error updating status:', updateError);
+      return NextResponse.json(
+        { success: false, error: 'ไม่สามารถอัปเดตสถานะได้' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      message: 'อัปเดตสถานะสำเร็จ'
+    });
+  } catch (error: any) {
+    console.error('Error in PATCH /api/bonus-face-sheets/[id]:', error);
+    return NextResponse.json(
+      { success: false, error: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+/**
  * PUT /api/bonus-face-sheets/[id]
  * อัพเดทข้อมูลใบปะหน้าของแถม
  */

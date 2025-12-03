@@ -8,7 +8,7 @@ import { createClient } from '@/lib/supabase/server';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { excelData, warehouse_id = 'WH01', created_by = 'System' } = body;
+    const { excelData, warehouse_id = 'WH001', created_by = 'System' } = body;
     
     if (!excelData || !Array.isArray(excelData) || excelData.length === 0) {
       return NextResponse.json(

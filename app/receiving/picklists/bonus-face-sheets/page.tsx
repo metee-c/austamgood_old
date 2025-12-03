@@ -16,12 +16,14 @@ import {
   Printer,
   AlertCircle,
   Loader2,
-  Package
+  Package,
+  ClipboardCheck
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
 import BonusFaceSheetLabelDocument from '@/components/receiving/BonusFaceSheetLabelDocument';
+import BonusFaceSheetChecklistDocument from '@/components/receiving/BonusFaceSheetChecklistDocument';
 
 interface BonusFaceSheet {
   id: number;
@@ -80,13 +82,23 @@ const BonusFaceSheetsPage = () => {
   const [success, setSuccess] = useState<string | null>(null);
   const [printingId, setPrintingId] = useState<number | null>(null);
   const [showMatchingStep, setShowMatchingStep] = useState(false);
+  const [editingStatusId, setEditingStatusId] = useState<number | null>(null);
+  const [checklistingId, setChecklistingId] = useState<number | null>(null);
 
   const statuses = [
     { value: 'all', label: 'ทั้งหมด' },
     { value: 'draft', label: 'แบบร่าง' },
     { value: 'generated', label: 'สร้างแล้ว' },
-    { value: 'printed', label: 'พิมพ์แล้ว' },
-    { value: 'completed', label: 'เสร็จสิ้น' }
+    { value: 'picking', label: 'กำลังหยิบ' },
+    { value: 'completed', label: 'เสร็จสิ้น' },
+    { value: 'cancelled', label: 'ยกเลิก' }
+  ];
+
+  const statusOptions = [
+    { value: 'generated', label: 'สร้างแล้ว' },
+    { value: 'picking', label: 'กำลังหยิบ' },
+    { value: 'completed', label: 'เสร็จสิ้น' },
+    { value: 'cancelled', label: 'ยกเลิก' }
   ];
 
   useEffect(() => {
@@ -128,13 +140,38 @@ const BonusFaceSheetsPage = () => {
     fetchBonusFaceSheets();
   }, [selectedStatus, selectedDate]);
 
-  const getStatusBadge = (status: string) => {
-    switch (status) {
-      case 'draft': return <Badge variant="default" size="sm">แบบร่าง</Badge>;
-      case 'printed': return <Badge variant="info" size="sm">พิมพ์แล้ว</Badge>;
-      case 'completed': return <Badge variant="success" size="sm">เสร็จสิ้น</Badge>;
-      default: return <Badge variant="default" size="sm">{status}</Badge>;
+  const handleStatusChange = async (bonusFaceSheetId: number, newStatus: string) => {
+    try {
+      setEditingStatusId(bonusFaceSheetId);
+      const response = await fetch(`/api/bonus-face-sheets/${bonusFaceSheetId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      });
+
+      const result = await response.json();
+      if (!response.ok || result.error) {
+        alert('เกิดข้อผิดพลาดในการอัปเดตสถานะ: ' + (result.error || 'Unknown error'));
+      } else {
+        await fetchBonusFaceSheets();
+      }
+    } catch (error: any) {
+      console.error('Error updating status:', error);
+      alert('เกิดข้อผิดพลาดในการอัปเดตสถานะ');
+    } finally {
+      setEditingStatusId(null);
     }
+  };
+
+  const getStatusLabel = (status: string) => {
+    const statusMap: Record<string, string> = {
+      draft: 'แบบร่าง',
+      generated: 'สร้างแล้ว',
+      picking: 'กำลังหยิบ',
+      completed: 'เสร็จสิ้น',
+      cancelled: 'ยกเลิก'
+    };
+    return statusMap[status] || status;
   };
 
   const filteredBonusFaceSheets = useMemo(() => {
@@ -283,6 +320,22 @@ const BonusFaceSheetsPage = () => {
     let cleanup: (() => void) | null = null;
 
     try {
+      // เปลี่ยนสถานะจาก generated → picking ก่อนพิมพ์
+      const bonusFaceSheet = bonusFaceSheets.find(fs => fs.id === id);
+      if (bonusFaceSheet && bonusFaceSheet.status === 'generated') {
+        const statusResponse = await fetch(`/api/bonus-face-sheets/${id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'picking' })
+        });
+        
+        if (statusResponse.ok) {
+          console.log(`✅ Bonus face sheet ${id} status changed to picking`);
+          // Refresh list
+          fetchBonusFaceSheets();
+        }
+      }
+
       const response = await fetch(`/api/bonus-face-sheets/${id}`);
       const result = await response.json();
 
@@ -383,6 +436,113 @@ const BonusFaceSheetsPage = () => {
       cleanup = null;
     } finally {
       setPrintingId(null);
+    }
+  };
+
+  const handleGenerateChecklist = async (id: number) => {
+    setChecklistingId(id);
+    setError(null);
+
+    let printWindow: Window | null = null;
+    let cleanup: (() => void) | null = null;
+
+    try {
+      const response = await fetch(`/api/bonus-face-sheets/checklist?id=${id}`);
+      const result = await response.json();
+
+      if (!response.ok || result.error) {
+        setError(result.error || 'ไม่สามารถดึงข้อมูลใบเช็คได้');
+        return;
+      }
+
+      const checklistData = result.data;
+
+      const tempContainer = document.createElement('div');
+      tempContainer.style.position = 'absolute';
+      tempContainer.style.left = '-9999px';
+      document.body.appendChild(tempContainer);
+
+      const { createRoot } = await import('react-dom/client');
+      const root = createRoot(tempContainer);
+      root.render(<BonusFaceSheetChecklistDocument data={checklistData} />);
+
+      cleanup = () => {
+        try {
+          root.unmount();
+        } catch (unmountError) {
+          console.warn('Unmount bonus face sheet checklist container error:', unmountError);
+        }
+        if (tempContainer.parentNode) {
+          tempContainer.parentNode.removeChild(tempContainer);
+        }
+      };
+
+      await new Promise(resolve => setTimeout(resolve, 100));
+
+      const htmlContent = tempContainer.innerHTML;
+
+      const tailwindCSS = Array.from(document.styleSheets)
+        .map(styleSheet => {
+          try {
+            return Array.from(styleSheet.cssRules)
+              .map(rule => rule.cssText)
+              .join('\n');
+          } catch (e) {
+            return '';
+          }
+        })
+        .join('\n');
+
+      printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        throw new Error('ไม่สามารถเปิดหน้าต่างพิมพ์ได้ กรุณาอนุญาต popup');
+      }
+
+      const cssContent = `
+        ${tailwindCSS}
+        @media print {
+          body { margin: 0; padding: 20px; }
+          .no-print { display: none !important; }
+          @page { size: A4; margin: 1cm; }
+        }
+        body { font-family: 'Sarabun', 'Noto Sans Thai', sans-serif; }
+      `;
+
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+          <head>
+            <meta charset="UTF-8" />
+            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+            <title>Bonus Face Sheet Checklist ${checklistData.bonusFaceSheet.face_sheet_no}</title>
+            <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+            <style>${cssContent}</style>
+          </head>
+          <body>
+            ${htmlContent}
+          </body>
+        </html>
+      `);
+      printWindow.document.close();
+
+      printWindow.onload = () => {
+        setTimeout(() => {
+          if (printWindow && !printWindow.closed) {
+            printWindow.print();
+          }
+        }, 500);
+      };
+    } catch (err: any) {
+      console.error('Error generating checklist:', err);
+      setError(err.message || 'ไม่สามารถสร้างใบเช็คสินค้าได้');
+      if (printWindow && !printWindow.closed) {
+        printWindow.close();
+      }
+    } finally {
+      if (cleanup) {
+        cleanup();
+      }
+      setChecklistingId(null);
     }
   };
 
@@ -511,7 +671,21 @@ const BonusFaceSheetsPage = () => {
                       <td className="px-4 py-3 text-xs whitespace-nowrap">
                         <Badge variant="secondary" size="sm">{sheet.warehouse_id}</Badge>
                       </td>
-                      <td className="px-4 py-3 text-xs whitespace-nowrap">{getStatusBadge(sheet.status)}</td>
+                      <td className="px-4 py-3 text-xs whitespace-nowrap">
+                        <select
+                          className="w-full px-2 py-1 border border-gray-300 rounded text-xs font-thai text-gray-900 focus:outline-none focus:ring-1 focus:ring-purple-500 focus:border-purple-500 cursor-pointer"
+                          value={sheet.status}
+                          disabled={editingStatusId === sheet.id}
+                          onChange={(e) => handleStatusChange(sheet.id, e.target.value)}
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {statusOptions.map((status) => (
+                            <option key={status.value} value={status.value}>
+                              {status.label}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
                       <td className="px-4 py-3 text-xs whitespace-nowrap">
                         {new Date(sheet.created_date).toLocaleDateString('th-TH', { year: '2-digit', month: '2-digit', day: '2-digit' })}
                       </td>
@@ -543,6 +717,18 @@ const BonusFaceSheetsPage = () => {
                               <Loader2 className="w-4 h-4 animate-spin" />
                             ) : (
                               <Printer className="w-4 h-4" />
+                            )}
+                          </button>
+                          <button
+                            className="p-1 rounded hover:bg-orange-50 hover:text-orange-600 transition-colors disabled:opacity-60"
+                            title="ใบเช็คสินค้า"
+                            onClick={() => handleGenerateChecklist(sheet.id)}
+                            disabled={checklistingId === sheet.id}
+                          >
+                            {checklistingId === sheet.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <ClipboardCheck className="w-4 h-4" />
                             )}
                           </button>
                         </div>
