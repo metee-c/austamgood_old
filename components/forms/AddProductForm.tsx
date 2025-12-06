@@ -36,7 +36,9 @@ const AddProductForm: React.FC<AddProductFormProps> = ({ onSuccess, onCancel, in
     sku_name: initialData?.sku_name || '',
     sku_description: initialData?.sku_description || '',
     category: initialData?.category || '',
+    sub_category: initialData?.sub_category || '',
     brand: initialData?.brand || '',
+    product_type: initialData?.product_type || '',
     unit_cost: initialData?.unit_cost || undefined,
     sales_price: initialData?.sales_price || undefined,
     uom_base: initialData?.uom_base || 'ชิ้น',
@@ -49,10 +51,28 @@ const AddProductForm: React.FC<AddProductFormProps> = ({ onSuccess, onCancel, in
     dimension_width_cm: initialData?.dimension_width_cm || undefined,
     dimension_height_cm: initialData?.dimension_height_cm || undefined,
     barcode: initialData?.barcode || '',
+    pack_barcode: initialData?.pack_barcode || '',
+    pallet_barcode: initialData?.pallet_barcode || '',
+    storage_condition: initialData?.storage_condition || '',
+    storage_class: initialData?.storage_class || '',
     default_storage_strategy_id: initialData?.default_storage_strategy_id || '',
     storage_notes: initialData?.storage_notes || '',
+    shelf_life_days: initialData?.shelf_life_days || undefined,
+    default_location: initialData?.default_location || '',
     lot_tracking_required: initialData?.lot_tracking_required || false,
     expiry_date_required: initialData?.expiry_date_required || false,
+    abc_class: initialData?.abc_class || '',
+    putaway_rotation_method: initialData?.putaway_rotation_method || '',
+    hazard_class: initialData?.hazard_class || '',
+    allow_mixed_expiry: initialData?.allow_mixed_expiry || false,
+    allow_mixed_lot: initialData?.allow_mixed_lot || false,
+    prefer_full_pallet: initialData?.prefer_full_pallet || false,
+    temperature_min_c: initialData?.temperature_min_c || undefined,
+    temperature_max_c: initialData?.temperature_max_c || undefined,
+    humidity_min_percent: initialData?.humidity_min_percent || undefined,
+    humidity_max_percent: initialData?.humidity_max_percent || undefined,
+    reorder_point: initialData?.reorder_point || undefined,
+    safety_stock: initialData?.safety_stock || undefined,
     created_by: initialData?.created_by || 'admin',
     status: initialData?.status || 'active'
   });
@@ -696,7 +716,89 @@ const AddProductForm: React.FC<AddProductFormProps> = ({ onSuccess, onCancel, in
           </div>
         </div>
 
-        <div className="flex items-center space-x-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
+              ระดับการจัดเก็บ (Storage Class)
+            </label>
+            <input
+              type="text"
+              name="storage_class"
+              value={formData.storage_class || ''}
+              onChange={handleInputChange}
+              className="
+                w-full px-3 py-2 border border-thai-gray-300 rounded-lg
+                focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+                text-sm font-thai
+              "
+              placeholder="เช่น A, B, C"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
+              ABC Classification
+            </label>
+            <select
+              name="abc_class"
+              value={formData.abc_class || ''}
+              onChange={handleInputChange}
+              className="
+                w-full px-3 py-2 border border-thai-gray-300 rounded-lg
+                focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+                text-sm font-thai
+              "
+            >
+              <option value="">-- เลือก --</option>
+              <option value="A">A - สินค้าหมุนเร็ว</option>
+              <option value="B">B - สินค้าหมุนปานกลาง</option>
+              <option value="C">C - สินค้าหมุนช้า</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
+              วิธีหมุนเวียนสินค้า
+            </label>
+            <select
+              name="putaway_rotation_method"
+              value={formData.putaway_rotation_method || ''}
+              onChange={handleInputChange}
+              className="
+                w-full px-3 py-2 border border-thai-gray-300 rounded-lg
+                focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+                text-sm font-thai
+              "
+            >
+              <option value="">-- เลือก --</option>
+              <option value="FIFO">FIFO - First In First Out</option>
+              <option value="LIFO">LIFO - Last In First Out</option>
+              <option value="FEFO">FEFO - First Expired First Out</option>
+              <option value="LEFO">LEFO - Last Expired First Out</option>
+              <option value="custom">Custom - กำหนดเอง</option>
+            </select>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
+              ระดับอันตราย (Hazard Class)
+            </label>
+            <input
+              type="text"
+              name="hazard_class"
+              value={formData.hazard_class || ''}
+              onChange={handleInputChange}
+              className="
+                w-full px-3 py-2 border border-thai-gray-300 rounded-lg
+                focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+                text-sm font-thai
+              "
+              placeholder="เช่น Class 1, 2, 3"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center flex-wrap gap-4">
           <label className="flex items-center">
             <input
               type="checkbox"
@@ -718,6 +820,177 @@ const AddProductForm: React.FC<AddProductFormProps> = ({ onSuccess, onCancel, in
             />
             <span className="text-sm text-thai-gray-700 font-thai">ต้องบันทึกวันหมดอายุ</span>
           </label>
+
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              name="allow_mixed_expiry"
+              checked={formData.allow_mixed_expiry || false}
+              onChange={handleInputChange}
+              className="mr-2 rounded border-thai-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+            <span className="text-sm text-thai-gray-700 font-thai">อนุญาตผสมวันหมดอายุ</span>
+          </label>
+
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              name="allow_mixed_lot"
+              checked={formData.allow_mixed_lot || false}
+              onChange={handleInputChange}
+              className="mr-2 rounded border-thai-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+            <span className="text-sm text-thai-gray-700 font-thai">อนุญาตผสมล็อต</span>
+          </label>
+
+          <label className="flex items-center">
+            <input
+              type="checkbox"
+              name="prefer_full_pallet"
+              checked={formData.prefer_full_pallet || false}
+              onChange={handleInputChange}
+              className="mr-2 rounded border-thai-gray-300 text-primary-600 focus:ring-primary-500"
+            />
+            <span className="text-sm text-thai-gray-700 font-thai">ต้องการพาเลทเต็ม</span>
+          </label>
+        </div>
+      </div>
+
+      {/* Temperature & Humidity Control */}
+      <div className="bg-white border border-thai-gray-200 rounded-xl p-6 space-y-6">
+        <div className="flex items-center space-x-3">
+          <div className="w-3 h-3 bg-purple-500 rounded-full"></div>
+          <h4 className="text-lg font-semibold text-thai-gray-900 font-thai">การควบคุมอุณหภูมิและความชื้น</h4>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
+              อุณหภูมิต่ำสุด (°C)
+            </label>
+            <input
+              type="number"
+              name="temperature_min_c"
+              value={formData.temperature_min_c || ''}
+              onChange={handleInputChange}
+              step="0.1"
+              className="
+                w-full px-3 py-2 border border-thai-gray-300 rounded-lg
+                focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+                text-sm font-thai
+              "
+              placeholder="เช่น -20"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
+              อุณหภูมิสูงสุด (°C)
+            </label>
+            <input
+              type="number"
+              name="temperature_max_c"
+              value={formData.temperature_max_c || ''}
+              onChange={handleInputChange}
+              step="0.1"
+              className="
+                w-full px-3 py-2 border border-thai-gray-300 rounded-lg
+                focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+                text-sm font-thai
+              "
+              placeholder="เช่น 25"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
+              ความชื้นต่ำสุด (%)
+            </label>
+            <input
+              type="number"
+              name="humidity_min_percent"
+              value={formData.humidity_min_percent || ''}
+              onChange={handleInputChange}
+              min="0"
+              max="100"
+              step="0.1"
+              className="
+                w-full px-3 py-2 border border-thai-gray-300 rounded-lg
+                focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+                text-sm font-thai
+              "
+              placeholder="เช่น 40"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
+              ความชื้นสูงสุด (%)
+            </label>
+            <input
+              type="number"
+              name="humidity_max_percent"
+              value={formData.humidity_max_percent || ''}
+              onChange={handleInputChange}
+              min="0"
+              max="100"
+              step="0.1"
+              className="
+                w-full px-3 py-2 border border-thai-gray-300 rounded-lg
+                focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+                text-sm font-thai
+              "
+              placeholder="เช่น 60"
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* Inventory Management */}
+      <div className="bg-white border border-thai-gray-200 rounded-xl p-6 space-y-6">
+        <div className="flex items-center space-x-3">
+          <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
+          <h4 className="text-lg font-semibold text-thai-gray-900 font-thai">การจัดการสต็อก</h4>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
+              จุดสั่งซื้อใหม่ (Reorder Point)
+            </label>
+            <input
+              type="number"
+              name="reorder_point"
+              value={formData.reorder_point || ''}
+              onChange={handleInputChange}
+              min="0"
+              className="
+                w-full px-3 py-2 border border-thai-gray-300 rounded-lg
+                focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+                text-sm font-thai
+              "
+              placeholder="จำนวนที่ต้องสั่งซื้อใหม่"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
+              สต็อคปลอดภัย (Safety Stock)
+            </label>
+            <input
+              type="number"
+              name="safety_stock"
+              value={formData.safety_stock || ''}
+              onChange={handleInputChange}
+              min="0"
+              className="
+                w-full px-3 py-2 border border-thai-gray-300 rounded-lg
+                focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
+                text-sm font-thai
+              "
+              placeholder="จำนวนสต็อคสำรอง"
+            />
+          </div>
         </div>
       </div>
 
