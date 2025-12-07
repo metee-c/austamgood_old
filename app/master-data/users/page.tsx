@@ -101,62 +101,93 @@ const UsersTable = ({ data }: { data: SystemUserWithRoles[] }) => {
     <Table>
       <Table.Header>
         <Table.Row>
+          <SortableHead name="ID" sortKey="user_id" requestSort={requestSort} sortConfig={sortConfig} />
           <SortableHead name="ชื่อผู้ใช้" sortKey="username" requestSort={requestSort} sortConfig={sortConfig} />
           <SortableHead name="ชื่อ-นามสกุล" sortKey="full_name" requestSort={requestSort} sortConfig={sortConfig} />
           <SortableHead name="อีเมล" sortKey="email" requestSort={requestSort} sortConfig={sortConfig} />
+          <SortableHead name="เบอร์โทรศัพท์" sortKey="phone_number" requestSort={requestSort} sortConfig={sortConfig} />
+          <SortableHead name="รหัสพนักงาน" sortKey="employee_id" requestSort={requestSort} sortConfig={sortConfig} />
           <SortableHead name="บทบาท" sortKey="roles" requestSort={requestSort} sortConfig={sortConfig} />
           <SortableHead name="สถานะ" sortKey="is_active" requestSort={requestSort} sortConfig={sortConfig} />
           <SortableHead name="เข้าใช้งานล่าสุด" sortKey="last_login_at" requestSort={requestSort} sortConfig={sortConfig} />
+          <SortableHead name="สร้างโดย" sortKey="created_by" requestSort={requestSort} sortConfig={sortConfig} />
+          <SortableHead name="วันที่สร้าง" sortKey="created_at" requestSort={requestSort} sortConfig={sortConfig} />
+          <SortableHead name="แก้ไขล่าสุด" sortKey="updated_at" requestSort={requestSort} sortConfig={sortConfig} />
+          <Table.Head>หมายเหตุ</Table.Head>
           <Table.Head className="w-28">การดำเนินการ</Table.Head>
         </Table.Row>
       </Table.Header>
       <Table.Body>
         {items.map((user) => (
           <Table.Row key={user.user_id} className="hover:bg-thai-gray-25">
-            <Table.Cell>
-              <div className="space-y-1">
-                <div className="font-mono text-sm font-medium text-primary-600">
-                  {user.username}
-                </div>
-                <div className="text-xs text-thai-gray-500 font-mono">
-                  ID: {user.user_id}
-                </div>
-              </div>
+            <Table.Cell className="py-1 px-2">
+              <span className="font-mono text-xs text-thai-gray-600">{user.user_id}</span>
             </Table.Cell>
-            <Table.Cell>
-              <div className="space-y-1">
-                <div className="font-medium font-thai text-sm">
+            <Table.Cell className="py-1 px-2">
+              <span className="font-mono text-xs font-medium text-primary-600">{user.username}</span>
+            </Table.Cell>
+            <Table.Cell className="py-1 px-2">
+              <div className="space-y-0.5">
+                <div className="font-medium font-thai text-xs">
                   {user.full_name}
                 </div>
                 {user.employee_name && (
-                  <div className="text-xs text-thai-gray-500">
+                  <div className="text-[10px] text-thai-gray-500">
                     พนักงาน: {user.employee_name}
                   </div>
                 )}
               </div>
             </Table.Cell>
-            <Table.Cell>
-              <span className="text-sm">{user.email}</span>
+            <Table.Cell className="py-1 px-2">
+              <span className="text-xs">{user.email || '-'}</span>
             </Table.Cell>
-            <Table.Cell>
+            <Table.Cell className="py-1 px-2">
+              <span className="text-xs">{user.phone_number || '-'}</span>
+            </Table.Cell>
+            <Table.Cell className="py-1 px-2">
+              <span className="font-mono text-xs">{user.employee_id || '-'}</span>
+            </Table.Cell>
+            <Table.Cell className="py-1 px-2">
               <div className="flex flex-wrap gap-1">
                 {user.roles?.map((role: any) => (
-                  <Badge key={role.role_id} variant="default" className="text-xs">
+                  <Badge key={role.role_id} variant="default" className="text-[10px] py-0 px-1">
                     {role.role_name}
                   </Badge>
-                )) || <span className="text-thai-gray-500 text-sm">ไม่มีบทบาท</span>}
+                )) || <span className="text-thai-gray-500 text-xs">ไม่มีบทบาท</span>}
               </div>
             </Table.Cell>
-            <Table.Cell>{getStatusBadge(user.is_active)}</Table.Cell>
-            <Table.Cell>
-              <span className="text-sm font-thai">
+            <Table.Cell className="py-1 px-2">{getStatusBadge(user.is_active)}</Table.Cell>
+            <Table.Cell className="py-1 px-2">
+              <span className="text-xs font-thai">
                 {user.last_login_at ? 
                   new Date(user.last_login_at).toLocaleString('th-TH') : 
-                  'ยังไม่เคยเข้าใช้งาน'
+                  '-'
                 }
               </span>
             </Table.Cell>
-            <Table.Cell>
+            <Table.Cell className="py-1 px-2">
+              <span className="text-xs">{user.created_by || '-'}</span>
+            </Table.Cell>
+            <Table.Cell className="py-1 px-2">
+              <span className="text-xs font-thai">
+                {user.created_at ? 
+                  new Date(user.created_at).toLocaleString('th-TH') : 
+                  '-'
+                }
+              </span>
+            </Table.Cell>
+            <Table.Cell className="py-1 px-2">
+              <span className="text-xs font-thai">
+                {user.updated_at ? 
+                  new Date(user.updated_at).toLocaleString('th-TH') : 
+                  '-'
+                }
+              </span>
+            </Table.Cell>
+            <Table.Cell className="py-1 px-2">
+              <span className="text-xs font-thai">{user.remarks || '-'}</span>
+            </Table.Cell>
+            <Table.Cell className="py-1 px-2">
               <div className="flex space-x-1">
                 <Button 
                   variant="ghost" 
@@ -297,14 +328,14 @@ const UsersPage = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-thai-gray-25 to-white">
-      <div className="space-y-3">
+    <div className="h-screen bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
+      <div className="h-full flex flex-col space-y-2 pt-0 px-2 pb-2">
         {/* Modern Page Header */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-6 shadow-sm">
+        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-0 shadow-sm flex-shrink-0">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-thai-gray-900 font-thai">ข้อมูลผู้ใช้งาน</h1>
-              <p className="text-thai-gray-600 font-thai mt-1">จัดการข้อมูลผู้ใช้งานและสิทธิ์การเข้าถึง</p>
+              <h1 className="text-xl font-bold text-thai-gray-900 font-thai m-0 p-0 leading-tight">ข้อมูลผู้ใช้งาน</h1>
+              <p className="text-sm text-thai-gray-600 font-thai mt-0">จัดการข้อมูลผู้ใช้งานและสิทธิ์การเข้าถึง</p>
             </div>
             <div className="flex gap-2">
               <Button 
@@ -329,7 +360,7 @@ const UsersPage = () => {
 
         {/* Error Message */}
         {error && (
-          <div className="bg-red-50/80 backdrop-blur-sm border border-red-200/50 rounded-2xl p-4 shadow-sm">
+          <div className="bg-red-50/80 backdrop-blur-sm border border-red-200/50 rounded-2xl p-4 shadow-sm flex-shrink-0">
             <div className="flex items-center space-x-3 text-red-600">
               <div className="flex-shrink-0">
                 <AlertCircle className="w-5 h-5" />
@@ -340,7 +371,7 @@ const UsersPage = () => {
         )}
 
         {/* Modern Search and Filters */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm">
+        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm flex-shrink-0">
           <div className="flex items-center space-x-3">
             <div className="flex-1">
               <div className="relative">
@@ -396,15 +427,11 @@ const UsersPage = () => {
         </div>
 
         {/* Users Table */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-2xl overflow-hidden shadow-sm">
-          <div className="p-6 border-b border-white/20">
-            <h2 className="text-xl font-semibold text-thai-gray-700 flex items-center font-thai">
-              <UserCheck className="w-5 h-5 mr-3 text-primary-500"/>
-              รายการผู้ใช้งาน
-            </h2>
-          </div>
-          <div className="overflow-x-auto">
-            {renderTable(users, <UsersTable data={users} />)}
+        <div className="flex-1 min-h-0">
+          <div className="w-full h-[74vh] bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col">
+            <div className="flex-1 overflow-x-auto overflow-y-auto">
+              {renderTable(users, <UsersTable data={users} />)}
+            </div>
           </div>
         </div>
       </div>

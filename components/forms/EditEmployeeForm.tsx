@@ -46,17 +46,23 @@ const EditEmployeeForm: React.FC<EditEmployeeFormProps> = ({ employee, onSuccess
   };
 
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 max-h-[70vh] overflow-y-auto px-1">
       {error && (
-        <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative" role="alert">
-            <strong className="font-bold">Error: </strong>
-            <span className="block sm:inline">{error}</span>
+        <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg flex items-start gap-2" role="alert">
+            <span className="text-red-500 font-bold">⚠</span>
+            <div>
+              <strong className="font-semibold">เกิดข้อผิดพลาด: </strong>
+              <span className="block sm:inline">{error}</span>
+            </div>
         </div>
       )}
 
       {/* Personal Information */}
-      <div className="p-4 border rounded-lg">
-        <h3 className="text-lg font-medium mb-4">ข้อมูลส่วนตัว</h3>
+      <div className="bg-gradient-to-r from-blue-50 to-white p-5 border border-blue-200 rounded-xl shadow-sm">
+        <h3 className="text-lg font-semibold mb-4 text-blue-900 font-thai flex items-center gap-2">
+          <span className="w-1 h-6 bg-blue-600 rounded"></span>
+          ข้อมูลส่วนตัว
+        </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <InputField label="รหัสพนักงาน" name="employee_code" register={register} errors={errors} placeholder="e.g., EMP001" required />
           <div>
@@ -88,8 +94,11 @@ const EditEmployeeForm: React.FC<EditEmployeeFormProps> = ({ employee, onSuccess
       </div>
 
       {/* Emergency Contact */}
-      <div className="p-4 border rounded-lg">
-        <h3 className="text-lg font-medium mb-4">ผู้ติดต่อกรณีฉุกเฉิน</h3>
+      <div className="bg-gradient-to-r from-red-50 to-white p-5 border border-red-200 rounded-xl shadow-sm">
+        <h3 className="text-lg font-semibold mb-4 text-red-900 font-thai flex items-center gap-2">
+          <span className="w-1 h-6 bg-red-600 rounded"></span>
+          ผู้ติดต่อกรณีฉุกเฉิน
+        </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <InputField label="ชื่อผู้ติดต่อ" name="emergency_contact_name" register={register} errors={errors} />
             <InputField label="เบอร์โทรผู้ติดต่อ" name="emergency_contact_phone" register={register} errors={errors} />
@@ -97,8 +106,11 @@ const EditEmployeeForm: React.FC<EditEmployeeFormProps> = ({ employee, onSuccess
       </div>
 
       {/* Employment Details */}
-      <div className="p-4 border rounded-lg">
-        <h3 className="text-lg font-medium mb-4">ข้อมูลการจ้างงาน</h3>
+      <div className="bg-gradient-to-r from-green-50 to-white p-5 border border-green-200 rounded-xl shadow-sm">
+        <h3 className="text-lg font-semibold mb-4 text-green-900 font-thai flex items-center gap-2">
+          <span className="w-1 h-6 bg-green-600 rounded"></span>
+          ข้อมูลการจ้างงาน
+        </h3>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             <InputField label="วันที่เริ่มงาน" name="hire_date" type="date" register={register} errors={errors} />
             <div>
@@ -135,8 +147,11 @@ const EditEmployeeForm: React.FC<EditEmployeeFormProps> = ({ employee, onSuccess
       </div>
 
       {/* System and Other Details */}
-      <div className="p-4 border rounded-lg">
-        <h3 className="text-lg font-medium mb-4">ข้อมูลอื่น ๆ</h3>
+      <div className="bg-gradient-to-r from-purple-50 to-white p-5 border border-purple-200 rounded-xl shadow-sm">
+        <h3 className="text-lg font-semibold mb-4 text-purple-900 font-thai flex items-center gap-2">
+          <span className="w-1 h-6 bg-purple-600 rounded"></span>
+          ข้อมูลระบบและอื่นๆ
+        </h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <InputField label="ลิงก์รูปภาพ" name="profile_photo_url" register={register} errors={errors} />
             <InputField label="รหัสอุปกรณ์ RF" name="rf_device_id" register={register} errors={errors} />
@@ -146,9 +161,13 @@ const EditEmployeeForm: React.FC<EditEmployeeFormProps> = ({ employee, onSuccess
         </div>
       </div>
 
-      <div className="flex justify-end space-x-2">
-        <Button type="button" variant="outline" onClick={onCancel} icon={X}>ยกเลิก</Button>
-        <Button type="submit" variant="primary" loading={loading} icon={Save}>{loading ? 'กำลังบันทึก...' : 'บันทึก'}</Button>
+      <div className="sticky bottom-0 bg-white border-t border-gray-200 pt-4 flex justify-end space-x-3 -mx-1 px-1">
+        <Button type="button" variant="outline" onClick={onCancel} icon={X} className="min-w-[100px]">
+          ยกเลิก
+        </Button>
+        <Button type="submit" variant="primary" loading={loading} icon={Save} className="min-w-[120px]">
+          {loading ? 'กำลังบันทึก...' : 'บันทึกข้อมูล'}
+        </Button>
       </div>
     </form>
   );
@@ -167,9 +186,11 @@ interface InputFieldProps {
 
 const InputField: React.FC<InputFieldProps> = ({ label, name, register, errors, required = false, type = 'text', placeholder = '', isTextArea = false }) => {
     const Component = isTextArea ? 'textarea' : 'input';
+    const hasError = !!errors[name];
+    
     return (
         <div>
-            <label htmlFor={name} className="block text-sm font-medium text-gray-700">
+            <label htmlFor={name} className="block text-sm font-medium text-gray-700 mb-1 font-thai">
                 {label} {required && <span className="text-red-500">*</span>}
             </label>
             <Component
@@ -177,10 +198,23 @@ const InputField: React.FC<InputFieldProps> = ({ label, name, register, errors, 
                 id={name}
                 type={type}
                 placeholder={placeholder}
-                className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                className={`
+                  mt-1 block w-full rounded-lg border shadow-sm font-thai
+                  ${hasError 
+                    ? 'border-red-300 focus:border-red-500 focus:ring-red-500' 
+                    : 'border-gray-300 focus:border-blue-500 focus:ring-blue-500'
+                  }
+                  focus:ring-2 focus:ring-opacity-50 transition-colors
+                  text-sm px-3 py-2
+                `}
                 rows={isTextArea ? 3 : undefined}
             />
-            {errors[name] && <p className="mt-2 text-sm text-red-600">{(errors[name].message as string) || ''}</p>}
+            {hasError && (
+              <p className="mt-1 text-xs text-red-600 flex items-center gap-1">
+                <span>⚠</span>
+                {(errors[name]?.message as string) || 'ข้อมูลไม่ถูกต้อง'}
+              </p>
+            )}
         </div>
     );
 };

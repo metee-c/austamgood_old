@@ -1,11 +1,10 @@
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
 import { NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
 import { UserManagementService } from '@/lib/database/user-management';
 import { CreateUserSchema, UserFiltersSchema } from '@/types/user-management-schema';
 
 export async function GET(request: Request) {
-  const supabase = createRouteHandlerClient({ cookies });
+  const supabase = await createClient();
   const userService = new UserManagementService(supabase);
 
   const { searchParams } = new URL(request.url);
@@ -30,7 +29,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const supabase = createRouteHandlerClient({ cookies });
+  const supabase = await createClient();
   const userService = new UserManagementService(supabase);
 
   try {

@@ -17,7 +17,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const supabase = createClient();
+    const supabase = await createClient();
 
     // 1. ค้นหาข้อมูลสินค้าจาก pallet_id ใน inventory_balances
     const { data: balances, error: balanceError } = await supabase

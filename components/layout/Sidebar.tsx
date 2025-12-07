@@ -109,6 +109,12 @@ const menuItems = [
         icon: BarChart2,
         label: 'คงเหลือตามโลเคชั่น',
         englishLabel: 'Inventory Balances'
+      },
+      {
+        path: '/warehouse/preparation-area-inventory',
+        icon: PackageSearch,
+        label: 'สินค้าบ้านหยิบ',
+        englishLabel: 'Preparation Area Inventory'
       }
     ]
   },

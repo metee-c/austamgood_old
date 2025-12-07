@@ -12,6 +12,7 @@ import {
   ChevronDown
 } from 'lucide-react';
 import Breadcrumb from '@/components/ui/Breadcrumb';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -20,6 +21,11 @@ interface HeaderProps {
 
 const Header: React.FC<HeaderProps> = ({ onMenuClick, showMenuButton }) => {
   const pathname = usePathname();
+  const { user, logout } = useAuthContext();
+
+  const handleLogout = async () => {
+    await logout();
+  };
 
   return (
     <header className="w-full h-16">
@@ -60,14 +66,20 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick, showMenuButton }) => {
           <div className="relative group">
             <button className="flex items-center space-x-3 p-2 rounded-lg hover:bg-thai-gray-100 transition-colors">
               <div className="w-8 h-8 bg-primary-500 rounded-full flex items-center justify-center">
-                <User className="w-4 h-4 text-white" />
+                {user?.full_name ? (
+                  <span className="text-white text-sm font-semibold">
+                    {user.full_name.charAt(0).toUpperCase()}
+                  </span>
+                ) : (
+                  <User className="w-4 h-4 text-white" />
+                )}
               </div>
               <div className="hidden md:block text-left">
                 <p className="text-sm font-medium text-thai-gray-700 font-thai">
-                  ผู้ดูแลระบบ
+                  {user?.full_name || 'ผู้ใช้งาน'}
                 </p>
                 <p className="text-xs text-thai-gray-500 font-thai">
-                  admin@austamgood.com
+                  {user?.email || ''}
                 </p>
               </div>
               <ChevronDown className="w-4 h-4 text-thai-gray-500" />
@@ -80,37 +92,37 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick, showMenuButton }) => {
               transition-all duration-200 z-50
             ">
               <div className="py-2">
-                <a
-                  href="#"
+                <button
+                  onClick={() => window.location.href = '/profile'}
                   className="
-                    flex items-center space-x-3 px-4 py-2 text-sm text-thai-gray-700 
-                    hover:bg-thai-gray-50 font-thai
+                    w-full flex items-center space-x-3 px-4 py-2 text-sm text-thai-gray-700 
+                    hover:bg-thai-gray-50 font-thai text-left
                   "
                 >
                   <User className="w-4 h-4" />
                   <span>โปรไฟล์</span>
-                </a>
-                <a
-                  href="#"
+                </button>
+                <button
+                  onClick={() => window.location.href = '/settings'}
                   className="
-                    flex items-center space-x-3 px-4 py-2 text-sm text-thai-gray-700 
-                    hover:bg-thai-gray-50 font-thai
+                    w-full flex items-center space-x-3 px-4 py-2 text-sm text-thai-gray-700 
+                    hover:bg-thai-gray-50 font-thai text-left
                   "
                 >
                   <Settings className="w-4 h-4" />
                   <span>ตั้งค่า</span>
-                </a>
+                </button>
                 <hr className="my-1 border-thai-gray-200" />
-                <a
-                  href="#"
+                <button
+                  onClick={handleLogout}
                   className="
-                    flex items-center space-x-3 px-4 py-2 text-sm text-red-600 
-                    hover:bg-red-50 font-thai
+                    w-full flex items-center space-x-3 px-4 py-2 text-sm text-red-600 
+                    hover:bg-red-50 font-thai text-left
                   "
                 >
                   <LogOut className="w-4 h-4" />
                   <span>ออกจากระบบ</span>
-                </a>
+                </button>
               </div>
             </div>
           </div>

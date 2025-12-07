@@ -41,7 +41,7 @@ export async function GET(
       supabase.from('receiving_route_stops').select('stop_id, sequence_no, stop_name, address').in('stop_id', stopIds),
       supabase.from('master_sku').select('sku_id, sku_name, uom_base, default_location').in('sku_id', skuIds),
       locationIds.length > 0
-        ? supabase.from('master_location').select('location_id, location_name').in('location_id', locationIds)
+        ? supabase.from('master_location').select('location_id').in('location_id', locationIds)
         : { data: [], error: null },
       supabase.from('wms_order_items').select('order_item_id, order_id').in('order_item_id', orderItemIds)
     ]);
@@ -84,15 +84,14 @@ export async function GET(
       if (!groupedItems.has(groupKey)) {
         console.log(`Creating new group: ${groupKey}`);
         
-        // Determine source location display value
+        // Determine source location display value - use location_id
         let sourceLocationDisplay = '-';
-        if (location?.location_name) {
-          // If there's a specific location assigned, use it
-          sourceLocationDisplay = location.location_name;
+        if (location?.location_id) {
+          // If there's a specific location assigned, use location_id
+          sourceLocationDisplay = location.location_id;
         } else if (sku?.default_location) {
-          // Otherwise, use the default location from SKU (preparation area)
-          const preparationArea = preparationAreaMap.get(sku.default_location);
-          sourceLocationDisplay = preparationArea?.area_name || sku.default_location;
+          // Otherwise, use the default location from SKU (preparation area ID)
+          sourceLocationDisplay = sku.default_location;
         }
         
         groupedItems.set(groupKey, {

@@ -77,7 +77,12 @@
       "Bash(timeout 10 bash -c \"curl -s ''http://localhost:3000/api/orders/with-items?order_type=express'' 2>nul | python -m json.tool 2>&1 | grep -A 10 -B 2 ''IV25120055'' | head -n 20\")",
       "Bash(timeout 10 bash -c \"curl -s ''http://localhost:3000/api/orders/with-items?order_type=express'' 2>nul | python -m json.tool 2>&1 | grep -i ''plan_code\\|trip_code'' | head -n 5\")",
       "Bash(timeout 10 bash -c \"psql ''postgresql://postgres.iwlkslewdgenckuejbit:Austam@567890@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres'' -c \"\"SELECT area_code, zone, warehouse_id FROM preparation_area WHERE area_code IN (''PK001'', ''A09-01-001'', ''A09-01-002'', ''A10-01-001'', ''A11-01-001'') ORDER BY area_code;\"\" 2&gt;nul\")",
-      "Bash(timeout 10 bash:*)"
+      "Bash(timeout 10 bash:*)",
+      "Bash(del appadminlayout.tsx appprofilelayout.tsx)",
+      "Bash(if exist \"app\\admin\\layout.tsx\" del \"app\\admin\\layout.tsx\")",
+      "Bash(if exist \"app\\profile\\layout.tsx\" del \"app\\profile\\layout.tsx\")",
+      "Bash(timeout 15 bash -c \"psql ''postgresql://postgres.iwlkslewdgenckuejbit:Austam@567890@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres'' -c \"\"SELECT email, role_id, is_active, created_at FROM system_users ORDER BY created_at DESC LIMIT 10;\"\" 2>nul\")",
+      "Bash(node scripts/generate-password-hash.js:*)"
     ],
     "deny": [],
     "ask": []

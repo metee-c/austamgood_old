@@ -27,6 +27,7 @@
     "@types/mapbox__polyline": "^1.0.5",
     "@types/mapbox-gl": "^3.4.1",
     "@types/xlsx": "^0.0.35",
+    "bcrypt": "^6.0.0",
     "bcryptjs": "^3.0.2",
     "csv-parse": "^6.1.0",
     "date-fns": "^2.30.0",

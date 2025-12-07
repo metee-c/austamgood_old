@@ -361,9 +361,9 @@ const PicklistDetailPage = ({ params }: { params: Promise<{ id: string }> }) => 
                     <th style="width: 12%;">เลขที่ IV</th>
                     <th>ชื่อสินค้า</th>
                     <th style="width: 6%;">จำนวน</th>
-                    <th style="width: 9%;">สถานที่หยิบ</th>
-                    <th style="width: 11%;">หมายเหตุ</th>
-                    <th style="width: 11%;">จัดสินค้า</th>
+                    <th style="width: 12%;">สถานที่หยิบ</th>
+                    <th style="width: 10%;">หมายเหตุ</th>
+                    <th style="width: 10%;">จัดสินค้า</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -660,7 +660,7 @@ const PicklistDetailPage = ({ params }: { params: Promise<{ id: string }> }) => 
                       <th className="px-2 py-1.5 text-left font-semibold text-blue-900 border-b border-blue-100 font-thai" style={{ width: '40px' }}>#</th>
                       <th className="px-2 py-1.5 text-left font-semibold text-blue-900 border-b border-blue-100 font-thai" style={{ width: '140px' }}>รหัสสินค้า</th>
                       <th className="px-2 py-1.5 text-left font-semibold text-blue-900 border-b border-blue-100 font-thai">ชื่อสินค้า</th>
-                      <th className="px-2 py-1.5 text-center font-semibold text-blue-900 border-b border-blue-100 font-thai" style={{ width: '80px' }}>ตำแหน่ง</th>
+                      <th className="px-2 py-1.5 text-center font-semibold text-blue-900 border-b border-blue-100 font-thai" style={{ width: '120px' }}>ตำแหน่ง</th>
                       <th className="px-2 py-1.5 text-center font-semibold text-blue-900 border-b border-blue-100 font-thai" style={{ width: '60px' }}>จำนวน</th>
                       <th className="px-2 py-1.5 text-center font-semibold text-blue-900 border-b border-blue-100 font-thai" style={{ width: '50px' }}>หน่วย</th>
                       <th className="px-2 py-1.5 text-left font-semibold text-blue-900 border-b border-blue-100 font-thai" style={{ width: '110px' }}>เลขที่ออเดอร์</th>

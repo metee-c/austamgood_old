@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter, Sarabun, Noto_Sans_Thai } from 'next/font/google';
 import './globals.css';
+import { AuthProvider } from '@/contexts/AuthContext';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -54,7 +55,9 @@ export default function RootLayout({
       suppressHydrationWarning
     >
       <body className={'h-full bg-white antialiased font-sans'}>
-        {children}
+        <AuthProvider>
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );

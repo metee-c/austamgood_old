@@ -63,11 +63,28 @@ const InventoryBalancesPage = () => {
 
   // Expanded rows state
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [preparationAreaCodes, setPreparationAreaCodes] = useState<string[]>([]);
 
   useEffect(() => {
     fetchWarehouses();
+    fetchPreparationAreas();
     fetchBalanceData();
   }, []);
+
+  const fetchPreparationAreas = async () => {
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('preparation_area')
+        .select('area_code')
+        .eq('status', 'active');
+
+      if (error) throw error;
+      setPreparationAreaCodes(data?.map(item => item.area_code) || []);
+    } catch (err) {
+      console.error('Error fetching preparation areas:', err);
+    }
+  };
 
   const fetchWarehouses = async () => {
     try {
@@ -189,7 +206,10 @@ const InventoryBalancesPage = () => {
 
     const matchesZeroBalance = showZeroBalance || item.total_piece_qty > 0; // ถ้า showZeroBalance = true แสดงทุกอัน, ถ้า false กรองเฉพาะที่มากกว่า 0
 
-    return matchesSearch && matchesWarehouse && matchesLowStock && matchesExpiring && matchesZeroBalance && !isTemporaryZeroBalance;
+    // กรองโลเคชั่นบ้านหยิบออก (ตรวจสอบจาก preparation_area)
+    const isPreparationArea = item.location_id ? preparationAreaCodes.includes(item.location_id) : false;
+
+    return matchesSearch && matchesWarehouse && matchesLowStock && matchesExpiring && matchesZeroBalance && !isTemporaryZeroBalance && !isPreparationArea;
   });
 
   // จัดกลุ่มตาม location (warehouse_id + location_id) เท่านั้น
@@ -351,6 +371,7 @@ const InventoryBalancesPage = () => {
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชื่อสินค้า</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสพาเลท</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">คลัง</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">Location ID</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ตำแหน่ง</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">Lot No</th>
                       <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">แพ็ครวม</th>
@@ -413,8 +434,11 @@ const InventoryBalancesPage = () => {
                                 <span className="font-medium text-thai-gray-700 font-thai">{balance.warehouse_id}</span>
                               </td>
                               <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                <span className="font-mono text-thai-gray-600 text-[10px]">{balance.location_id || '-'}</span>
+                              </td>
+                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                                 <span className="font-mono text-thai-gray-700">
-                                  {(balance as any).master_location?.location_name || balance.location_id || '-'}
+                                  {(balance as any).master_location?.location_name || '-'}
                                 </span>
                               </td>
                               <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
@@ -520,8 +544,11 @@ const InventoryBalancesPage = () => {
                                   <span className="text-thai-gray-600 font-thai text-[10px]">{item.warehouse_id}</span>
                                 </td>
                                 <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                                  <span className="font-mono text-thai-gray-600 text-[10px]">{item.location_id || '-'}</span>
+                                </td>
+                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                                   <span className="font-mono text-thai-gray-600 text-[10px]">
-                                    {(item as any).master_location?.location_name || item.location_id || '-'}
+                                    {(item as any).master_location?.location_name || '-'}
                                   </span>
                                 </td>
                                 <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
@@ -642,8 +669,11 @@ const InventoryBalancesPage = () => {
                             <span className="font-medium text-thai-gray-700 font-thai">{balance.warehouse_id}</span>
                           </td>
                           <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                            <span className="font-mono text-thai-gray-700">{balance.location_id || '-'}</span>
+                          </td>
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                             <span className="font-mono text-thai-gray-700">
-                              {(balance as any).master_location?.location_name || balance.location_id || '-'}
+                              {(balance as any).master_location?.location_name || '-'}
                             </span>
                           </td>
                           <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">

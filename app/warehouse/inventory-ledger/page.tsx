@@ -389,11 +389,11 @@ const InventoryLedgerPage = () => {
                         <td className="px-2 py-0.5 text-center border-r border-gray-100 min-w-[120px] align-top">
                           {ledger._isConsolidated ? (
                             <span className="font-mono text-thai-gray-700 text-xs">
-                              {(ledger._outEntry as any).master_location?.location_name || ledger._outEntry.location_id || '-'}
+                              {ledger._outEntry.location_id || '-'}
                             </span>
                           ) : ledger.direction === 'out' ? (
                             <span className="font-mono text-thai-gray-700 text-xs">
-                              {(ledger as any).master_location?.location_name || ledger.location_id || '-'}
+                              {ledger.location_id || '-'}
                             </span>
                           ) : (
                             <span className="text-gray-400">-</span>
@@ -402,11 +402,11 @@ const InventoryLedgerPage = () => {
                         <td className="px-2 py-0.5 text-center border-r border-gray-100 min-w-[120px] align-top">
                           {ledger._isConsolidated ? (
                             <span className="font-mono text-thai-gray-700 text-xs">
-                              {(ledger._inEntry as any).master_location?.location_name || ledger._inEntry.location_id || '-'}
+                              {ledger._inEntry.location_id || '-'}
                             </span>
                           ) : ledger.direction === 'in' ? (
                             <span className="font-mono text-thai-gray-700 text-xs">
-                              {(ledger as any).master_location?.location_name || ledger.location_id || '-'}
+                              {ledger.location_id || '-'}
                             </span>
                           ) : (
                             <span className="text-gray-400">-</span>

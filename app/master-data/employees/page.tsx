@@ -15,7 +15,8 @@ import {
   Phone,
   Mail,
   Briefcase,
-  Building
+  Building,
+  Loader2
 } from 'lucide-react';
 import Table from '@/components/ui/Table';
 import Button from '@/components/ui/Button';
@@ -167,48 +168,23 @@ const EmployeesPage = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-thai-gray-25 to-white">
-      <div className="space-y-3">
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-0 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-thai-gray-900 font-thai">ข้อมูลพนักงาน</h1>
-              <p className="text-thai-gray-600 font-thai mt-1">จัดการข้อมูลพนักงานในระบบ</p>
-            </div>
-            <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                icon={Upload} 
-                onClick={() => setIsImportModalOpen(true)} 
-                className="bg-white/50 hover:bg-white/80 border-white/30 backdrop-blur-sm shadow-sm"
-              >
-                นำเข้าข้อมูล
-              </Button>
-              <Button 
-                variant="primary" 
-                icon={Plus} 
-                onClick={() => setIsAddModalOpen(true)} 
-                className="bg-blue-500 hover:bg-blue-600 shadow-lg"
-              >
-                เพิ่มพนักงาน
-              </Button>
-            </div>
+    <div className="h-screen bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
+      <div className="h-full flex flex-col space-y-2 pt-0 px-2 pb-2">
+        {/* Page Header */}
+        <div className="flex items-center justify-between gap-2 pt-1 flex-shrink-0">
+          <h1 className="text-xl font-bold text-thai-gray-900 font-thai m-0 p-0 leading-tight">ข้อมูลพนักงาน</h1>
+          <div className="flex gap-2">
+            <Button variant="outline" icon={Upload} onClick={() => setIsImportModalOpen(true)}>
+              นำเข้าข้อมูล
+            </Button>
+            <Button variant="primary" icon={Plus} onClick={() => setIsAddModalOpen(true)}>
+              เพิ่มพนักงาน
+            </Button>
           </div>
         </div>
 
-        {error && (
-          <div className="bg-red-50/80 backdrop-blur-sm border border-red-200/50 rounded-2xl p-4 shadow-sm">
-            <div className="flex items-center space-x-3 text-red-600">
-              <div className="flex-shrink-0">
-                <AlertCircle className="w-5 h-5" />
-              </div>
-              <span className="font-thai text-sm">เกิดข้อผิดพลาด: {error}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Modern Search and Filters */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm">
+        {/* Filters */}
+        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm flex-shrink-0">
           <div className="flex items-center space-x-3">
             <div className="flex-1">
               <div className="relative">
@@ -282,127 +258,158 @@ const EmployeesPage = () => {
           </div>
         </div>
 
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-2xl overflow-hidden shadow-sm">
-          {loading ? (
-            <div className="text-center py-12">
-              <div className="loading-spinner w-10 h-10 mx-auto mb-4"></div>
-              <p className="text-thai-gray-500 font-thai text-lg">กำลังโหลดข้อมูล...</p>
-            </div>
-          ) : (
-            <>
-              <div className="overflow-x-auto">
-                <Table>
-                  <Table.Header>
-                    <Table.Row>
-                      {columns.map((col) => (
-                        <SortableHeader key={col.accessor} field={col.accessor} className={col.className} sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>
-                          {col.header}
-                        </SortableHeader>
-                      ))}
-                      <Table.Head className="w-28">การดำเนินการ</Table.Head>
-                    </Table.Row>
-                  </Table.Header>
-                  <Table.Body>
-                    {sortedEmployees.map((employee) => (
-                      <Table.Row key={employee.employee_id?.toString()} className="hover:bg-thai-gray-25">
-                        <Table.Cell>
-                          <div className="font-mono text-sm font-medium text-primary-600">
-                            {employee.employee_code}
-                          </div>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <div className="font-medium font-thai text-sm">
-                            {employee.prefix}{employee.first_name} {employee.last_name}
-                          </div>
-                          <div className="text-xs text-thai-gray-500">
-                            {employee.nickname}
-                          </div>
-                        </Table.Cell>
-                        <Table.Cell>
-                           <div className="flex items-center">
-                             <Briefcase className="w-4 h-4 mr-2 text-thai-gray-400" />
-                             <span className="text-sm font-thai">{employee.position || '-'}</span>
-                           </div>
-                        </Table.Cell>
-                        <Table.Cell>
-                           <div className="flex items-center">
-                            <Building className="w-4 h-4 mr-2 text-thai-gray-400" />
-                             <span className="text-sm font-thai">{employee.department || '-'}</span>
-                           </div>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <div className="flex items-center">
-                            <Phone className="w-4 h-4 mr-2 text-thai-gray-400" />
-                            <span className="text-sm">{employee.phone_number || '-'}</span>
-                          </div>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <div className="flex items-center">
-                            <Mail className="w-4 h-4 mr-2 text-thai-gray-400" />
-                            <span className="text-sm">{employee.email || '-'}</span>
-                          </div>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <Badge variant={
-                            employee.employment_type === 'permanent' ? 'success' : 
-                            employee.employment_type === 'contract' ? 'warning' : 'default'
-                          }>
-                            {employee.employment_type === 'permanent' ? 'พนักงานประจำ' :
-                             employee.employment_type === 'contract' ? 'สัญญาจ้าง' :
-                             employee.employment_type === 'temporary' ? 'ชั่วคราว' : 
-                             employee.employment_type}
-                          </Badge>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <Badge variant={
-                            employee.wms_role === 'supervisor' ? 'danger' :
-                            employee.wms_role === 'operator' ? 'warning' :
-                            employee.wms_role === 'picker' ? 'info' :
-                            employee.wms_role === 'driver' ? 'success' : 'default'
-                          }>
-                            {employee.wms_role === 'supervisor' ? 'หัวหน้า' :
-                             employee.wms_role === 'operator' ? 'ผู้ปฏิบัติงาน' :
-                             employee.wms_role === 'picker' ? 'คัดแยกสินค้า' :
-                             employee.wms_role === 'driver' ? 'คนขับ' :
-                             employee.wms_role === 'forklift' ? 'รถยก' :
-                             employee.wms_role || '-'}
-                          </Badge>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <div className="flex space-x-1">
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              icon={Edit} 
-                              title="แก้ไข" 
-                              onClick={() => handleEdit(employee)}
-                              className="hover:bg-blue-50/50 hover:text-blue-600"
-                            />
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              icon={Trash2} 
-                              title="ลบ" 
-                              onClick={() => handleDelete(employee)}
-                              className="hover:bg-red-50/50 hover:text-red-600"
-                            />
-                          </div>
-                        </Table.Cell>
-                      </Table.Row>
-                    ))}
-                  </Table.Body>
-                </Table>
+        {/* Data Table */}
+        <div className="flex-1 min-h-0">
+          <div className="w-full h-[74vh] bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col">
+            {loading ? (
+              <div className="h-full flex flex-col items-center justify-center text-thai-gray-500 gap-2">
+                <Loader2 className="w-6 h-6 animate-spin" />
+                <p className="text-sm font-thai">กำลังโหลดข้อมูล...</p>
               </div>
-              {!loading && sortedEmployees.length === 0 && (
-                <div className="text-center py-8">
-                  <Users className="w-12 h-12 text-thai-gray-400 mx-auto mb-4" />
-                  <p className="text-thai-gray-500 font-thai">
-                    {error ? 'เกิดข้อผิดพลาดในการโหลดข้อมูล' : 'ไม่พบข้อมูลพนักงาน'}
-                  </p>
+            ) : error ? (
+              <div className="h-full flex flex-col items-center justify-center text-red-500 gap-2">
+                <AlertCircle className="w-6 h-6" />
+                <p className="text-sm font-thai">{error}</p>
+              </div>
+            ) : sortedEmployees.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-thai-gray-500 gap-4">
+                <Users className="w-12 h-12" />
+                <div className="text-center">
+                  <p className="text-sm font-medium font-thai">ไม่พบข้อมูลพนักงาน</p>
+                  <p className="text-xs text-thai-gray-400 mt-1 font-thai">ลองปรับเปลี่ยนตัวกรองหรือค้นหาใหม่</p>
                 </div>
-              )}
-            </>
-          )}
+              </div>
+            ) : (
+              <div className="flex-1 overflow-x-auto overflow-y-auto" style={{ 
+                scrollbarWidth: 'thin',
+                scrollbarColor: '#cbd5e1 #f1f5f9'
+              }}>
+                <table className="min-w-full border-collapse text-sm">
+                  <thead className="sticky top-0 z-10 bg-gray-100">
+                    <tr>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '100px' }}>รหัสพนักงาน</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '60px' }}>คำนำหน้า</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '100px' }}>ชื่อ</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '100px' }}>นามสกุล</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '80px' }}>ชื่อเล่น</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '60px' }}>เพศ</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '100px' }}>วันเกิด</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '120px' }}>เลขบัตรประชาชน</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '110px' }}>เบอร์โทรศัพท์</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '200px' }}>อีเมล</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '200px' }}>ที่อยู่</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '120px' }}>ผู้ติดต่อฉุกเฉิน</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '110px' }}>เบอร์ฉุกเฉิน</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '100px' }}>วันที่เริ่มงาน</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '100px' }}>ประเภทการจ้าง</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '150px' }}>ตำแหน่ง</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '120px' }}>แผนก</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '100px' }}>บทบาท WMS</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '100px' }}>RF Device ID</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '100px' }}>Barcode ID</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '80px' }}>กะ</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '150px' }}>ใบรับรอง</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '150px' }}>หมายเหตุ</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-gray-200 whitespace-nowrap" style={{ minWidth: '80px' }}>จัดการ</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
+                    {sortedEmployees.map((employee) => (
+                      <tr key={employee.employee_id?.toString()} className="hover:bg-blue-50/30 border-b border-gray-100">
+                        <td className="px-2 py-1 border-r border-gray-100">
+                          <span className="font-mono text-primary-600 font-semibold">{employee.employee_code}</span>
+                        </td>
+                        <td className="px-2 py-1 border-r border-gray-100">
+                          <span className="font-thai">{employee.prefix || '-'}</span>
+                        </td>
+                        <td className="px-2 py-1 border-r border-gray-100">
+                          <span className="font-thai">{employee.first_name}</span>
+                        </td>
+                        <td className="px-2 py-1 border-r border-gray-100">
+                          <span className="font-thai">{employee.last_name}</span>
+                        </td>
+                        <td className="px-2 py-1 border-r border-gray-100">
+                          <span className="font-thai">{employee.nickname || '-'}</span>
+                        </td>
+                        <td className="px-2 py-1 text-center border-r border-gray-100">
+                          <span>{employee.gender === 'male' ? 'ชาย' : employee.gender === 'female' ? 'หญิง' : '-'}</span>
+                        </td>
+                        <td className="px-2 py-1 border-r border-gray-100">
+                          <span>{employee.date_of_birth ? new Date(employee.date_of_birth).toLocaleDateString('th-TH') : '-'}</span>
+                        </td>
+                        <td className="px-2 py-1 border-r border-gray-100">
+                          <span className="font-mono">{employee.national_id || '-'}</span>
+                        </td>
+                        <td className="px-2 py-1 border-r border-gray-100">
+                          <span>{employee.phone_number || '-'}</span>
+                        </td>
+                        <td className="px-2 py-1 border-r border-gray-100">
+                          <span className="text-[10px]">{employee.email || '-'}</span>
+                        </td>
+                        <td className="px-2 py-1 border-r border-gray-100">
+                          <span className="text-[10px] font-thai">{employee.address || '-'}</span>
+                        </td>
+                        <td className="px-2 py-1 border-r border-gray-100">
+                          <span className="font-thai">{employee.emergency_contact_name || '-'}</span>
+                        </td>
+                        <td className="px-2 py-1 border-r border-gray-100">
+                          <span>{employee.emergency_contact_phone || '-'}</span>
+                        </td>
+                        <td className="px-2 py-1 border-r border-gray-100">
+                          <span>{employee.hire_date ? new Date(employee.hire_date).toLocaleDateString('th-TH') : '-'}</span>
+                        </td>
+                        <td className="px-2 py-1 text-center border-r border-gray-100">
+                          <Badge variant={employee.employment_type === 'permanent' ? 'success' : employee.employment_type === 'contract' ? 'warning' : 'default'} size="sm">
+                            <span className="text-[10px]">
+                              {employee.employment_type === 'permanent' ? 'ประจำ' : employee.employment_type === 'contract' ? 'สัญญา' : employee.employment_type === 'part-time' ? 'พาร์ทไทม์' : employee.employment_type}
+                            </span>
+                          </Badge>
+                        </td>
+                        <td className="px-2 py-1 border-r border-gray-100">
+                          <span className="font-thai">{employee.position || '-'}</span>
+                        </td>
+                        <td className="px-2 py-1 border-r border-gray-100">
+                          <span className="font-thai">{employee.department || '-'}</span>
+                        </td>
+                        <td className="px-2 py-1 text-center border-r border-gray-100">
+                          <Badge variant={employee.wms_role === 'supervisor' ? 'danger' : employee.wms_role === 'operator' ? 'warning' : employee.wms_role === 'picker' ? 'info' : employee.wms_role === 'driver' ? 'success' : 'default'} size="sm">
+                            <span className="text-[10px]">
+                              {employee.wms_role === 'supervisor' ? 'หัวหน้า' : employee.wms_role === 'operator' ? 'ปฏิบัติงาน' : employee.wms_role === 'picker' ? 'คัดแยก' : employee.wms_role === 'driver' ? 'คนขับ' : employee.wms_role === 'forklift' ? 'รถยก' : employee.wms_role || '-'}
+                            </span>
+                          </Badge>
+                        </td>
+                        <td className="px-2 py-1 border-r border-gray-100">
+                          <span className="font-mono">{employee.rf_device_id || '-'}</span>
+                        </td>
+                        <td className="px-2 py-1 border-r border-gray-100">
+                          <span className="font-mono">{employee.barcode_id || '-'}</span>
+                        </td>
+                        <td className="px-2 py-1 text-center border-r border-gray-100">
+                          <span>{employee.shift_type === 'day' ? 'กลางวัน' : employee.shift_type === 'night' ? 'กลางคืน' : employee.shift_type === 'rotating' ? 'หมุนเวียน' : '-'}</span>
+                        </td>
+                        <td className="px-2 py-1 border-r border-gray-100">
+                          <span className="text-[10px] font-thai">{employee.training_certifications || '-'}</span>
+                        </td>
+                        <td className="px-2 py-1 border-r border-gray-100">
+                          <span className="text-[10px] font-thai">{employee.remarks || '-'}</span>
+                        </td>
+                        <td className="px-2 py-1 text-center border-gray-100">
+                          <div className="flex justify-center gap-1">
+                            <button onClick={() => handleEdit(employee)} className="p-1 hover:bg-blue-100 rounded" title="แก้ไข">
+                              <Edit className="w-3 h-3 text-blue-600" />
+                            </button>
+                            <button onClick={() => handleDelete(employee)} className="p-1 hover:bg-red-100 rounded" title="ลบ">
+                              <Trash2 className="w-3 h-3 text-red-600" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
 
         <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="เพิ่มพนักงานใหม่" size="2xl">
