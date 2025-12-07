@@ -443,9 +443,16 @@ const LoadlistsPage = () => {
   };
 
   const handlePrintLoadlist = async (loadlist: Loadlist) => {
-    // Check if this loadlist has face sheets or bonus face sheets
+    // Check if this loadlist has any items
+    const hasPicklists = loadlist.picklists && loadlist.picklists.length > 0;
     const hasFaceSheets = (loadlist as any).face_sheets && (loadlist as any).face_sheets.length > 0;
     const hasBonusFaceSheets = (loadlist as any).bonus_face_sheets && (loadlist as any).bonus_face_sheets.length > 0;
+    
+    // Check if loadlist is empty
+    if (!hasPicklists && !hasFaceSheets && !hasBonusFaceSheets) {
+      alert('ใบโหลดนี้ไม่มีรายการสินค้า ไม่สามารถพิมพ์ได้');
+      return;
+    }
     
     if (hasFaceSheets) {
       // Open delivery document for face sheets
@@ -471,6 +478,12 @@ const LoadlistsPage = () => {
     console.log('Printing loadlist:', loadlist);
     console.log('Loading door:', loadlist.loading_door_number);
     console.log('Loading queue:', loadlist.loading_queue_number);
+    console.log('Picklists:', loadlist.picklists);
+    console.log('Orders in picklists:', loadlist.picklists?.map(p => ({ 
+      picklist_code: p.picklist_code, 
+      orders_count: p.orders?.length || 0,
+      orders: p.orders 
+    })));
     setPrintLoadlist(loadlist);
     setIsPrintModalOpen(true);
 

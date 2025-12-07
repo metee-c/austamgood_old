@@ -29,6 +29,19 @@ interface Loadlist {
   loadlist_code: string;
   status: string;
   total_weight: number;
+  checker_employee_id?: number;
+  checker_employee?: {
+    employee_id: number;
+    first_name: string;
+    last_name: string;
+    employee_code: string;
+  };
+  picker_employee?: {
+    employee_id: number;
+    first_name: string;
+    last_name: string;
+    employee_code: string;
+  };
   vehicle?: {
     plate_number: string;
   };
@@ -88,7 +101,7 @@ export default function MobileLoadingDetailPage() {
       return;
     }
 
-    const checkerId = checkerIds[0];
+    const checkerId = parseInt(checkerIds[0]);
     setShowEmployeeModal(false);
 
     // Find employee details
@@ -109,12 +122,21 @@ export default function MobileLoadingDetailPage() {
       setConfirming(true);
       setErrorMessage('');
 
+      // Update checker if changed
+      if (loadlist?.checker_employee_id && checkerId !== loadlist.checker_employee_id) {
+        await fetch(`/api/loadlists/${loadlist.loadlist_code}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ checker_employee_id: checkerId })
+        });
+      }
+
       const apiResponse = await fetch('/api/mobile/loading/complete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           loadlist_code: loadlist.loadlist_code,
-          checker_employee_id: parseInt(checkerId)
+          checker_employee_id: checkerId
         })
       });
 
@@ -313,12 +335,18 @@ export default function MobileLoadingDetailPage() {
       )}
 
       {/* Employee Selection Modal */}
-      <EmployeeSelectionModal
-        isOpen={showEmployeeModal}
-        onClose={() => setShowEmployeeModal(false)}
-        onConfirm={handleEmployeeConfirm}
-        title="เลือกผู้เช็คสินค้า"
-      />
+      {showEmployeeModal && (
+        <EmployeeSelectionModal
+          isOpen={showEmployeeModal}
+          onClose={() => setShowEmployeeModal(false)}
+          onConfirm={handleEmployeeConfirm}
+          title="ยืนยันการโหลดสินค้า"
+          mode="checker-only"
+          defaultCheckerId={loadlist?.checker_employee_id}
+          checkerEmployee={loadlist?.checker_employee}
+          pickerEmployee={loadlist?.picker_employee}
+        />
+      )}
     </div>
   );
 }

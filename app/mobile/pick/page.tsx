@@ -81,6 +81,12 @@ export default function MobilePickPage() {
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
   const [showFilter, setShowFilter] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // Fix hydration mismatch
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Fetch both picklists and face sheets
   useEffect(() => {
@@ -202,6 +208,11 @@ export default function MobilePickPage() {
   };
 
   const formatDate = (dateString: string) => {
+    if (typeof window === 'undefined') {
+      // Server-side: return simple format
+      return new Date(dateString).toISOString().slice(0, 16).replace('T', ' ');
+    }
+    // Client-side: return localized format
     const date = new Date(dateString);
     return date.toLocaleDateString('th-TH', {
       day: '2-digit',
@@ -211,6 +222,23 @@ export default function MobilePickPage() {
       minute: '2-digit'
     });
   };
+
+  // Prevent hydration mismatch
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-gray-50 pb-20">
+        <div className="bg-gradient-to-br from-sky-400 to-sky-500 text-white p-4">
+          <div className="flex items-center space-x-2">
+            <ClipboardList className="w-6 h-6" />
+            <h1 className="text-lg font-bold font-thai">เช็คสินค้า (Pick)</h1>
+          </div>
+        </div>
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-8 h-8 animate-spin text-sky-500" />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
@@ -248,7 +276,7 @@ export default function MobilePickPage() {
         </div>
 
         {/* Search Bar */}
-        <div className="relative">
+        <div className="relative" suppressHydrationWarning>
           <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
           <input
             type="text"
@@ -256,6 +284,7 @@ export default function MobilePickPage() {
             onChange={(e) => setSearchTerm(e.target.value)}
             placeholder="ค้นหา Picklist Code, แผนรถ..."
             className="w-full pl-9 pr-4 py-2 rounded-lg bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-sky-300 font-thai text-sm"
+            suppressHydrationWarning
           />
         </div>
 
@@ -405,7 +434,7 @@ export default function MobilePickPage() {
               </div>
 
               {/* Footer */}
-              <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500 font-thai">
+              <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500 font-thai" suppressHydrationWarning>
                 อัปเดต: {formatDate(task.updated_at)}
               </div>
             </div>

@@ -200,6 +200,15 @@ export async function GET(request: NextRequest) {
             }
           });
 
+          const orders = Array.from(ordersMap.values());
+          
+          // Debug log
+          console.log(`Picklist ${p.picklists?.picklist_code}:`, {
+            items_count: picklistItems.length,
+            orders_count: orders.length,
+            orders: orders
+          });
+
           return {
             id: p.picklist_id,
             picklist_code: p.picklists?.picklist_code,
@@ -210,7 +219,7 @@ export async function GET(request: NextRequest) {
               trip_code: p.picklists?.trip?.trip_code,
               vehicle: p.picklists?.trip?.vehicle
             },
-            orders: Array.from(ordersMap.values())
+            orders: orders
           };
         })
       };
@@ -346,8 +355,10 @@ export async function POST(request: NextRequest) {
         picklist_id: picklist_id
       }));
 
+      console.log('🔗 Linking picklists to loadlist:', { loadlist_id: loadlist.id, picklist_ids });
+
       const { error: linkError } = await supabase
-        .from('loadlist_picklists')
+        .from('wms_loadlist_picklists')
         .insert(loadlistPicklistsData);
 
       if (linkError) {

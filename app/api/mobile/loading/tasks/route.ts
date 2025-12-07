@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
         updated_at,
         vehicle_id,
         driver_employee_id,
-        loadlist_picklists (
+        wms_loadlist_picklists (
           picklist_id,
           picklists:picklist_id (
             id,
@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
 
     // Transform data with summary calculations
     const transformedData = await Promise.all(loadlists?.map(async (loadlist: any) => {
-      const picklists = loadlist.loadlist_picklists || [];
+      const picklists = loadlist.wms_loadlist_picklists || [];
       const faceSheets = loadlist.loadlist_face_sheets || [];
       const bonusFaceSheets = loadlist.wms_loadlist_bonus_face_sheets || [];
       

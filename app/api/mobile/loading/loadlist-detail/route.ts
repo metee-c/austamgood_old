@@ -14,10 +14,21 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get loadlist basic info
+    // Get loadlist basic info with checker
     const { data: loadlist, error: loadlistError } = await supabase
       .from('loadlists')
-      .select('id, loadlist_code, status')
+      .select(`
+        id, 
+        loadlist_code, 
+        status,
+        checker_employee_id,
+        checker_employee:checker_employee_id (
+          employee_id,
+          first_name,
+          last_name,
+          employee_code
+        )
+      `)
       .eq('loadlist_code', code.toUpperCase())
       .single();
 
@@ -39,13 +50,21 @@ export async function GET(request: NextRequest) {
     let totalWeight = 0;
     const ordersMap = new Map();
 
-    // Get picklists
+    // Get picklists with picker info
     const { data: picklistData } = await supabase
-      .from('loadlist_picklists')
+      .from('wms_loadlist_picklists')
       .select(`
         picklist_id,
         picklists:picklist_id (
           picklist_code,
+          assigned_to_employee_id,
+          picker_employee_ids,
+          assigned_employee:assigned_to_employee_id (
+            employee_id,
+            first_name,
+            last_name,
+            employee_code
+          ),
           picklist_items (
             order_id,
             order_no,
@@ -254,12 +273,41 @@ export async function GET(request: NextRequest) {
 
     const orders = Array.from(ordersMap.values());
 
+    // Get picker info from first picklist
+    // ใช้ picker_employee_ids ที่บันทึกตอนยืนยันหยิบสินค้าเสร็จ
+    let pickerEmployee = null;
+    if (picklistData && picklistData.length > 0) {
+      const firstPicklist = picklistData[0].picklists as any;
+      const pickerIds = firstPicklist?.picker_employee_ids;
+      
+      // ถ้ามี picker_employee_ids (บันทึกตอนยืนยันหยิบเสร็จ)
+      if (pickerIds && Array.isArray(pickerIds) && pickerIds.length > 0) {
+        const pickerId = parseInt(pickerIds[0]);
+        const { data: pickerData } = await supabase
+          .from('master_employee')
+          .select('employee_id, first_name, last_name, employee_code')
+          .eq('employee_id', pickerId)
+          .single();
+        
+        if (pickerData) {
+          pickerEmployee = pickerData;
+        }
+      }
+      // ถ้าไม่มี ให้ใช้ assigned_employee (กำหนดตอนสร้าง picklist)
+      else if (firstPicklist?.assigned_employee) {
+        pickerEmployee = firstPicklist.assigned_employee;
+      }
+    }
+
     return NextResponse.json({
       success: true,
       data: {
         loadlist_code: loadlist.loadlist_code,
         status: loadlist.status,
         total_weight: totalWeight,
+        checker_employee_id: loadlist.checker_employee_id,
+        checker_employee: (loadlist as any).checker_employee,
+        picker_employee: pickerEmployee,
         orders
       }
     });

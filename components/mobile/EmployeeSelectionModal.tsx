@@ -4,7 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { X, User, Check } from 'lucide-react';
 
 interface Employee {
-  employee_id: string;
+  employee_id: number;
   first_name: string;
   last_name: string;
   nickname?: string;
@@ -16,18 +16,43 @@ interface EmployeeSelectionModalProps {
   onClose: () => void;
   onConfirm: (checkerIds: string[], pickerIds: string[]) => void;
   title?: string;
+  mode?: 'both' | 'checker-only';
+  defaultCheckerId?: number;
+  checkerEmployee?: {
+    employee_id: number;
+    first_name: string;
+    last_name: string;
+    employee_code: string;
+  };
+  pickerEmployee?: {
+    employee_id: number;
+    first_name: string;
+    last_name: string;
+    employee_code: string;
+  };
 }
 
 export default function EmployeeSelectionModal({
   isOpen,
   onClose,
   onConfirm,
-  title = 'เลือกพนักงาน'
+  title = 'เลือกพนักงาน',
+  mode = 'both',
+  defaultCheckerId,
+  checkerEmployee,
+  pickerEmployee
 }: EmployeeSelectionModalProps) {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [checkerIds, setCheckerIds] = useState<string[]>([]);
   const [pickerIds, setPickerIds] = useState<string[]>([]);
+
+  // Set default checker when modal opens
+  useEffect(() => {
+    if (isOpen && defaultCheckerId) {
+      setCheckerIds([defaultCheckerId.toString()]);
+    }
+  }, [isOpen, defaultCheckerId]);
 
   useEffect(() => {
     if (isOpen) {
@@ -52,14 +77,22 @@ export default function EmployeeSelectionModal({
   };
 
   const handleConfirm = () => {
-    if (checkerIds.length === 0 || pickerIds.length === 0) {
-      alert('กรุณาเลือกพนักงานให้ครบถ้วน');
-      return;
+    if (mode === 'checker-only') {
+      if (checkerIds.length === 0) {
+        alert('กรุณาเลือกผู้เช็คสินค้า');
+        return;
+      }
+      onConfirm(checkerIds, []);
+      setCheckerIds([]);
+    } else {
+      if (checkerIds.length === 0 || pickerIds.length === 0) {
+        alert('กรุณาเลือกพนักงานให้ครบถ้วน');
+        return;
+      }
+      onConfirm(checkerIds, pickerIds);
+      setCheckerIds([]);
+      setPickerIds([]);
     }
-
-    onConfirm(checkerIds, pickerIds);
-    setCheckerIds([]);
-    setPickerIds([]);
   };
 
   const handleClose = () => {
@@ -68,19 +101,21 @@ export default function EmployeeSelectionModal({
     onClose();
   };
 
-  const toggleChecker = (employeeId: string) => {
+  const toggleChecker = (employeeId: number) => {
+    const idStr = employeeId.toString();
     setCheckerIds(prev => 
-      prev.includes(employeeId)
-        ? prev.filter(id => id !== employeeId)
-        : [...prev, employeeId]
+      prev.includes(idStr)
+        ? prev.filter(id => id !== idStr)
+        : [...prev, idStr]
     );
   };
 
-  const togglePicker = (employeeId: string) => {
+  const togglePicker = (employeeId: number) => {
+    const idStr = employeeId.toString();
     setPickerIds(prev => 
-      prev.includes(employeeId)
-        ? prev.filter(id => id !== employeeId)
-        : [...prev, employeeId]
+      prev.includes(idStr)
+        ? prev.filter(id => id !== idStr)
+        : [...prev, idStr]
     );
   };
 
@@ -128,7 +163,7 @@ export default function EmployeeSelectionModal({
                     >
                       <input
                         type="checkbox"
-                        checked={checkerIds.includes(emp.employee_id)}
+                        checked={checkerIds.includes(emp.employee_id.toString())}
                         onChange={() => toggleChecker(emp.employee_id)}
                         className="w-4 h-4 text-sky-500 border-gray-300 rounded focus:ring-sky-500"
                       />
@@ -143,44 +178,83 @@ export default function EmployeeSelectionModal({
                 </div>
               </div>
 
-              {/* Picker Selection */}
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2 font-thai">
-                  <User className="w-4 h-4 inline mr-1" />
-                  พนักงานจัดสินค้า ({pickerIds.length} คน)
-                </label>
-                <div className="border border-gray-300 rounded-lg max-h-48 overflow-y-auto">
-                  {employees.map((emp) => (
-                    <label
-                      key={`picker-${emp.employee_id}`}
-                      className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={pickerIds.includes(emp.employee_id)}
-                        onChange={() => togglePicker(emp.employee_id)}
-                        className="w-4 h-4 text-sky-500 border-gray-300 rounded focus:ring-sky-500"
-                      />
-                      <span className="ml-2 text-sm font-thai text-gray-900">
-                        {getEmployeeDisplay(emp)}
-                        {emp.wms_role && (
-                          <span className="text-gray-500 text-xs ml-1">({emp.wms_role})</span>
-                        )}
+              {/* Picker Info (Read-only for checker-only mode) */}
+              {mode === 'checker-only' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2 font-thai">
+                    <User className="w-4 h-4 inline mr-1" />
+                    พนักงานจัดสินค้า
+                  </label>
+                  <div className="border border-gray-300 rounded-lg bg-gray-50 px-3 py-2">
+                    {pickerEmployee ? (
+                      <>
+                        <span className="text-sm font-thai text-gray-900">
+                          {pickerEmployee.first_name} {pickerEmployee.last_name}
+                        </span>
+                        <span className="text-gray-500 text-xs ml-2">
+                          ({pickerEmployee.employee_code})
+                        </span>
+                      </>
+                    ) : (
+                      <span className="text-sm font-thai text-gray-500 italic">
+                        ยังไม่ได้กำหนดผู้จัดสินค้า
                       </span>
-                    </label>
-                  ))}
+                    )}
+                  </div>
                 </div>
-              </div>
+              )}
+
+              {/* Picker Selection (for both mode) */}
+              {mode === 'both' && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2 font-thai">
+                    <User className="w-4 h-4 inline mr-1" />
+                    พนักงานจัดสินค้า ({pickerIds.length} คน)
+                  </label>
+                  <div className="border border-gray-300 rounded-lg max-h-48 overflow-y-auto">
+                    {employees.map((emp) => (
+                      <label
+                        key={`picker-${emp.employee_id}`}
+                        className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={pickerIds.includes(emp.employee_id.toString())}
+                          onChange={() => togglePicker(emp.employee_id)}
+                          className="w-4 h-4 text-sky-500 border-gray-300 rounded focus:ring-sky-500"
+                        />
+                        <span className="ml-2 text-sm font-thai text-gray-900">
+                          {getEmployeeDisplay(emp)}
+                          {emp.wms_role && (
+                            <span className="text-gray-500 text-xs ml-1">({emp.wms_role})</span>
+                          )}
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* Summary */}
-              {checkerIds.length > 0 && pickerIds.length > 0 && (
+              {mode === 'checker-only' && checkerIds.length > 0 && (
+                <div className="bg-sky-50 border border-sky-200 rounded-lg p-3 text-sm font-thai">
+                  <p className="text-gray-700">
+                    <span className="font-medium">ผู้เช็คโหลด:</span>{' '}
+                    {checkerIds.map(id => {
+                      const emp = employees.find(e => e.employee_id.toString() === id);
+                      return emp ? getEmployeeDisplay(emp) : '';
+                    }).join(', ')}
+                  </p>
+                </div>
+              )}
+              {mode === 'both' && checkerIds.length > 0 && pickerIds.length > 0 && (
                 <div className="bg-sky-50 border border-sky-200 rounded-lg p-3 text-sm font-thai">
                   <p className="text-gray-700 mb-2">
                     <span className="font-medium">พนักงานเช็ค ({checkerIds.length}):</span>
                   </p>
                   <ul className="list-disc list-inside text-gray-600 text-xs mb-2 ml-2">
                     {checkerIds.map(id => {
-                      const emp = employees.find(e => e.employee_id === id);
+                      const emp = employees.find(e => e.employee_id.toString() === id);
                       return emp ? <li key={id}>{getEmployeeDisplay(emp)}</li> : null;
                     })}
                   </ul>
@@ -189,7 +263,7 @@ export default function EmployeeSelectionModal({
                   </p>
                   <ul className="list-disc list-inside text-gray-600 text-xs ml-2">
                     {pickerIds.map(id => {
-                      const emp = employees.find(e => e.employee_id === id);
+                      const emp = employees.find(e => e.employee_id.toString() === id);
                       return emp ? <li key={id}>{getEmployeeDisplay(emp)}</li> : null;
                     })}
                   </ul>
@@ -209,7 +283,11 @@ export default function EmployeeSelectionModal({
           </button>
           <button
             onClick={handleConfirm}
-            disabled={checkerIds.length === 0 || pickerIds.length === 0 || loading}
+            disabled={
+              loading || 
+              checkerIds.length === 0 || 
+              (mode === 'both' && pickerIds.length === 0)
+            }
             className="flex-1 px-4 py-2 bg-sky-500 text-white rounded-lg font-thai font-medium hover:bg-sky-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
           >
             <Check className="w-4 h-4 mr-1" />

@@ -36,9 +36,9 @@ export async function POST(request: NextRequest) {
         id,
         loadlist_code,
         status,
-        loadlist_picklists (
+        wms_loadlist_picklists (
           picklist_id,
-          added_at
+          loaded_at
         )
       `);
 
@@ -83,7 +83,7 @@ export async function POST(request: NextRequest) {
 
     // Get picklist IDs, face sheet IDs, and bonus face sheet IDs
     const { data: picklistLinks } = await supabase
-      .from('loadlist_picklists')
+      .from('wms_loadlist_picklists')
       .select('picklist_id')
       .eq('loadlist_id', loadlist.id);
 

@@ -51,6 +51,7 @@ export default function RootLayout({
     <html
       lang="th"
       className={`${inter.variable} ${sarabun.variable} ${notoSansThai.variable} h-full`}
+      suppressHydrationWarning
     >
       <body className={'h-full bg-white antialiased font-sans'}>
         {children}

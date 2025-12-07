@@ -371,16 +371,28 @@ export class StockImportService {
           continue;
         }
 
-        // 1. สร้าง/อัพเดท Location (ส่ง supabase client ไปด้วย)
-        const locationResult = await this.upsertLocation(record, supabase);
+        // 1. ตรวจสอบ default_location จาก master_sku ก่อน
+        const { data: skuData } = await supabase
+          .from('master_sku')
+          .select('default_location')
+          .eq('sku_id', record.sku_id)
+          .single();
+
+        // ใช้ default_location ถ้ามี, ไม่งั้นใช้จาก CSV
+        const targetLocationCode = skuData?.default_location || record.location_id;
+        
+        console.log(`SKU ${record.sku_id}: Using location ${targetLocationCode} (default: ${skuData?.default_location}, CSV: ${record.location_id})`);
+
+        // 2. สร้าง/อัพเดท Location (ส่ง supabase client ไปด้วย)
+        const locationResult = await this.upsertLocation(record, supabase, targetLocationCode);
         if (locationResult.created) {
           locationsCreated++;
-          console.log(`Created location: ${record.location_id}`);
+          console.log(`Created location: ${targetLocationCode}`);
         } else {
           locationsUpdated++;
         }
 
-        // 2. สร้าง Inventory Ledger (ส่ง supabase client และ location_id ที่ถูกต้อง)
+        // 3. สร้าง Inventory Ledger (ส่ง supabase client และ location_id ที่ถูกต้อง)
         // Trigger จะสร้าง/อัพเดท Balance อัตโนมัติ
         const ledgerId = await this.insertInventoryLedger(record, batchId, userId, supabase, locationResult.location_id);
         ledgerEntriesCreated++;
@@ -449,9 +461,9 @@ export class StockImportService {
   // Helper Methods
   // ============================================================================
 
-  private async upsertLocation(record: StockImportStaging, supabase: any): Promise<{ created: boolean; location_id: string }> {
-    // record.location_id จากไฟล์นำเข้าเป็น location_code (เช่น A01-02-008)
-    const locationCode = record.location_id!;
+  private async upsertLocation(record: StockImportStaging, supabase: any, targetLocationCode?: string): Promise<{ created: boolean; location_id: string }> {
+    // ใช้ targetLocationCode ถ้ามี, ไม่งั้นใช้จาก record.location_id
+    const locationCode = targetLocationCode || record.location_id!;
 
     // ค้นหา location จาก location_code
     const { data: existing } = await supabase

@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
 
     // Get picklists in this loadlist
     const { data: loadlistPicklists, error: picklistError } = await supabase
-      .from('loadlist_picklists')
+      .from('wms_loadlist_picklists')
       .select(`
         picklist_id,
         added_at,
