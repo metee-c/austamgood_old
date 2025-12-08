@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
+import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import MobileLayout from '@/components/layout/MobileLayout';
 import MobileButton from '@/components/mobile/MobileButton';
 import MobileBadge from '@/components/mobile/MobileBadge';
@@ -61,7 +62,7 @@ const STATUS_ICONS: Record<MoveStatus, any> = {
   'cancelled': AlertCircle
 };
 
-export default function MobileTransferListPage() {
+function MobileTransferListPage() {
   const router = useRouter();
 
   // Data fetching
@@ -1221,5 +1222,24 @@ export default function MobileTransferListPage() {
         </div>
       )}
     </MobileLayout>
+  );
+}
+
+export default function MobileTransferListPageWithPermission() {
+  return (
+    <PermissionGuard 
+      permission="mobile.transfer"
+      fallback={
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+          <div className="text-center">
+            <AlertTriangle className="h-16 w-16 text-red-500 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">ไม่มีสิทธิ์เข้าถึง</h2>
+            <p className="text-gray-600">คุณไม่มีสิทธิ์ในการย้ายและเติมสต็อก</p>
+          </div>
+        </div>
+      }
+    >
+      <MobileTransferListPage />
+    </PermissionGuard>
   );
 }

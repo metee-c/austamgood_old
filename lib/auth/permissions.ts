@@ -17,7 +17,7 @@ export interface PermissionCheckResult {
 }
 
 /**
- * Load all permissions for a user
+ * Load all permissions for a user based on their role_id
  */
 export async function loadUserPermissions(userId: number): Promise<{
   success: boolean;
@@ -27,46 +27,41 @@ export async function loadUserPermissions(userId: number): Promise<{
   try {
     const supabase = await createClient();
     
-    // Get user's roles
-    const { data: userRoles, error: rolesError } = await supabase
-      .from('user_role')
+    // Get user's role_id from master_system_user
+    const { data: user, error: userError } = await supabase
+      .from('master_system_user')
       .select('role_id')
       .eq('user_id', userId)
-      .eq('is_active', true);
+      .single();
 
-    if (rolesError) {
-      console.error('Error getting user roles:', rolesError);
+    if (userError) {
+      console.error('Error getting user:', userError);
       return {
         success: false,
-        error: 'Failed to load user roles'
+        error: 'Failed to load user'
       };
     }
 
-    if (!userRoles || userRoles.length === 0) {
+    if (!user || !user.role_id) {
       return {
         success: true,
         permissions: []
       };
     }
 
-    const roleIds = userRoles.map(r => r.role_id);
-
-    // Get permissions for all user's roles
+    // Get permissions for the user's role from role_permission table
     const { data: rolePermissions, error: permissionsError } = await supabase
       .from('role_permission')
       .select(`
-        permission_id,
-        master_permission!inner(
-          permission_key,
-          permission_name,
-          permission_type,
+        module_id,
+        master_permission_module!inner(
           module_id,
-          master_permission_module!inner(
-            module_name
-          )
+          module_name,
+          module_key,
+          description
         )
       `)
-      .in('role_id', roleIds);
+      .eq('role_id', user.role_id);
 
     if (permissionsError) {
       console.error('Error getting role permissions:', permissionsError);
@@ -76,15 +71,18 @@ export async function loadUserPermissions(userId: number): Promise<{
       };
     }
 
-    // Transform the data
-    const permissions: UserPermission[] = (rolePermissions || []).map((rp: any) => ({
-      permission_id: rp.permission_id,
-      permission_key: rp.master_permission.permission_key,
-      permission_name: rp.master_permission.permission_name,
-      module_id: rp.master_permission.module_id,
-      module_name: rp.master_permission.master_permission_module.module_name,
-      permission_type: rp.master_permission.permission_type
-    }));
+    // Transform the data - each module represents a permission
+    const permissions: UserPermission[] = (rolePermissions || []).map((rp: any) => {
+      const module = rp.master_permission_module;
+      return {
+        permission_id: module.module_id.toString(),
+        permission_key: module.module_key,
+        permission_name: module.module_name,
+        module_id: module.module_id.toString(),
+        module_name: module.module_name,
+        permission_type: 'module_access'
+      };
+    });
 
     // Remove duplicates
     const uniquePermissions = Array.from(

@@ -26,6 +26,7 @@ export interface LoginResult {
     role_name: string;
   };
   session_token?: string;
+  force_password_change?: boolean;
   error?: string;
   error_code?: 'INVALID_CREDENTIALS' | 'ACCOUNT_LOCKED' | 'RATE_LIMIT' | 'INACTIVE_ACCOUNT' | 'INTERNAL_ERROR';
 }
@@ -113,7 +114,8 @@ export async function login(credentials: LoginCredentials): Promise<LoginResult>
         is_active,
         is_locked,
         locked_until,
-        failed_login_attempts
+        failed_login_attempts,
+        force_password_change
       `)
       .eq('email', email)
       .single();
@@ -341,7 +343,8 @@ export async function login(credentials: LoginCredentials): Promise<LoginResult>
         role_id: userData.role_id,
         role_name: roleData?.role_name || 'Unknown'
       },
-      session_token: sessionResult.token
+      session_token: sessionResult.token,
+      force_password_change: userData.force_password_change || false
     };
   } catch (error) {
     console.error('Login error:', error);
@@ -634,12 +637,13 @@ export async function changePassword(
     // Hash new password
     const newPasswordHash = await hashPassword(newPassword);
 
-    // Update password
+    // Update password and clear force_password_change flag
     const { error: updateError } = await supabase
       .from('master_system_user')
       .update({
         password_hash: newPasswordHash,
-        password_changed_at: new Date().toISOString()
+        password_changed_at: new Date().toISOString(),
+        force_password_change: false
       })
       .eq('user_id', userId);
 

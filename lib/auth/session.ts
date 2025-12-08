@@ -131,7 +131,7 @@ export async function validateSession(token: string): Promise<{
       .from('master_system_user')
       .select(`
         role_id,
-        master_system_role(
+        master_system_role!fk_master_system_user_role(
           role_name
         )
       `)

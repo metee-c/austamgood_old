@@ -40,9 +40,20 @@ export default function LoginPage() {
         return;
       }
 
-      // Login successful - redirect to dashboard
-      router.push('/dashboard');
-      router.refresh();
+      // Check if user needs to change password
+      if (data.force_password_change) {
+        router.push('/change-password?force=true');
+        return;
+      }
+
+      // ✅ Login successful - redirect to dashboard
+      console.log('✅ Login successful, redirecting to dashboard...');
+      
+      // Small delay to ensure cookie is set
+      await new Promise(resolve => setTimeout(resolve, 200));
+      
+      // Force full page reload to ensure useAuth hook runs
+      window.location.href = '/dashboard';
     } catch (err) {
       console.error('Login error:', err);
       setError('เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์');

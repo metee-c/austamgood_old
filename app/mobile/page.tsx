@@ -12,8 +12,10 @@ import {
   Clock,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   ChevronRight
 } from 'lucide-react';
+import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import { format } from 'date-fns';
 import { th } from 'date-fns/locale';
 
@@ -31,7 +33,7 @@ interface RecentActivity {
   status: 'completed' | 'pending' | 'in_progress';
 }
 
-export default function MobileDashboardPage() {
+function MobileDashboardPage() {
   const router = useRouter();
   const [summary, setSummary] = useState<ActivitySummary>({
     receives: { total: 0, pending: 0 },
@@ -275,5 +277,24 @@ export default function MobileDashboardPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function MobileDashboardPageWithPermission() {
+  return (
+    <PermissionGuard 
+      permission="mobile.access"
+      fallback={
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+          <div className="text-center">
+            <AlertTriangle className="h-16 w-16 text-red-500 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">ไม่มีสิทธิ์เข้าถึง</h2>
+            <p className="text-gray-600">คุณไม่มีสิทธิ์ในการใช้งานระบบมือถือ</p>
+          </div>
+        </div>
+      }
+    >
+      <MobileDashboardPage />
+    </PermissionGuard>
   );
 }

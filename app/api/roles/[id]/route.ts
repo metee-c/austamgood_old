@@ -1,7 +1,7 @@
 // API route for individual role operations
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentSession } from '@/lib/auth';
-import { createClient } from '@/lib/supabase/server';
+import { createServiceRoleClient } from '@/lib/supabase/server';
 
 /**
  * GET /api/roles/[id]
@@ -22,13 +22,14 @@ export async function GET(
       );
     }
 
-    const supabase = await createClient();
+    // Use service role client to bypass RLS for admin operations
+    const supabase = createServiceRoleClient();
     const { id } = await params;
     const roleId = parseInt(id);
 
     // Get role details
     const { data: role, error: roleError } = await supabase
-      .from('master_role')
+      .from('master_system_role')
       .select('*')
       .eq('role_id', roleId)
       .single();
@@ -40,40 +41,14 @@ export async function GET(
       );
     }
 
-    // Get permissions
+    // Get permissions with module details
     const { data: permissions, error: permError } = await supabase
-      .from('master_role_permission')
+      .from('role_permission')
       .select(`
-        permission_id,
-        can_view,
-        can_create,
-        can_edit,
-        can_delete,
-        can_approve,
-        can_import,
-        can_export,
-        can_print,
-        can_scan,
-        can_assign,
-        can_complete,
-        can_cancel,
-        can_rollback,
-        can_publish,
-        can_optimize,
-        can_change_status,
-        can_manage_coordinates,
-        can_reset_reservations,
-        master_permission_module!inner(
-          module_id,
-          module_key,
-          module_name,
-          description,
-          parent_module_id,
-          display_order
-        )
+        *,
+        master_permission_module(*)
       `)
-      .eq('role_id', roleId)
-      .order('master_permission_module(display_order)');
+      .eq('role_id', roleId);
 
     if (permError) {
       console.error('Error fetching permissions:', permError);
@@ -135,12 +110,13 @@ export async function PUT(
     const { id } = await params;
     const roleId = parseInt(id);
 
-    const supabase = await createClient();
+    // Use service role client to bypass RLS for admin operations
+    const supabase = createServiceRoleClient();
 
-    // Check if role exists and is not system role
+    // Check if role exists
     const { data: existingRole, error: checkError } = await supabase
-      .from('master_role')
-      .select('is_system')
+      .from('master_system_role')
+      .select('role_id')
       .eq('role_id', roleId)
       .single();
 
@@ -151,16 +127,9 @@ export async function PUT(
       );
     }
 
-    if (existingRole.is_system) {
-      return NextResponse.json(
-        { error: 'ไม่สามารถแก้ไข system role ได้' },
-        { status: 400 }
-      );
-    }
-
     // Update role
     const { error: updateError } = await supabase
-      .from('master_role')
+      .from('master_system_role')
       .update({
         role_name,
         description,
@@ -180,7 +149,7 @@ export async function PUT(
     if (permissions && Array.isArray(permissions)) {
       // Delete existing permissions
       await supabase
-        .from('master_role_permission')
+        .from('role_permission')
         .delete()
         .eq('role_id', roleId);
 
@@ -210,7 +179,7 @@ export async function PUT(
       }));
 
       const { error: permError } = await supabase
-        .from('master_role_permission')
+        .from('role_permission')
         .insert(permissionRecords);
 
       if (permError) {
@@ -244,46 +213,50 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params;
+    const roleId = parseInt(id);
+    
+    console.log('🗑️ [API DELETE ROLE] Starting delete for role_id:', roleId);
+    
     // Get current session
     const sessionResult = await getCurrentSession();
     
     if (!sessionResult.success || !sessionResult.session) {
+      console.log('❌ [API DELETE ROLE] Not authenticated');
       return NextResponse.json(
         { error: 'ไม่ได้เข้าสู่ระบบ' },
         { status: 401 }
       );
     }
 
+    console.log('👤 [API DELETE ROLE] User:', sessionResult.session.username, 'Role:', sessionResult.session.role_name);
+
     // Check permission
     if (sessionResult.session.role_name !== 'Super Admin') {
+      console.log('❌ [API DELETE ROLE] Insufficient permissions');
       return NextResponse.json(
         { error: 'เฉพาะ Super Admin เท่านั้นที่สามารถลบ role ได้' },
         { status: 403 }
       );
     }
 
-    const { id } = await params;
-    const roleId = parseInt(id);
-    const supabase = await createClient();
+    // Use service role client to bypass RLS for admin operations
+    const supabase = createServiceRoleClient();
 
-    // Check if role exists and is not system role
-    const { data: role, error: checkError } = await supabase
-      .from('master_role')
-      .select('is_system, role_name')
+    // Check if role exists
+    const { data: role, error: checkError} = await supabase
+      .from('master_system_role')
+      .select('role_id, role_name')
       .eq('role_id', roleId)
       .single();
 
+    console.log('🔍 [API DELETE ROLE] Role check:', { role, checkError });
+
     if (checkError || !role) {
+      console.log('❌ [API DELETE ROLE] Role not found');
       return NextResponse.json(
         { error: 'ไม่พบ role นี้' },
         { status: 404 }
-      );
-    }
-
-    if (role.is_system) {
-      return NextResponse.json(
-        { error: 'ไม่สามารถลบ system role ได้' },
-        { status: 400 }
       );
     }
 
@@ -293,7 +266,10 @@ export async function DELETE(
       .select('*', { count: 'exact', head: true })
       .eq('role_id', roleId);
 
+    console.log('👥 [API DELETE ROLE] User count:', userCount);
+
     if (userCount && userCount > 0) {
+      console.log('❌ [API DELETE ROLE] Cannot delete - has users');
       return NextResponse.json(
         { error: `ไม่สามารถลบ role ได้ เนื่องจากมีผู้ใช้ ${userCount} คนที่ใช้ role นี้อยู่` },
         { status: 400 }
@@ -301,33 +277,44 @@ export async function DELETE(
     }
 
     // Delete permissions first
-    await supabase
-      .from('master_role_permission')
+    console.log('🗑️ [API DELETE ROLE] Deleting permissions...');
+    const { error: permDeleteError } = await supabase
+      .from('role_permission')
       .delete()
       .eq('role_id', roleId);
 
+    if (permDeleteError) {
+      console.error('❌ [API DELETE ROLE] Error deleting permissions:', permDeleteError);
+    } else {
+      console.log('✅ [API DELETE ROLE] Permissions deleted');
+    }
+
     // Delete role
+    console.log('🗑️ [API DELETE ROLE] Deleting role...');
     const { error: deleteError } = await supabase
-      .from('master_role')
+      .from('master_system_role')
       .delete()
       .eq('role_id', roleId);
 
     if (deleteError) {
-      console.error('Error deleting role:', deleteError);
+      console.error('❌ [API DELETE ROLE] Error deleting role:', deleteError);
       return NextResponse.json(
-        { error: 'ไม่สามารถลบ role ได้' },
+        { error: 'ไม่สามารถลบ role ได้', details: deleteError.message },
         { status: 500 }
       );
     }
 
+    console.log('✅ [API DELETE ROLE] Role deleted successfully');
+
     return NextResponse.json({
       success: true,
-      message: 'ลบ role สำเร็จ'
+      message: 'ลบ role สำเร็จ',
+      deleted_role_id: roleId
     });
   } catch (error) {
-    console.error('Delete role API error:', error);
+    console.error('❌ [API DELETE ROLE] Exception:', error);
     return NextResponse.json(
-      { error: 'เกิดข้อผิดพลาดภายในระบบ' },
+      { error: 'เกิดข้อผิดพลาดภายในระบบ', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
     );
   }

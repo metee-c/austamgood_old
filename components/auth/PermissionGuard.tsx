@@ -2,6 +2,7 @@
 
 import { ReactNode } from 'react';
 import { usePermission, useHasAnyPermission, useHasAllPermissions, useHasRole, useHasAnyRole } from '@/hooks/usePermission';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 interface PermissionGuardProps {
   children: ReactNode;
@@ -13,12 +14,25 @@ interface PermissionGuardProps {
  * Component that shows children only if user has the required permission
  */
 export function PermissionGuard({ children, permission, fallback = null }: PermissionGuardProps) {
+  const { user, loading } = useAuthContext();
   const hasPermission = usePermission(permission);
-  
+
+  // Show loading state while checking authentication
+  if (loading || user === undefined) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-primary-500 mb-4"></div>
+          <p className="text-gray-600 font-thai">กำลังตรวจสอบสิทธิ์...</p>
+        </div>
+      </div>
+    );
+  }
+
   if (!hasPermission) {
     return <>{fallback}</>;
   }
-  
+
   return <>{children}</>;
 }
 

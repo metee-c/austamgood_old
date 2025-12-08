@@ -10,6 +10,7 @@ import {
   Clock,
   CheckCircle,
   AlertCircle,
+  AlertTriangle,
   RefreshCw,
   Loader2,
   X,
@@ -18,6 +19,7 @@ import {
   User,
   Plus
 } from 'lucide-react';
+import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Badge from '@/components/ui/Badge';
 
 // Types (aligned with desktop inbound)
@@ -85,7 +87,7 @@ const RECEIVE_STATUSES = [
   'สำเร็จ'
 ] as const;
 
-export default function MobileReceivePage() {
+function MobileReceivePage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [receives, setReceives] = useState<ReceiveDocument[]>([]);
@@ -516,5 +518,24 @@ export default function MobileReceivePage() {
         })}
       </div>
     </div>
+  );
+}
+
+export default function MobileReceivePageWithPermission() {
+  return (
+    <PermissionGuard 
+      permission="mobile.receive"
+      fallback={
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+          <div className="text-center">
+            <AlertTriangle className="h-16 w-16 text-red-500 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">ไม่มีสิทธิ์เข้าถึง</h2>
+            <p className="text-gray-600">คุณไม่มีสิทธิ์ในการรับสินค้า</p>
+          </div>
+        </div>
+      }
+    >
+      <MobileReceivePage />
+    </PermissionGuard>
   );
 }

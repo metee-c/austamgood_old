@@ -8,11 +8,23 @@ import { createClient } from '@/lib/supabase/server';
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
+    
+    // Get search parameter
+    const searchParams = request.nextUrl.searchParams;
+    const search = searchParams.get('search');
 
-    const { data, error } = await supabase
+    let query = supabase
       .from('master_employee')
-      .select('employee_id, first_name, last_name, nickname, wms_role')
-      .order('first_name', { ascending: true });
+      .select('employee_id, employee_code, first_name, last_name, nickname, position, department, wms_role');
+
+    // Apply search filter if provided
+    if (search) {
+      query = query.or(`employee_code.ilike.%${search}%,first_name.ilike.%${search}%,last_name.ilike.%${search}%,nickname.ilike.%${search}%`);
+    }
+
+    query = query.order('first_name', { ascending: true });
+
+    const { data, error } = await query;
 
     if (error) {
       console.error('Error fetching employees:', error);
@@ -22,7 +34,20 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ data });
+    // Transform data to match expected format
+    const employees = data?.map(emp => ({
+      employee_id: emp.employee_id,
+      employee_code: emp.employee_code,
+      employee_name: `${emp.first_name} ${emp.last_name}`,
+      first_name: emp.first_name,
+      last_name: emp.last_name,
+      nickname: emp.nickname,
+      position: emp.position,
+      department: emp.department,
+      wms_role: emp.wms_role
+    })) || [];
+
+    return NextResponse.json(employees);
 
   } catch (error) {
     console.error('API Error in GET /api/employees:', error);

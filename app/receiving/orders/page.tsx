@@ -24,6 +24,7 @@ import {
   RotateCcw,
   Trash2
 } from 'lucide-react';
+import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Card from '@/components/ui/Card';
@@ -81,7 +82,8 @@ const OrdersPage = () => {
   const fetcher = async (url: string) => {
     const response = await fetch(url);
     if (!response.ok) {
-      throw new Error('Failed to fetch orders');
+      const errorText = await response.text();
+      throw new Error(errorText || 'Failed to fetch orders');
     }
     const result = await response.json();
     console.log('[Frontend Fetcher] Result:', {
@@ -687,7 +689,7 @@ const OrdersPage = () => {
                   <Table.Cell colSpan={15} className="px-4 py-8 text-center">
                     <div className="flex flex-col items-center justify-center text-red-500">
                       <AlertTriangle className="w-12 h-12 mb-2" />
-                      <p className="text-sm font-thai">เกิดข้อผิดพลาด: {ordersError}</p>
+                      <p className="text-sm font-thai">เกิดข้อผิดพลาด: {ordersError?.message || String(ordersError)}</p>
                       <button
                         onClick={() => refetch()}
                         className="mt-2 px-4 py-2 bg-blue-500 text-white rounded-lg text-sm hover:bg-blue-600"
@@ -1128,4 +1130,21 @@ const OrdersPage = () => {
   );
 };
 
-export default OrdersPage;
+export default function OrdersPageWithPermission() {
+  return (
+    <PermissionGuard 
+      permission="order_management.orders.view"
+      fallback={
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">ไม่มีสิทธิ์เข้าถึง</h2>
+            <p className="text-gray-600">คุณไม่มีสิทธิ์ในการดูข้อมูลออเดอร์</p>
+          </div>
+        </div>
+      }
+    >
+      <OrdersPage />
+    </PermissionGuard>
+  );
+}

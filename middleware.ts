@@ -7,6 +7,7 @@ const publicRoutes = [
   '/login',
   '/forgot-password',
   '/reset-password',
+  '/change-password', // Allow change-password for forced password changes
 ];
 
 // Define routes that should redirect to dashboard if already authenticated

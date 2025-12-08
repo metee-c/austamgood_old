@@ -12,30 +12,44 @@ export interface Permission {
 }
 
 /**
- * Hook to check if user has a specific permission
+ * Hook to check if user has a specific permission (by module_key)
  */
-export function usePermission(permissionKey: string): boolean {
+export function usePermission(moduleKey: string): boolean {
   const { user } = useAuthContext();
-  
+
   return useMemo(() => {
-    if (!user) return false;
-    
+    if (!user) {
+      console.log(`🔒 [usePermission] No user for permission: ${moduleKey}`);
+      return false;
+    }
+
+    console.log(`🔍 [usePermission] Checking "${moduleKey}" for user:`, {
+      email: user.email,
+      role: user.role_name,
+      permissions_count: user.permissions?.length || 0,
+      has_permissions_array: !!user.permissions
+    });
+
     // Admin and Super Admin have all permissions
     if (user.role_name === 'Admin' || user.role_name === 'Super Admin') {
+      console.log(`✅ [usePermission] ${user.role_name} has full access to: ${moduleKey}`);
       return true;
     }
-    
-    // TODO: Implement actual permission checking from user's role permissions
-    // This would require fetching user permissions from the API
-    // For now, return false for non-admin users
-    return false;
-  }, [user, permissionKey]);
+
+    // Check if user has the specific permission
+    const hasPermission = user.permissions?.includes(moduleKey) || false;
+    console.log(`🔑 [usePermission] Check "${moduleKey}":`, hasPermission);
+    if (!hasPermission && user.permissions) {
+      console.log(`🔑 [usePermission] Available permissions (first 10):`, user.permissions.slice(0, 10));
+    }
+    return hasPermission;
+  }, [user, moduleKey]);
 }
 
 /**
  * Hook to check if user has any of the specified permissions (OR logic)
  */
-export function useHasAnyPermission(permissionKeys: string[]): boolean {
+export function useHasAnyPermission(moduleKeys: string[]): boolean {
   const { user } = useAuthContext();
   
   return useMemo(() => {
@@ -46,15 +60,15 @@ export function useHasAnyPermission(permissionKeys: string[]): boolean {
       return true;
     }
     
-    // TODO: Implement actual permission checking
-    return false;
-  }, [user, permissionKeys]);
+    // Check if user has any of the permissions
+    return moduleKeys.some(key => user.permissions?.includes(key)) || false;
+  }, [user, moduleKeys]);
 }
 
 /**
  * Hook to check if user has all of the specified permissions (AND logic)
  */
-export function useHasAllPermissions(permissionKeys: string[]): boolean {
+export function useHasAllPermissions(moduleKeys: string[]): boolean {
   const { user } = useAuthContext();
   
   return useMemo(() => {
@@ -65,9 +79,9 @@ export function useHasAllPermissions(permissionKeys: string[]): boolean {
       return true;
     }
     
-    // TODO: Implement actual permission checking
-    return false;
-  }, [user, permissionKeys]);
+    // Check if user has all of the permissions
+    return moduleKeys.every(key => user.permissions?.includes(key)) || false;
+  }, [user, moduleKeys]);
 }
 
 /**

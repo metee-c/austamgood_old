@@ -54,11 +54,28 @@ export async function POST(request: NextRequest) {
 
     console.log('✅ Login successful for:', email);
 
-    return NextResponse.json({
+    // Create response with session cookie
+    const response = NextResponse.json({
       success: true,
       user: result.user,
-      session_token: result.session_token
+      session_token: result.session_token,
+      force_password_change: result.force_password_change || false
     });
+
+    // Set HttpOnly cookie for session
+    if (result.session_token) {
+      const maxAge = remember_me ? 30 * 24 * 60 * 60 : 24 * 60 * 60; // 30 days or 24 hours
+      response.cookies.set('session_token', result.session_token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: maxAge,
+        path: '/'
+      });
+      console.log('🍪 Session cookie set:', { maxAge, secure: process.env.NODE_ENV === 'production' });
+    }
+
+    return response;
   } catch (error) {
     console.error('💥 Login API error:', error);
     return NextResponse.json(

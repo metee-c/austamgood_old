@@ -1,12 +1,14 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { ProtectedRoute } from '@/components/auth/ProtectedRoute';
+import { AlertTriangle } from 'lucide-react';
 
 function ChangePasswordForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { changePassword } = useAuthContext();
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
@@ -14,6 +16,13 @@ function ChangePasswordForm() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isForced, setIsForced] = useState(false);
+
+  useEffect(() => {
+    // Check if this is a forced password change
+    const force = searchParams.get('force');
+    setIsForced(force === 'true');
+  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -72,9 +81,27 @@ function ChangePasswordForm() {
             เปลี่ยนรหัสผ่าน
           </h1>
           <p className="mt-2 text-sm text-gray-600">
-            กรอกรหัสผ่านปัจจุบันและรหัสผ่านใหม่
+            {isForced 
+              ? 'คุณจำเป็นต้องเปลี่ยนรหัสผ่านก่อนเข้าใช้งานระบบ'
+              : 'กรอกรหัสผ่านปัจจุบันและรหัสผ่านใหม่'
+            }
           </p>
         </div>
+
+        {/* Forced Password Change Warning */}
+        {isForced && (
+          <div className="bg-orange-50 border border-orange-200 text-orange-700 px-4 py-3 rounded-lg">
+            <div className="flex items-center space-x-2">
+              <AlertTriangle className="w-5 h-5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-medium">บังคับเปลี่ยนรหัสผ่าน</p>
+                <p className="text-xs mt-1">
+                  เพื่อความปลอดภัย กรุณาเปลี่ยนรหัสผ่านของคุณก่อนเข้าใช้งานระบบ
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Error Message */}
         {error && (

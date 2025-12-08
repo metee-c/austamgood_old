@@ -2,12 +2,11 @@
 
 import React from 'react';
 import { usePathname } from 'next/navigation';
-import { 
-  Bell, 
-  User, 
-  Search, 
+import {
+  Bell,
+  User,
+  Search,
   Menu,
-  Settings,
   LogOut,
   ChevronDown
 } from 'lucide-react';
@@ -57,11 +56,6 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick, showMenuButton }) => {
             </span>
           </button>
 
-          {/* Settings */}
-          <button className="p-2 rounded-lg hover:bg-thai-gray-100 transition-colors">
-            <Settings className="w-5 h-5 text-thai-gray-600" />
-          </button>
-
           {/* User Menu */}
           <div className="relative group">
             <button className="flex items-center space-x-3 p-2 rounded-lg hover:bg-thai-gray-100 transition-colors">
@@ -95,28 +89,18 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick, showMenuButton }) => {
                 <button
                   onClick={() => window.location.href = '/profile'}
                   className="
-                    w-full flex items-center space-x-3 px-4 py-2 text-sm text-thai-gray-700 
+                    w-full flex items-center space-x-3 px-4 py-2 text-sm text-thai-gray-700
                     hover:bg-thai-gray-50 font-thai text-left
                   "
                 >
                   <User className="w-4 h-4" />
                   <span>โปรไฟล์</span>
                 </button>
-                <button
-                  onClick={() => window.location.href = '/settings'}
-                  className="
-                    w-full flex items-center space-x-3 px-4 py-2 text-sm text-thai-gray-700 
-                    hover:bg-thai-gray-50 font-thai text-left
-                  "
-                >
-                  <Settings className="w-4 h-4" />
-                  <span>ตั้งค่า</span>
-                </button>
                 <hr className="my-1 border-thai-gray-200" />
                 <button
                   onClick={handleLogout}
                   className="
-                    w-full flex items-center space-x-3 px-4 py-2 text-sm text-red-600 
+                    w-full flex items-center space-x-3 px-4 py-2 text-sm text-red-600
                     hover:bg-red-50 font-thai text-left
                   "
                 >

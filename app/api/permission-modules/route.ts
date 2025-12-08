@@ -1,17 +1,35 @@
-import { createRouteHandlerClient } from '@supabase/auth-helpers-nextjs';
-import { cookies } from 'next/headers';
-import { NextResponse } from 'next/server';
-import { UserManagementService } from '@/lib/database/user-management';
+// API route for permission modules
+import { NextRequest, NextResponse } from 'next/server';
+import { createClient } from '@/lib/supabase/server';
 
-export async function GET(request: Request) {
-  const supabase = createRouteHandlerClient({ cookies });
-  const userService = new UserManagementService(supabase);
+/**
+ * GET /api/permission-modules
+ * Get all permission modules
+ */
+export async function GET(request: NextRequest) {
+  try {
+    const supabase = await createClient();
 
-  const { data, error } = await userService.getAllPermissionModules();
+    // Get all modules
+    const { data: modules, error } = await supabase
+      .from('master_permission_module')
+      .select('*')
+      .order('module_id');
 
-  if (error) {
-    return NextResponse.json({ error }, { status: 500 });
+    if (error) {
+      console.error('Error fetching modules:', error);
+      return NextResponse.json(
+        { error: 'ไม่สามารถดึงข้อมูลโมดูลได้' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json(modules || []);
+  } catch (error) {
+    console.error('Get modules API error:', error);
+    return NextResponse.json(
+      { error: 'เกิดข้อผิดพลาดภายในระบบ' },
+      { status: 500 }
+    );
   }
-
-  return NextResponse.json(data);
 }

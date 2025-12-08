@@ -1,11 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { 
-  Search, 
-  Plus, 
-  Edit, 
-  Trash2, 
+import {
+  Search,
+  Plus,
+  Edit,
   UserCheck,
   AlertCircle,
   ChevronUp,
@@ -17,7 +16,6 @@ import {
 } from 'lucide-react';
 import Table from '@/components/ui/Table';
 import Button from '@/components/ui/Button';
-import Badge from '@/components/ui/Badge';
 import AddUserForm from '@/components/forms/AddUserForm';
 import { SystemUserWithRoles, SystemRole, CreateUserData } from '@/types/user-management-schema';
 
@@ -88,14 +86,14 @@ const SortableHead = ({
   );
 };
 
-const UsersTable = ({ data }: { data: SystemUserWithRoles[] }) => {
+const UsersTable = ({
+  data,
+  onEdit
+}: {
+  data: SystemUserWithRoles[];
+  onEdit: (user: SystemUserWithRoles) => void;
+}) => {
   const { items, requestSort, sortConfig } = useSortableData(data);
-
-  const getStatusBadge = (isActive: boolean) => {
-    return isActive ? 
-      <Badge variant="success">ใช้งาน</Badge> : 
-      <Badge variant="default">ไม่ใช้งาน</Badge>;
-  };
 
   return (
     <Table>
@@ -120,88 +118,85 @@ const UsersTable = ({ data }: { data: SystemUserWithRoles[] }) => {
       <Table.Body>
         {items.map((user) => (
           <Table.Row key={user.user_id} className="hover:bg-thai-gray-25">
-            <Table.Cell className="py-1 px-2">
-              <span className="font-mono text-xs text-thai-gray-600">{user.user_id}</span>
+            <Table.Cell className="py-0.5 px-1.5">
+              <span className="font-mono text-[11px] text-thai-gray-600">{user.user_id}</span>
             </Table.Cell>
-            <Table.Cell className="py-1 px-2">
-              <span className="font-mono text-xs font-medium text-primary-600">{user.username}</span>
+            <Table.Cell className="py-0.5 px-1.5">
+              <span className="font-mono text-[11px] font-medium text-primary-600">{user.username}</span>
             </Table.Cell>
-            <Table.Cell className="py-1 px-2">
+            <Table.Cell className="py-0.5 px-1.5">
               <div className="space-y-0.5">
-                <div className="font-medium font-thai text-xs">
+                <div className="font-medium font-thai text-[11px]">
                   {user.full_name}
                 </div>
                 {user.employee_name && (
-                  <div className="text-[10px] text-thai-gray-500">
+                  <div className="text-[9px] text-thai-gray-500">
                     พนักงาน: {user.employee_name}
                   </div>
                 )}
               </div>
             </Table.Cell>
-            <Table.Cell className="py-1 px-2">
-              <span className="text-xs">{user.email || '-'}</span>
+            <Table.Cell className="py-0.5 px-1.5">
+              <span className="text-[11px]">{user.email || '-'}</span>
             </Table.Cell>
-            <Table.Cell className="py-1 px-2">
-              <span className="text-xs">{user.phone_number || '-'}</span>
+            <Table.Cell className="py-0.5 px-1.5">
+              <span className="text-[11px]">{user.phone_number || '-'}</span>
             </Table.Cell>
-            <Table.Cell className="py-1 px-2">
-              <span className="font-mono text-xs">{user.employee_id || '-'}</span>
+            <Table.Cell className="py-0.5 px-1.5">
+              <span className="font-mono text-[11px]">{user.employee_id || '-'}</span>
             </Table.Cell>
-            <Table.Cell className="py-1 px-2">
-              <div className="flex flex-wrap gap-1">
+            <Table.Cell className="py-0.5 px-1.5">
+              <div className="flex flex-wrap gap-0.5">
                 {user.roles?.map((role: any) => (
-                  <Badge key={role.role_id} variant="default" className="text-[10px] py-0 px-1">
+                  <span key={role.role_id} className="text-[10px] text-gray-700 font-medium">
                     {role.role_name}
-                  </Badge>
-                )) || <span className="text-thai-gray-500 text-xs">ไม่มีบทบาท</span>}
+                  </span>
+                )) || <span className="text-thai-gray-500 text-[10px]">-</span>}
               </div>
             </Table.Cell>
-            <Table.Cell className="py-1 px-2">{getStatusBadge(user.is_active)}</Table.Cell>
-            <Table.Cell className="py-1 px-2">
-              <span className="text-xs font-thai">
-                {user.last_login_at ? 
-                  new Date(user.last_login_at).toLocaleString('th-TH') : 
+            <Table.Cell className="py-0.5 px-1.5">
+              <span className={`text-[10px] font-medium ${user.is_active ? 'text-green-600' : 'text-gray-500'}`}>
+                {user.is_active ? 'ใช้งาน' : 'ไม่ใช้งาน'}
+              </span>
+            </Table.Cell>
+            <Table.Cell className="py-0.5 px-1.5">
+              <span className="text-[11px] font-thai">
+                {user.last_login_at ?
+                  new Date(user.last_login_at).toLocaleString('th-TH') :
                   '-'
                 }
               </span>
             </Table.Cell>
-            <Table.Cell className="py-1 px-2">
-              <span className="text-xs">{user.created_by || '-'}</span>
+            <Table.Cell className="py-0.5 px-1.5">
+              <span className="text-[11px]">{user.created_by || '-'}</span>
             </Table.Cell>
-            <Table.Cell className="py-1 px-2">
-              <span className="text-xs font-thai">
-                {user.created_at ? 
-                  new Date(user.created_at).toLocaleString('th-TH') : 
+            <Table.Cell className="py-0.5 px-1.5">
+              <span className="text-[11px] font-thai">
+                {user.created_at ?
+                  new Date(user.created_at).toLocaleString('th-TH') :
                   '-'
                 }
               </span>
             </Table.Cell>
-            <Table.Cell className="py-1 px-2">
-              <span className="text-xs font-thai">
-                {user.updated_at ? 
-                  new Date(user.updated_at).toLocaleString('th-TH') : 
+            <Table.Cell className="py-0.5 px-1.5">
+              <span className="text-[11px] font-thai">
+                {user.updated_at ?
+                  new Date(user.updated_at).toLocaleString('th-TH') :
                   '-'
                 }
               </span>
             </Table.Cell>
-            <Table.Cell className="py-1 px-2">
-              <span className="text-xs font-thai">{user.remarks || '-'}</span>
+            <Table.Cell className="py-0.5 px-1.5">
+              <span className="text-[11px] font-thai">{user.remarks || '-'}</span>
             </Table.Cell>
-            <Table.Cell className="py-1 px-2">
-              <div className="flex space-x-1">
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  icon={Edit} 
-                  title="แก้ไข"
-                />
-                <Button 
-                  variant="ghost" 
-                  size="sm" 
-                  icon={Trash2} 
-                  title="ลบ"
-                />
-              </div>
+            <Table.Cell className="py-0.5 px-1.5">
+              <button
+                onClick={() => onEdit(user)}
+                className="h-7 w-7 flex items-center justify-center rounded hover:bg-gray-100 text-gray-600 hover:text-gray-900 transition-colors"
+                title="แก้ไข"
+              >
+                <Edit className="h-4 w-4" />
+              </button>
             </Table.Cell>
           </Table.Row>
         ))}
@@ -219,6 +214,7 @@ const UsersPage = () => {
   const [selectedRole, setSelectedRole] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
   const [showAddUserForm, setShowAddUserForm] = useState(false);
+  const [editingUser, setEditingUser] = useState<SystemUserWithRoles | null>(null);
 
   useEffect(() => {
     fetchData();
@@ -268,7 +264,7 @@ const UsersPage = () => {
       const data = await response.json();
 
       if (response.ok) {
-        setRoles(data);
+        setRoles(data.roles || []);
       }
     } catch (err) {
       console.error('Failed to fetch roles:', err);
@@ -298,6 +294,13 @@ const UsersPage = () => {
     } catch (err) {
       throw err; // Re-throw to let the form handle the error
     }
+  };
+
+  const handleEditUser = (user: SystemUserWithRoles) => {
+    setEditingUser(user);
+    // TODO: Open edit modal
+    console.log('Edit user:', user);
+    alert(`แก้ไขผู้ใช้: ${user.full_name}\nฟังก์ชันนี้กำลังพัฒนา`);
   };
 
   const handleRoleManagement = () => {
@@ -430,7 +433,7 @@ const UsersPage = () => {
         <div className="flex-1 min-h-0">
           <div className="w-full h-[74vh] bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col">
             <div className="flex-1 overflow-x-auto overflow-y-auto">
-              {renderTable(users, <UsersTable data={users} />)}
+              {renderTable(users, <UsersTable data={users} onEdit={handleEditUser} />)}
             </div>
           </div>
         </div>

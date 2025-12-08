@@ -9,11 +9,13 @@ import {
   ChevronRight,
   Clock,
   CheckCircle,
+  AlertTriangle,
   RefreshCw,
   Loader2,
   X,
   Package
 } from 'lucide-react';
+import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Badge from '@/components/ui/Badge';
 
 interface LoadlistTask {
@@ -37,7 +39,7 @@ const LOADLIST_STATUSES = [
   'completed'
 ] as const;
 
-export default function MobileLoadingPage() {
+function MobileLoadingPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [loadlists, setLoadlists] = useState<LoadlistTask[]>([]);
@@ -294,5 +296,24 @@ export default function MobileLoadingPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function MobileLoadingPageWithPermission() {
+  return (
+    <PermissionGuard 
+      permission="mobile.loading"
+      fallback={
+        <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+          <div className="text-center">
+            <AlertTriangle className="h-16 w-16 text-red-500 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">ไม่มีสิทธิ์เข้าถึง</h2>
+            <p className="text-gray-600">คุณไม่มีสิทธิ์ในการโหลดสินค้า</p>
+          </div>
+        </div>
+      }
+    >
+      <MobileLoadingPage />
+    </PermissionGuard>
   );
 }

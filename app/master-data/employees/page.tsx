@@ -16,8 +16,10 @@ import {
   Mail,
   Briefcase,
   Building,
-  Loader2
+  Loader2,
+  AlertTriangle
 } from 'lucide-react';
+import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Table from '@/components/ui/Table';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
@@ -440,4 +442,21 @@ const EmployeesPage = () => {
   );
 };
 
-export default EmployeesPage;
+export default function EmployeesPageWithPermission() {
+  return (
+    <PermissionGuard 
+      permission="master_data.products.view"
+      fallback={
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">ไม่มีสิทธิ์เข้าถึง</h2>
+            <p className="text-gray-600">คุณไม่มีสิทธิ์ในการดูข้อมูลพนักงาน</p>
+          </div>
+        </div>
+      }
+    >
+      <EmployeesPage />
+    </PermissionGuard>
+  );
+}

@@ -19,8 +19,10 @@ import {
     DollarSign,
     Trash2,
     PlayCircle,
-    CheckCircle
+    CheckCircle,
+    AlertTriangle
 } from 'lucide-react';
+import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
@@ -3452,4 +3454,21 @@ const RoutesPage = () => {
     );
 };
 
-export default RoutesPage;
+export default function RoutesPageWithPermission() {
+  return (
+    <PermissionGuard 
+      permission="order_management.orders.view"
+      fallback={
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">ไม่มีสิทธิ์เข้าถึง</h2>
+            <p className="text-gray-600">คุณไม่มีสิทธิ์ในการดูเส้นทางรับสินค้า</p>
+          </div>
+        </div>
+      }
+    >
+      <RoutesPage />
+    </PermissionGuard>
+  );
+}

@@ -1,7 +1,7 @@
 // API route for role management
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentSession } from '@/lib/auth';
-import { createClient } from '@/lib/supabase/server';
+import { createServiceRoleClient } from '@/lib/supabase/server';
 
 /**
  * GET /api/roles
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const supabase = await createClient();
+    const supabase = createServiceRoleClient();
 
     // Get query parameters
     const searchParams = request.nextUrl.searchParams;
@@ -36,7 +36,7 @@ export async function GET(request: NextRequest) {
 
     // Build query
     let query = supabase
-      .from('master_role')
+      .from('master_system_role')
       .select('*')
       .order('role_name');
 
@@ -142,48 +142,40 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { role_name, role_key, description, permissions } = body;
+    const { role_name, description, is_active, permissions } = body;
 
     // Validate required fields
-    if (!role_name || !role_key) {
+    if (!role_name) {
       return NextResponse.json(
-        { error: 'กรุณากรอกชื่อ role และ role key' },
+        { error: 'กรุณากรอกชื่อบทบาท' },
         { status: 400 }
       );
     }
 
-    // Validate permissions array
-    if (!permissions || !Array.isArray(permissions) || permissions.length === 0) {
-      return NextResponse.json(
-        { error: 'กรุณาเลือกสิทธิ์อย่างน้อย 1 รายการ' },
-        { status: 400 }
-      );
-    }
+    const supabase = createServiceRoleClient();
 
-    const supabase = await createClient();
-
-    // Check if role_key already exists
+    // Check if role_name already exists
     const { data: existingRole } = await supabase
-      .from('master_role')
+      .from('master_system_role')
       .select('role_id')
-      .eq('role_key', role_key)
+      .eq('role_name', role_name)
       .single();
 
     if (existingRole) {
       return NextResponse.json(
-        { error: 'Role key นี้ถูกใช้งานแล้ว' },
+        { error: 'ชื่อบทบาทนี้ถูกใช้งานแล้ว' },
         { status: 400 }
       );
     }
 
     // Create role
     const { data: newRole, error: createError } = await supabase
-      .from('master_role')
+      .from('master_system_role')
       .insert({
         role_name,
-        role_key,
-        description,
-        is_system: false,
+        description: description || null,
+        is_active: is_active !== undefined ? is_active : true,
+        created_by: sessionResult.session.user_id,
         created_at: new Date().toISOString()
       })
       .select()
@@ -192,52 +184,28 @@ export async function POST(request: NextRequest) {
     if (createError || !newRole) {
       console.error('Error creating role:', createError);
       return NextResponse.json(
-        { error: 'ไม่สามารถสร้าง role ได้' },
+        { error: 'ไม่สามารถสร้างบทบาทได้' },
         { status: 500 }
       );
     }
 
-    // Create permissions
-    const permissionRecords = permissions.map((perm: any) => ({
-      role_id: newRole.role_id,
-      module_id: perm.module_id,
-      can_view: perm.can_view || false,
-      can_create: perm.can_create || false,
-      can_edit: perm.can_edit || false,
-      can_delete: perm.can_delete || false,
-      can_approve: perm.can_approve || false,
-      can_import: perm.can_import || false,
-      can_export: perm.can_export || false,
-      can_print: perm.can_print || false,
-      can_scan: perm.can_scan || false,
-      can_assign: perm.can_assign || false,
-      can_complete: perm.can_complete || false,
-      can_cancel: perm.can_cancel || false,
-      can_rollback: perm.can_rollback || false,
-      can_publish: perm.can_publish || false,
-      can_optimize: perm.can_optimize || false,
-      can_change_status: perm.can_change_status || false,
-      can_manage_coordinates: perm.can_manage_coordinates || false,
-      can_reset_reservations: perm.can_reset_reservations || false,
-      created_at: new Date().toISOString()
-    }));
+    // Create permissions if provided (module_ids array)
+    if (permissions && Array.isArray(permissions) && permissions.length > 0) {
+      const permissionRecords = permissions.map((module_id: number) => ({
+        role_id: newRole.role_id,
+        module_id: module_id,
+        created_at: new Date().toISOString()
+      }));
 
-    const { error: permError } = await supabase
-      .from('master_role_permission')
-      .insert(permissionRecords);
+      const { error: permError } = await supabase
+        .from('role_permission')
+        .insert(permissionRecords);
 
-    if (permError) {
-      console.error('Error creating permissions:', permError);
-      // Rollback: delete the role
-      await supabase
-        .from('master_role')
-        .delete()
-        .eq('role_id', newRole.role_id);
-      
-      return NextResponse.json(
-        { error: 'ไม่สามารถสร้างสิทธิ์ได้' },
-        { status: 500 }
-      );
+      if (permError) {
+        console.error('Error creating permissions:', permError);
+        // Don't rollback, just log the error
+        // User can add permissions later
+      }
     }
 
     return NextResponse.json({

@@ -1,7 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Upload, FileText, Loader2, RefreshCw, Plus, Search, ChevronDown, ChevronRight, ChevronUp as ChevronUpIcon, ChevronsUpDown, Download } from 'lucide-react';
+import { Upload, FileText, Loader2, RefreshCw, Plus, Search, ChevronDown, ChevronRight, ChevronUp as ChevronUpIcon, ChevronsUpDown, Download, AlertTriangle } from 'lucide-react';
+import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
@@ -14,7 +15,7 @@ import type {
   ProcessingSummary
 } from '@/types/stock-import';
 
-export default function StockImportPage() {
+function StockImportPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [warehouseId, setWarehouseId] = useState<string>('');
   const [batchName, setBatchName] = useState<string>('');
@@ -1310,5 +1311,26 @@ export default function StockImportPage() {
         </div>
       </Modal>
     </MainLayout>
+  );
+}
+
+export default function StockImportPageWithPermission() {
+  return (
+    <PermissionGuard 
+      permission="warehouse.inventory.manage"
+      fallback={
+        <MainLayout>
+          <div className="flex items-center justify-center min-h-[400px]">
+            <div className="text-center">
+              <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+              <h2 className="text-xl font-semibold text-gray-900 mb-2">ไม่มีสิทธิ์เข้าถึง</h2>
+              <p className="text-gray-600">คุณไม่มีสิทธิ์ในการนำเข้าสต็อก</p>
+            </div>
+          </div>
+        </MainLayout>
+      }
+    >
+      <StockImportPage />
+    </PermissionGuard>
   );
 }

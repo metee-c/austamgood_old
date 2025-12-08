@@ -1,7 +1,11 @@
-// API route to get current authenticated user
+// API route for getting current user information
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentSession } from '@/lib/auth';
+import { getCurrentSession } from '@/lib/auth/session';
 
+/**
+ * GET /api/auth/me
+ * Get current user information
+ */
 export async function GET(request: NextRequest) {
   try {
     // Get current session
@@ -14,36 +18,26 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const { session } = sessionResult;
+    const session = sessionResult.session;
 
-    console.log('👤 [AUTH/ME] Session data:', {
-      user_id: session.user_id,
-      username: session.username,
-      email: session.email,
-      full_name: session.full_name,
-      role_name: session.role_name
-    });
-
-    const response = {
+    return NextResponse.json({
       success: true,
       user: {
         user_id: session.user_id,
         username: session.username,
         email: session.email,
-        full_name: session.full_name,
+        first_name: session.full_name.split(' ')[0] || '',
+        last_name: session.full_name.split(' ').slice(1).join(' ') || '',
         role_id: session.role_id,
-        role_name: session.role_name
+        role_name: session.role_name,
+        is_active: true,
       },
       session: {
         session_id: session.session_id,
-        expires_in_seconds: session.expires_in_seconds,
-        last_activity_minutes_ago: session.last_activity_minutes_ago
+        expires_in_seconds: session.expires_in_seconds || 0,
+        last_activity_minutes_ago: session.last_activity_minutes_ago || 0
       }
-    };
-
-    console.log('📤 [AUTH/ME] Sending response:', response.user);
-
-    return NextResponse.json(response);
+    });
   } catch (error) {
     console.error('Get current user API error:', error);
     return NextResponse.json(

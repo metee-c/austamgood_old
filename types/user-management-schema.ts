@@ -93,6 +93,8 @@ export const CreateUserSchema = z.object({
   password: z.string().min(6, 'รหัสผ่านต้องมีอย่างน้อย 6 ตัวอักษร'),
   role_ids: z.array(z.number()).min(1, 'กรุณาเลือกบทบาทอย่างน้อย 1 บทบาท'),
   is_active: z.boolean().default(true),
+  force_password_change: z.boolean().default(false),
+  email_verified: z.boolean().default(true),
   remarks: z.string().optional(),
 });
 

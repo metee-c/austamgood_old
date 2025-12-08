@@ -58,14 +58,14 @@ export default function ProfilePage() {
             <div className="flex items-end -mt-16 mb-6">
               <div className="w-32 h-32 rounded-full bg-white p-2 shadow-lg">
                 <div className="w-full h-full rounded-full bg-blue-600 flex items-center justify-center text-white text-4xl font-bold">
-                  {user.full_name.charAt(0).toUpperCase()}
+                  {user.full_name?.charAt(0).toUpperCase() || user.username?.charAt(0).toUpperCase() || 'U'}
                 </div>
               </div>
               <div className="ml-6 mb-2">
-                <h2 className="text-2xl font-bold text-gray-900">{user.full_name}</h2>
-                <p className="text-gray-600">{user.email}</p>
+                <h2 className="text-2xl font-bold text-gray-900">{user.full_name || user.username || 'ไม่ระบุชื่อ'}</h2>
+                <p className="text-gray-600">{user.email || '-'}</p>
                 <span className="inline-block mt-2 px-3 py-1 bg-blue-100 text-blue-800 rounded-full text-sm font-medium">
-                  {user.role_name}
+                  {user.role_name || 'ไม่ระบุบทบาท'}
                 </span>
               </div>
             </div>
@@ -147,28 +147,28 @@ export default function ProfilePage() {
                     <label className="block text-sm font-medium text-gray-500 mb-1">
                       ชื่อผู้ใช้
                     </label>
-                    <p className="text-gray-900">{user.username}</p>
+                    <p className="text-gray-900">{user.username || '-'}</p>
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-500 mb-1">
                       อีเมล
                     </label>
-                    <p className="text-gray-900">{user.email}</p>
+                    <p className="text-gray-900">{user.email || '-'}</p>
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-500 mb-1">
                       บทบาท
                     </label>
-                    <p className="text-gray-900">{user.role_name}</p>
+                    <p className="text-gray-900">{user.role_name || 'ไม่ระบุบทบาท'}</p>
                   </div>
 
                   <div>
                     <label className="block text-sm font-medium text-gray-500 mb-1">
                       User ID
                     </label>
-                    <p className="text-gray-900">{user.user_id}</p>
+                    <p className="text-gray-900">{user.user_id || '-'}</p>
                   </div>
                 </div>
               )}

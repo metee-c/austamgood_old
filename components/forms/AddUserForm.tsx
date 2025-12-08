@@ -21,6 +21,8 @@ const AddUserForm: React.FC<AddUserFormProps> = ({ isOpen, onClose, onSubmit }) 
     password: '',
     role_ids: [],
     is_active: true,
+    force_password_change: false,
+    email_verified: true,
     remarks: '',
   });
 
@@ -46,6 +48,8 @@ const AddUserForm: React.FC<AddUserFormProps> = ({ isOpen, onClose, onSubmit }) 
         password: '',
         role_ids: [],
         is_active: true,
+        force_password_change: false,
+        email_verified: true,
         remarks: '',
       });
       setConfirmPassword('');
@@ -71,7 +75,8 @@ const AddUserForm: React.FC<AddUserFormProps> = ({ isOpen, onClose, onSubmit }) 
       const response = await fetch('/api/roles');
       const data = await response.json();
       if (response.ok) {
-        setRoles(data);
+        // Handle both array and object with roles property
+        setRoles(Array.isArray(data) ? data : (data.roles || []));
       }
     } catch (err) {
       console.error('Failed to fetch roles:', err);
@@ -409,22 +414,62 @@ const AddUserForm: React.FC<AddUserFormProps> = ({ isOpen, onClose, onSubmit }) 
             </div>
           </div>
 
-          {/* Status */}
+          {/* Status and Security Settings */}
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold text-thai-gray-900 font-thai">สถานะ</h3>
-            <label className="flex items-center space-x-3 p-3 bg-thai-gray-50 rounded-xl">
-              <input
-                type="checkbox"
-                name="is_active"
-                checked={formData.is_active}
-                onChange={handleInputChange}
-                className="w-4 h-4 text-green-600 bg-white border-thai-gray-300 rounded focus:ring-green-500 focus:ring-2"
-              />
-              <div className="flex items-center space-x-2">
-                <UserCheck className="w-4 h-4 text-green-600" />
-                <span className="font-medium text-thai-gray-900 font-thai text-sm">เปิดใช้งาน</span>
-              </div>
-            </label>
+            <h3 className="text-lg font-semibold text-thai-gray-900 font-thai">สถานะและความปลอดภัย</h3>
+            
+            <div className="space-y-3">
+              <label className="flex items-center space-x-3 p-3 bg-thai-gray-50 rounded-xl hover:bg-thai-gray-100 transition-colors cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="is_active"
+                  checked={formData.is_active}
+                  onChange={handleInputChange}
+                  className="w-4 h-4 text-green-600 bg-white border-thai-gray-300 rounded focus:ring-green-500 focus:ring-2"
+                />
+                <div className="flex items-center space-x-2">
+                  <UserCheck className="w-4 h-4 text-green-600" />
+                  <div>
+                    <div className="font-medium text-thai-gray-900 font-thai text-sm">เปิดใช้งาน</div>
+                    <div className="text-xs text-thai-gray-600 font-thai">ผู้ใช้สามารถเข้าสู่ระบบได้</div>
+                  </div>
+                </div>
+              </label>
+
+              <label className="flex items-center space-x-3 p-3 bg-thai-gray-50 rounded-xl hover:bg-thai-gray-100 transition-colors cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="force_password_change"
+                  checked={formData.force_password_change}
+                  onChange={handleInputChange}
+                  className="w-4 h-4 text-orange-600 bg-white border-thai-gray-300 rounded focus:ring-orange-500 focus:ring-2"
+                />
+                <div className="flex items-center space-x-2">
+                  <Lock className="w-4 h-4 text-orange-600" />
+                  <div>
+                    <div className="font-medium text-thai-gray-900 font-thai text-sm">บังคับเปลี่ยนรหัสผ่าน</div>
+                    <div className="text-xs text-thai-gray-600 font-thai">ผู้ใช้ต้องเปลี่ยนรหัสผ่านในการเข้าใช้งานครั้งแรก</div>
+                  </div>
+                </div>
+              </label>
+
+              <label className="flex items-center space-x-3 p-3 bg-thai-gray-50 rounded-xl hover:bg-thai-gray-100 transition-colors cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="email_verified"
+                  checked={formData.email_verified}
+                  onChange={handleInputChange}
+                  className="w-4 h-4 text-blue-600 bg-white border-thai-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                />
+                <div className="flex items-center space-x-2">
+                  <Mail className="w-4 h-4 text-blue-600" />
+                  <div>
+                    <div className="font-medium text-thai-gray-900 font-thai text-sm">ยืนยันอีเมลแล้ว</div>
+                    <div className="text-xs text-thai-gray-600 font-thai">อีเมลได้รับการยืนยันแล้ว (ปกติเปิดไว้)</div>
+                  </div>
+                </div>
+              </label>
+            </div>
           </div>
 
           {/* Remarks */}

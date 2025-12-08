@@ -9,6 +9,7 @@ export interface User {
   full_name: string;
   role_id: number;
   role_name: string;
+  permissions?: string[]; // Array of permission keys (module_key)
 }
 
 export interface Session {
@@ -36,12 +37,16 @@ export function useAuth() {
   // Fetch current user
   const fetchUser = useCallback(async () => {
     try {
+      console.log('🔄 [useAuth] Starting fetchUser...');
       setState(prev => ({ ...prev, loading: true, error: null }));
 
+      console.log('📡 [useAuth] Calling /api/auth/me...');
       const response = await fetch('/api/auth/me');
       const data = await response.json();
+      console.log('📡 [useAuth] /api/auth/me response:', { ok: response.ok, status: response.status });
 
       if (!response.ok) {
+        console.log('❌ [useAuth] User not authenticated');
         setState({
           user: null,
           session: null,
@@ -51,14 +56,40 @@ export function useAuth() {
         return;
       }
 
+      console.log('✅ [useAuth] User authenticated:', data.user?.email);
+      console.log('👤 [useAuth] User data:', data.user);
+
+      // Fetch user permissions
+      let permissions: string[] = [];
+      if (data.user) {
+        try {
+          console.log('📡 [useAuth] Calling /api/auth/permissions...');
+          const permResponse = await fetch('/api/auth/permissions');
+          console.log('📡 [useAuth] Permissions response status:', permResponse.status);
+          const permData = await permResponse.json();
+          console.log('🔑 [useAuth] Permissions API full response:', JSON.stringify(permData, null, 2));
+          if (permResponse.ok && permData.permissions) {
+            permissions = permData.permissions.map((p: any) => p.module_key);
+            console.log('🔑 [useAuth] Mapped permissions:', permissions);
+            console.log('🔑 [useAuth] Total permissions:', permissions.length);
+            console.log('🔑 [useAuth] Has dashboard.overview.view?', permissions.includes('dashboard.overview.view'));
+          } else {
+            console.error('❌ [useAuth] Failed to load permissions:', permResponse.status, permData);
+          }
+        } catch (err) {
+          console.error('❌ [useAuth] Error loading permissions:', err);
+        }
+      }
+
+      console.log('✅ [useAuth] Setting user state with', permissions.length, 'permissions');
       setState({
-        user: data.user,
+        user: data.user ? { ...data.user, permissions } : null,
         session: data.session,
         loading: false,
         error: null,
       });
     } catch (error) {
-      console.error('Error fetching user:', error);
+      console.error('❌ [useAuth] Error fetching user:', error);
       setState({
         user: null,
         session: null,
@@ -251,11 +282,17 @@ export function useAuth() {
     }
   }, []);
 
-  // Check if user has permission
-  const hasPermission = useCallback((permission: string): boolean => {
-    // This would need to be implemented based on your permission system
-    // For now, return true for admin users
-    return state.user?.role_name === 'Admin' || state.user?.role_name === 'Super Admin';
+  // Check if user has permission (by module_key)
+  const hasPermission = useCallback((moduleKey: string): boolean => {
+    if (!state.user) return false;
+    
+    // Admin and Super Admin have all permissions
+    if (state.user.role_name === 'Admin' || state.user.role_name === 'Super Admin') {
+      return true;
+    }
+    
+    // Check if user has the specific permission
+    return state.user.permissions?.includes(moduleKey) || false;
   }, [state.user]);
 
   // Check if user has role

@@ -12,7 +12,8 @@ import ZoneLocationSelect from '@/components/warehouse/ZoneLocationSelect';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
-import { Loader2, Plus, RefreshCw, Search, Package, ArrowRight, MapPin, Truck, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Edit, Eye, UserPlus } from 'lucide-react';
+import { Loader2, Plus, RefreshCw, Search, Package, ArrowRight, MapPin, Truck, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Edit, Eye, UserPlus, AlertTriangle } from 'lucide-react';
+import { PermissionGuard } from '@/components/auth/PermissionGuard';
 
 const MOVE_STATUS_LABELS: Record<MoveStatus, string> = {
   draft: 'ฉบับร่าง',
@@ -2726,4 +2727,21 @@ const TransferPage: React.FC = () => {
   );
 };
 
-export default TransferPage;
+export default function TransferPageWithPermission() {
+  return (
+    <PermissionGuard 
+      permission="warehouse.inventory.view"
+      fallback={
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">ไม่มีสิทธิ์เข้าถึง</h2>
+            <p className="text-gray-600">คุณไม่มีสิทธิ์ในการย้ายสินค้า</p>
+          </div>
+        </div>
+      }
+    >
+      <TransferPage />
+    </PermissionGuard>
+  );
+}

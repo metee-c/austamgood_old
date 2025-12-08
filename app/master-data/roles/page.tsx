@@ -17,12 +17,16 @@ import {
   PlusCircle,
   Pencil,
   X,
-  Check
+  Check,
+  AlertTriangle
 } from 'lucide-react';
+import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Table from '@/components/ui/Table';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import { SystemRoleWithPermissions, PermissionModule } from '@/types/user-management-schema';
+import EditRoleModal from '@/components/roles/EditRoleModal';
+import ViewPermissionsModal from '@/components/roles/ViewPermissionsModal';
 
 // Types for sorting
 interface SortConfig {
@@ -35,7 +39,9 @@ const useSortableData = (items: any[], config: SortConfig | null = null) => {
   const [sortConfig, setSortConfig] = useState<SortConfig | null>(config);
 
   const sortedItems = React.useMemo(() => {
-    let sortableItems = [...items];
+    // Ensure items is always an array
+    const itemsArray = Array.isArray(items) ? items : [];
+    let sortableItems = [...itemsArray];
     if (sortConfig !== null) {
       sortableItems.sort((a, b) => {
         if (a[sortConfig.key] < b[sortConfig.key]) {
@@ -91,7 +97,17 @@ const SortableHead = ({
   );
 };
 
-const RolesTable = ({ data }: { data: SystemRoleWithPermissions[] }) => {
+const RolesTable = ({ 
+  data,
+  onView,
+  onEdit,
+  onDelete
+}: { 
+  data: SystemRoleWithPermissions[];
+  onView: (role: SystemRoleWithPermissions) => void;
+  onEdit: (role: SystemRoleWithPermissions) => void;
+  onDelete: (role: SystemRoleWithPermissions) => void;
+}) => {
   const { items, requestSort, sortConfig } = useSortableData(data);
 
   const getStatusBadge = (isActive: boolean) => {
@@ -151,18 +167,21 @@ const RolesTable = ({ data }: { data: SystemRoleWithPermissions[] }) => {
                   size="sm" 
                   icon={Eye} 
                   title="ดูสิทธิ์"
+                  onClick={() => onView(role)}
                 />
                 <Button 
                   variant="ghost" 
                   size="sm" 
                   icon={Edit} 
                   title="แก้ไข"
+                  onClick={() => onEdit(role)}
                 />
                 <Button 
                   variant="ghost" 
                   size="sm" 
                   icon={Trash2} 
                   title="ลบ"
+                  onClick={() => onDelete(role)}
                 />
               </div>
             </Table.Cell>
@@ -180,6 +199,10 @@ const RolesPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
+  const [selectedRole, setSelectedRole] = useState<SystemRoleWithPermissions | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showPermissionsModal, setShowPermissionsModal] = useState(false);
+  const [isModulesExpanded, setIsModulesExpanded] = useState(true);
 
   useEffect(() => {
     fetchData();
@@ -207,12 +230,14 @@ const RolesPage = () => {
       const params = new URLSearchParams();
       if (searchTerm) params.append('search', searchTerm);
       if (selectedStatus) params.append('is_active', selectedStatus);
+      params.append('include_user_count', 'true');
 
       const response = await fetch(`/api/roles?${params}`);
       const data = await response.json();
 
       if (response.ok) {
-        setRoles(data);
+        // Handle both array and object with roles property
+        setRoles(Array.isArray(data) ? data : (data.roles || []));
         setError(null);
       } else {
         setError(data.error || 'เกิดข้อผิดพลาดในการโหลดข้อมูล');
@@ -232,6 +257,62 @@ const RolesPage = () => {
       }
     } catch (err) {
       console.error('Failed to fetch modules:', err);
+    }
+  };
+
+  const handleViewPermissions = (role: SystemRoleWithPermissions) => {
+    setSelectedRole(role);
+    setShowPermissionsModal(true);
+  };
+
+  const handleAddRole = () => {
+    setSelectedRole(null);
+    setShowEditModal(true);
+  };
+
+  const handleEditRole = (role: SystemRoleWithPermissions) => {
+    setSelectedRole(role);
+    setShowEditModal(true);
+  };
+
+  const handleDeleteRole = async (role: SystemRoleWithPermissions) => {
+    console.log('🗑️ [DELETE ROLE] Starting delete process for:', role);
+    
+    // Check if role has users
+    if (role.user_count && role.user_count > 0) {
+      console.log('❌ [DELETE ROLE] Cannot delete - has users:', role.user_count);
+      alert(`ไม่สามารถลบบทบาท "${role.role_name}" ได้\nเนื่องจากมีผู้ใช้ ${role.user_count} คนที่ใช้บทบาทนี้อยู่`);
+      return;
+    }
+
+    if (!confirm(`คุณต้องการลบบทบาท "${role.role_name}" ใช่หรือไม่?`)) {
+      console.log('❌ [DELETE ROLE] User cancelled');
+      return;
+    }
+
+    console.log('📤 [DELETE ROLE] Sending DELETE request to:', `/api/roles/${role.role_id}`);
+    
+    try {
+      const response = await fetch(`/api/roles/${role.role_id}`, {
+        method: 'DELETE',
+      });
+
+      console.log('📥 [DELETE ROLE] Response status:', response.status);
+      
+      const data = await response.json();
+      console.log('📥 [DELETE ROLE] Response data:', data);
+
+      if (response.ok) {
+        console.log('✅ [DELETE ROLE] Delete successful, refreshing roles...');
+        await fetchRoles();
+        alert('ลบบทบาทสำเร็จ');
+      } else {
+        console.error('❌ [DELETE ROLE] Delete failed:', data);
+        alert(data.error || 'เกิดข้อผิดพลาดในการลบบทบาท');
+      }
+    } catch (err) {
+      console.error('❌ [DELETE ROLE] Exception:', err);
+      alert('เกิดข้อผิดพลาดในการเชื่อมต่อ');
     }
   };
 
@@ -261,28 +342,20 @@ const RolesPage = () => {
     <div className="min-h-screen bg-gradient-to-br from-thai-gray-25 to-white">
       <div className="space-y-3">
         {/* Modern Page Header */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-6 shadow-sm">
+        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-0 shadow-sm">
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-bold text-thai-gray-900 font-thai">จัดการบทบาท</h1>
               <p className="text-thai-gray-600 font-thai mt-1">จัดการบทบาทและสิทธิ์การเข้าถึงระบบ</p>
             </div>
-            <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                icon={Settings}
-                className="bg-white/50 hover:bg-white/80 border-white/30 backdrop-blur-sm shadow-sm"
-              >
-                จัดการสิทธิ์
-              </Button>
-              <Button 
-                variant="primary" 
-                icon={Plus}
-                className="bg-green-500 hover:bg-green-600 shadow-lg"
-              >
-                เพิ่มบทบาท
-              </Button>
-            </div>
+            <Button
+              variant="primary"
+              icon={Plus}
+              onClick={handleAddRole}
+              className="bg-green-500 hover:bg-green-600 shadow-lg"
+            >
+              เพิ่มบทบาท
+            </Button>
           </div>
         </div>
 
@@ -298,129 +371,110 @@ const RolesPage = () => {
           </div>
         )}
 
-        {/* Modern Search and Filters */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm">
-          <div className="flex items-center space-x-3">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
-                <input
-                  type="text"
-                  placeholder="ค้นหาบทบาท..."
-                  className="
-                    w-full pl-10 pr-4 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                    focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                    text-sm font-thai transition-all duration-300 backdrop-blur-sm
-                    placeholder:text-thai-gray-400
-                  "
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
+        {/* Roles Table */}
+        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-2xl overflow-hidden shadow-sm">
+          <div className="p-6 border-b border-white/20">
+            <h2 className="text-xl font-semibold text-thai-gray-700 flex items-center justify-between font-thai">
+              <div className="flex items-center">
+                <Shield className="w-5 h-5 mr-3 text-primary-500"/>
+                รายการบทบาท
               </div>
-            </div>
-            
-            <div className="flex space-x-2">
-              <select
-                className="
-                  px-3 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                  text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-24
-                "
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-              >
-                <option value="">ทุกสถานะ</option>
-                <option value="true">ใช้งาน</option>
-                <option value="false">ไม่ใช้งาน</option>
-              </select>
-            </div>
+            </h2>
+          </div>
+          <div className="overflow-x-auto">
+            {renderTable(roles, <RolesTable data={roles} onView={handleViewPermissions} onEdit={handleEditRole} onDelete={handleDeleteRole} />)}
           </div>
         </div>
 
         {/* Permission Modules Overview */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-2xl p-6 shadow-sm">
-          <h2 className="text-xl font-semibold text-thai-gray-700 flex items-center font-thai mb-4">
-            <Settings className="w-5 h-5 mr-3 text-primary-500"/>
-            โมดูลที่สามารถกำหนดสิทธิ์ได้
-          </h2>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6 gap-3">
-            {modules.map((module) => (
-              <div key={module.module_id} className="bg-thai-gray-50/50 rounded-xl p-3 border border-thai-gray-200/50">
-                <div className="font-medium text-thai-gray-900 font-thai text-sm mb-1">
-                  {module.module_name}
-                </div>
-                <div className="text-xs text-thai-gray-600 font-thai">
-                  {module.description}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Roles Table */}
         <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-2xl overflow-hidden shadow-sm">
-          <div className="p-6 border-b border-white/20">
-            <h2 className="text-xl font-semibold text-thai-gray-700 flex items-center font-thai">
-              <Shield className="w-5 h-5 mr-3 text-primary-500"/>
-              รายการบทบาท
+          <div
+            className="p-6 border-b border-white/20 cursor-pointer hover:bg-thai-gray-25/50 transition-colors"
+            onClick={() => setIsModulesExpanded(!isModulesExpanded)}
+          >
+            <h2 className="text-xl font-semibold text-thai-gray-700 flex items-center justify-between font-thai">
+              <div className="flex items-center">
+                <Settings className="w-5 h-5 mr-3 text-primary-500"/>
+                โมดูลที่สามารถกำหนดสิทธิ์ได้
+                <span className="ml-3 text-sm text-thai-gray-500 font-normal">
+                  ({modules.length} โมดูล)
+                </span>
+              </div>
+              <div className="transition-transform duration-200" style={{ transform: isModulesExpanded ? 'rotate(180deg)' : 'rotate(0deg)' }}>
+                <ChevronDown className="w-5 h-5 text-thai-gray-400" />
+              </div>
             </h2>
           </div>
-          <div className="overflow-x-auto">
-            {renderTable(roles, <RolesTable data={roles} />)}
-          </div>
-        </div>
-
-        {/* Permission Matrix Preview */}
-        {roles.length > 0 && (
-          <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-2xl overflow-hidden shadow-sm">
-            <div className="p-6 border-b border-white/20">
-              <h2 className="text-xl font-semibold text-thai-gray-700 flex items-center font-thai">
-                <Eye className="w-5 h-5 mr-3 text-primary-500"/>
-                ตัวอย่างสิทธิ์ (บทบาทแรก 3 อันดับ)
-              </h2>
-            </div>
-            <div className="p-6 overflow-x-auto">
+          {isModulesExpanded && (
+            <div className="overflow-x-auto">
               <table className="w-full text-sm">
-                <thead>
+                <thead className="bg-thai-gray-50/50">
                   <tr className="border-b border-thai-gray-200">
-                    <th className="text-left py-3 px-4 font-thai font-medium text-thai-gray-700">โมดูล</th>
-                    {roles.slice(0, 3).map((role) => (
-                      <th key={role.role_id} className="text-center py-3 px-4 font-thai font-medium text-thai-gray-700">
-                        {role.role_name}
-                      </th>
-                    ))}
+                    <th className="text-left py-3 px-4 font-thai font-semibold text-thai-gray-700 w-1/3">โมดูล</th>
+                    <th className="text-left py-3 px-4 font-thai font-semibold text-thai-gray-700 w-2/3">คำอธิบาย</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {modules.slice(0, 8).map((module) => (
-                    <tr key={module.module_id} className="border-b border-thai-gray-100 hover:bg-thai-gray-25">
-                      <td className="py-3 px-4 font-thai text-thai-gray-900">
-                        {module.module_name}
+                  {modules.map((module, index) => (
+                    <tr
+                      key={module.module_id}
+                      className={`border-b border-thai-gray-100 hover:bg-thai-gray-25 transition-colors ${
+                        index % 2 === 0 ? 'bg-white' : 'bg-thai-gray-25/30'
+                      }`}
+                    >
+                      <td className="py-2.5 px-4">
+                        <span className="font-medium text-thai-gray-900 font-thai">
+                          {module.module_name}
+                        </span>
                       </td>
-                      {roles.slice(0, 3).map((role) => {
-                        const permission = role.permissions?.find(p => p.module_id === module.module_id);
-                        return (
-                          <td key={role.role_id} className="py-3 px-4 text-center">
-                            <div className="flex justify-center space-x-1">
-                              {permission?.can_view && <Badge variant="success" className="text-xs">ดู</Badge>}
-                              {permission?.can_create && <Badge variant="info" className="text-xs">เพิ่ม</Badge>}
-                              {permission?.can_edit && <Badge variant="warning" className="text-xs">แก้</Badge>}
-                              {permission?.can_delete && <Badge variant="danger" className="text-xs">ลบ</Badge>}
-                              {!permission && <span className="text-thai-gray-400">-</span>}
-                            </div>
-                          </td>
-                        );
-                      })}
+                      <td className="py-2.5 px-4">
+                        <span className="text-thai-gray-600 font-thai">
+                          {module.description}
+                        </span>
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </div>
-        )}
+          )}
+        </div>
+
       </div>
+
+      {/* Modals */}
+      <EditRoleModal
+        isOpen={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        role={selectedRole}
+        onSuccess={fetchRoles}
+      />
+
+      <ViewPermissionsModal
+        isOpen={showPermissionsModal}
+        onClose={() => setShowPermissionsModal(false)}
+        role={selectedRole}
+        onSuccess={fetchRoles}
+      />
     </div>
   );
 };
 
-export default RolesPage;
+export default function RolesPageWithPermission() {
+  return (
+    <PermissionGuard 
+      permission="user_management.roles.view"
+      fallback={
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
+            <h2 className="text-xl font-semibold text-gray-900 mb-2">ไม่มีสิทธิ์เข้าถึง</h2>
+            <p className="text-gray-600">คุณไม่มีสิทธิ์ในการจัดการบทบาท</p>
+          </div>
+        </div>
+      }
+    >
+      <RolesPage />
+    </PermissionGuard>
+  );
+}
