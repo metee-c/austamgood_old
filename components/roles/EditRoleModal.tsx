@@ -335,21 +335,30 @@ const EditRoleModal: React.FC<EditRoleModalProps> = ({ isOpen, onClose, role, on
                 const modules = Array.isArray(categoryModules) ? categoryModules : [];
                 return (
                   <div key={category} className="mb-4 bg-white p-3 rounded-lg shadow-sm">
-                    <div className="flex items-center mb-2 pb-2 border-b border-thai-gray-100">
-                      <input
-                        type="checkbox"
-                        checked={modules.every((m: any) =>
-                          formData.permissions.includes(m.module_id)
-                        )}
-                        onChange={(e) => toggleCategoryPermissions(category, e.target.checked)}
-                        className="h-5 w-5 text-blue-600 bg-white border-thai-gray-300 rounded focus:ring-blue-500 focus:ring-2"
-                      />
-                      <label className="ml-3 text-sm font-semibold text-thai-gray-900 font-thai">
-                        {categoryNames[category] || category}
-                      </label>
-                      <span className="ml-2 text-xs text-thai-gray-500">
-                        ({modules.filter((m: any) => formData.permissions.includes(m.module_id)).length}/{modules.length})
-                      </span>
+                    <div className="flex items-center justify-between mb-2 pb-2 border-b border-thai-gray-100">
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={modules.every((m: any) =>
+                            formData.permissions.includes(m.module_id)
+                          )}
+                          onChange={(e) => toggleCategoryPermissions(category, e.target.checked)}
+                          className="h-5 w-5 text-blue-600 bg-white border-thai-gray-300 rounded focus:ring-blue-500 focus:ring-2"
+                        />
+                        <label className="ml-3 text-sm font-semibold text-thai-gray-900 font-thai">
+                          {categoryNames[category] || category}
+                        </label>
+                        <span className="ml-2 text-xs text-thai-gray-500">
+                          ({modules.filter((m: any) => formData.permissions.includes(m.module_id)).length}/{modules.length})
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => toggleCategoryPermissions(category, !modules.every((m: any) => formData.permissions.includes(m.module_id)))}
+                        className="px-3 py-1 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors font-thai"
+                      >
+                        {modules.every((m: any) => formData.permissions.includes(m.module_id)) ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด'}
+                      </button>
                     </div>
                     <div className="ml-8 grid grid-cols-1 gap-1.5">
                       {modules.map((module: any) => (

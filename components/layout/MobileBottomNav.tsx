@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -15,38 +15,45 @@ import {
   X
 } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { usePermission } from '@/hooks/usePermission';
 
 interface NavItem {
   path: string;
   icon: React.ElementType;
   label: string;
+  permission: string; // Required permission to view
 }
 
 const navItems: NavItem[] = [
   {
     path: '/mobile/receive',
     icon: Package,
-    label: 'รับสินค้า'
+    label: 'รับสินค้า',
+    permission: 'mobile.receive'
   },
   {
     path: '/mobile/transfer',
     icon: Move,
-    label: 'ย้ายสินค้า'
+    label: 'ย้ายสินค้า',
+    permission: 'mobile.transfer'
   },
   {
     path: '/mobile',
     icon: Home,
-    label: 'หน้าหลัก'
+    label: 'หน้าหลัก',
+    permission: 'mobile.view'
   },
   {
     path: '/mobile/pick',
     icon: QrCode,
-    label: 'หยิบสินค้า'
+    label: 'หยิบสินค้า',
+    permission: 'mobile.pick'
   },
   {
     path: '/mobile/loading',
     icon: Truck,
-    label: 'โหลดสินค้า'
+    label: 'โหลดสินค้า',
+    permission: 'mobile.loading'
   }
 ];
 
@@ -54,6 +61,15 @@ export default function MobileBottomNav() {
   const pathname = usePathname();
   const { user, logout } = useAuthContext();
   const [showMenu, setShowMenu] = useState(false);
+
+  // Filter nav items based on permissions
+  const visibleNavItems = useMemo(() => {
+    return navItems.filter(item => {
+      // Check permission for each nav item
+      const hasPermission = user?.permissions?.includes(item.permission);
+      return hasPermission;
+    });
+  }, [user?.permissions]);
 
   const handleLogout = async () => {
     await logout();
@@ -126,7 +142,7 @@ export default function MobileBottomNav() {
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-thai-gray-200 shadow-lg z-50">
         <nav className="max-w-screen-xl mx-auto">
           <ul className="flex items-center justify-around">
-            {navItems.map((item) => {
+            {visibleNavItems.map((item) => {
               const Icon = item.icon;
               const isActive = item.path === '/mobile'
                 ? pathname === '/mobile'

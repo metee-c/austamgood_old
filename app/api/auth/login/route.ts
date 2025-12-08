@@ -64,15 +64,27 @@ export async function POST(request: NextRequest) {
 
     // Set HttpOnly cookie for session
     if (result.session_token) {
-      const maxAge = remember_me ? 30 * 24 * 60 * 60 : 24 * 60 * 60; // 30 days or 24 hours
-      response.cookies.set('session_token', result.session_token, {
+      // ถ้าไม่ tick "จดจำฉันไว้" → session cookie (หมดอายุเมื่อปิด browser)
+      // ถ้า tick "จดจำฉันไว้" → persistent cookie (30 วัน)
+      const cookieOptions: any = {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
-        maxAge: maxAge,
         path: '/'
+      };
+
+      if (remember_me) {
+        // Persistent cookie - 30 วัน
+        cookieOptions.maxAge = 30 * 24 * 60 * 60;
+      }
+      // ถ้าไม่มี maxAge จะเป็น session cookie (หมดอายุเมื่อปิด browser)
+
+      response.cookies.set('session_token', result.session_token, cookieOptions);
+      console.log('🍪 Session cookie set:', {
+        remember_me,
+        type: remember_me ? 'persistent (30 days)' : 'session (until browser closes)',
+        secure: process.env.NODE_ENV === 'production'
       });
-      console.log('🍪 Session cookie set:', { maxAge, secure: process.env.NODE_ENV === 'production' });
     }
 
     return response;

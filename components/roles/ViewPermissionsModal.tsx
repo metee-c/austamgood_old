@@ -267,10 +267,13 @@ const ViewPermissionsModal: React.FC<ViewPermissionsModalProps> = ({ isOpen, onC
                   key => perm[key] === true
                 );
 
+                const availablePermissions = Object.keys(permissionLabels).filter(key => perm[key] === true);
+                const allChecked = availablePermissions.every(key => perm[key] === true);
+
                 return (
                   <div key={`${perm.role_id}-${perm.module_id}`} className="bg-thai-gray-50 rounded-xl p-4">
                     <div className="flex items-start justify-between mb-3">
-                      <div>
+                      <div className="flex-1">
                         <h3 className="font-semibold text-thai-gray-900 font-thai">
                           {module?.module_name || 'Unknown Module'}
                         </h3>
@@ -280,11 +283,34 @@ const ViewPermissionsModal: React.FC<ViewPermissionsModalProps> = ({ isOpen, onC
                           </p>
                         )}
                       </div>
+                      {isEditing && availablePermissions.length > 1 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const newValue = !allChecked;
+                            setEditedPermissions(prev =>
+                              prev.map(p => {
+                                if (p.module_id === perm.module_id) {
+                                  const updated = { ...p };
+                                  availablePermissions.forEach(key => {
+                                    updated[key] = newValue;
+                                  });
+                                  return updated;
+                                }
+                                return p;
+                              })
+                            );
+                          }}
+                          className="px-3 py-1 text-xs font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-md transition-colors font-thai ml-2 flex-shrink-0"
+                        >
+                          {allChecked ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด'}
+                        </button>
+                      )}
                     </div>
-                    
+
                     {isEditing ? (
                       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2">
-                        {Object.keys(permissionLabels).map(key => (
+                        {availablePermissions.map(key => (
                           <label
                             key={key}
                             className="flex items-center space-x-2 px-3 py-2 bg-white rounded-lg border border-thai-gray-200 hover:border-blue-300 cursor-pointer transition-colors"

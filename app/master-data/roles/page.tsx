@@ -406,36 +406,71 @@ const RolesPage = () => {
             </h2>
           </div>
           {isModulesExpanded && (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="bg-thai-gray-50/50">
-                  <tr className="border-b border-thai-gray-200">
-                    <th className="text-left py-3 px-4 font-thai font-semibold text-thai-gray-700 w-1/3">โมดูล</th>
-                    <th className="text-left py-3 px-4 font-thai font-semibold text-thai-gray-700 w-2/3">คำอธิบาย</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {modules.map((module, index) => (
-                    <tr
-                      key={module.module_id}
-                      className={`border-b border-thai-gray-100 hover:bg-thai-gray-25 transition-colors ${
-                        index % 2 === 0 ? 'bg-white' : 'bg-thai-gray-25/30'
-                      }`}
-                    >
-                      <td className="py-2.5 px-4">
-                        <span className="font-medium text-thai-gray-900 font-thai">
-                          {module.module_name}
+            <div className="p-6">
+              {/* Group modules by category */}
+              {Object.entries(
+                modules.reduce((acc, module) => {
+                  const category = (module as any).module_key?.split('.')[0] || 'other';
+                  if (!acc[category]) {
+                    acc[category] = [];
+                  }
+                  acc[category].push(module);
+                  return acc;
+                }, {} as { [key: string]: typeof modules })
+              ).map(([category, categoryModules]) => {
+                const categoryNames: { [key: string]: string } = {
+                  'dashboard': 'Dashboard',
+                  'warehouse': 'จัดการคลังสินค้า',
+                  'orders': 'จัดการออเดอร์',
+                  'routes': 'เส้นทางขนส่ง',
+                  'picklists': 'ใบหยิบสินค้า',
+                  'face_sheets': 'ใบปะหน้า',
+                  'bonus_face_sheets': 'ใบปะหน้าของแถม',
+                  'loadlists': 'ใบโหลดสินค้า',
+                  'replenishment': 'เบิกเติมอัตโนมัติ',
+                  'shipping': 'ส่งสินค้า',
+                  'reports': 'รายงาน',
+                  'stock': 'จัดการสต็อก',
+                  'mobile': 'Mobile Operations',
+                  'master': 'ข้อมูลหลัก',
+                  'production': 'จัดการผลิต',
+                  'user_management': 'จัดการผู้ใช้งาน',
+                  'other': 'อื่นๆ'
+                };
+
+                return (
+                  <div key={category} className="mb-4 last:mb-0">
+                    <div className="bg-gradient-to-r from-blue-50 to-blue-100/50 px-4 py-2 rounded-lg mb-2">
+                      <h3 className="font-semibold text-blue-900 font-thai text-sm flex items-center justify-between">
+                        <span>{categoryNames[category] || category}</span>
+                        <span className="text-xs font-normal text-blue-600">
+                          {categoryModules.length} โมดูล
                         </span>
-                      </td>
-                      <td className="py-2.5 px-4">
-                        <span className="text-thai-gray-600 font-thai">
-                          {module.description}
-                        </span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+                      </h3>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2 ml-2">
+                      {categoryModules.map((module) => (
+                        <div
+                          key={module.module_id}
+                          className="flex items-start space-x-2 p-2 hover:bg-blue-50/50 rounded transition-colors"
+                        >
+                          <div className="w-1.5 h-1.5 bg-blue-400 rounded-full mt-1.5 flex-shrink-0"></div>
+                          <div className="flex-1 min-w-0">
+                            <div className="font-medium text-thai-gray-900 font-thai text-xs truncate" title={module.module_name}>
+                              {module.module_name}
+                            </div>
+                            {module.description && (
+                              <div className="text-[10px] text-thai-gray-500 font-thai truncate" title={module.description}>
+                                {module.description}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>

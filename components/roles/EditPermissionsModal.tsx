@@ -30,6 +30,8 @@ const EditPermissionsModal: React.FC<EditPermissionsModalProps> = ({
 
   useEffect(() => {
     if (isOpen && role) {
+      console.log('EditPermissionsModal - isSuperAdmin:', isSuperAdmin);
+      console.log('EditPermissionsModal - currentUserRole:', currentUserRole);
       fetchData();
     }
   }, [isOpen, role]);
@@ -79,6 +81,29 @@ const EditPermissionsModal: React.FC<EditPermissionsModalProps> = ({
     }));
   };
 
+  const handleSelectAllForPermission = (permType: string, value: boolean) => {
+    const updatedPermissions = { ...permissions };
+    modules.forEach((module) => {
+      updatedPermissions[module.module_id] = {
+        ...updatedPermissions[module.module_id],
+        module_id: module.module_id,
+        [permType]: value
+      };
+    });
+    setPermissions(updatedPermissions);
+  };
+
+  const handleSelectAllForModule = (moduleId: number, value: boolean) => {
+    const updatedPerm = { ...permissions[moduleId], module_id: moduleId };
+    permissionTypes.forEach(({ key }) => {
+      updatedPerm[key] = value;
+    });
+    setPermissions(prev => ({
+      ...prev,
+      [moduleId]: updatedPerm
+    }));
+  };
+
   const handleSave = async () => {
     if (!role || !isSuperAdmin) return;
 
@@ -116,11 +141,11 @@ const EditPermissionsModal: React.FC<EditPermissionsModalProps> = ({
   if (!isOpen || !role) return null;
 
   const permissionTypes = [
-    { key: 'can_view', label: 'ดู', color: 'blue' },
-    { key: 'can_create', label: 'สร้าง', color: 'green' },
-    { key: 'can_edit', label: 'แก้ไข', color: 'yellow' },
-    { key: 'can_delete', label: 'ลบ', color: 'red' },
-    { key: 'can_approve', label: 'อนุมัติ', color: 'purple' },
+    { key: 'can_view', label: 'ดู' },
+    { key: 'can_create', label: 'สร้าง' },
+    { key: 'can_edit', label: 'แก้ไข' },
+    { key: 'can_delete', label: 'ลบ' },
+    { key: 'can_approve', label: 'อนุมัติ' },
   ];
 
   return (
@@ -179,47 +204,112 @@ const EditPermissionsModal: React.FC<EditPermissionsModalProps> = ({
               <p className="text-thai-gray-500 font-thai">ไม่พบข้อมูลโมดูล</p>
             </div>
           ) : (
-            <div className="space-y-4">
-              {modules.map((module: any) => {
-                const perm = permissions[module.module_id] || {};
-                
-                return (
-                  <div key={module.module_id} className="bg-thai-gray-50 rounded-xl p-4">
-                    <div className="mb-3">
-                      <h3 className="font-semibold text-thai-gray-900 font-thai">
-                        {module.module_name}
-                      </h3>
-                      {module.description && (
-                        <p className="text-sm text-thai-gray-600 font-thai mt-1">
-                          {module.description}
-                        </p>
-                      )}
-                    </div>
-                    
-                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
-                      {permissionTypes.map(({ key, label, color }) => (
-                        <label 
-                          key={key}
-                          className={`
-                            flex items-center space-x-2 p-2 rounded-lg transition-colors
-                            ${isSuperAdmin ? 'cursor-pointer hover:bg-white' : 'cursor-not-allowed opacity-60'}
-                            ${perm[key] ? 'bg-green-100' : 'bg-white'}
-                          `}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={perm[key] || false}
-                            onChange={(e) => handlePermissionChange(module.module_id, key, e.target.checked)}
-                            disabled={!isSuperAdmin}
-                            className="w-4 h-4 text-green-600 bg-white border-thai-gray-300 rounded focus:ring-green-500 focus:ring-2"
-                          />
-                          <span className="text-sm font-thai">{label}</span>
-                        </label>
-                      ))}
-                    </div>
+            <div className="space-y-6">
+              {/* Select All Controls */}
+              {isSuperAdmin && (
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                  <h3 className="font-semibold text-thai-gray-900 font-thai mb-3">
+                    เลือกทั้งหมดสำหรับแต่ละสิทธิ์
+                  </h3>
+                  <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                    {permissionTypes.map(({ key, label }) => {
+                      const allChecked = modules.every(m => permissions[m.module_id]?.[key]);
+                      const someChecked = modules.some(m => permissions[m.module_id]?.[key]);
+                      
+                      return (
+                        <div key={key} className="flex flex-col space-y-2">
+                          <button
+                            onClick={() => handleSelectAllForPermission(key, !allChecked)}
+                            className={`
+                              flex items-center justify-center space-x-2 p-3 rounded-lg transition-all
+                              ${allChecked 
+                                ? 'bg-green-500 text-white hover:bg-green-600' 
+                                : someChecked
+                                ? 'bg-green-200 text-green-800 hover:bg-green-300'
+                                : 'bg-white text-thai-gray-700 hover:bg-thai-gray-100 border border-thai-gray-300'
+                              }
+                            `}
+                          >
+                            <Check className={`w-4 h-4 ${allChecked ? 'opacity-100' : 'opacity-0'}`} />
+                            <span className="text-sm font-medium font-thai">{label}</span>
+                          </button>
+                          <button
+                            onClick={() => handleSelectAllForPermission(key, false)}
+                            className="text-xs text-thai-gray-500 hover:text-thai-gray-700 font-thai"
+                          >
+                            ล้างทั้งหมด
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
-                );
-              })}
+                </div>
+              )}
+
+              {/* Individual Module Permissions */}
+              <div className="space-y-4">
+                {modules.map((module: any) => {
+                  const perm = permissions[module.module_id] || {};
+                  const allChecked = permissionTypes.every(({ key }) => perm[key]);
+                  const someChecked = permissionTypes.some(({ key }) => perm[key]);
+                  
+                  return (
+                    <div key={module.module_id} className="bg-thai-gray-50 rounded-xl p-4">
+                      <div className="mb-3 flex items-start justify-between">
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-thai-gray-900 font-thai">
+                            {module.module_name}
+                          </h3>
+                          {module.description && (
+                            <p className="text-sm text-thai-gray-600 font-thai mt-1">
+                              {module.description}
+                            </p>
+                          )}
+                        </div>
+                        {isSuperAdmin && (
+                          <div className="flex items-center space-x-2 ml-4">
+                            <button
+                              onClick={() => handleSelectAllForModule(module.module_id, true)}
+                              className="text-xs text-green-600 hover:text-green-700 font-thai px-2 py-1 rounded hover:bg-green-50 transition-colors"
+                            >
+                              ✓ เลือกทั้งหมด
+                            </button>
+                            <span className="text-thai-gray-300">|</span>
+                            <button
+                              onClick={() => handleSelectAllForModule(module.module_id, false)}
+                              className="text-xs text-red-600 hover:text-red-700 font-thai px-2 py-1 rounded hover:bg-red-50 transition-colors"
+                            >
+                              ✗ ล้างทั้งหมด
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      
+                      <div className="grid grid-cols-2 md:grid-cols-5 gap-2">
+                        {permissionTypes.map(({ key, label }) => (
+                          <label 
+                            key={key}
+                            className={`
+                              flex items-center space-x-2 p-2 rounded-lg transition-colors
+                              ${isSuperAdmin ? 'cursor-pointer hover:bg-white' : 'cursor-not-allowed opacity-60'}
+                              ${perm[key] ? 'bg-green-100' : 'bg-white'}
+                            `}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={perm[key] || false}
+                              onChange={(e) => handlePermissionChange(module.module_id, key, e.target.checked)}
+                              disabled={!isSuperAdmin}
+                              className="w-4 h-4 text-green-600 bg-white border-thai-gray-300 rounded focus:ring-green-500 focus:ring-2"
+                            />
+                            <span className="text-sm font-thai">{label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>

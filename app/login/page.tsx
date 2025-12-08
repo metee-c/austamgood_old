@@ -1,18 +1,33 @@
 'use client';
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, Suspense } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Eye, EyeOff } from 'lucide-react';
 
-export default function LoginPage() {
+function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [sessionTimeoutMessage, setSessionTimeoutMessage] = useState<string | null>(null);
+
+  // Check if redirected due to session timeout
+  useEffect(() => {
+    const timeout = searchParams.get('timeout');
+    if (timeout === '1') {
+      setSessionTimeoutMessage('เซสชันของคุณหมดอายุแล้ว กรุณาเข้าสู่ระบบอีกครั้ง');
+      // Clear timeout message after 5 seconds
+      const timer = setTimeout(() => {
+        setSessionTimeoutMessage(null);
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [searchParams]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -46,14 +61,39 @@ export default function LoginPage() {
         return;
       }
 
-      // ✅ Login successful - redirect to dashboard
-      console.log('✅ Login successful, redirecting to dashboard...');
-      
+      // ✅ Login successful - determine redirect based on permissions
+      console.log('✅ Login successful, checking permissions...');
+
       // Small delay to ensure cookie is set
       await new Promise(resolve => setTimeout(resolve, 200));
-      
-      // Force full page reload to ensure useAuth hook runs
-      window.location.href = '/dashboard';
+
+      // Fetch user permissions to determine redirect
+      const permResponse = await fetch('/api/auth/permissions');
+      const permData = await permResponse.json();
+
+      if (permData.success && permData.permissions) {
+        const permissions = permData.permissions.map((p: any) => p.module_key);
+
+        // Check if user has mobile-only access
+        const hasMobileAccess = permissions.some((p: string) => p.startsWith('mobile.'));
+        const hasDashboardAccess = permissions.some((p: string) => p.startsWith('dashboard.'));
+
+        console.log('🔑 User permissions:', { hasMobileAccess, hasDashboardAccess });
+
+        // Redirect to appropriate page
+        if (hasMobileAccess && !hasDashboardAccess) {
+          // Mobile-only user → redirect to /mobile
+          console.log('📱 Redirecting to mobile page...');
+          window.location.href = '/mobile';
+        } else {
+          // Regular user → redirect to dashboard
+          console.log('🖥️ Redirecting to dashboard...');
+          window.location.href = '/dashboard';
+        }
+      } else {
+        // Fallback to dashboard if can't fetch permissions
+        window.location.href = '/dashboard';
+      }
     } catch (err) {
       console.error('Login error:', err);
       setError('เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์');
@@ -73,6 +113,13 @@ export default function LoginPage() {
             เข้าสู่ระบบเพื่อจัดการคลังสินค้า
           </p>
         </div>
+
+        {/* Session Timeout Message */}
+        {sessionTimeoutMessage && (
+          <div className="bg-yellow-50 border border-yellow-200 text-yellow-800 px-4 py-3 rounded-lg">
+            <p className="text-sm">⏰ {sessionTimeoutMessage}</p>
+          </div>
+        )}
 
         {/* Error Message */}
         {error && (
@@ -192,5 +239,13 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <LoginForm />
+    </Suspense>
   );
 }

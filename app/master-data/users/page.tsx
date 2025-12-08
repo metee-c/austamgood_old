@@ -17,6 +17,7 @@ import {
 import Table from '@/components/ui/Table';
 import Button from '@/components/ui/Button';
 import AddUserForm from '@/components/forms/AddUserForm';
+import EditUserModal from '@/components/forms/EditUserModal';
 import { SystemUserWithRoles, SystemRole, CreateUserData } from '@/types/user-management-schema';
 
 // Types for sorting
@@ -214,6 +215,7 @@ const UsersPage = () => {
   const [selectedRole, setSelectedRole] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('');
   const [showAddUserForm, setShowAddUserForm] = useState(false);
+  const [showEditUserModal, setShowEditUserModal] = useState(false);
   const [editingUser, setEditingUser] = useState<SystemUserWithRoles | null>(null);
 
   useEffect(() => {
@@ -298,9 +300,7 @@ const UsersPage = () => {
 
   const handleEditUser = (user: SystemUserWithRoles) => {
     setEditingUser(user);
-    // TODO: Open edit modal
-    console.log('Edit user:', user);
-    alert(`แก้ไขผู้ใช้: ${user.full_name}\nฟังก์ชันนี้กำลังพัฒนา`);
+    setShowEditUserModal(true);
   };
 
   const handleRoleManagement = () => {
@@ -444,6 +444,21 @@ const UsersPage = () => {
         isOpen={showAddUserForm}
         onClose={() => setShowAddUserForm(false)}
         onSubmit={handleCreateUser}
+      />
+
+      {/* Edit User Modal */}
+      <EditUserModal
+        isOpen={showEditUserModal}
+        onClose={() => {
+          setShowEditUserModal(false);
+          setEditingUser(null);
+        }}
+        user={editingUser}
+        onSuccess={() => {
+          fetchUsers();
+          setShowEditUserModal(false);
+          setEditingUser(null);
+        }}
       />
     </div>
   );
