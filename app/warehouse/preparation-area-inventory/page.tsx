@@ -20,7 +20,23 @@ import Modal from '@/components/ui/Modal';
 import { createClient } from '@/lib/supabase/client';
 import ReservationDetailsModal from '@/components/warehouse/ReservationDetailsModal';
 import ReservationPopover from '@/components/warehouse/ReservationPopover';
-import PreparedDocumentsTable from '@/components/warehouse/PreparedDocumentsTable';
+
+interface RelatedDocument {
+  face_sheet_id?: number;
+  face_sheet_no?: string;
+  face_sheet_status?: string;
+  package_id?: number;
+  package_number?: number;
+  barcode_id?: string;
+  order_id?: number;
+  order_no?: string;
+  shop_name?: string;
+  province?: string;
+  phone?: string;
+  delivery_date?: string;
+  quantity_picked?: number;
+  picked_at?: string;
+}
 
 interface InventoryBalance {
   balance_id: number;
@@ -44,12 +60,17 @@ interface InventoryBalance {
   sku_name?: string;
   warehouse_name?: string;
   location_name?: string;
+  // Dispatch context data (from bonus face sheet)
+  document_type?: string | null;
+  related_documents?: RelatedDocument[];
 }
 
 type FlowStage = 'preparation' | 'dispatch' | 'delivery';
 
 const InventoryBalancesPage = () => {
   const [balanceData, setBalanceData] = useState<InventoryBalance[]>([]);
+  const [dispatchData, setDispatchData] = useState<InventoryBalance[]>([]);
+  const [deliveryData, setDeliveryData] = useState<InventoryBalance[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<FlowStage>('preparation');
@@ -79,6 +100,8 @@ const InventoryBalancesPage = () => {
     fetchWarehouses();
     fetchPreparationAreas();
     fetchBalanceData();
+    fetchDispatchData();
+    fetchDeliveryData();
   }, []);
 
   const fetchPreparationAreas = async () => {
@@ -148,6 +171,32 @@ const InventoryBalancesPage = () => {
     }
   };
 
+  const fetchDispatchData = async () => {
+    try {
+      const response = await fetch('/api/warehouse/dispatch-inventory');
+      if (!response.ok) {
+        throw new Error('Failed to fetch dispatch inventory');
+      }
+      const data = await response.json();
+      setDispatchData(data.data || []);
+    } catch (err: any) {
+      console.error('Error fetching dispatch data:', err);
+    }
+  };
+
+  const fetchDeliveryData = async () => {
+    try {
+      const response = await fetch('/api/warehouse/delivery-inventory');
+      if (!response.ok) {
+        throw new Error('Failed to fetch delivery inventory');
+      }
+      const data = await response.json();
+      setDeliveryData(data.data || []);
+    } catch (err: any) {
+      console.error('Error fetching delivery data:', err);
+    }
+  };
+
   const handleViewBalance = (balance: InventoryBalance) => {
     setSelectedBalance(balance);
     setViewModalOpen(true);
@@ -175,23 +224,31 @@ const InventoryBalancesPage = () => {
 
   // กรองข้อมูลตาม Tab ที่เลือก
   const getFilteredDataByTab = () => {
-    return balanceData.filter(item => {
+    // ถ้าเป็น dispatch tab ให้ใช้ข้อมูลจาก API ที่มีบริบท
+    if (activeTab === 'dispatch') {
+      return dispatchData;
+    }
+    
+    // ถ้าเป็น delivery tab ให้ใช้ข้อมูลจาก API ที่มีบริบท
+    if (activeTab === 'delivery') {
+      return deliveryData;
+    }
+    
+    const filtered = balanceData.filter(item => {
       // กรองตาม Tab
       if (activeTab === 'preparation') {
         // บ้านหยิบ - preparation area codes
         return item.location_id ? preparationAreaCodes.includes(item.location_id) : false;
-      } else if (activeTab === 'dispatch') {
-        // จัดสินค้าเสร็จ - Dispatch location
-        return item.location_id === 'WH001-02642' || item.location_name === 'Dispatch';
-      } else if (activeTab === 'delivery') {
-        // โหลดสินค้าเสร็จ - Delivery-In-Progress location
-        return item.location_id === 'WH001-DELIVERY-IN-PROGRESS' || item.location_name === 'Delivery-In-Progress';
       }
       return false;
     });
+    
+    return filtered;
   };
 
-  const filteredData = getFilteredDataByTab().filter(item => {
+  const tabFilteredData = getFilteredDataByTab();
+  
+  const filteredData = tabFilteredData.filter(item => {
     const searchLower = searchTerm.toLowerCase();
     const matchesSearch = !searchTerm || (
       (item.sku_id?.toLowerCase().includes(searchLower)) ||
@@ -217,22 +274,51 @@ const InventoryBalancesPage = () => {
     const matchesExpiring = !showExpiringSoon || isExpiringSoon(item.expiry_date);
     const matchesZeroBalance = showZeroBalance || item.total_piece_qty > 0;
 
-    return matchesSearch && matchesWarehouse && matchesLowStock && matchesExpiring && matchesZeroBalance;
+    const passes = matchesSearch && matchesWarehouse && matchesLowStock && matchesExpiring && matchesZeroBalance;
+    
+    // Debug log สำหรับ dispatch items
+    if (activeTab === 'dispatch' && item.location_id === 'WH001-02642' && !passes) {
+      console.log('❌ Dispatch item filtered out:', {
+        balance_id: item.balance_id,
+        sku_id: item.sku_id,
+        matchesSearch,
+        matchesWarehouse,
+        matchesLowStock,
+        matchesExpiring,
+        matchesZeroBalance,
+        selectedWarehouse,
+        showZeroBalance,
+        total_piece_qty: item.total_piece_qty
+      });
+    }
+    
+    return passes;
   }).sort((a, b) => {
     // เรียงตาม location_id แบบ Z-A
     const locationA = a.location_id || '';
     const locationB = b.location_id || '';
     return locationB.localeCompare(locationA);
   });
+  
+  // Debug log final result
+  if (activeTab === 'dispatch') {
+    console.log('✅ Final filtered data for dispatch:', {
+      tabFilteredCount: tabFilteredData.length,
+      finalFilteredCount: filteredData.length,
+      items: filteredData.map(item => ({
+        balance_id: item.balance_id,
+        sku_id: item.sku_id,
+        location_id: item.location_id
+      }))
+    });
+  }
 
   // นับจำนวนสินค้าในแต่ละ Tab
   const preparationCount = balanceData.filter(item => 
     item.location_id ? preparationAreaCodes.includes(item.location_id) : false
   ).reduce((sum, item) => sum + item.total_piece_qty, 0);
 
-  const dispatchCount = balanceData.filter(item => 
-    item.location_id === 'WH001-02642' || item.location_name === 'Dispatch'
-  ).reduce((sum, item) => sum + item.total_piece_qty, 0);
+  const dispatchCount = dispatchData.reduce((sum, item) => sum + item.total_piece_qty, 0);
 
   const deliveryCount = balanceData.filter(item => 
     item.location_id === 'WH001-DELIVERY-IN-PROGRESS' || item.location_name === 'Delivery-In-Progress'
@@ -248,7 +334,16 @@ const InventoryBalancesPage = () => {
             <Button variant="outline" icon={Download}>
               ส่งออก Excel
             </Button>
-            <Button variant="primary" icon={RefreshCw} onClick={fetchBalanceData} disabled={loading}>
+            <Button 
+              variant="primary" 
+              icon={RefreshCw} 
+              onClick={() => {
+                fetchBalanceData();
+                fetchDispatchData();
+                fetchDeliveryData();
+              }} 
+              disabled={loading}
+            >
               รีเฟรช
             </Button>
           </div>
@@ -364,9 +459,7 @@ const InventoryBalancesPage = () => {
         {/* Data Table */}
         <div className="flex-1 min-h-0">
           <div className="w-full h-[74vh] bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col">
-            {activeTab === 'dispatch' ? (
-              <PreparedDocumentsTable warehouseId={selectedWarehouse === 'all' ? 'WH01' : selectedWarehouse} />
-            ) : loading ? (
+            {loading ? (
               <div className="h-full flex flex-col items-center justify-center text-thai-gray-500 gap-2">
                 <Loader2 className="w-6 h-6 animate-spin" />
                 <p className="text-sm font-thai">กำลังโหลดข้อมูลสต็อก...</p>
@@ -391,6 +484,23 @@ const InventoryBalancesPage = () => {
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ID</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสสินค้า</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชื่อสินค้า</th>
+                      {activeTab === 'dispatch' && (
+                        <>
+                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">ใบหยิบ</th>
+                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">เลขออเดอร์</th>
+                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">ร้านค้า</th>
+                        </>
+                      )}
+                      {activeTab === 'delivery' && (
+                        <>
+                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">เลขแผนส่ง</th>
+                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">คันที่</th>
+                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">ใบหยิบ</th>
+                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">ใบโหลด</th>
+                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">เลขออเดอร์</th>
+                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">ร้านค้า</th>
+                        </>
+                      )}
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสพาเลท</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">คลัง</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">Location ID</th>
@@ -431,6 +541,131 @@ const InventoryBalancesPage = () => {
                               {(balance as any).master_sku?.sku_name || '-'}
                             </span>
                           </td>
+                          {activeTab === 'dispatch' && (
+                            <>
+                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-blue-50/30">
+                                {balance.related_documents && balance.related_documents.length > 0 ? (
+                                  <div className="flex flex-col gap-0.5">
+                                    {balance.related_documents.map((doc, idx) => (
+                                      <span key={idx} className="font-mono text-blue-700 font-semibold text-[11px]">
+                                        {doc.face_sheet_no || '-'}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400 text-[11px]">-</span>
+                                )}
+                              </td>
+                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-blue-50/30">
+                                {balance.related_documents && balance.related_documents.length > 0 ? (
+                                  <div className="flex flex-col gap-0.5">
+                                    {balance.related_documents.map((doc, idx) => (
+                                      <span key={idx} className="font-mono text-blue-700 text-[11px]">
+                                        {doc.order_no || '-'}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400 text-[11px]">-</span>
+                                )}
+                              </td>
+                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-blue-50/30">
+                                {balance.related_documents && balance.related_documents.length > 0 ? (
+                                  <div className="flex flex-col gap-0.5">
+                                    {balance.related_documents.map((doc, idx) => (
+                                      <span key={idx} className="text-thai-gray-700 font-thai text-[11px]">
+                                        {doc.shop_name || '-'}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400 text-[11px]">-</span>
+                                )}
+                              </td>
+                            </>
+                          )}
+                          {activeTab === 'delivery' && (
+                            <>
+                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-purple-50/30">
+                                {balance.related_documents && balance.related_documents.length > 0 ? (
+                                  <div className="flex flex-col gap-0.5">
+                                    {balance.related_documents.map((doc: any, idx: number) => (
+                                      <span key={idx} className="font-mono text-purple-700 font-semibold text-[11px]">
+                                        {doc.plan_code || '-'}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400 text-[11px]">-</span>
+                                )}
+                              </td>
+                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-purple-50/30">
+                                {balance.related_documents && balance.related_documents.length > 0 ? (
+                                  <div className="flex flex-col gap-0.5">
+                                    {balance.related_documents.map((doc: any, idx: number) => (
+                                      <span key={idx} className="font-mono text-purple-700 text-[11px]">
+                                        {doc.trip_code || '-'}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400 text-[11px]">-</span>
+                                )}
+                              </td>
+                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-purple-50/30">
+                                {balance.related_documents && balance.related_documents.length > 0 ? (
+                                  <div className="flex flex-col gap-0.5">
+                                    {balance.related_documents.map((doc: any, idx: number) => (
+                                      <span key={idx} className="font-mono text-blue-700 font-semibold text-[11px]">
+                                        {doc.picklist_code || doc.face_sheet_code || doc.bonus_face_sheet_code || '-'}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400 text-[11px]">-</span>
+                                )}
+                              </td>
+                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-purple-50/30">
+                                {balance.related_documents && balance.related_documents.length > 0 ? (
+                                  <div className="flex flex-col gap-0.5">
+                                    {balance.related_documents.map((doc: any, idx: number) => (
+                                      <span key={idx} className="font-mono text-green-700 font-semibold text-[11px]">
+                                        {doc.loadlist_code || '-'}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400 text-[11px]">-</span>
+                                )}
+                              </td>
+                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-purple-50/30">
+                                {balance.related_documents && balance.related_documents.length > 0 ? (
+                                  <div className="flex flex-col gap-0.5">
+                                    {balance.related_documents.map((doc: any, idx: number) => (
+                                      <span key={idx} className="font-mono text-blue-700 text-[11px]">
+                                        {doc.order_no || '-'}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400 text-[11px]">-</span>
+                                )}
+                              </td>
+                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-purple-50/30">
+                                {balance.related_documents && balance.related_documents.length > 0 ? (
+                                  <div className="flex flex-col gap-0.5">
+                                    {balance.related_documents.map((doc: any, idx: number) => (
+                                      <span key={idx} className="text-thai-gray-700 font-thai text-[11px]">
+                                        {doc.shop_name || '-'}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <span className="text-gray-400 text-[11px]">-</span>
+                                )}
+                              </td>
+                            </>
+                          )}
                           <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                             <div>
                               {balance.pallet_id_external && (

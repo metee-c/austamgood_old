@@ -407,98 +407,90 @@ const BonusFaceSheetPackFormPage = () => {
 
   if (loading) {
     return (
-      <div className="h-screen bg-gradient-to-br from-thai-gray-25 to-white flex items-center justify-center">
+      <div className="h-screen bg-white flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
-          <p className="text-thai-gray-600 font-thai">กำลังโหลดข้อมูล...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600 font-thai">กำลังโหลดข้อมูล...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
-      <div className="h-full flex flex-col space-y-2 pt-0 px-2 pb-2 max-w-7xl mx-auto">
-      {/* Header */}
-      <div className="flex-shrink-0 pt-1">
-        <div className="flex items-center justify-between gap-2 mb-2">
-          <div className="flex items-center gap-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => router.back()}
-              className="shadow-sm"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              ย้อนกลับ
-            </Button>
-            <h1 className="text-xl font-bold text-thai-gray-900 font-thai m-0 p-0 leading-tight">
-              กรอกข้อมูลแพ็คสินค้าของแถม
-            </h1>
+    <div className="min-h-screen bg-white">
+      <div className="max-w-[1800px] mx-auto p-0">
+        {/* Header */}
+        <div className="px-6 py-2">
+          <div className="flex items-center justify-between mb-1.5">
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => router.back()}
+                className="bg-white hover:bg-gray-50 border-gray-200 h-8"
+              >
+                <ArrowLeft className="w-3.5 h-3.5 mr-1" />
+                <span className="text-xs">ย้อนกลับ</span>
+              </Button>
+              <h1 className="text-lg font-bold text-gray-800 font-thai">
+                กรอกข้อมูลแพ็คสินค้าของแถม
+              </h1>
+              <span className="text-xs text-gray-500">|</span>
+              <span className="text-xs text-gray-600">
+                วันส่งของ: <span className="font-semibold text-blue-600">{deliveryDate}</span>
+              </span>
+              <span className="text-xs text-gray-500">•</span>
+              <span className="text-xs text-gray-600">
+                จำนวนออเดอร์: <span className="font-semibold text-blue-600">{orders.length}</span> ออเดอร์
+              </span>
+            </div>
+          </div>
+
+          {/* Error Alert */}
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-2 flex items-start gap-2 mb-2">
+              <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <span className="text-xs text-red-700 font-thai">{error}</span>
+              </div>
+              <button onClick={() => setError(null)} className="text-red-600 hover:text-red-800">
+                <XCircle className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
+          {/* Instructions */}
+          <div className="bg-blue-50/50 border border-blue-200/50 rounded-lg p-2">
+            <div className="flex items-start gap-1.5">
+              <Package className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+              <p className="text-gray-700 text-xs leading-relaxed font-thai">
+                <span className="font-semibold">คำแนะนำ:</span> กรอก &quot;แพ็คที่&quot; (เช่น 1,2,3) ถ้าแยกหลายแพ็ค ให้กรอก &quot;จำนวนต่อแพ็ค&quot; ให้รวมเท่ากับจำนวนทั้งหมด
+              </p>
+            </div>
           </div>
         </div>
 
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-4 shadow-sm">
-          <p className="text-sm text-thai-gray-700 font-thai">
-            วันส่งของ: <span className="font-semibold text-purple-600">{deliveryDate}</span> | 
-            จำนวนออเดอร์: <span className="font-semibold text-purple-600">{orders.length}</span> ออเดอร์
-          </p>
-        </div>
-      </div>
-
-      {/* Error Alert */}
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start space-x-2 flex-shrink-0">
-          <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
-          <div className="flex-1">
-            <span className="text-sm text-red-700 font-thai">{error}</span>
-          </div>
-          <button onClick={() => setError(null)} className="text-red-600 hover:text-red-800 flex-shrink-0">
-            <XCircle className="w-4 h-4" />
-          </button>
-        </div>
-      )}
-
-      {/* Instructions */}
-      <div className="bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 rounded-xl p-4 shadow-sm flex-shrink-0">
-        <div className="flex items-start gap-3">
-          <div className="text-2xl">📌</div>
-          <div>
-            <h3 className="font-semibold text-purple-900 mb-1 font-thai">หมายเหตุการกรอกข้อมูล</h3>
-            <p className="text-purple-800 text-sm leading-relaxed font-thai">
-              ระบบจะดึง &quot;เลขที่ใบสั่งส่ง&quot; และ &quot;จำนวน&quot; จากไฟล์ Excel โดยอัตโนมัติ 
-              คุณกรอก &quot;แพ็คที่&quot; และ &quot;จำนวนต่อแพ็ค&quot; ให้บวกรวมเท่ากับจำนวนทั้งหมด
-            </p>
-          </div>
-        </div>
-      </div>
-
-      {/* Single Combined Table */}
-      <div className="flex-1 min-h-0">
-        <div className="w-full h-full overflow-x-auto overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-sm">
-          <table className="w-full border-collapse text-sm" style={{ minWidth: '1800px' }}>
-            <thead className="sticky top-0 z-10 bg-gradient-to-r from-purple-50 to-blue-50 border-b-2 border-purple-200">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-thai-gray-700 border-b whitespace-nowrap" style={{ width: '50px' }}>#</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-thai-gray-700 border-b whitespace-nowrap" style={{ width: '180px' }}>ชื่อร้านค้า</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-thai-gray-700 border-b whitespace-nowrap" style={{ width: '150px' }}>รหัสสินค้า</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-thai-gray-700 border-b whitespace-nowrap" style={{ width: '300px' }}>ชื่อสินค้า</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-thai-gray-700 border-b whitespace-nowrap" style={{ width: '80px' }}>จำนวน</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-thai-gray-700 border-b whitespace-nowrap" style={{ width: '140px' }}>เลขที่ใบสั่งส่ง</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-thai-gray-700 border-b whitespace-nowrap" style={{ width: '80px' }}>คันที่</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-thai-gray-700 border-b whitespace-nowrap" style={{ width: '180px' }}>
-                  แพ็คที่ <span className="text-red-500">*</span>
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-thai-gray-700 border-b whitespace-nowrap" style={{ width: '150px' }}>หมายเหตุ</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-thai-gray-700 border-b whitespace-nowrap" style={{ width: '200px' }}>
-                  ประเภทจัดส่ง <span className="text-red-500">*</span>
-                </th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-thai-gray-700 border-b whitespace-nowrap" style={{ width: '200px' }}>
-                  จำนวนต่อแพ็ค
-                </th>
-              </tr>
-            </thead>
-            <tbody className="bg-white divide-y divide-gray-100">
+        {/* Table */}
+        <div className="mx-6 bg-white rounded-lg shadow border border-gray-200 overflow-hidden" style={{ height: '74vh' }}>
+          <div className="overflow-x-auto overflow-y-auto h-full">
+            <table className="w-full border-collapse" style={{ minWidth: '1600px', fontSize: '0.8125rem' }}>
+              <thead className="bg-blue-50/50 border-b-2 border-blue-200 sticky top-0 z-10">
+                <tr>
+                  <th className="px-2 py-1.5 text-left text-[11px] font-semibold text-gray-700 whitespace-nowrap" style={{ width: '40px' }}>#</th>
+                  <th className="px-2 py-1.5 text-left text-[11px] font-semibold text-gray-700 whitespace-nowrap" style={{ width: '160px' }}>ชื่อร้านค้า</th>
+                  <th className="px-2 py-1.5 text-left text-[11px] font-semibold text-gray-700 whitespace-nowrap" style={{ width: '130px' }}>รหัสสินค้า</th>
+                  <th className="px-2 py-1.5 text-left text-[11px] font-semibold text-gray-700 whitespace-nowrap" style={{ width: '280px' }}>ชื่อสินค้า</th>
+                  <th className="px-2 py-1.5 text-center text-[11px] font-semibold text-gray-700 whitespace-nowrap" style={{ width: '60px' }}>จำนวน</th>
+                  <th className="px-2 py-1.5 text-left text-[11px] font-semibold text-gray-700 whitespace-nowrap" style={{ width: '130px' }}>เลขที่ใบสั่งส่ง</th>
+                  <th className="px-2 py-1.5 text-center text-[11px] font-semibold text-gray-700 whitespace-nowrap" style={{ width: '60px' }}>คันที่</th>
+                  <th className="px-2 py-1.5 text-left text-[11px] font-semibold text-gray-700 whitespace-nowrap" style={{ width: '160px' }}>
+                    แพ็คที่ <span className="text-red-500">*</span>
+                  </th>
+                  <th className="px-2 py-1.5 text-left text-[11px] font-semibold text-gray-700 whitespace-nowrap" style={{ width: '150px' }}>ประเภทจัดส่ง</th>
+                  <th className="px-2 py-1.5 text-left text-[11px] font-semibold text-gray-700 whitespace-nowrap" style={{ width: '180px' }}>จำนวนต่อแพ็ค</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-100">
               {orders.map((order, orderIdx) =>
                 order.items.map((item, itemIdx) => {
                   const key = `${order.order_id}-${item.order_item_id}`;
@@ -508,22 +500,25 @@ const BonusFaceSheetPackFormPage = () => {
                   const globalIdx = orders.slice(0, orderIdx).reduce((sum, o) => sum + o.items.length, 0) + itemIdx + 1;
 
                   return (
-                    <tr key={`${order.order_id}-${item.order_item_id}`} className="hover:bg-purple-50/30 transition-colors">
-                      <td className="px-4 py-2 text-sm text-thai-gray-600 text-center font-medium">{globalIdx}</td>
-                      <td className="px-4 py-2 text-sm text-thai-gray-900 bg-purple-50/30 font-medium">{order.shop_name}</td>
-                      <td className="px-4 py-2 text-sm font-mono text-purple-600">{item.product_code || '-'}</td>
-                      <td className="px-4 py-2 text-sm text-thai-gray-800">{item.product_name}</td>
-                      <td className="px-4 py-2 text-sm text-center font-semibold text-purple-600 bg-purple-50/40">{item.quantity}</td>
-                      <td className="px-4 py-2 text-sm font-mono text-thai-gray-700 bg-thai-gray-50/50">{order.order_no}</td>
-                      <td className="px-4 py-2 text-sm text-thai-gray-700 bg-amber-50/40">{order.trip_number || '-'}</td>
-                      <td className="px-4 py-2">
+                    <tr
+                      key={`${order.order_id}-${item.order_item_id}`}
+                      className={`hover:bg-blue-50 transition-colors ${globalIdx % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}
+                    >
+                      <td className="px-2 py-1.5 text-xs text-gray-600 text-center">{globalIdx}</td>
+                      <td className="px-2 py-1.5 text-xs text-gray-900 font-medium">{order.shop_name}</td>
+                      <td className="px-2 py-1.5 text-xs font-mono text-blue-600">{item.product_code || '-'}</td>
+                      <td className="px-2 py-1.5 text-xs text-gray-800">{item.product_name}</td>
+                      <td className="px-2 py-1.5 text-xs text-center font-semibold text-blue-600">{item.quantity}</td>
+                      <td className="px-2 py-1.5 text-xs font-mono text-gray-700">{order.order_no}</td>
+                      <td className="px-2 py-1.5 text-xs text-center text-gray-700">{order.trip_number || '-'}</td>
+                      <td className="px-2 py-1.5">
                         <div className="flex gap-1">
                           <input
                             type="text"
                             value={inputValue}
                             onChange={(e) => handlePackNoChange(order.order_id, item.order_item_id, e.target.value)}
-                            placeholder="เช่น 1,2"
-                            className="flex-1 px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300"
+                            placeholder="เช่น 1,2,3"
+                            className="flex-1 px-1.5 py-1 bg-white border border-gray-300 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                           />
                           <button
                             type="button"
@@ -542,30 +537,29 @@ const BonusFaceSheetPackFormPage = () => {
                                 }, 0);
                               }
                             }}
-                            className="px-3 py-1 bg-purple-100 hover:bg-purple-200 border border-purple-300 rounded-lg text-sm font-mono cursor-pointer transition-colors shadow-sm"
+                            className="px-2 py-1 bg-blue-100 hover:bg-blue-200 border border-blue-300 rounded text-xs font-mono cursor-pointer transition-colors"
                             title="เพิ่มเครื่องหมายจุลภาค"
                           >
                             ,
                           </button>
                         </div>
                       </td>
-                      <td className="px-4 py-2 text-sm text-thai-gray-700 bg-green-50/40">{order.delivery_type || '-'}</td>
-                      <td className="px-4 py-2">
+                      <td className="px-2 py-1.5">
                         <select
-                          className="w-full px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300"
+                          className="w-full px-1.5 py-1 bg-white border border-gray-300 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                           defaultValue=""
                         >
-                          <option value="">-- เลือกประเภทจัดส่ง --</option>
-                          <option value="จัดส่งพร้อมออเดอร์">จัดส่งพร้อมออเดอร์</option>
-                          <option value="จัดส่งลงออฟฟิศ">จัดส่งลงออฟฟิศ</option>
+                          <option value="">-- เลือก --</option>
+                          <option value="จัดส่งพร้อมออเดอร์">พร้อมออเดอร์</option>
+                          <option value="จัดส่งลงออฟฟิศ">ลงออฟฟิศ</option>
                         </select>
                       </td>
-                      <td className="px-4 py-2">
+                      <td className="px-2 py-1.5">
                         {itemData && itemData.packs.length > 1 ? (
-                          <div className="space-y-1">
+                          <div className="space-y-0.5">
                             {itemData.packs.map((pack, packIdx) => (
                               <div key={`${order.order_id}-${item.order_item_id}-${packIdx}`} className="flex items-center gap-1">
-                                <span className="text-xs text-purple-600 font-medium w-12">P{pack.pack_no}:</span>
+                                <span className="text-[10px] text-blue-600 font-medium w-8">P{pack.pack_no}:</span>
                                 <input
                                   type="number"
                                   min="0"
@@ -578,50 +572,50 @@ const BonusFaceSheetPackFormPage = () => {
                                       parseInt(e.target.value) || 0
                                     )
                                   }
-                                  className="w-16 px-1 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-1 focus:ring-purple-500/50 focus:border-purple-500/50 text-xs font-thai transition-all"
+                                  className="w-14 px-1.5 py-0.5 bg-white border border-gray-300 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                                 />
                               </div>
                             ))}
-                            <div className={`text-xs font-semibold pt-1 border-t ${isValid ? 'text-green-600 border-green-200' : 'text-red-600 border-red-200'}`}>
+                            <div className={`text-[10px] font-semibold pt-0.5 border-t ${isValid ? 'text-green-600 border-green-200' : 'text-red-600 border-red-200'}`}>
                               รวม: {itemData.totalQty}/{item.quantity}
                             </div>
                           </div>
                         ) : (
-                          <div className="text-xs text-thai-gray-600 bg-thai-gray-50/50 px-2 py-1 rounded-lg">{item.quantity} ชิ้น</div>
+                          <div className="text-[10px] text-gray-600 bg-gray-100 px-1.5 py-0.5 rounded">{item.quantity} ชิ้น</div>
                         )}
                       </td>
                     </tr>
                   );
                 })
               )}
-            </tbody>
-          </table>
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
 
-      {/* Action Buttons */}
-      <div className="flex justify-end gap-3 bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm flex-shrink-0">
-        <Button variant="outline" onClick={() => router.back()} disabled={saving}>
-          ยกเลิก
-        </Button>
-        <Button 
-          onClick={handleSave} 
-          disabled={saving} 
-          className="bg-purple-500 hover:bg-purple-600 shadow-lg"
-        >
-          {saving ? (
-            <>
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-              กำลังบันทึก...
-            </>
-          ) : (
-            <>
-              <Save className="w-4 h-4 mr-2" />
-              บันทึกและสร้างใบปะหน้า
-            </>
-          )}
-        </Button>
-      </div>
+        {/* Action Buttons */}
+        <div className="mx-6 mt-4 flex justify-end gap-3 bg-white border border-gray-200 rounded-lg p-4 shadow-sm">
+          <Button variant="outline" onClick={() => router.back()} disabled={saving}>
+            ยกเลิก
+          </Button>
+          <Button
+            onClick={handleSave}
+            disabled={saving}
+            className="bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            {saving ? (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                กำลังบันทึก...
+              </>
+            ) : (
+              <>
+                <Save className="w-4 h-4 mr-2" />
+                บันทึกและสร้างใบปะหน้า
+              </>
+            )}
+          </Button>
+        </div>
       </div>
     </div>
   );
@@ -630,10 +624,10 @@ const BonusFaceSheetPackFormPage = () => {
 function BonusFaceSheetPackFormPageWrapper() {
   return (
     <Suspense fallback={
-      <div className="h-screen bg-gradient-to-br from-thai-gray-25 to-white flex items-center justify-center">
+      <div className="h-screen bg-white flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto mb-4"></div>
-          <p className="text-thai-gray-600 font-thai">กำลังโหลดข้อมูล...</p>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+          <p className="text-gray-600 font-thai">กำลังโหลดข้อมูล...</p>
         </div>
       </div>
     }>

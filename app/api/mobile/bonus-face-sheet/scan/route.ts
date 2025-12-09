@@ -372,13 +372,16 @@ export async function POST(request: NextRequest) {
     // 12. เช็คว่าหยิบครบทุก item หรือยัง
     const { data: allItems } = await supabase
       .from('bonus_face_sheet_items')
-      .select('status')
+      .select('id, sku_id, status, quantity_to_pick, quantity_picked')
       .eq('face_sheet_id', bonus_face_sheet_id);
 
+    console.log('📊 All items status:', allItems);
     const allPicked = allItems?.every(i => i.status === 'picked');
+    console.log(`✅ All picked: ${allPicked} (${allItems?.filter(i => i.status === 'picked').length}/${allItems?.length})`);
 
     // 13. อัปเดตสถานะ bonus_face_sheet
     const newStatus = allPicked ? 'completed' : 'picking';
+    console.log(`🔄 Updating bonus face sheet status to: ${newStatus}`);
     const bonusFaceSheetUpdate: any = {
       status: newStatus,
       ...(allPicked && { picking_completed_at: now }),
@@ -425,15 +428,16 @@ export async function POST(request: NextRequest) {
 
       if (orders && orders.length > 0) {
         for (const order of orders) {
-          let targetStatus = 'picked';
-          
-          // ถ้า order ยังเป็น draft ต้องเปลี่ยนเป็น confirmed ก่อน
+          // Status transition ต้องเป็นไปตาม workflow:
+          // draft → confirmed → in_picking → picked
+
           if (order.status === 'draft') {
+            // draft → confirmed
             const { error: confirmError } = await supabase
               .from('wms_orders')
               .update({
                 status: 'confirmed',
-                updated_at: new Date().toISOString()
+                updated_at: now
               })
               .eq('order_id', order.order_id);
 
@@ -441,21 +445,83 @@ export async function POST(request: NextRequest) {
               console.error(`❌ [Bonus] Error confirming order ${order.order_id}:`, confirmError);
               continue;
             }
-          }
 
-          // จากนั้นอัปเดตเป็น picked
-          const { error: pickError } = await supabase
-            .from('wms_orders')
-            .update({
-              status: targetStatus,
-              updated_at: new Date().toISOString()
-            })
-            .eq('order_id', order.order_id);
+            // confirmed → in_picking
+            const { error: pickingError } = await supabase
+              .from('wms_orders')
+              .update({
+                status: 'in_picking',
+                updated_at: now
+              })
+              .eq('order_id', order.order_id);
 
-          if (pickError) {
-            console.error(`❌ [Bonus] Error updating order ${order.order_id} to picked:`, pickError);
+            if (pickingError) {
+              console.error(`❌ [Bonus] Error setting order ${order.order_id} to in_picking:`, pickingError);
+              continue;
+            }
+
+            // in_picking → picked
+            const { error: pickedError } = await supabase
+              .from('wms_orders')
+              .update({
+                status: 'picked',
+                updated_at: now
+              })
+              .eq('order_id', order.order_id);
+
+            if (pickedError) {
+              console.error(`❌ [Bonus] Error setting order ${order.order_id} to picked:`, pickedError);
+            } else {
+              console.log(`✅ [Bonus] Updated order ${order.order_id}: draft → confirmed → in_picking → picked`);
+            }
+          } else if (order.status === 'confirmed') {
+            // confirmed → in_picking
+            const { error: pickingError } = await supabase
+              .from('wms_orders')
+              .update({
+                status: 'in_picking',
+                updated_at: now
+              })
+              .eq('order_id', order.order_id);
+
+            if (pickingError) {
+              console.error(`❌ [Bonus] Error setting order ${order.order_id} to in_picking:`, pickingError);
+              continue;
+            }
+
+            // in_picking → picked
+            const { error: pickedError } = await supabase
+              .from('wms_orders')
+              .update({
+                status: 'picked',
+                updated_at: now
+              })
+              .eq('order_id', order.order_id);
+
+            if (pickedError) {
+              console.error(`❌ [Bonus] Error setting order ${order.order_id} to picked:`, pickedError);
+            } else {
+              console.log(`✅ [Bonus] Updated order ${order.order_id}: confirmed → in_picking → picked`);
+            }
+          } else if (order.status === 'in_picking') {
+            // in_picking → picked
+            const { error: pickedError } = await supabase
+              .from('wms_orders')
+              .update({
+                status: 'picked',
+                updated_at: now
+              })
+              .eq('order_id', order.order_id);
+
+            if (pickedError) {
+              console.error(`❌ [Bonus] Error setting order ${order.order_id} to picked:`, pickedError);
+            } else {
+              console.log(`✅ [Bonus] Updated order ${order.order_id}: in_picking → picked`);
+            }
+          } else if (order.status === 'picked') {
+            console.log(`ℹ️ [Bonus] Order ${order.order_id} already picked, skipping`);
           } else {
-            console.log(`✅ [Bonus] Updated order ${order.order_id} to '${targetStatus}'`);
+            console.log(`⚠️ [Bonus] Order ${order.order_id} has status '${order.status}', cannot transition to picked`);
           }
         }
       }

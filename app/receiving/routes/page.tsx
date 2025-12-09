@@ -390,15 +390,17 @@ function SplitStopModal({ isOpen, stop, orderId, trips, currentTripId, onClose, 
             ) : (
                 <div className="space-y-4">
                     <div className="bg-gray-50 border border-gray-200 rounded-md px-3 py-2 text-sm text-gray-700">
-                        <div className="font-semibold text-gray-800">{stop.stop_name}</div>
-                        <div className="text-xs text-gray-500">
-                            น้ำหนักปัจจุบัน: {Number(stop.load_weight_kg ?? 0).toFixed(2)} kg
+                        <div className="font-semibold text-gray-800">
+                            {stop.stop_name}
+                            {orderInfo && (
+                                <span className="ml-2 text-xs font-normal text-gray-600">
+                                    (เลขที่: {orderInfo.order_no || orderInfo.order_id})
+                                </span>
+                            )}
                         </div>
-                        {orderInfo?.order && (
-                            <div className="text-xs text-gray-500 mt-1">
-                                เลขที่ออเดอร์: {orderInfo.order.order_no || orderInfo.order_id}
-                            </div>
-                        )}
+                        <div className="text-xs text-gray-500">
+                            น้ำหนักปัจจุบัน: {items.reduce((sum, item) => sum + item.availableWeight, 0).toFixed(2)} kg
+                        </div>
                     </div>
 
                     {formError && (

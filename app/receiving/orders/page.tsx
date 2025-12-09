@@ -60,6 +60,7 @@ const OrdersPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedOrders, setExpandedOrders] = useState<Set<number>>(new Set());
   const [selectedType, setSelectedType] = useState<OrderType | 'all'>('all');
+  const [selectedLocationFilter, setSelectedLocationFilter] = useState<'all' | 'has_location' | 'no_location'>('all');
   const [selectedStatus, setSelectedStatus] = useState<OrderStatus | 'all'>('all');
   const [selectedPriority, setSelectedPriority] = useState<OrderPriority | 'all'>('all');
   const [startDate, setStartDate] = useState('');
@@ -126,20 +127,34 @@ const OrdersPage = () => {
         ordersType: typeof orders,
         isArray: Array.isArray(orders)
       });
+      console.log('[Frontend] Query params:', queryParams);
+      console.log('[Frontend] Filters:', {
+        selectedType,
+        selectedStatus,
+        selectedLocationFilter,
+        startDate,
+        endDate,
+        searchTerm
+      });
     }
-    
+
     if (orders && orders.length > 0) {
       if (typeof window !== 'undefined') {
         console.log('[Frontend] Sample order:', {
           order_no: orders[0].order_no,
+          order_date: orders[0].order_date,
           plan_code: orders[0].plan_code,
           trip_code: orders[0].trip_code,
-          trip_sequence: orders[0].trip_sequence
+          trip_sequence: orders[0].trip_sequence,
+          customer_latitude: orders[0].customer?.latitude,
+          customer_longitude: orders[0].customer?.longitude
         });
         console.log('[Frontend] Orders with trip_code:', orders.filter((o: any) => o.trip_code).length);
+        console.log('[Frontend] Orders with location:', orders.filter((o: any) => o.customer?.latitude && o.customer?.longitude).length);
+        console.log('[Frontend] Orders without location:', orders.filter((o: any) => !o.customer?.latitude || !o.customer?.longitude).length);
       }
     }
-  }, [orders]);
+  }, [orders, queryParams, selectedType, selectedStatus, selectedLocationFilter, startDate, endDate, searchTerm]);
   const dashboardLoading = !dashboardData && !dashboardError;
 
   // Fetch warehouse data
@@ -191,11 +206,27 @@ const OrdersPage = () => {
     total_value: 0
   };
 
+  // Filter orders by location
+  const locationFilteredOrders = useMemo(() => {
+    if (!orders) return [];
+    if (selectedLocationFilter === 'all') return orders;
+
+    return orders.filter((order: any) => {
+      const hasLocation = order.customer?.latitude && order.customer?.longitude;
+      if (selectedLocationFilter === 'has_location') {
+        return hasLocation;
+      } else if (selectedLocationFilter === 'no_location') {
+        return !hasLocation;
+      }
+      return true;
+    });
+  }, [orders, selectedLocationFilter]);
+
   // Sort orders
   const sortedOrders = useMemo(() => {
-    if (!orders || !sortField) return orders || [];
+    if (!locationFilteredOrders || !sortField) return locationFilteredOrders || [];
 
-    return [...orders].sort((a, b) => {
+    return [...locationFilteredOrders].sort((a, b) => {
       let aValue: any = '';
       let bValue: any = '';
 
@@ -226,7 +257,7 @@ const OrdersPage = () => {
         return aValue < bValue ? 1 : -1;
       }
     });
-  }, [orders, sortField, sortDirection]);
+  }, [locationFilteredOrders, sortField, sortDirection]);
 
   // Sort handler
   const handleSort = (field: string) => {
@@ -584,13 +615,25 @@ const OrdersPage = () => {
             <select
               value={selectedType}
               onChange={(e) => setSelectedType(e.target.value as OrderType | 'all')}
-              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-24
+              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-32
                        focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50"
             >
-              <option value="all">ทุกประเภท</option>
-              <option value="sales" className="text-gray-900">ขายสินค้า</option>
-              <option value="transfer" className="text-gray-900">โอนย้าย</option>
-              <option value="production" className="text-gray-900">ผลิต</option>
+              <option value="all">ประเภททั้งหมด</option>
+              <option value="route_planning" className="text-gray-900">จัดเส้นทาง</option>
+              <option value="express" className="text-gray-900">ด่วนพิเศษ</option>
+              <option value="special" className="text-gray-900">ออเดอร์พิเศษ (สินค้าของแถม)</option>
+            </select>
+
+            {/* Location Filter */}
+            <select
+              value={selectedLocationFilter}
+              onChange={(e) => setSelectedLocationFilter(e.target.value as 'all' | 'has_location' | 'no_location')}
+              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-32
+                       focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50"
+            >
+              <option value="all">การดำเนินการทั้งหมด</option>
+              <option value="has_location" className="text-gray-900">มีโลเคชั่น</option>
+              <option value="no_location" className="text-gray-900">ไม่มีโลเคชั่น</option>
             </select>
 
             {/* Status Filter */}
@@ -609,20 +652,6 @@ const OrdersPage = () => {
               <option value="in_transit" className="text-gray-900">กำลังจัดส่ง</option>
               <option value="delivered" className="text-gray-900">ส่งถึงแล้ว</option>
               <option value="cancelled" className="text-gray-900">ยกเลิก</option>
-            </select>
-
-            {/* Priority Filter */}
-            <select
-              value={selectedPriority}
-              onChange={(e) => setSelectedPriority(e.target.value as OrderPriority | 'all')}
-              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-24
-                       focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50"
-            >
-              <option value="all">ทุกความสำคัญ</option>
-              <option value="low" className="text-gray-900">ต่ำ</option>
-              <option value="normal" className="text-gray-900">ปกติ</option>
-              <option value="high" className="text-gray-900">สูง</option>
-              <option value="urgent" className="text-gray-900">ด่วนมาก</option>
             </select>
 
             {/* Date Range */}

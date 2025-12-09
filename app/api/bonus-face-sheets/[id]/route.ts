@@ -94,7 +94,7 @@ export async function PATCH(
     const supabase = await createClient();
     const { id: idParam } = await params;
     const id = parseInt(idParam);
-    
+
     if (isNaN(id)) {
       return NextResponse.json(
         { success: false, error: 'Invalid ID' },
@@ -112,13 +112,30 @@ export async function PATCH(
       );
     }
 
+    // ตรวจสอบสถานะที่ถูกต้อง
+    const validStatuses = ['draft', 'generated', 'picking', 'completed', 'cancelled'];
+    if (!validStatuses.includes(status)) {
+      return NextResponse.json(
+        { success: false, error: `สถานะไม่ถูกต้อง (ต้องเป็น: ${validStatuses.join(', ')})` },
+        { status: 400 }
+      );
+    }
+
+    const now = new Date().toISOString();
+    const updateData: any = {
+      status,
+      updated_at: now
+    };
+
+    // ถ้าเปลี่ยนเป็น completed ให้อัปเดต picking_completed_at
+    if (status === 'completed') {
+      updateData.picking_completed_at = now;
+    }
+
     // อัปเดตสถานะ
     const { error: updateError } = await supabase
       .from('bonus_face_sheets')
-      .update({
-        status,
-        updated_at: new Date().toISOString()
-      })
+      .update(updateData)
       .eq('id', id);
 
     if (updateError) {
@@ -127,6 +144,14 @@ export async function PATCH(
         { success: false, error: 'ไม่สามารถอัปเดตสถานะได้' },
         { status: 500 }
       );
+    }
+
+    // หมายเหตุ: ไม่อัปเดตสถานะ orders เมื่อเปลี่ยนด้วยตัวเองในหน้ารายการ
+    // เพราะ database trigger ไม่อนุญาตให้ข้าม step ใน workflow
+    // สถานะ orders จะอัปเดตโดยอัตโนมัติเมื่อ scan ครบทุกรายการในหน้า mobile
+    console.log(`✅ Bonus face sheet ${id} status updated to ${status}`);
+    if (status === 'completed') {
+      console.log(`ℹ️ Order status will be updated automatically when all items are scanned via mobile`);
     }
 
     return NextResponse.json({

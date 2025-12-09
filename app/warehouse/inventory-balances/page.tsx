@@ -210,7 +210,10 @@ const InventoryBalancesPage = () => {
     // กรองโลเคชั่นบ้านหยิบออก (ตรวจสอบจาก preparation_area)
     const isPreparationArea = item.location_id ? preparationAreaCodes.includes(item.location_id) : false;
 
-    return matchesSearch && matchesWarehouse && matchesLowStock && matchesExpiring && matchesZeroBalance && !isTemporaryZeroBalance && !isPreparationArea;
+    // กรองโลเคชั่น Dispatch ออก (ย้ายไปแสดงในหน้า preparation-area-inventory แทน)
+    const isDispatchLocation = item.location_id === 'WH001-02642' || item.location_name === 'Dispatch';
+
+    return matchesSearch && matchesWarehouse && matchesLowStock && matchesExpiring && matchesZeroBalance && !isTemporaryZeroBalance && !isPreparationArea && !isDispatchLocation;
   });
 
   // จัดกลุ่มตาม location (warehouse_id + location_id) เท่านั้น

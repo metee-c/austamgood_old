@@ -126,7 +126,7 @@ export async function PATCH(
     }
 
     const body = await request.json();
-    const supabase = await createClient();
+    const supabase = createServiceRoleClient();
 
     // Get current user data for audit
     const { data: currentUser } = await supabase
@@ -142,11 +142,21 @@ export async function PATCH(
       );
     }
 
-    // Update user
+    // Extract role_ids and password from body
+    const { role_ids, password, ...userUpdateData } = body;
+
+    // Hash password if provided
+    if (password) {
+      const bcrypt = require('bcrypt');
+      const saltRounds = 10;
+      userUpdateData.password_hash = await bcrypt.hash(password, saltRounds);
+    }
+
+    // Update user basic data
     const { data: updatedUser, error: updateError } = await supabase
       .from('master_system_user')
       .update({
-        ...body,
+        ...userUpdateData,
         updated_at: new Date().toISOString()
       })
       .eq('user_id', userId)
@@ -159,6 +169,35 @@ export async function PATCH(
         { error: 'ไม่สามารถอัพเดทผู้ใช้งานได้' },
         { status: 500 }
       );
+    }
+
+    // Update roles if role_ids provided
+    if (role_ids && Array.isArray(role_ids)) {
+      // Delete existing roles
+      await supabase
+        .from('user_role')
+        .delete()
+        .eq('user_id', userId);
+
+      // Insert new roles
+      if (role_ids.length > 0) {
+        const userRolesData = role_ids.map(roleId => ({
+          user_id: userId,
+          role_id: roleId
+        }));
+
+        const { error: rolesError } = await supabase
+          .from('user_role')
+          .insert(userRolesData);
+
+        if (rolesError) {
+          console.error('Error updating user roles:', rolesError);
+          return NextResponse.json(
+            { error: 'ไม่สามารถอัพเดทบทบาทผู้ใช้งานได้' },
+            { status: 500 }
+          );
+        }
+      }
     }
 
     // Log the action

@@ -16,8 +16,7 @@ interface ImportOrderModalProps {
 type ImportType = 'route' | 'piece' | 'special' | null;
 
 const ImportOrderModal: React.FC<ImportOrderModalProps> = ({ isOpen, onClose, onImport, onRefresh }) => {
-  const [step, setStep] = useState<'select-type' | 'upload-file'>('select-type');
-  const [selectedType, setSelectedType] = useState<ImportType>(null);
+  const [selectedType, setSelectedType] = useState<ImportType>('route');
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [selectedWarehouse, setSelectedWarehouse] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
@@ -31,10 +30,7 @@ const ImportOrderModal: React.FC<ImportOrderModalProps> = ({ isOpen, onClose, on
   const [newOrdersCount, setNewOrdersCount] = useState(0);
   const [allOrders, setAllOrders] = useState<any[]>([]);
 
-  const handleTypeSelect = (type: ImportType) => {
-    setSelectedType(type);
-    setStep('upload-file');
-  };
+
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -172,8 +168,7 @@ const ImportOrderModal: React.FC<ImportOrderModalProps> = ({ isOpen, onClose, on
 
   const handleClose = () => {
     if (!isImporting) {
-      setStep('select-type');
-      setSelectedType(null);
+      setSelectedType('route');
       setSelectedFile(null);
       setSelectedWarehouse('');
       setSelectedDate('');
@@ -218,106 +213,27 @@ const ImportOrderModal: React.FC<ImportOrderModalProps> = ({ isOpen, onClose, on
       <Modal
         isOpen={isOpen}
         onClose={handleClose}
-        title={step === 'select-type' ? 'เลือกประเภทการนำเข้าออเดอร์' : `นำเข้าออเดอร์ - ${getTypeInfo(selectedType)?.title}`}
-        size="2xl"
+        title="นำเข้าออเดอร์"
+        size="md"
       >
-      {step === 'select-type' ? (
-        <div className="space-y-4">
-          <p className="text-sm text-thai-gray-600 font-thai mb-4">
-            กรุณาเลือกประเภทการนำเข้าออเดอร์ที่ต้องการ
-          </p>
-
-          <div className="grid grid-cols-1 gap-4">
-            {/* ประเภท 1: จัดเส้นทาง */}
-            <button
-              onClick={() => handleTypeSelect('route')}
-              className="p-6 border-2 border-thai-gray-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-all text-left group"
-            >
-              <div className="flex items-start space-x-4">
-                <div className="w-12 h-12 rounded-lg bg-blue-100 flex items-center justify-center group-hover:bg-blue-500 transition-colors">
-                  <Route className="w-6 h-6 text-blue-600 group-hover:text-white" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-thai-gray-900 font-thai mb-1">
-                    1. จัดเส้นทาง
-                  </h3>
-                  <p className="text-sm text-thai-gray-600 font-thai mb-2">
-                    นำเข้าออเดอร์สำหรับการจัดเส้นทางจัดส่ง
-                  </p>
-                  <div className="bg-thai-gray-50 p-3 rounded-lg">
-                    <p className="text-xs font-semibold text-thai-gray-700 font-thai mb-1">
-                      คอลัมน์ที่ต้องมี:
-                    </p>
-                    <p className="text-xs text-thai-gray-600 font-thai">
-                      วันที่, คลัง, เครดิต/เงินสด, เลขที่ใบสั่งส่ง, รหัสลูกค้า/ผู้ขาย, ชื่อร้านค้า,
-                      จังหวัด, รหัสสินค้า, ชื่อสินค้า, จำนวน, น้ำหนัก, จำนวนแพ็ครวม, หมายเหตุ
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </button>
-
-            {/* ประเภท 2: ส่งรายชิ้น */}
-            <button
-              onClick={() => handleTypeSelect('piece')}
-              className="p-6 border-2 border-thai-gray-200 rounded-lg hover:border-green-500 hover:bg-green-50 transition-all text-left group"
-            >
-              <div className="flex items-start space-x-4">
-                <div className="w-12 h-12 rounded-lg bg-green-100 flex items-center justify-center group-hover:bg-green-500 transition-colors">
-                  <Package className="w-6 h-6 text-green-600 group-hover:text-white" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-thai-gray-900 font-thai mb-1">
-                    2. ส่งรายชิ้น
-                  </h3>
-                  <p className="text-sm text-thai-gray-600 font-thai mb-2">
-                    นำเข้าออเดอร์แบบส่งรายชิ้น
-                  </p>
-                  <div className="bg-thai-gray-50 p-3 rounded-lg">
-                    <p className="text-xs font-semibold text-thai-gray-700 font-thai mb-1">
-                      คอลัมน์ที่ต้องมี:
-                    </p>
-                    <p className="text-xs text-thai-gray-600 font-thai">
-                      วันที่-ลำดับ, เครดิต/เงินสด, เลขที่ใบขาย, รหัสลูกค้า, ชื่อร้านค้า, จังหวัด,
-                      รหัสสินค้า, ชื่อสินค้า, จำนวน, น้ำหนัก, แพ็ครวม, โทรศัพท์, หมายเหตุ
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </button>
-
-            {/* ประเภท 3: พิเศษ */}
-            <button
-              onClick={() => handleTypeSelect('special')}
-              className="p-6 border-2 border-thai-gray-200 rounded-lg hover:border-purple-500 hover:bg-purple-50 transition-all text-left group"
-            >
-              <div className="flex items-start space-x-4">
-                <div className="w-12 h-12 rounded-lg bg-purple-100 flex items-center justify-center group-hover:bg-purple-500 transition-colors">
-                  <Star className="w-6 h-6 text-purple-600 group-hover:text-white" />
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-thai-gray-900 font-thai mb-1">
-                    3. พิเศษ
-                  </h3>
-                  <p className="text-sm text-thai-gray-600 font-thai mb-2">
-                    นำเข้าออเดอร์ประเภทพิเศษ (กำหนดเองได้)
-                  </p>
-                  <div className="bg-thai-gray-50 p-3 rounded-lg">
-                    <p className="text-xs font-semibold text-thai-gray-700 font-thai mb-1">
-                      คอลัมน์ที่ต้องมี:
-                    </p>
-                    <p className="text-xs text-thai-gray-600 font-thai">
-                      ตามความต้องการพิเศษ (สามารถกำหนดคอลัมน์เองได้)
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </button>
-          </div>
-        </div>
-      ) : (
         <div className="space-y-6">
-          {/* ข้อมูลประเภทที่เลือก */}
+          {/* เลือกประเภทการนำเข้า */}
+          <div>
+            <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
+              ประเภทการนำเข้า <span className="text-red-500">*</span>
+            </label>
+            <select
+              value={selectedType || ''}
+              onChange={(e) => setSelectedType(e.target.value as ImportType)}
+              className="w-full px-3 py-2 border border-thai-gray-300 rounded-lg text-sm font-thai
+                       focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+              required
+            >
+              <option value="route">จัดเส้นทาง</option>
+              <option value="piece">ส่งรายชิ้น (ด่วนพิเศษ)</option>
+              <option value="special">ออเดอร์พิเศษ (สินค้าของแถม)</option>
+            </select>
+          </div>
           <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
             <div className="flex items-center space-x-3 mb-2">
               {selectedType && React.createElement(getTypeInfo(selectedType)!.icon, {
@@ -384,7 +300,11 @@ const ImportOrderModal: React.FC<ImportOrderModalProps> = ({ isOpen, onClose, on
               <FileSpreadsheet className="w-4 h-4 inline mr-1" />
               เลือกไฟล์ Excel หรือ CSV (.xlsx, .xls, .csv) <span className="text-red-500">*</span>
             </label>
-            <div className="border-2 border-dashed border-thai-gray-300 rounded-lg p-6 text-center hover:border-blue-500 transition-colors">
+            <div className={`border-2 border-dashed rounded-lg p-4 text-center transition-all ${
+              selectedFile 
+                ? 'border-green-500 bg-green-50' 
+                : 'border-thai-gray-300 hover:border-blue-500'
+            }`}>
               <input
                 type="file"
                 accept=".xlsx,.xls,.csv"
@@ -394,15 +314,39 @@ const ImportOrderModal: React.FC<ImportOrderModalProps> = ({ isOpen, onClose, on
               />
               <label
                 htmlFor="file-upload"
-                className="cursor-pointer flex flex-col items-center space-y-2"
+                className="cursor-pointer flex flex-col items-center space-y-1.5"
               >
-                <Upload className="w-12 h-12 text-thai-gray-400" />
-                <span className="text-sm font-thai text-thai-gray-600">
-                  {selectedFile ? selectedFile.name : 'คลิกเพื่อเลือกไฟล์หรือลากไฟล์มาวางที่นี่'}
-                </span>
-                <span className="text-xs font-thai text-thai-gray-500">
-                  รองรับไฟล์ .xlsx, .xls, .csv (ขนาดไม่เกิน 10MB)
-                </span>
+                {selectedFile ? (
+                  <>
+                    <div className="w-10 h-10 rounded-full bg-green-500 flex items-center justify-center">
+                      <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <span className="text-sm font-semibold font-thai text-green-700">
+                      ✓ เลือกไฟล์แล้ว
+                    </span>
+                    <span className="text-sm font-thai text-green-600 break-all px-2">
+                      {selectedFile.name}
+                    </span>
+                    <span className="text-xs font-thai text-green-600">
+                      ({(selectedFile.size / 1024).toFixed(2)} KB)
+                    </span>
+                    <span className="text-xs font-thai text-thai-gray-500">
+                      คลิกเพื่อเปลี่ยนไฟล์
+                    </span>
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-10 h-10 text-thai-gray-400" />
+                    <span className="text-sm font-thai text-thai-gray-600">
+                      คลิกเพื่อเลือกไฟล์หรือลากไฟล์มาวางที่นี่
+                    </span>
+                    <span className="text-xs font-thai text-thai-gray-500">
+                      รองรับไฟล์ .xlsx, .xls, .csv (ขนาดไม่เกิน 10MB)
+                    </span>
+                  </>
+                )}
               </label>
             </div>
           </div>
@@ -419,12 +363,6 @@ const ImportOrderModal: React.FC<ImportOrderModalProps> = ({ isOpen, onClose, on
 
           {/* ปุ่มดำเนินการ */}
           <div className="flex items-center justify-end space-x-3 pt-4 border-t border-thai-gray-200">
-            <Button
-              variant="ghost"
-              onClick={() => setStep('select-type')}
-            >
-              ย้อนกลับ
-            </Button>
             <Button
               variant="secondary"
               onClick={handleClose}
@@ -451,7 +389,6 @@ const ImportOrderModal: React.FC<ImportOrderModalProps> = ({ isOpen, onClose, on
             </Button>
           </div>
         </div>
-      )}
       </Modal>
 
       {/* Loading Overlay */}

@@ -1,5 +1,5 @@
 // Main authentication service that combines all auth utilities
-import { createClient } from '@/lib/supabase/server';
+import { createClient, createServiceRoleClient } from '@/lib/supabase/server';
 import { hashPassword, verifyPassword, validatePassword } from './password';
 import { createSession, invalidateSession, setSessionCookie, clearSessionCookie } from './session';
 import { createPasswordResetToken, validatePasswordResetToken, usePasswordResetToken } from './tokens';
@@ -600,7 +600,7 @@ export async function changePassword(
   error?: string;
 }> {
   try {
-    const supabase = await createClient();
+    const supabase = createServiceRoleClient();
 
     // Get user's current password hash
     const { data: userData, error: userError } = await supabase

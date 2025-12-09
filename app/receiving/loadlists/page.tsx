@@ -255,8 +255,8 @@ const LoadlistsPage = () => {
         throw new Error('Unable to load employees');
       }
       const result = await response.json();
-      // API returns { data: employees }
-      const employeeData = Array.isArray(result.data) ? result.data : [];
+      // API returns array directly
+      const employeeData = Array.isArray(result) ? result : [];
       setEmployees(employeeData);
       setDrivers(employeeData); // Use same employee list for drivers
     } catch (err: any) {

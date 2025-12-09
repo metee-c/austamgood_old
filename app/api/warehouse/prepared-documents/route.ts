@@ -40,7 +40,7 @@ export async function GET(request: Request) {
 
     const documents: PreparedDocument[] = [];
 
-    // 1. ดึงข้อมูล Picklists ที่จัดเสร็จแล้ว พร้อมข้อมูล inventory balances
+    // 1. ดึงข้อมูล Picklists ที่จัดเสร็จแล้ว พร้อมข้อมูล inventory balances จาก Dispatch
     const { data: picklists, error: picklistError } = await supabase
       .from('picklists')
       .select(`
@@ -62,11 +62,13 @@ export async function GET(request: Request) {
       .order('created_at', { ascending: false });
 
     if (!picklistError && picklists) {
+      const dispatchLocationId = 'WH001-02642';
+      
       for (const pl of picklists) {
         const items = [];
         
         for (const item of (pl.picklist_items || [])) {
-          // ดึงข้อมูล balance จาก location และ sku
+          // ดึงข้อมูล balance จาก Dispatch location
           const { data: balances } = await supabase
             .from('wms_inventory_balances')
             .select(`
@@ -81,10 +83,11 @@ export async function GET(request: Request) {
               reserved_pack_qty,
               reserved_piece_qty,
               warehouse_id,
+              location_id,
               last_movement_at,
               updated_at
             `)
-            .eq('location_id', item.source_location_id)
+            .eq('location_id', dispatchLocationId)
             .eq('sku_id', item.sku_id)
             .limit(1)
             .single();
@@ -94,7 +97,7 @@ export async function GET(request: Request) {
             sku_id: item.sku_id,
             sku_name: item.sku_name || item.sku_id,
             quantity: item.quantity_to_pick || 0,
-            location_id: item.source_location_id || '-',
+            location_id: balances?.location_id || dispatchLocationId,
             pallet_id: balances?.pallet_id,
             pallet_id_external: balances?.pallet_id_external,
             lot_no: balances?.lot_no,
@@ -123,7 +126,7 @@ export async function GET(request: Request) {
       }
     }
 
-    // 2. ดึงข้อมูล Face Sheets ที่จัดเสร็จแล้ว พร้อมข้อมูล inventory balances
+    // 2. ดึงข้อมูล Face Sheets ที่จัดเสร็จแล้ว พร้อมข้อมูล inventory balances จาก Dispatch
     const { data: faceSheets, error: faceSheetError } = await supabase
       .from('face_sheets')
       .select(`
@@ -146,6 +149,8 @@ export async function GET(request: Request) {
       .order('created_at', { ascending: false });
 
     if (!faceSheetError && faceSheets) {
+      const dispatchLocationId = 'WH001-02642';
+      
       for (const fs of faceSheets) {
         const items = [];
         const totalQty = (fs.face_sheet_items || []).reduce((sum: number, item: any) => 
@@ -167,10 +172,11 @@ export async function GET(request: Request) {
               reserved_pack_qty,
               reserved_piece_qty,
               warehouse_id,
+              location_id,
               last_movement_at,
               updated_at
             `)
-            .eq('location_id', item.source_location_id)
+            .eq('location_id', dispatchLocationId)
             .eq('sku_id', item.sku_id)
             .limit(1)
             .single();
@@ -180,7 +186,7 @@ export async function GET(request: Request) {
             sku_id: item.sku_id || '-',
             sku_name: item.product_name || item.sku_id || '-',
             quantity: item.quantity_to_pick || 0,
-            location_id: item.source_location_id || '-',
+            location_id: balances?.location_id || dispatchLocationId,
             pallet_id: balances?.pallet_id,
             pallet_id_external: balances?.pallet_id_external,
             lot_no: balances?.lot_no,
@@ -209,7 +215,7 @@ export async function GET(request: Request) {
       }
     }
 
-    // 3. ดึงข้อมูล Bonus Face Sheets ที่จัดเสร็จแล้ว พร้อมข้อมูล inventory balances
+    // 3. ดึงข้อมูล Bonus Face Sheets ที่จัดเสร็จแล้ว พร้อมข้อมูล inventory balances จาก Dispatch
     const { data: bonusFaceSheets, error: bonusFaceSheetError } = await supabase
       .from('bonus_face_sheets')
       .select(`
@@ -238,6 +244,9 @@ export async function GET(request: Request) {
           sum + (item.quantity_to_pick || 0), 0
         );
         
+        // ดึงข้อมูลจาก Dispatch location แทน source_location
+        const dispatchLocationId = 'WH001-02642';
+        
         for (const item of (bfs.bonus_face_sheet_items || [])) {
           const { data: balances } = await supabase
             .from('wms_inventory_balances')
@@ -253,10 +262,11 @@ export async function GET(request: Request) {
               reserved_pack_qty,
               reserved_piece_qty,
               warehouse_id,
+              location_id,
               last_movement_at,
               updated_at
             `)
-            .eq('location_id', item.source_location_id)
+            .eq('location_id', dispatchLocationId)
             .eq('sku_id', item.sku_id)
             .limit(1)
             .single();
@@ -266,7 +276,7 @@ export async function GET(request: Request) {
             sku_id: item.sku_id || '-',
             sku_name: item.product_name || item.sku_id || '-',
             quantity: item.quantity_to_pick || 0,
-            location_id: item.source_location_id || '-',
+            location_id: balances?.location_id || dispatchLocationId,
             pallet_id: balances?.pallet_id,
             pallet_id_external: balances?.pallet_id_external,
             lot_no: balances?.lot_no,

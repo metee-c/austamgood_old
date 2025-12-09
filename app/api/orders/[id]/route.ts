@@ -9,25 +9,40 @@ export async function PATCH(
     const supabase = await createClient();
     const { id } = await params;
     const body = await request.json();
-    const { status } = body;
 
-    if (!status) {
+    // Build update object from allowed fields
+    const updateData: any = {};
+    
+    if (body.status !== undefined) {
+      updateData.status = body.status;
+    }
+    
+    if (body.delivery_date !== undefined) {
+      updateData.delivery_date = body.delivery_date;
+    }
+    
+    if (body.order_type !== undefined) {
+      updateData.order_type = body.order_type;
+    }
+
+    // Check if there's anything to update
+    if (Object.keys(updateData).length === 0) {
       return NextResponse.json(
-        { error: 'Status is required' },
+        { error: 'No valid fields to update' },
         { status: 400 }
       );
     }
 
-    // Update order status
+    // Update order
     const { data, error } = await supabase
       .from('wms_orders')
-      .update({ status })
+      .update(updateData)
       .eq('order_id', parseInt(id))
       .select()
       .single();
 
     if (error) {
-      console.error('Error updating order status:', error);
+      console.error('Error updating order:', error);
       return NextResponse.json(
         { error: error.message },
         { status: 500 }
