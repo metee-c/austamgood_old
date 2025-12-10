@@ -190,10 +190,10 @@ export async function POST(request: NextRequest) {
         };
       }
       
-      if (fileType === 'special' && (headers.length < 21 || headers.length > 22)) {
+      if (fileType === 'special' && (headers.length < 22 || headers.length > 23)) {
         return {
           valid: false,
-          message: `คุณเลือกประเภท "ออเดอร์พิเศษ" (22 คอลัมน์) แต่ไฟล์มี ${headers.length} คอลัมน์ กรุณาตรวจสอบไฟล์หรือเลือกประเภทที่ถูกต้อง`
+          message: `คุณเลือกประเภท "ออเดอร์พิเศษ" (23 คอลัมน์) แต่ไฟล์มี ${headers.length} คอลัมน์ กรุณาตรวจสอบไฟล์หรือเลือกประเภทที่ถูกต้อง`
         };
       }
       
@@ -274,11 +274,11 @@ export async function POST(request: NextRequest) {
         }
 
       } else if (fileType === 'special') {
-        // Special: 22 คอลัมน์
-        if (headers.length < 21) {
+        // Special: 23 คอลัมน์
+        if (headers.length < 22) {
           return {
             valid: false,
-            message: `ไฟล์ไม่ตรงกับรูปแบบ "ออเดอร์พิเศษ (สินค้าของแถม)" (ต้องมี 22 คอลัมน์ แต่พบ ${headers.length} คอลัมน์)`
+            message: `ไฟล์ไม่ตรงกับรูปแบบ "ออเดอร์พิเศษ (สินค้าของแถม)" (ต้องมี 23 คอลัมน์ แต่พบ ${headers.length} คอลัมน์)`
           };
         }
 
@@ -415,12 +415,13 @@ export async function POST(request: NextRequest) {
           pack_1: parseInt(row[16]) || 0
         });
       } else if (fileType === 'special') {
-        // Special CSV Format: 21 columns (เหมือน Route Planning)
+        // Special CSV Format: 23 columns
         // 0: วันที่, 1: คลัง, 2: เครดิต/เงินสด, 3: เลขที่ใบสั่งส่ง,
         // 4: รหัสลูกค้า/ผู้ขาย, 5: ชื่อร้านค้า, 6: จังหวัด, 7: รหัสสินค้า,
         // 8: ชื่อสินค้า, 9: ฟิลด์เพิ่มเติมประเภทตัวเลข 1, 10: จำนวน, 11: น้ำหนัก,
         // 12: จำนวนแพ็ครวม, 13: แพ็ค 12 ถุง, 14: แพ็ค 4, 15: แพ็ค 6, 16: แพ็ค 1,
-        // 17: ประเภทข้อความแบบยาว 1, 18: ประเภทข้อความเพิ่มเติม 4, 19: วัน เวลารับสินค้า, 20: หมายเหตุ
+        // 17: ประเภทข้อความแบบยาว 1, 18: ประเภทข้อความเพิ่มเติม 4, 19: วัน เวลารับสินค้า, 
+        // 20: หมายเหตุ (เพิ่มเติม), 21: หมายเหตุ (จัดส่ง), 22: เขตการขาย
         const orderNo = String(row[3] || '').trim();
         if (!orderNo) continue;
 
@@ -446,7 +447,8 @@ export async function POST(request: NextRequest) {
             province: String(row[6] || '').trim().substring(0, 100),
             pickup_datetime: pickupDateTime,
             notes: String(row[20] || '').trim() || '', // หมายเหตุ (เพิ่มเติม)
-            notes_additional: String(row[21] || '').trim() || '', // หมายเหตุ (จัดส่ง) - คอลัมน์ที่ 21
+            notes_additional: String(row[21] || '').trim() || '', // หมายเหตุ (จัดส่ง)
+            sales_territory: String(row[22] || '').trim().substring(0, 100) || '', // เขตการขาย
             text_field_long_1: String(row[17] || '').trim() || '',
             text_field_additional_4: String(row[18] || '').trim().substring(0, 255) || '',
             status: 'draft',

@@ -24,6 +24,7 @@ interface Order {
   phone: string;
   hub: string;
   remark: string;
+  notes_additional?: string;
   delivery_type: string;
   sales_territory: string;
   trip_number: string;
@@ -56,6 +57,7 @@ const BonusFaceSheetPackFormPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [packData, setPackData] = useState<{ [orderId: number]: ItemPackData }>({});
   const [inputValues, setInputValues] = useState<{ [key: string]: string }>({});
+  const [deliveryTypes, setDeliveryTypes] = useState<{ [key: string]: string }>({});
   const [saving, setSaving] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
 
@@ -127,9 +129,10 @@ const BonusFaceSheetPackFormPage = () => {
         const reconstructedOrders = Array.from(ordersMap.values());
         setOrders(reconstructedOrders);
         
-        // สร้าง packData และ inputValues จากข้อมูลเดิม
+        // สร้าง packData, inputValues และ deliveryTypes จากข้อมูลเดิม
         const initialPackData: { [orderId: number]: ItemPackData } = {};
         const initialInputValues: { [key: string]: string } = {};
+        const initialDeliveryTypes: { [key: string]: string } = {};
         
         reconstructedOrders.forEach((order) => {
           initialPackData[order.order_id] = {};
@@ -161,6 +164,11 @@ const BonusFaceSheetPackFormPage = () => {
               };
               
               initialInputValues[key] = packs.map(p => p.pack_no).filter(p => p).join(',');
+              
+              // เก็บ delivery_type จาก package แรก
+              if (relatedPacks[0]?.delivery_type) {
+                initialDeliveryTypes[key] = relatedPacks[0].delivery_type;
+              }
             } else {
               initialPackData[order.order_id][item.order_item_id] = {
                 packs: [{ pack_no: '', quantity: item.quantity }],
@@ -173,6 +181,7 @@ const BonusFaceSheetPackFormPage = () => {
         
         setPackData(initialPackData);
         setInputValues(initialInputValues);
+        setDeliveryTypes(initialDeliveryTypes);
       } else {
         setError(result.error || 'ไม่สามารถโหลดข้อมูลได้');
       }
@@ -196,6 +205,7 @@ const BonusFaceSheetPackFormPage = () => {
         // Initialize pack data with empty pack_no
         const initialPackData: { [orderId: number]: ItemPackData } = {};
         const initialInputValues: { [key: string]: string } = {};
+        const initialDeliveryTypes: { [key: string]: string } = {};
         filteredOrders.forEach((order: Order) => {
           initialPackData[order.order_id] = {};
           order.items.forEach((item) => {
@@ -205,10 +215,12 @@ const BonusFaceSheetPackFormPage = () => {
               totalQty: item.quantity
             };
             initialInputValues[key] = '';
+            initialDeliveryTypes[key] = '';
           });
         });
         setPackData(initialPackData);
         setInputValues(initialInputValues);
+        setDeliveryTypes(initialDeliveryTypes);
       } else {
         setError(result.error || 'ไม่สามารถโหลดข้อมูลได้');
       }
@@ -272,6 +284,45 @@ const BonusFaceSheetPackFormPage = () => {
     });
   };
 
+  const handleDeliveryTypeChange = (orderId: number, itemId: number, value: string) => {
+    const key = `${orderId}-${itemId}`;
+    const itemData = packData[orderId]?.[itemId];
+    
+    if (!itemData) return;
+
+    // อัปเดต delivery type ของแถวปัจจุบัน
+    setDeliveryTypes(prev => {
+      const newTypes = { ...prev };
+      newTypes[key] = value;
+
+      // หา pack_no ทั้งหมดของแถวนี้
+      const currentPackNos = itemData.packs.map(p => p.pack_no).filter(p => p);
+
+      if (currentPackNos.length > 0) {
+        // อัปเดตแถวอื่นๆ ที่มี pack_no เดียวกัน
+        orders.forEach(order => {
+          order.items.forEach(item => {
+            const otherKey = `${order.order_id}-${item.order_item_id}`;
+            const otherItemData = packData[order.order_id]?.[item.order_item_id];
+            
+            if (otherItemData && otherKey !== key) {
+              const otherPackNos = otherItemData.packs.map(p => p.pack_no).filter(p => p);
+              
+              // ตรวจสอบว่ามี pack_no ที่ตรงกันหรือไม่
+              const hasMatchingPack = otherPackNos.some(packNo => currentPackNos.includes(packNo));
+              
+              if (hasMatchingPack) {
+                newTypes[otherKey] = value;
+              }
+            }
+          });
+        });
+      }
+
+      return newTypes;
+    });
+  };
+
   const validatePackData = (): boolean => {
     for (const order of orders) {
       for (const item of order.items) {
@@ -327,6 +378,8 @@ const BonusFaceSheetPackFormPage = () => {
 
         order.items.forEach(item => {
           const itemData = packData[order.order_id][item.order_item_id];
+          const key = `${order.order_id}-${item.order_item_id}`;
+          const itemDeliveryType = deliveryTypes[key] || order.delivery_type;
           
           itemData.packs.forEach(pack => {
             if (!packGroups[pack.pack_no]) {
@@ -341,7 +394,7 @@ const BonusFaceSheetPackFormPage = () => {
                 phone: order.phone,
                 hub: order.hub,
                 remark: order.remark,
-                delivery_type: order.delivery_type,
+                delivery_type: itemDeliveryType,
                 sales_territory: order.sales_territory,
                 trip_number: order.trip_number,
                 pack_no: pack.pack_no,
@@ -483,6 +536,7 @@ const BonusFaceSheetPackFormPage = () => {
                   <th className="px-2 py-1.5 text-center text-[11px] font-semibold text-gray-700 whitespace-nowrap" style={{ width: '60px' }}>จำนวน</th>
                   <th className="px-2 py-1.5 text-left text-[11px] font-semibold text-gray-700 whitespace-nowrap" style={{ width: '130px' }}>เลขที่ใบสั่งส่ง</th>
                   <th className="px-2 py-1.5 text-center text-[11px] font-semibold text-gray-700 whitespace-nowrap" style={{ width: '60px' }}>คันที่</th>
+                  <th className="px-2 py-1.5 text-left text-[11px] font-semibold text-gray-700 whitespace-nowrap" style={{ width: '200px' }}>หมายเหตุ</th>
                   <th className="px-2 py-1.5 text-left text-[11px] font-semibold text-gray-700 whitespace-nowrap" style={{ width: '160px' }}>
                     แพ็คที่ <span className="text-red-500">*</span>
                   </th>
@@ -511,6 +565,13 @@ const BonusFaceSheetPackFormPage = () => {
                       <td className="px-2 py-1.5 text-xs text-center font-semibold text-blue-600">{item.quantity}</td>
                       <td className="px-2 py-1.5 text-xs font-mono text-gray-700">{order.order_no}</td>
                       <td className="px-2 py-1.5 text-xs text-center text-gray-700">{order.trip_number || '-'}</td>
+                      <td className="px-2 py-1.5 text-xs text-gray-700">
+                        {order.notes_additional ? (
+                          <span className="text-gray-800" title={order.notes_additional}>{order.notes_additional}</span>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
                       <td className="px-2 py-1.5">
                         <div className="flex gap-1">
                           <input
@@ -547,7 +608,8 @@ const BonusFaceSheetPackFormPage = () => {
                       <td className="px-2 py-1.5">
                         <select
                           className="w-full px-1.5 py-1 bg-white border border-gray-300 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                          defaultValue=""
+                          value={deliveryTypes[key] || ''}
+                          onChange={(e) => handleDeliveryTypeChange(order.order_id, item.order_item_id, e.target.value)}
                         >
                           <option value="">-- เลือก --</option>
                           <option value="จัดส่งพร้อมออเดอร์">พร้อมออเดอร์</option>

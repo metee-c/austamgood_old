@@ -36,6 +36,7 @@ export async function GET(request: NextRequest) {
         phone,
         notes,
         notes_additional,
+        sales_territory,
         matched_trip_id
       `)
       .eq('order_type', 'special')
@@ -129,8 +130,9 @@ export async function GET(request: NextRequest) {
           phone: order.phone || '',
           hub: customer?.hub || 'ไม่ระบุ',
           remark: order.notes || '',
+          notes_additional: order.notes_additional || '',
           delivery_type: order.notes_additional || 'จัดส่งพร้อมออเดอร์',
-          sales_territory: (order as any).sales_territory || '',
+          sales_territory: order.sales_territory || '',
           trip_number: tripNumber,
           matched_trip_id: order.matched_trip_id,
           total_items: order.total_items || 0,

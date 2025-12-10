@@ -222,19 +222,117 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Merge customer data, route plan data, and face sheet data into orders
+    // Fetch loadlist information for special and express orders
+    let loadlistsMap = new Map();
+    if (orderIds.length > 0) {
+      // Check in wms_loadlist_picklists for express orders
+      const { data: loadlistPicklistsData, error: loadlistPicklistsError } = await supabase
+        .from('wms_loadlist_picklists')
+        .select(`
+          picklist_id,
+          loadlist_id,
+          loadlists!loadlist_id (
+            loadlist_code,
+            status
+          ),
+          picklists!picklist_id (
+            picklist_items!inner (
+              order_id
+            )
+          )
+        `)
+        .not('loadlist_id', 'is', null);
+
+      if (!loadlistPicklistsError && loadlistPicklistsData) {
+        loadlistPicklistsData.forEach((llp: any) => {
+          const loadlistData = llp.loadlists;
+          const loadlist = Array.isArray(loadlistData) ? loadlistData[0] : loadlistData;
+          const picklistData = llp.picklists;
+          const picklist = Array.isArray(picklistData) ? picklistData[0] : picklistData;
+
+          if (loadlist?.loadlist_code && picklist?.picklist_items) {
+            picklist.picklist_items.forEach((item: any) => {
+              if (item.order_id && orderIds.includes(item.order_id)) {
+                loadlistsMap.set(item.order_id, {
+                  loadlist_code: loadlist.loadlist_code,
+                  loadlist_status: loadlist.status
+                });
+              }
+            });
+          }
+        });
+      }
+
+      // Check in wms_loadlist_bonus_face_sheets for special orders
+      const { data: loadlistBonusData, error: loadlistBonusError } = await supabase
+        .from('wms_loadlist_bonus_face_sheets')
+        .select(`
+          bonus_face_sheet_id,
+          loadlist_id,
+          loadlists!loadlist_id (
+            loadlist_code,
+            status
+          ),
+          bonus_face_sheets!bonus_face_sheet_id (
+            bonus_face_sheet_packages!inner (
+              order_id
+            )
+          )
+        `)
+        .not('loadlist_id', 'is', null);
+
+      if (!loadlistBonusError && loadlistBonusData) {
+        loadlistBonusData.forEach((llb: any) => {
+          const loadlistData = llb.loadlists;
+          const loadlist = Array.isArray(loadlistData) ? loadlistData[0] : loadlistData;
+          const bonusFaceSheetData = llb.bonus_face_sheets;
+          const bonusFaceSheet = Array.isArray(bonusFaceSheetData) ? bonusFaceSheetData[0] : bonusFaceSheetData;
+
+          if (loadlist?.loadlist_code && bonusFaceSheet?.bonus_face_sheet_packages) {
+            bonusFaceSheet.bonus_face_sheet_packages.forEach((pkg: any) => {
+              if (pkg.order_id && orderIds.includes(pkg.order_id)) {
+                loadlistsMap.set(pkg.order_id, {
+                  loadlist_code: loadlist.loadlist_code,
+                  loadlist_status: loadlist.status
+                });
+              }
+            });
+          }
+        });
+      }
+
+      console.log(`[Loadlists] Mapped ${loadlistsMap.size} orders to loadlists`);
+    }
+
+    // Merge customer data, route plan data, face sheet data, and loadlist data into orders
     const ordersWithCustomer = ordersData?.map(order => {
-      // For express orders, use face sheet data; for other types, use route plan data
-      const planInfo = order.order_type === 'express'
-        ? faceSheetsMap.get(order.order_id)
-        : routePlansMap.get(order.order_id);
+      // Priority: loadlist > face sheet > route plan
+      // For special and express orders, prefer loadlist if available
+      let planInfo = null;
+      const loadlistInfo = loadlistsMap.get(order.order_id);
+
+      if (loadlistInfo) {
+        // Use loadlist for special and express orders
+        planInfo = {
+          plan_code: loadlistInfo.loadlist_code,
+          trip_code: null,
+          trip_sequence: null
+        };
+      } else if (order.order_type === 'express') {
+        // Fallback to face sheet for express
+        planInfo = faceSheetsMap.get(order.order_id);
+      } else {
+        // Use route plan for route_planning orders
+        planInfo = routePlansMap.get(order.order_id);
+      }
 
       return {
         ...order,
         customer: customersMap.get(order.customer_id) || null,
         plan_code: planInfo?.plan_code || null,
         trip_code: planInfo?.trip_code || null,
-        trip_sequence: planInfo?.trip_sequence || null
+        trip_sequence: planInfo?.trip_sequence || null,
+        loadlist_code: loadlistInfo?.loadlist_code || null
       };
     }) || [];
 

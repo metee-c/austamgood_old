@@ -45,9 +45,25 @@ const BonusFaceSheetLabelDocument: React.FC<BonusFaceSheetLabelDocumentProps> = 
     });
   };
 
+  // คำนวณจำนวนแพ็ครวมต่อออเดอร์
+  const packCountByOrder = details.packages.reduce((acc, pkg) => {
+    acc[pkg.order_no] = (acc[pkg.order_no] || 0) + 1;
+    return acc;
+  }, {} as Record<string, number>);
+
+  // สร้าง map เพื่อเก็บลำดับแพ็คของแต่ละออเดอร์
+  const packSequenceByOrder: Record<string, number> = {};
+
   return (
     <>
       {details.packages.map((pkg, index) => {
+        // คำนวณลำดับแพ็คของออเดอร์นี้
+        if (!packSequenceByOrder[pkg.order_no]) {
+          packSequenceByOrder[pkg.order_no] = 0;
+        }
+        packSequenceByOrder[pkg.order_no]++;
+        const currentPackNumber = packSequenceByOrder[pkg.order_no];
+        const totalPacksForOrder = packCountByOrder[pkg.order_no];
         const totalItems = pkg.items.length;
         const ITEMS_PER_PAGE = 10;
         const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
@@ -282,6 +298,24 @@ const BonusFaceSheetLabelDocument: React.FC<BonusFaceSheetLabelDocumentProps> = 
                         }}
                       >
                         {pkg.package_number}
+                      </p>
+                    </div>
+                    <div style={{ flex: 1, textAlign: 'center' }}>
+                      <p style={{ fontSize: '10px', margin: 0, color: '#555' }}>แพ็คต่อเลขออเดอร์</p>
+                      <p
+                        style={{
+                          fontSize: '18px',
+                          margin: 0,
+                          fontWeight: 'bold',
+                          color: '#d32f2f',
+                          background: '#ffebee',
+                          padding: '2px 8px',
+                          display: 'inline-block',
+                          borderRadius: '4px',
+                          border: '2px solid #d32f2f'
+                        }}
+                      >
+                        {currentPackNumber}/{totalPacksForOrder}
                       </p>
                     </div>
                     <div style={{ flex: 1, textAlign: 'right' }}>

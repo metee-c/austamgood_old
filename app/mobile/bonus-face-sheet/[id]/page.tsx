@@ -398,6 +398,25 @@ const BonusFaceSheetPickPage = () => {
         title="เลือกพนักงาน"
       />
 
+      {/* Loading Overlay */}
+      {confirmingAll && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-8 shadow-2xl max-w-sm mx-4">
+            <div className="flex flex-col items-center space-y-4">
+              <Loader2 className="w-16 h-16 text-sky-500 animate-spin" />
+              <div className="text-center">
+                <h3 className="text-lg font-bold text-gray-900 font-thai mb-2">
+                  กำลังบันทึกข้อมูล
+                </h3>
+                <p className="text-sm text-gray-600 font-thai">
+                  กรุณารอสักครู่...
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
 
     </div>
   );

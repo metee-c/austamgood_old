@@ -273,29 +273,58 @@ export async function GET(request: NextRequest) {
 
     const orders = Array.from(ordersMap.values());
 
-    // Get picker info from first picklist
+    // Get picker info from first picklist or bonus face sheet
     // ใช้ picker_employee_ids ที่บันทึกตอนยืนยันหยิบสินค้าเสร็จ
     let pickerEmployee = null;
+    let pickerEmployees: any[] = [];
+    
+    // ลองดึงจาก picklist ก่อน
     if (picklistData && picklistData.length > 0) {
       const firstPicklist = picklistData[0].picklists as any;
       const pickerIds = firstPicklist?.picker_employee_ids;
       
       // ถ้ามี picker_employee_ids (บันทึกตอนยืนยันหยิบเสร็จ)
       if (pickerIds && Array.isArray(pickerIds) && pickerIds.length > 0) {
-        const pickerId = parseInt(pickerIds[0]);
+        const pickerIdsInt = pickerIds.map((id: any) => parseInt(id));
         const { data: pickerData } = await supabase
           .from('master_employee')
           .select('employee_id, first_name, last_name, employee_code')
-          .eq('employee_id', pickerId)
-          .single();
+          .in('employee_id', pickerIdsInt);
         
-        if (pickerData) {
-          pickerEmployee = pickerData;
+        if (pickerData && pickerData.length > 0) {
+          pickerEmployees = pickerData;
+          pickerEmployee = pickerData[0]; // เก็บคนแรกไว้เพื่อ backward compatibility
         }
       }
       // ถ้าไม่มี ให้ใช้ assigned_employee (กำหนดตอนสร้าง picklist)
       else if (firstPicklist?.assigned_employee) {
         pickerEmployee = firstPicklist.assigned_employee;
+        pickerEmployees = [firstPicklist.assigned_employee];
+      }
+    }
+    
+    // ถ้ายังไม่มี picker ให้ลองดึงจาก bonus face sheet
+    if (pickerEmployees.length === 0 && bonusFaceSheetData && bonusFaceSheetData.length > 0) {
+      // ดึงข้อมูล picker_employee_ids จาก bonus_face_sheets
+      const { data: bfsData } = await supabase
+        .from('bonus_face_sheets')
+        .select('picker_employee_ids')
+        .eq('id', bonusFaceSheetData[0].bonus_face_sheet_id)
+        .single();
+      
+      const pickerIds = bfsData?.picker_employee_ids;
+      
+      if (pickerIds && Array.isArray(pickerIds) && pickerIds.length > 0) {
+        const pickerIdsInt = pickerIds.map((id: any) => parseInt(id));
+        const { data: pickerData } = await supabase
+          .from('master_employee')
+          .select('employee_id, first_name, last_name, employee_code')
+          .in('employee_id', pickerIdsInt);
+        
+        if (pickerData && pickerData.length > 0) {
+          pickerEmployees = pickerData;
+          pickerEmployee = pickerData[0]; // เก็บคนแรกไว้เพื่อ backward compatibility
+        }
       }
     }
 
@@ -308,6 +337,7 @@ export async function GET(request: NextRequest) {
         checker_employee_id: loadlist.checker_employee_id,
         checker_employee: (loadlist as any).checker_employee,
         picker_employee: pickerEmployee,
+        picker_employees: pickerEmployees, // ส่งรายชื่อพนักงานจัดสินค้าทั้งหมด
         orders
       }
     });

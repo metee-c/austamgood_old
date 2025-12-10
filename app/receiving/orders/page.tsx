@@ -832,17 +832,29 @@ const OrdersPage = () => {
                           />
                         </Table.Cell>
                         <Table.Cell>
-                          {order.plan_code ? (
-                            <div className="text-xs space-y-0.5">
-                              <div className="font-semibold text-blue-600">{order.plan_code}</div>
-                              {order.trip_code ? (
-                                <div className="text-gray-600 font-medium">เที่ยวที่ {order.trip_sequence || '?'}</div>
-                              ) : (
-                                <div className="text-gray-400 italic">ยังไม่จัดคัน</div>
-                              )}
-                            </div>
+                          {order.order_type === 'special' || order.order_type === 'express' ? (
+                            // แสดง loadlist_code สำหรับ special และ express
+                            order.loadlist_code ? (
+                              <div className="text-xs">
+                                <div className="font-semibold text-green-600">{order.loadlist_code}</div>
+                              </div>
+                            ) : (
+                              <span className="text-gray-400 text-xs">-</span>
+                            )
                           ) : (
-                            <span className="text-gray-400 text-xs">-</span>
+                            // แสดง plan_code และ trip_code สำหรับ route_planning
+                            order.plan_code ? (
+                              <div className="text-xs space-y-0.5">
+                                <div className="font-semibold text-blue-600">{order.plan_code}</div>
+                                {order.trip_code ? (
+                                  <div className="text-gray-600 font-medium">เที่ยวที่ {order.trip_sequence || '?'}</div>
+                                ) : (
+                                  <div className="text-gray-400 italic">ยังไม่จัดคัน</div>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-gray-400 text-xs">-</span>
+                            )
                           )}
                         </Table.Cell>
                         <Table.Cell>{order.text_field_long_1 || '-'}</Table.Cell>

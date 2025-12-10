@@ -30,6 +30,12 @@ interface EmployeeSelectionModalProps {
     last_name: string;
     employee_code: string;
   };
+  pickerEmployees?: Array<{
+    employee_id: number;
+    first_name: string;
+    last_name: string;
+    employee_code: string;
+  }>;
 }
 
 export default function EmployeeSelectionModal({
@@ -40,7 +46,8 @@ export default function EmployeeSelectionModal({
   mode = 'both',
   defaultCheckerId,
   checkerEmployee,
-  pickerEmployee
+  pickerEmployee,
+  pickerEmployees
 }: EmployeeSelectionModalProps) {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -183,10 +190,23 @@ export default function EmployeeSelectionModal({
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2 font-thai">
                     <User className="w-4 h-4 inline mr-1" />
-                    พนักงานจัดสินค้า
+                    พนักงานจัดสินค้า {pickerEmployees && pickerEmployees.length > 0 && `(${pickerEmployees.length} คน)`}
                   </label>
                   <div className="border border-gray-300 rounded-lg bg-gray-50 px-3 py-2">
-                    {pickerEmployee ? (
+                    {pickerEmployees && pickerEmployees.length > 0 ? (
+                      <div className="space-y-1">
+                        {pickerEmployees.map((picker, index) => (
+                          <div key={picker.employee_id} className="flex items-center">
+                            <span className="text-sm font-thai text-gray-900">
+                              {index + 1}. {picker.first_name} {picker.last_name}
+                            </span>
+                            <span className="text-gray-500 text-xs ml-2">
+                              ({picker.employee_code})
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : pickerEmployee ? (
                       <>
                         <span className="text-sm font-thai text-gray-900">
                           {pickerEmployee.first_name} {pickerEmployee.last_name}
