@@ -2721,7 +2721,7 @@ const RoutesPage = () => {
                 onClose={closePreviewModal}
                 title={previewModalTitle}
                 size="4xl"
-                contentClassName="max-h-[92vh]"
+                contentClassName="max-h-[70vh]"
             >
                 {previewLoading ? (
                     <div className="py-10 text-center text-gray-500">กำลังโหลดข้อมูลแผนที่...</div>

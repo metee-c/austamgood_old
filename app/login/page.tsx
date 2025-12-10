@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import { Eye, EyeOff } from 'lucide-react';
 
 function LoginForm() {
@@ -15,6 +16,7 @@ function LoginForm() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [sessionTimeoutMessage, setSessionTimeoutMessage] = useState<string | null>(null);
+  const [failedAttempts, setFailedAttempts] = useState(0);
 
   // Check if redirected due to session timeout
   useEffect(() => {
@@ -50,10 +52,26 @@ function LoginForm() {
       const data = await response.json();
 
       if (!response.ok) {
-        setError(data.error || 'เกิดข้อผิดพลาดในการเข้าสู่ระบบ');
+        // Increment failed attempts
+        const newAttempts = failedAttempts + 1;
+        setFailedAttempts(newAttempts);
+
+        // Calculate remaining attempts
+        const remainingAttempts = 5 - newAttempts;
+
+        // Create detailed error message
+        if (newAttempts >= 5) {
+          setError('locked');
+        } else {
+          setError(`attempt_${newAttempts}_${remainingAttempts}`);
+        }
+
         setLoading(false);
         return;
       }
+
+      // Reset failed attempts on successful login
+      setFailedAttempts(0);
 
       // Check if user needs to change password
       if (data.force_password_change) {
@@ -102,16 +120,28 @@ function LoginForm() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4">
-      <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-lg">
+    <div className="min-h-screen flex flex-col items-center justify-start pt-48 px-4 relative overflow-hidden">
+      {/* Background Image */}
+      <Image
+        src="/images/backgrounds/login.jpg"
+        alt="Background"
+        fill
+        priority
+        className="object-cover"
+        quality={100}
+      />
+
+      {/* System Name at Top */}
+      <div className="absolute top-8 left-0 right-0 text-center z-20">
+        <h2 className="text-2xl font-bold text-gray-600">AustamGood WMS</h2>
+      </div>
+
+      <div className="max-w-md w-full space-y-6 bg-white/60 p-10 shadow-xl relative z-20" style={{ borderRadius: '18px' }}>
         {/* Header */}
         <div className="text-center">
-          <h1 className="text-3xl font-bold text-gray-900">
-            AustamGood WMS
+          <h1 className="text-2xl font-bold text-gray-700">
+            เข้าสู่ระบบ
           </h1>
-          <p className="mt-2 text-sm text-gray-600">
-            เข้าสู่ระบบเพื่อจัดการคลังสินค้า
-          </p>
         </div>
 
         {/* Session Timeout Message */}
@@ -123,8 +153,25 @@ function LoginForm() {
 
         {/* Error Message */}
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-            <p className="text-sm">{error}</p>
+          <div className="bg-red-50 border border-red-200 px-4 py-3 rounded-lg">
+            <div className="space-y-1">
+              {error === 'locked' ? (
+                <>
+                  <p className="text-sm font-semibold text-red-800">บัญชีของคุณถูกล็อกชั่วคราว</p>
+                  <p className="text-xs text-red-700">• ระยะเวลา: 30 นาที</p>
+                  <p className="text-xs text-red-700">• สาเหตุ: พยายามเข้าสู่ระบบผิดพลาด 5 ครั้ง</p>
+                </>
+              ) : error.startsWith('attempt_') ? (
+                <>
+                  <p className="text-sm font-semibold text-red-800">รหัสผ่านไม่ถูกต้อง</p>
+                  <p className="text-xs text-red-700">• คุณพยายามผิดไปแล้ว: {error.split('_')[1]} ครั้ง</p>
+                  <p className="text-xs text-red-700">• จำนวนครั้งที่เหลือ: {error.split('_')[2]} ครั้ง</p>
+                  <p className="text-xs text-red-600 mt-1">• หากครบ 5 ครั้ง บัญชีจะถูกล็อก 30 นาที</p>
+                </>
+              ) : (
+                <p className="text-sm font-medium text-red-800">{error}</p>
+              )}
+            </div>
           </div>
         )}
 
@@ -133,7 +180,7 @@ function LoginForm() {
           <div className="space-y-4">
             {/* Email Field */}
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="email" className="block text-sm font-medium text-gray-900 mb-1">
                 อีเมล
               </label>
               <input
@@ -152,7 +199,7 @@ function LoginForm() {
 
             {/* Password Field */}
             <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="password" className="block text-sm font-medium text-gray-900 mb-1">
                 รหัสผ่าน
               </label>
               <div className="relative">
@@ -196,7 +243,7 @@ function LoginForm() {
                 className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
                 disabled={loading}
               />
-              <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
+              <label htmlFor="remember-me" className="ml-2 block text-sm font-medium text-gray-900">
                 จดจำฉันไว้
               </label>
             </div>
@@ -204,7 +251,7 @@ function LoginForm() {
             <div className="text-sm">
               <Link
                 href="/forgot-password"
-                className="font-medium text-blue-600 hover:text-blue-500"
+                className="font-bold text-blue-700 hover:text-blue-600"
               >
                 ลืมรหัสผ่าน?
               </Link>
@@ -216,7 +263,7 @@ function LoginForm() {
             <button
               type="submit"
               disabled={loading}
-              className="group relative w-full flex justify-center py-2.5 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-base font-medium rounded-md text-white bg-blue-500 hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               {loading ? (
                 <span className="flex items-center">
@@ -234,8 +281,8 @@ function LoginForm() {
         </form>
 
         {/* Footer */}
-        <div className="text-center text-sm text-gray-600">
-          <p>© 2024 AustamGood WMS. All rights reserved.</p>
+        <div className="text-center text-sm font-medium text-gray-500">
+          <p>© 2024 Metee Charoensuk</p>
         </div>
       </div>
     </div>

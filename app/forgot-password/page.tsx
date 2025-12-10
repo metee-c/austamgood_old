@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -47,11 +48,26 @@ export default function ForgotPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 px-4">
-      <div className="max-w-md w-full space-y-8 bg-white p-8 rounded-xl shadow-lg">
+    <div className="min-h-screen flex flex-col items-center justify-start pt-48 px-4 relative overflow-hidden">
+      {/* Background Image */}
+      <Image
+        src="/images/backgrounds/login.jpg"
+        alt="Background"
+        fill
+        priority
+        className="object-cover"
+        quality={100}
+      />
+
+      {/* System Name at Top */}
+      <div className="absolute top-8 left-0 right-0 text-center z-20">
+        <h2 className="text-2xl font-bold text-gray-600">AustamGood WMS</h2>
+      </div>
+
+      <div className="max-w-md w-full space-y-6 bg-white/60 p-10 shadow-xl relative z-20" style={{ borderRadius: '18px' }}>
         {/* Header */}
         <div className="text-center">
-          <h1 className="text-3xl font-bold text-gray-900">
+          <h1 className="text-2xl font-bold text-gray-700">
             ลืมรหัสผ่าน
           </h1>
           <p className="mt-2 text-sm text-gray-600">
@@ -61,18 +77,18 @@ export default function ForgotPasswordPage() {
 
         {/* Error Message */}
         {error && (
-          <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-lg">
-            <p className="text-sm">{error}</p>
+          <div className="bg-red-50 border border-red-200 px-4 py-3 rounded-lg">
+            <p className="text-sm font-medium text-red-800">{error}</p>
           </div>
         )}
 
         {/* Success Message */}
         {success && (
-          <div className="bg-green-50 border border-green-200 text-green-700 px-4 py-3 rounded-lg">
-            <p className="text-sm font-medium mb-2">
+          <div className="bg-green-50 border border-green-200 px-4 py-3 rounded-lg">
+            <p className="text-sm font-semibold text-green-800 mb-2">
               ส่งคำขอรีเซ็ตรหัสผ่านสำเร็จ
             </p>
-            <p className="text-sm">
+            <p className="text-xs text-green-700">
               หากอีเมลนี้มีอยู่ในระบบ เราจะส่งลิงก์รีเซ็ตรหัสผ่านไปให้
             </p>
             {resetToken && (
@@ -98,7 +114,7 @@ export default function ForgotPasswordPage() {
         {!success && (
           <form onSubmit={handleSubmit} className="mt-8 space-y-6">
             <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+              <label htmlFor="email" className="block text-sm font-medium text-gray-900 mb-1">
                 อีเมล
               </label>
               <input
@@ -119,7 +135,7 @@ export default function ForgotPasswordPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="group relative w-full flex justify-center py-2.5 px-4 border border-transparent text-sm font-medium rounded-lg text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                className="group relative w-full flex justify-center py-3 px-4 border border-transparent text-base font-medium rounded-md text-white bg-blue-500 hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 {loading ? (
                   <span className="flex items-center">
@@ -141,10 +157,15 @@ export default function ForgotPasswordPage() {
         <div className="text-center">
           <Link
             href="/login"
-            className="text-sm font-medium text-blue-600 hover:text-blue-500"
+            className="text-sm font-bold text-blue-700 hover:text-blue-600"
           >
             ← กลับไปหน้าเข้าสู่ระบบ
           </Link>
+        </div>
+
+        {/* Footer */}
+        <div className="text-center text-sm font-medium text-gray-500">
+          <p>© 2024 Metee Charoensuk</p>
         </div>
       </div>
     </div>
