@@ -42,17 +42,40 @@ export async function GET() {
         let relatedDocuments: any[] = [];
 
         // 1. Find regular picklist items
+        console.log(`[DELIVERY-INVENTORY] 🔍 Querying picklist_items for SKU: ${item.sku_id}`);
+        
+        // First, get picklist items with status='picked'
         const { data: picklistItems, error: picklistError } = await supabase
           .from('picklist_items')
           .select(`
             picklist_id,
             order_id,
             sku_id,
-            picklist:picklists!inner (
+            status
+          `)
+          .eq('sku_id', item.sku_id)
+          .eq('status', 'picked');
+
+        console.log(`[DELIVERY-INVENTORY] 📋 Found ${picklistItems?.length || 0} picked picklist items for SKU ${item.sku_id}`);
+        
+        if (picklistError) {
+          console.error(`[DELIVERY-INVENTORY] ❌ Error fetching picklist items:`, picklistError);
+        }
+
+        if (picklistItems && picklistItems.length > 0) {
+          // Get unique picklist IDs
+          const picklistIds = [...new Set(picklistItems.map(pi => pi.picklist_id))];
+          console.log(`[DELIVERY-INVENTORY] 🔑 Unique picklist IDs: ${picklistIds.join(', ')}`);
+
+          // Now fetch picklist details with loadlist info
+          const { data: picklists, error: picklistsError } = await supabase
+            .from('picklists')
+            .select(`
+              id,
               picklist_code,
               status,
               trip_id,
-              route_plan_trip:receiving_route_trips!trip_id (
+              route_plan_trip:receiving_route_trips (
                 trip_code,
                 plan_id,
                 route_plan:receiving_route_plans (
@@ -60,7 +83,7 @@ export async function GET() {
                   plan_date
                 )
               ),
-              loadlist_picklists!inner (
+              loadlist_picklists (
                 loadlist_id,
                 loadlist:loadlists (
                   loadlist_code,
@@ -68,47 +91,113 @@ export async function GET() {
                   status
                 )
               )
-            ),
-            order:wms_orders (
-              order_no,
-              shop_name,
-              province,
-              phone
-            )
-          `)
-          .eq('sku_id', item.sku_id)
-          .in('picklist.status', ['pending', 'picking', 'completed']);
+            `)
+            .in('id', picklistIds);
 
-        if (picklistError) {
-          console.error(`[DELIVERY-INVENTORY] Error fetching picklist items:`, picklistError);
-        } else if (picklistItems && picklistItems.length > 0) {
-          const picklistDocs = picklistItems.map((pi: any) => ({
-            document_type: 'picklist',
-            plan_code: pi.picklist?.route_plan_trip?.route_plan?.plan_code || null,
-            trip_code: pi.picklist?.route_plan_trip?.trip_code || null,
-            picklist_code: pi.picklist?.picklist_code || null,
-            loadlist_code: pi.picklist?.loadlist_picklists?.[0]?.loadlist?.loadlist_code || null,
-            delivery_number: pi.picklist?.loadlist_picklists?.[0]?.loadlist?.delivery_number || null,
-            order_no: pi.order?.order_no || null,
-            shop_name: pi.order?.shop_name || null,
-            province: pi.order?.province || null,
-            phone: pi.order?.phone || null
-          }));
-          relatedDocuments.push(...picklistDocs);
-          console.log(`[DELIVERY-INVENTORY] Found ${picklistDocs.length} picklist items for SKU ${item.sku_id}`);
+          if (picklistsError) {
+            console.error(`[DELIVERY-INVENTORY] ❌ Error fetching picklists:`, picklistsError);
+          } else {
+            console.log(`[DELIVERY-INVENTORY] 📦 Found ${picklists?.length || 0} picklists`);
+            if (picklists && picklists.length > 0) {
+              console.log(`[DELIVERY-INVENTORY] 📦 Sample picklist:`, JSON.stringify(picklists[0], null, 2));
+            }
+          }
+
+          // Filter picklists that are either:
+          // 1. In loaded loadlists, OR
+          // 2. Completed but not yet assigned to any loadlist (items waiting to be loaded)
+          const loadedPicklists = picklists?.filter(pl => {
+            const hasLoadedLoadlist = pl.loadlist_picklists?.some((lp: any) => lp.loadlist?.status === 'loaded');
+            const isCompletedNoLoadlist = pl.status === 'completed' && (!pl.loadlist_picklists || pl.loadlist_picklists.length === 0);
+            return hasLoadedLoadlist || isCompletedNoLoadlist;
+          }) || [];
+
+          console.log(`[DELIVERY-INVENTORY] ✅ Found ${loadedPicklists.length} picklists (loaded or completed without loadlist)`);
+
+          if (loadedPicklists.length > 0) {
+            // Get order details for these picklist items
+            const orderIds = [...new Set(picklistItems
+              .filter(pi => loadedPicklists.some(pl => pl.id === pi.picklist_id))
+              .map(pi => pi.order_id)
+              .filter(Boolean)
+            )];
+
+            console.log(`[DELIVERY-INVENTORY] 🛒 Fetching ${orderIds.length} orders`);
+
+            const { data: orders, error: ordersError } = await supabase
+              .from('wms_orders')
+              .select('order_id, order_no, shop_name, province, phone')
+              .in('order_id', orderIds);
+
+            if (ordersError) {
+              console.error(`[DELIVERY-INVENTORY] ❌ Error fetching orders:`, ordersError);
+            } else {
+              console.log(`[DELIVERY-INVENTORY] 🛒 Found ${orders?.length || 0} orders`);
+            }
+
+            // Build the documents
+            const picklistDocs = loadedPicklists.map((pl: any) => {
+              const loadlistPicklist = pl.loadlist_picklists?.find((lp: any) => lp.loadlist?.status === 'loaded');
+              const picklistItem = picklistItems.find(pi => pi.picklist_id === pl.id);
+              const order = orders?.find(o => o.order_id === picklistItem?.order_id);
+
+              const doc = {
+                document_type: 'picklist',
+                plan_code: pl.route_plan_trip?.route_plan?.plan_code || null,
+                trip_code: pl.route_plan_trip?.trip_code || null,
+                picklist_code: pl.picklist_code || null,
+                loadlist_code: loadlistPicklist?.loadlist?.loadlist_code || null,
+                delivery_number: loadlistPicklist?.loadlist?.delivery_number || null,
+                order_no: order?.order_no || null,
+                shop_name: order?.shop_name || null,
+                province: order?.province || null,
+                phone: order?.phone || null,
+                // Add status info for debugging
+                picklist_status: pl.status,
+                has_loadlist: pl.loadlist_picklists && pl.loadlist_picklists.length > 0
+              };
+
+              console.log(`[DELIVERY-INVENTORY] 📄 Built picklist doc:`, JSON.stringify(doc, null, 2));
+              return doc;
+            });
+
+            relatedDocuments.push(...picklistDocs);
+            console.log(`[DELIVERY-INVENTORY] ✅ Added ${picklistDocs.length} picklist documents for SKU ${item.sku_id}`);
+          }
         }
 
         // 2. Find face sheet items (no plan/trip info)
+        console.log(`[DELIVERY-INVENTORY] 🔍 Querying face_sheet_items for SKU: ${item.sku_id}`);
+        
         const { data: faceSheetItems, error: faceSheetError } = await supabase
           .from('face_sheet_items')
           .select(`
             face_sheet_id,
             order_id,
             sku_id,
-            face_sheet:face_sheets!inner (
+            status
+          `)
+          .eq('sku_id', item.sku_id)
+          .eq('status', 'picked');
+
+        console.log(`[DELIVERY-INVENTORY] 📋 Found ${faceSheetItems?.length || 0} picked face sheet items for SKU ${item.sku_id}`);
+
+        if (faceSheetError) {
+          console.error(`[DELIVERY-INVENTORY] ❌ Error fetching face sheet items:`, faceSheetError);
+        }
+
+        if (faceSheetItems && faceSheetItems.length > 0) {
+          const faceSheetIds = [...new Set(faceSheetItems.map(fs => fs.face_sheet_id))];
+          console.log(`[DELIVERY-INVENTORY] 🔑 Unique face sheet IDs: ${faceSheetIds.join(', ')}`);
+
+          // Fetch face sheet details with loadlist info
+          const { data: faceSheets, error: faceSheetsError } = await supabase
+            .from('face_sheets')
+            .select(`
+              id,
               face_sheet_no,
               status,
-              loadlist_face_sheets!inner (
+              loadlist_face_sheets (
                 loadlist_id,
                 loadlist:loadlists (
                   loadlist_code,
@@ -116,35 +205,56 @@ export async function GET() {
                   status
                 )
               )
-            ),
-            order:wms_orders (
-              order_no,
-              shop_name,
-              province,
-              phone
-            )
-          `)
-          .eq('sku_id', item.sku_id)
-          .in('face_sheet.status', ['pending', 'picking', 'completed']);
+            `)
+            .in('id', faceSheetIds);
 
-        if (faceSheetError) {
-          console.error(`[DELIVERY-INVENTORY] Error fetching face sheet items:`, faceSheetError);
-        } else if (faceSheetItems && faceSheetItems.length > 0) {
-          const faceSheetDocs = faceSheetItems.map((fs: any) => {
-            const loadlist = fs.face_sheet?.loadlist_face_sheets?.[0]?.loadlist;
-            return {
-              document_type: 'face_sheet',
-              face_sheet_code: fs.face_sheet?.face_sheet_no || null,
-              loadlist_code: loadlist?.loadlist_code || null,
-              delivery_number: loadlist?.delivery_number || null,
-              order_no: fs.order?.order_no || null,
-              shop_name: fs.order?.shop_name || null,
-              province: fs.order?.province || null,
-              phone: fs.order?.phone || null
-            };
-          });
-          relatedDocuments.push(...faceSheetDocs);
-          console.log(`[DELIVERY-INVENTORY] Found ${faceSheetDocs.length} face sheet items for SKU ${item.sku_id}`);
+          if (faceSheetsError) {
+            console.error(`[DELIVERY-INVENTORY] ❌ Error fetching face sheets:`, faceSheetsError);
+          } else {
+            console.log(`[DELIVERY-INVENTORY] 📦 Found ${faceSheets?.length || 0} face sheets`);
+          }
+
+          // Filter face sheets that are either in loaded loadlists OR completed without loadlist
+          const loadedFaceSheets = faceSheets?.filter(fs => {
+            const hasLoadedLoadlist = fs.loadlist_face_sheets?.some((lfs: any) => lfs.loadlist?.status === 'loaded');
+            const isCompletedNoLoadlist = fs.status === 'completed' && (!fs.loadlist_face_sheets || fs.loadlist_face_sheets.length === 0);
+            return hasLoadedLoadlist || isCompletedNoLoadlist;
+          }) || [];
+
+          console.log(`[DELIVERY-INVENTORY] ✅ Found ${loadedFaceSheets.length} face sheets (loaded or completed without loadlist)`);
+
+          if (loadedFaceSheets.length > 0) {
+            const orderIds = [...new Set(faceSheetItems
+              .filter(fsi => loadedFaceSheets.some(fs => fs.id === fsi.face_sheet_id))
+              .map(fsi => fsi.order_id)
+              .filter(Boolean)
+            )];
+
+            const { data: orders } = await supabase
+              .from('wms_orders')
+              .select('order_id, order_no, shop_name, province, phone')
+              .in('order_id', orderIds);
+
+            const faceSheetDocs = loadedFaceSheets.map((fs: any) => {
+              const loadlistFaceSheet = fs.loadlist_face_sheets?.find((lfs: any) => lfs.loadlist?.status === 'loaded');
+              const faceSheetItem = faceSheetItems.find(fsi => fsi.face_sheet_id === fs.id);
+              const order = orders?.find(o => o.order_id === faceSheetItem?.order_id);
+
+              return {
+                document_type: 'face_sheet',
+                face_sheet_code: fs.face_sheet_no || null,
+                loadlist_code: loadlistFaceSheet?.loadlist?.loadlist_code || null,
+                delivery_number: loadlistFaceSheet?.loadlist?.delivery_number || null,
+                order_no: order?.order_no || null,
+                shop_name: order?.shop_name || null,
+                province: order?.province || null,
+                phone: order?.phone || null
+              };
+            });
+
+            relatedDocuments.push(...faceSheetDocs);
+            console.log(`[DELIVERY-INVENTORY] ✅ Added ${faceSheetDocs.length} face sheet documents for SKU ${item.sku_id}`);
+          }
         }
 
         // 3. Find bonus face sheet items (no plan/trip info)
@@ -154,12 +264,12 @@ export async function GET() {
             face_sheet_id,
             package_id,
             sku_id,
-            bonus_face_sheet:bonus_face_sheets!face_sheet_id (
+            bonus_face_sheet:bonus_face_sheets!face_sheet_id!inner (
               face_sheet_no,
               status,
-              wms_loadlist_bonus_face_sheets (
+              wms_loadlist_bonus_face_sheets!inner (
                 loadlist_id,
-                loadlist:loadlists (
+                loadlist:loadlists!inner (
                   loadlist_code,
                   delivery_number,
                   status
@@ -174,7 +284,7 @@ export async function GET() {
             )
           `)
           .eq('sku_id', item.sku_id)
-          .in('bonus_face_sheet.status', ['pending', 'picking', 'completed']);
+          .eq('bonus_face_sheet.wms_loadlist_bonus_face_sheets.loadlist.status', 'loaded');
 
         if (bonusFaceSheetError) {
           console.error(`[DELIVERY-INVENTORY] Error fetching bonus face sheet items:`, bonusFaceSheetError);

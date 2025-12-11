@@ -247,6 +247,14 @@ const OrdersPage = () => {
           aValue = new Date(a.delivery_date);
           bValue = new Date(b.delivery_date);
           break;
+        case 'created_at':
+          aValue = new Date(a.created_at);
+          bValue = new Date(b.created_at);
+          break;
+        case 'updated_at':
+          aValue = new Date(a.updated_at);
+          bValue = new Date(b.updated_at);
+          break;
         default:
           return 0;
       }
@@ -570,18 +578,10 @@ const OrdersPage = () => {
       <div className="pt-0 px-2 pb-2 space-y-2">
         {/* Title */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-500 flex items-center justify-center shadow-lg">
-              <ShoppingCart className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-thai-gray-900 font-thai">
-                คำสั่งซื้อ / ใบสั่งจ่าย (Orders)
-              </h1>
-              <p className="text-xs text-thai-gray-600 font-thai">
-                จัดการคำสั่งซื้อและการจัดส่ง
-              </p>
-            </div>
+          <div>
+            <h1 className="text-xl font-bold text-thai-gray-900 font-thai">
+              คำสั่งซื้อ / ใบสั่งจ่าย (Orders)
+            </h1>
           </div>
           <Button
             variant="primary"
@@ -700,13 +700,19 @@ const OrdersPage = () => {
                 <Table.Head>จำนวนรายการ</Table.Head>
                 <Table.Head onClick={() => handleSort('total_qty')}>จำนวนรวม{getSortIcon('total_qty')}</Table.Head>
                 <Table.Head onClick={() => handleSort('total_weight')}>น้ำหนักรวม (กก.){getSortIcon('total_weight')}</Table.Head>
+                <Table.Head>ประเภทการจัดส่ง</Table.Head>
+                <Table.Head>เขตการขาย</Table.Head>
+                <Table.Head>ผู้สร้าง</Table.Head>
+                <Table.Head>ผู้แก้ไข</Table.Head>
+                <Table.Head onClick={() => handleSort('created_at')}>วันที่สร้าง{getSortIcon('created_at')}</Table.Head>
+                <Table.Head onClick={() => handleSort('updated_at')}>วันที่แก้ไข{getSortIcon('updated_at')}</Table.Head>
                 <Table.Head>การดำเนินการ</Table.Head>
               </tr>
             </Table.Header>
             <Table.Body>
               {ordersLoading ? (
                 <tr>
-                  <Table.Cell colSpan={15} className="px-4 py-8 text-center">
+                  <Table.Cell colSpan={21} className="px-4 py-8 text-center">
                     <div className="flex flex-col items-center justify-center text-thai-gray-400">
                       <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
                       <p className="text-sm font-thai">กำลังโหลดข้อมูล...</p>
@@ -715,7 +721,7 @@ const OrdersPage = () => {
                 </tr>
               ) : ordersError ? (
                 <tr>
-                  <Table.Cell colSpan={15} className="px-4 py-8 text-center">
+                  <Table.Cell colSpan={21} className="px-4 py-8 text-center">
                     <div className="flex flex-col items-center justify-center text-red-500">
                       <AlertTriangle className="w-12 h-12 mb-2" />
                       <p className="text-sm font-thai">เกิดข้อผิดพลาด: {ordersError?.message || String(ordersError)}</p>
@@ -730,7 +736,7 @@ const OrdersPage = () => {
                 </tr>
               ) : sortedOrders.length === 0 ? (
                 <tr>
-                  <Table.Cell colSpan={15} className="px-4 py-8 text-center">
+                  <Table.Cell colSpan={21} className="px-4 py-8 text-center">
                     <div className="flex flex-col items-center justify-center text-thai-gray-400">
                       <ShoppingCart className="w-12 h-12 mb-2" />
                       <p className="text-sm font-thai">ไม่พบข้อมูลคำสั่งซื้อ</p>
@@ -868,6 +874,36 @@ const OrdersPage = () => {
                         <Table.Cell className="text-center">
                           <span className="font-mono">{order.total_weight || 0}</span>
                         </Table.Cell>
+                        <Table.Cell>
+                          <span className="text-xs text-gray-700 font-thai">
+                            {order.delivery_type === 'pickup' ? 'รับเอง' : 
+                             order.delivery_type === 'delivery' ? 'จัดส่ง' : 
+                             order.delivery_type || '-'}
+                          </span>
+                        </Table.Cell>
+                        <Table.Cell>
+                          <span className="text-xs text-gray-700 font-thai">{order.sales_territory || '-'}</span>
+                        </Table.Cell>
+                        <Table.Cell>
+                          <span className="text-xs text-gray-700 font-thai">
+                            {(order as any).created_by_user?.full_name || 
+                             (order as any).created_by_user?.username || 
+                             (order.created_by ? `User #${order.created_by}` : '-')}
+                          </span>
+                        </Table.Cell>
+                        <Table.Cell>
+                          <span className="text-xs text-gray-700 font-thai">
+                            {(order as any).updated_by_user?.full_name || 
+                             (order as any).updated_by_user?.username || 
+                             (order.updated_by ? `User #${order.updated_by}` : '-')}
+                          </span>
+                        </Table.Cell>
+                        <Table.Cell>
+                          <span className="text-xs text-gray-600 font-thai">{formatDate(order.created_at)}</span>
+                        </Table.Cell>
+                        <Table.Cell>
+                          <span className="text-xs text-gray-600 font-thai">{formatDate(order.updated_at)}</span>
+                        </Table.Cell>
                         <Table.Cell className="text-center">
                           <div className="flex items-center justify-center space-x-1">
                             <button
@@ -921,7 +957,7 @@ const OrdersPage = () => {
                       {/* Expanded Row - Order Items */}
                       {expandedOrders.has(order.order_id) && (
                         <tr className="bg-gray-50">
-                          <td colSpan={15} className="px-4 py-3 border border-gray-100">
+                          <td colSpan={21} className="px-4 py-3 border border-gray-100">
                             <div className="space-y-2">
                               <div className="flex items-center justify-between">
                                 <h4 className="text-sm font-semibold text-thai-gray-900 font-thai">
@@ -1014,30 +1050,17 @@ const OrdersPage = () => {
                               </div>
 
                               {/* Additional Info */}
-                              {(order.text_field_long_1 || order.text_field_additional_4) && (
-                                <div className="grid grid-cols-2 gap-4 pt-2">
-                                  {order.text_field_long_1 && (
-                                    <div className="bg-white p-3 rounded-lg border border-gray-200">
-                                      <p className="text-xs font-semibold text-thai-gray-700 font-thai mb-1 flex items-center">
-                                        <MapPin className="w-3 h-3 mr-1" />
-                                        ที่อยู่จัดส่ง
-                                      </p>
-                                      <p className="text-xs text-thai-gray-600 font-thai">
-                                        {order.text_field_long_1}
-                                      </p>
-                                    </div>
-                                  )}
-                                  {order.text_field_additional_4 && (
-                                    <div className="bg-white p-3 rounded-lg border border-gray-200">
-                                      <p className="text-xs font-semibold text-thai-gray-700 font-thai mb-1 flex items-center">
-                                        <FileText className="w-3 h-3 mr-1" />
-                                        หมายเหตุการจัดส่ง
-                                      </p>
-                                      <p className="text-xs text-thai-gray-600 font-thai">
-                                        {order.text_field_additional_4}
-                                      </p>
-                                    </div>
-                                  )}
+                              {order.text_field_additional_4 && (
+                                <div className="pt-2">
+                                  <div className="bg-white p-3 rounded-lg border border-gray-200">
+                                    <p className="text-xs font-semibold text-thai-gray-700 font-thai mb-1 flex items-center">
+                                      <FileText className="w-3 h-3 mr-1" />
+                                      หมายเหตุการจัดส่ง
+                                    </p>
+                                    <p className="text-xs text-thai-gray-600 font-thai">
+                                      {order.text_field_additional_4}
+                                    </p>
+                                  </div>
                                 </div>
                               )}
                             </div>

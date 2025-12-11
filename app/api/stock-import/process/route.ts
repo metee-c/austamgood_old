@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { stockImportService } from '@/lib/database/stock-import';
+import { setDatabaseUserContext, getUserIdFromCookie } from '@/lib/database/user-context';
 
 export const dynamic = 'force-dynamic';
 
@@ -36,8 +37,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Use default user ID (1) since there's no authentication
-    const userId = 1;
+    // Get user ID from session cookie
+    const cookieHeader = request.headers.get('cookie');
+    const userId = await getUserIdFromCookie(cookieHeader) || 1; // Fallback to system user if no session
+
+    // Set user context for audit trail
+    await setDatabaseUserContext(supabase, userId);
 
     // ประมวลผลการนำเข้า
     const processingSummary = await stockImportService.processImport(

@@ -11,7 +11,9 @@ export async function GET(request: NextRequest) {
       .from('wms_orders')
       .select(`
         *,
-        items:wms_order_items(*)
+        items:wms_order_items(*),
+        created_by_user:master_system_user!created_by(user_id, username, full_name),
+        updated_by_user:master_system_user!updated_by(user_id, username, full_name)
       `)
       .order('order_date', { ascending: false });
 

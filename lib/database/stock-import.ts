@@ -628,7 +628,7 @@ export class StockImportService {
         ]
           .filter(Boolean)
           .join(' | '),
-        created_by: null, // ตั้งเป็น null เพราะ userId จาก session อาจไม่มีใน master_employee
+        created_by: userId, // บันทึก user ที่ทำการนำเข้า
       })
       .select('ledger_id')
       .single();

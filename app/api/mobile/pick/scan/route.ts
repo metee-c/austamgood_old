@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getUserIdFromCookie, setDatabaseUserContext } from '@/lib/database/user-context';
 
 /**
  * POST /api/mobile/pick/scan
@@ -18,6 +19,12 @@ import { createClient } from '@/lib/supabase/server';
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
+    
+    // ✅ Set user context for audit trail
+    const cookieHeader = request.headers.get('cookie');
+    const userId = await getUserIdFromCookie(cookieHeader) || 1; // Fallback to system user
+    await setDatabaseUserContext(supabase, userId);
+    
     const {
       picklist_id,
       item_id,
@@ -216,6 +223,7 @@ export async function POST(request: NextRequest) {
         reference_doc_type: 'picklist',
         reference_doc_id: picklist_id,
         remarks: `หยิบจาก ${item.source_location_id} (balance_id: ${balance.balance_id}) - ${item.picklists.picklist_code}`,
+        created_by: userId,
         skip_balance_sync: true  // ✅ API อัปเดต balance ด้วยตัวเองแล้ว
       });
 
@@ -324,6 +332,7 @@ export async function POST(request: NextRequest) {
           reference_doc_type: 'picklist',
           reference_doc_id: picklist_id,
           remarks: `หยิบจาก ${balance.location_id} (FEFO) - ${item.picklists.picklist_code}`,
+          created_by: userId,
           skip_balance_sync: true
         });
 
@@ -394,6 +403,7 @@ export async function POST(request: NextRequest) {
       reference_doc_type: 'picklist',
       reference_doc_id: picklist_id,
       remarks: `ย้ายไป Dispatch - ${item.picklists.picklist_code}`,
+      created_by: userId,
       skip_balance_sync: true  // ✅ API อัปเดต balance ด้วยตัวเองแล้ว
     });
 

@@ -40,6 +40,8 @@ function StockImportPage() {
   const [isDragging, setIsDragging] = useState(false);
   const [warehouses, setWarehouses] = useState<Array<{ warehouse_id: string; warehouse_name: string }>>([]);
   const [filePreview, setFilePreview] = useState<{ rows: number; size: string } | null>(null);
+  const [showLoadingModal, setShowLoadingModal] = useState(false);
+  const [loadingMessage, setLoadingMessage] = useState('');
 
   useEffect(() => {
     fetchBatches();
@@ -396,6 +398,8 @@ function StockImportPage() {
 
   const handleValidate = async (batchId: string, batch: StockImportBatch) => {
     setIsValidating(true);
+    setLoadingMessage('กำลังตรวจสอบข้อมูล...');
+    setShowLoadingModal(true);
     try {
       // Check if it's a picking area batch
       const isPickingArea = batch.validation_summary && (batch.validation_summary as any).import_type === 'picking_area';
@@ -418,9 +422,11 @@ function StockImportPage() {
       }
 
       fetchBatches();
+      setShowLoadingModal(false);
       alert('Validation completed');
     } catch (error: any) {
       console.error('Validation error:', error);
+      setShowLoadingModal(false);
       alert(error.message || 'Validation failed');
     } finally {
       setIsValidating(false);
@@ -431,6 +437,8 @@ function StockImportPage() {
     if (!confirm('ยืนยันการนำเข้าข้อมูล?')) return;
 
     setIsProcessing(true);
+    setLoadingMessage('กำลังนำเข้าข้อมูล...');
+    setShowLoadingModal(true);
     try {
       // Check if it's a picking area batch
       const isPickingArea = batch.validation_summary && (batch.validation_summary as any).import_type === 'picking_area';
@@ -453,9 +461,11 @@ function StockImportPage() {
       }
 
       fetchBatches();
+      setShowLoadingModal(false);
       alert(data.message || 'Import success');
     } catch (error: any) {
       console.error('Processing error:', error);
+      setShowLoadingModal(false);
       alert(error.message || 'Process failed');
     } finally {
       setIsProcessing(false);
@@ -1308,6 +1318,20 @@ function StockImportPage() {
               )}
             </Button>
           </div>
+        </div>
+      </Modal>
+
+      {/* Loading Modal */}
+      <Modal
+        isOpen={showLoadingModal}
+        onClose={() => {}}
+        title=""
+        size="sm"
+      >
+        <div className="flex flex-col items-center justify-center py-8">
+          <Loader2 className="w-16 h-16 animate-spin text-blue-500 mb-4" />
+          <p className="text-lg font-semibold text-gray-700 font-thai">{loadingMessage}</p>
+          <p className="text-sm text-gray-500 font-thai mt-2">กรุณารอสักครู่...</p>
         </div>
       </Modal>
     </MainLayout>

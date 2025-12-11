@@ -150,7 +150,7 @@ const TripEditForm: React.FC<TripEditFormProps> = ({ trip, tripIndex, suppliers,
 
   // Initialize pricing mode from trip data
   const [pricingMode, setPricingMode] = useState<'formula' | 'flat'>(
-    (trip as any).pricing_mode === 'formula' ? 'formula' : 'flat'
+    (trip as any).pricing_mode === 'flat' ? 'flat' : 'formula'
   );
 
   const [formData, setFormData] = useState({
@@ -247,7 +247,7 @@ const TripEditForm: React.FC<TripEditFormProps> = ({ trip, tripIndex, suppliers,
   // Function to load rate from master based on selected province
   const handleLoadRateFromMaster = async (province: string) => {
     if (!formData.supplier_id) {
-      alert('⚠️ กรุณาเลือกผู้ให้บริการขนส่งก่อน');
+      alert('กรุณาเลือกผู้ให้บริการขนส่งก่อน');
       return;
     }
 
@@ -273,9 +273,9 @@ const TripEditForm: React.FC<TripEditFormProps> = ({ trip, tripIndex, suppliers,
         porterage_fee: data.porterage_fee || 0
       }));
 
-      alert(`✅ โหลดราคาจากมาสเตอร์สำเร็จ!\nเส้นทาง: ${data.route_name}`);
+      alert(`โหลดราคาจากมาสเตอร์สำเร็จ!\nเส้นทาง: ${data.route_name}`);
     } catch (err: any) {
-      alert(`❌ เกิดข้อผิดพลาด: ${err.message}`);
+      alert(`เกิดข้อผิดพลาด: ${err.message}`);
     } finally {
       setLoadingRateFromMaster(false);
     }
@@ -300,12 +300,12 @@ const TripEditForm: React.FC<TripEditFormProps> = ({ trip, tripIndex, suppliers,
     });
 
     if (!formData.supplier_id) {
-      alert('⚠️ กรุณาเลือกผู้ให้บริการขนส่งก่อน');
+      alert('กรุณาเลือกผู้ให้บริการขนส่งก่อน');
       return;
     }
 
     if (pricingMode === 'flat' && formData.shipping_cost <= 0) {
-      alert('⚠️ กรุณากรอกค่าขนส่งเหมาก่อน');
+      alert('กรุณากรอกค่าขนส่งเหมาก่อน');
       return;
     }
 
@@ -323,14 +323,14 @@ const TripEditForm: React.FC<TripEditFormProps> = ({ trip, tripIndex, suppliers,
     const routeName = `${originProvince} - ${destinationProvince} (เที่ยวที่ ${trip.trip_sequence})`;
 
     const confirmMessage = `
-📋 บันทึกค่าขนส่งนี้เข้าฐานข้อมูลมาสเตอร์
+บันทึกค่าขนส่งนี้เข้าฐานข้อมูลมาสเตอร์
 
-🚚 ผู้ให้บริการ: ${suppliers.find(s => s.supplier_id === formData.supplier_id)?.supplier_name || '-'}
-📍 เส้นทาง: ${routeName}
-💰 ค่าขนส่ง: ${formData.shipping_cost.toLocaleString()} บาท
-📦 ค่าแบกน้ำหนัก: ${formData.porterage_fee.toLocaleString()} บาท
-${otherFees.length > 0 ? `🔖 ค่าอื่นๆ: ${otherFees.length} รายการ\n` : ''}
-📏 ระยะทาง: ${distance.toFixed(1)} กม.
+ผู้ให้บริการ: ${suppliers.find(s => s.supplier_id === formData.supplier_id)?.supplier_name || '-'}
+เส้นทาง: ${routeName}
+ค่าขนส่ง: ${formData.shipping_cost.toLocaleString()} บาท
+ค่าแบกน้ำหนัก: ${formData.porterage_fee.toLocaleString()} บาท
+${otherFees.length > 0 ? `ค่าอื่นๆ: ${otherFees.length} รายการ\n` : ''}
+ระยะทาง: ${distance.toFixed(1)} กม.
 
 ยืนยันการบันทึก?`;
 
@@ -377,12 +377,12 @@ ${otherFees.length > 0 ? `🔖 ค่าอื่นๆ: ${otherFees.length} ร
       console.log('[Save to Master] Response data:', result);
 
       if (result.error || !res.ok) {
-        alert(`❌ เกิดข้อผิดพลาด: ${result.error || 'Unknown error'}`);
+        alert(`เกิดข้อผิดพลาด: ${result.error || 'Unknown error'}`);
       } else {
-        alert(`✅ บันทึกเข้ามาสเตอร์สำเร็จ!\n\nสามารถดูได้ที่: หน้าจัดการข้อมูลมาสเตอร์ > ค่าขนส่ง`);
+        alert(`บันทึกเข้ามาสเตอร์สำเร็จ!\n\nสามารถดูได้ที่: หน้าจัดการข้อมูลมาสเตอร์ > ค่าขนส่ง`);
       }
     } catch (err: any) {
-      alert(`❌ เกิดข้อผิดพลาด: ${err.message}`);
+      alert(`เกิดข้อผิดพลาด: ${err.message}`);
     } finally {
       setSavingToMaster(false);
     }
@@ -436,7 +436,7 @@ ${otherFees.length > 0 ? `🔖 ค่าอื่นๆ: ${otherFees.length} ร
         <div className="mb-4">
           {/* คำแนะนำ */}
           <div className="mb-2 p-2 bg-blue-50 border border-blue-200 rounded text-xs font-thai">
-            <span className="font-semibold text-blue-800">💡 คำแนะนำ:</span> 
+            <span className="font-semibold text-blue-800">คำแนะนำ:</span>
             <span className="text-blue-700"> คลิกปุ่ม "เลือก" ที่จุดส่งที่ไกลที่สุด เพื่อดึงราคาเริ่มต้นจากมาสเตอร์อัตโนมัติ</span>
           </div>
           
@@ -499,7 +499,7 @@ ${otherFees.length > 0 ? `🔖 ค่าอื่นๆ: ${otherFees.length} ร
                   }
 
                   // Debug: log when province not found
-                  console.warn('⚠️ Province not found for order:', {
+                  console.warn('Province not found for order:', {
                     order_no: order.order_no,
                     customer_id: order.customer_id,
                     order_province: order.province,
@@ -536,7 +536,7 @@ ${otherFees.length > 0 ? `🔖 ค่าอื่นๆ: ${otherFees.length} ร
                         } disabled:bg-gray-300 disabled:cursor-not-allowed`}
                         title={`ใช้จังหวัด "${province}" เป็นจุดอ้างอิงราคา`}
                       >
-                        {isReferencePoint ? '✓ จุดอ้างอิง' : 'เลือก'}
+                        {isReferencePoint ? 'จุดอ้างอิง' : 'เลือก'}
                       </button>
                     </td>
                     <td className="px-2 py-2 text-right text-gray-900 font-mono">{order.total_qty || 0}</td>
@@ -577,23 +577,23 @@ ${otherFees.length > 0 ? `🔖 ค่าอื่นๆ: ${otherFees.length} ร
             <input
               type="radio"
               name={`pricing-mode-${trip.trip_id}`}
-              value="flat"
-              checked={pricingMode === 'flat'}
-              onChange={() => handlePricingModeChange('flat')}
-              className="mr-2"
-            />
-            <span className="text-sm font-thai">แบบเหมา (ใส่ราคาเดียวจบ)</span>
-          </label>
-          <label className="flex items-center cursor-pointer">
-            <input
-              type="radio"
-              name={`pricing-mode-${trip.trip_id}`}
               value="formula"
               checked={pricingMode === 'formula'}
               onChange={() => handlePricingModeChange('formula')}
               className="mr-2"
             />
             <span className="text-sm font-thai">แบบคำนวณ (ราคาเริ่มต้น + ค่าเด็ก + ค่าจุดเพิ่ม)</span>
+          </label>
+          <label className="flex items-center cursor-pointer">
+            <input
+              type="radio"
+              name={`pricing-mode-${trip.trip_id}`}
+              value="flat"
+              checked={pricingMode === 'flat'}
+              onChange={() => handlePricingModeChange('flat')}
+              className="mr-2"
+            />
+            <span className="text-sm font-thai">แบบเหมา (ใส่ราคาเดียวจบ)</span>
           </label>
         </div>
       </div>
@@ -743,13 +743,32 @@ ${otherFees.length > 0 ? `🔖 ค่าอื่นๆ: ${otherFees.length} ร
                 disabled={savingToMaster || !formData.supplier_id || formData.shipping_cost <= 0}
                 className="px-3 py-1.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded hover:from-purple-600 hover:to-purple-700 transition-all disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed font-thai text-xs font-semibold shadow-sm"
               >
-                {savingToMaster ? '⏳ กำลังบันทึก...' : '💾 บันทึกเข้ามาสเตอร์'}
+                {savingToMaster ? 'กำลังบันทึก...' : 'บันทึกเข้ามาสเตอร์'}
               </button>
             </div>
           </div>
         </div>
       ) : (
         <div className="space-y-3 mb-4 bg-gradient-to-br from-green-50 to-emerald-50 p-4 rounded-lg border border-green-100">
+          {/* Supplier Selection - Full Width */}
+          <div>
+            <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">
+              ผู้ให้บริการขนส่ง
+            </label>
+            <select
+              value={formData.supplier_id}
+              onChange={(e) => handleChange('supplier_id', e.target.value)}
+              className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500 font-thai bg-white"
+            >
+              <option value="">-- เลือกผู้ให้บริการ --</option>
+              {suppliers.map((supplier) => (
+                <option key={supplier.supplier_id} value={supplier.supplier_id}>
+                  {supplier.supplier_name} ({supplier.supplier_code})
+                </option>
+              ))}
+            </select>
+          </div>
+
           {/* Formula Fields - 4 columns */}
           <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
             <div>
@@ -906,7 +925,7 @@ ${otherFees.length > 0 ? `🔖 ค่าอื่นๆ: ${otherFees.length} ร
                 disabled={savingToMaster || !formData.supplier_id || formData.base_price <= 0}
                 className="px-3 py-1.5 bg-gradient-to-r from-purple-500 to-purple-600 text-white rounded hover:from-purple-600 hover:to-purple-700 transition-all disabled:from-gray-400 disabled:to-gray-400 disabled:cursor-not-allowed font-thai text-xs font-semibold shadow-sm"
               >
-                {savingToMaster ? '⏳ กำลังบันทึก...' : '💾 บันทึกเข้ามาสเตอร์'}
+                {savingToMaster ? 'กำลังบันทึก...' : 'บันทึกเข้ามาสเตอร์'}
               </button>
             </div>
           </div>
@@ -943,25 +962,8 @@ ${otherFees.length > 0 ? `🔖 ค่าอื่นๆ: ${otherFees.length} ร
             </div>
           </div>
 
-          {/* Supplier & Vehicle Info - 3 columns */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2 border-t border-green-200">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">
-                ผู้ให้บริการขนส่ง
-              </label>
-              <select
-                value={formData.supplier_id}
-                onChange={(e) => handleChange('supplier_id', e.target.value)}
-                className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500 font-thai bg-white"
-              >
-                <option value="">-- เลือกผู้ให้บริการ --</option>
-                {suppliers.map((supplier) => (
-                  <option key={supplier.supplier_id} value={supplier.supplier_id}>
-                    {supplier.supplier_name} ({supplier.supplier_code})
-                  </option>
-                ))}
-              </select>
-            </div>
+          {/* Vehicle Info - 2 columns */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-2 border-t border-green-200">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">
                 ทะเบียนรถ
@@ -1182,12 +1184,12 @@ const EditShippingCostModal: React.FC<EditShippingCostModalProps> = ({
 
       // Show result
       if (errors.length === 0) {
-        alert(`✅ บันทึกสำเร็จทั้งหมด ${successCount} เที่ยว`);
+        alert(`บันทึกสำเร็จทั้งหมด ${successCount} เที่ยว`);
         handleClose();
       } else if (successCount > 0) {
-        alert(`⚠️ บันทึกสำเร็จ ${successCount} เที่ยว\n\nข้อผิดพลาด:\n${errors.join('\n')}`);
+        alert(`บันทึกสำเร็จ ${successCount} เที่ยว\n\nข้อผิดพลาด:\n${errors.join('\n')}`);
       } else {
-        alert(`❌ เกิดข้อผิดพลาดทั้งหมด:\n${errors.join('\n')}`);
+        alert(`เกิดข้อผิดพลาดทั้งหมด:\n${errors.join('\n')}`);
       }
     } catch (err: any) {
       alert('เกิดข้อผิดพลาดในการบันทึก: ' + err.message);
@@ -1297,7 +1299,7 @@ const EditShippingCostModal: React.FC<EditShippingCostModalProps> = ({
         <div className="flex justify-between items-center gap-2 px-6 py-4 border-t bg-gray-50">
           <div className="text-sm text-gray-600 font-thai">
             {step === 'edit' && Object.keys(tripsFormData).length > 0 && (
-              <span>📝 มีการแก้ไข {Object.keys(tripsFormData).length} เที่ยว</span>
+              <span>มีการแก้ไข {Object.keys(tripsFormData).length} เที่ยว</span>
             )}
           </div>
           <div className="flex gap-2">
@@ -1313,7 +1315,7 @@ const EditShippingCostModal: React.FC<EditShippingCostModalProps> = ({
                 disabled={savingAll || Object.keys(tripsFormData).length === 0}
                 className="px-6 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors disabled:bg-gray-400 font-thai font-semibold"
               >
-                {savingAll ? '⏳ กำลังบันทึก...' : '💾 บันทึกทั้งหมด'}
+                {savingAll ? 'กำลังบันทึก...' : 'บันทึกทั้งหมด'}
               </button>
             )}
           </div>

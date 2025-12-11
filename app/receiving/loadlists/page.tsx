@@ -171,6 +171,7 @@ const LoadlistsPage = () => {
   const [deliveryNumber, setDeliveryNumber] = useState('');
   const [vehicleId, setVehicleId] = useState<string>('');
   const [driverEmployeeId, setDriverEmployeeId] = useState<number | ''>('');
+  const [driverName, setDriverName] = useState<string>(''); // Driver name from vehicle.model
   const [loadingQueueNumber, setLoadingQueueNumber] = useState<string>('');
 
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
@@ -337,6 +338,7 @@ const LoadlistsPage = () => {
     setDeliveryNumber('');
     setVehicleId('');
     setDriverEmployeeId('');
+    setDriverName('');
     setLoadingQueueNumber('');
     await Promise.all([
       fetchAvailablePicklists(),
@@ -603,46 +605,46 @@ const LoadlistsPage = () => {
                   ไม่พบใบโหลดสินค้า
                 </div>
               ) : (
-                <table className="w-auto border-collapse text-sm">
+                <table className="min-w-full border-collapse text-sm table-fixed">
                   <thead className="sticky top-0 z-10 bg-gray-100">
                     <tr>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('loadlist_code')}>
+                      <th className="w-[10%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 cursor-pointer hover:bg-gray-200" onClick={() => handleSort('loadlist_code')}>
                         รหัสใบโหลด{getSortIcon('loadlist_code')}
                       </th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                      <th className="w-[8%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
                         รหัสแผนส่ง
                       </th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                      <th className="w-[8%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
                         รหัสเที่ยวรถ
                       </th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                      <th className="w-[8%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
                         เลขงานจัดส่ง
                       </th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                      <th className="w-[6%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
                         ประตูโหลด
                       </th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                      <th className="w-[5%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
                         คิว
                       </th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                      <th className="w-[10%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
                         ผู้เช็คโหลด
                       </th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                      <th className="w-[7%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
                         ประเภทรถ
                       </th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                      <th className="w-[8%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
                         ทะเบียนรถ
                       </th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                      <th className="w-[10%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
                         คนขับ
                       </th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('created_at')}>
+                      <th className="w-[11%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 cursor-pointer hover:bg-gray-200" onClick={() => handleSort('created_at')}>
                         วันที่สร้าง{getSortIcon('created_at')}
                       </th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                      <th className="w-[6%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
                         สถานะ
                       </th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap">
+                      <th className="w-[3%] px-2 py-2 text-center text-xs font-semibold border-b">
                         ดำเนินการ
                       </th>
                     </tr>
@@ -664,7 +666,7 @@ const LoadlistsPage = () => {
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                           <select
-                            value={loadlist.loading_door_number || ''}
+                            value={loadlist.loading_door_number || (loadlist.picklists && loadlist.picklists.length > 0 ? loadlist.picklists[0].loading_door_number : '') || ''}
                             onChange={async (e) => {
                               const newDoorNumber = e.target.value || null;
                               try {
@@ -754,11 +756,12 @@ const LoadlistsPage = () => {
                             className="w-24 px-1 py-0.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-700"
                           >
                             <option value="">-- เลือก --</option>
-                            <option value="รถ 4 ล้อ">รถ 4 ล้อ</option>
-                            <option value="รถ 6 ล้อ">รถ 6 ล้อ</option>
-                            <option value="รถ 10 ล้อ">รถ 10 ล้อ</option>
-                            <option value="รถกระบะ">รถกระบะ</option>
-                            <option value="รถตู้">รถตู้</option>
+                            <option value="4 ล้อ">4 ล้อ</option>
+                            <option value="6 ล้อ">6 ล้อ</option>
+                            <option value="10 ล้อ">10 ล้อ</option>
+                            <option value="กระบะ">กระบะ</option>
+                            <option value="ตู้">ตู้</option>
+                            <option value="เทรลเลอร์">เทรลเลอร์</option>
                           </select>
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
@@ -1000,12 +1003,12 @@ const LoadlistsPage = () => {
                               className="w-24 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
                             >
                               <option value="">-- เลือก --</option>
-                              <option value="รถ 4 ล้อ">4 ล้อ</option>
-                              <option value="รถ 6 ล้อ">6 ล้อ</option>
-                              <option value="รถ 10 ล้อ">10 ล้อ</option>
-                              <option value="รถกระบะ">กระบะ</option>
-                              <option value="รถตู้">ตู้</option>
-                              <option value="รถเทรลเลอร์">เทรลเลอร์</option>
+                              <option value="4 ล้อ">4 ล้อ</option>
+                              <option value="6 ล้อ">6 ล้อ</option>
+                              <option value="10 ล้อ">10 ล้อ</option>
+                              <option value="กระบะ">กระบะ</option>
+                              <option value="ตู้">ตู้</option>
+                              <option value="เทรลเลอร์">เทรลเลอร์</option>
                             </select>
                           ) : (
                             <span className="text-gray-400 text-xs">{vehicleType || '-'}</span>
@@ -1015,7 +1018,31 @@ const LoadlistsPage = () => {
                           {index === 0 ? (
                             <select
                               value={vehicleId}
-                              onChange={(e) => setVehicleId(e.target.value)}
+                              onChange={(e) => {
+                                const selectedVehicleId = e.target.value;
+                                setVehicleId(selectedVehicleId);
+                                
+                                // Auto-populate vehicle type and driver when vehicle is selected
+                                if (selectedVehicleId) {
+                                  const selectedVehicle = vehicles.find(v => v.vehicle_id === selectedVehicleId);
+                                  if (selectedVehicle) {
+                                    // Set vehicle type if available
+                                    if (selectedVehicle.vehicle_type) {
+                                      setVehicleType(selectedVehicle.vehicle_type);
+                                    }
+                                    // Set driver_id if available (from master_vehicle.driver_id)
+                                    if (selectedVehicle.driver_id) {
+                                      const driverId = Number(selectedVehicle.driver_id);
+                                      setDriverEmployeeId(driverId);
+                                      // Update driverName for display
+                                      const driver = drivers.find(d => d.employee_id === driverId);
+                                      if (driver) {
+                                        setDriverName(`${driver.first_name} ${driver.last_name}`);
+                                      }
+                                    }
+                                  }
+                                }
+                              }}
                               className="w-28 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
                             >
                               <option value="">-- เลือก --</option>
@@ -1037,7 +1064,19 @@ const LoadlistsPage = () => {
                           {index === 0 ? (
                             <select
                               value={driverEmployeeId}
-                              onChange={(e) => setDriverEmployeeId(e.target.value ? Number(e.target.value) : '')}
+                              onChange={(e) => {
+                                const selectedDriverId = e.target.value ? Number(e.target.value) : '';
+                                setDriverEmployeeId(selectedDriverId);
+                                // Update driverName for display
+                                if (selectedDriverId) {
+                                  const selectedDriver = drivers.find(d => d.employee_id === selectedDriverId);
+                                  if (selectedDriver) {
+                                    setDriverName(`${selectedDriver.first_name} ${selectedDriver.last_name}`);
+                                  }
+                                } else {
+                                  setDriverName('');
+                                }
+                              }}
                               className="w-32 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
                             >
                               <option value="">-- เลือก --</option>
@@ -1049,7 +1088,7 @@ const LoadlistsPage = () => {
                             </select>
                           ) : driverEmployeeId ? (
                             <span className="text-gray-400 text-xs">
-                              {drivers.find(d => d.employee_id === driverEmployeeId)?.first_name || '-'}
+                              {drivers.find(d => d.employee_id === driverEmployeeId)?.first_name || '-'} {drivers.find(d => d.employee_id === driverEmployeeId)?.last_name || ''}
                             </span>
                           ) : (
                             <span className="text-gray-400 text-xs">-</span>

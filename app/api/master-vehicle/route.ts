@@ -1,90 +1,47 @@
-
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { NextResponse } from 'next/server';
-import { vehicleSchema } from '@/types/vehicle-schema';
 
-export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const search = searchParams.get('search');
-  const supabase = await createClient();
-  
-  let query = supabase.from('master_vehicle').select('*');
+export async function GET(request: NextRequest) {
+  try {
+    const supabase = await createClient();
 
-  if (search) {
-    query = query.or(`vehicle_code.ilike.%${search}%,plate_number.ilike.%${search}%,brand.ilike.%${search}%,model.ilike.%${search}%`);
+    // Fetch all active vehicles with driver information
+    const { data: vehicles, error } = await supabase
+      .from('master_vehicle')
+      .select(`
+        vehicle_id,
+        vehicle_code,
+        plate_number,
+        vehicle_type,
+        brand,
+        model,
+        driver_id,
+        current_status,
+        capacity_kg,
+        capacity_cbm,
+        fuel_type,
+        year_of_manufacture
+      `)
+      .eq('current_status', 'Active')
+      .order('vehicle_code', { ascending: true });
+
+    if (error) {
+      console.error('Error fetching vehicles:', error);
+      return NextResponse.json(
+        { error: 'Failed to fetch vehicles', details: error.message },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: vehicles || []
+    });
+  } catch (error: any) {
+    console.error('Unexpected error in GET /api/master-vehicle:', error);
+    return NextResponse.json(
+      { error: 'Internal server error', details: error.message },
+      { status: 500 }
+    );
   }
-
-  const { data, error } = await query;
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json(data);
-}
-
-export async function POST(request: Request) {
-  const supabase = await createClient();
-  const body = await request.json();
-
-  const result = vehicleSchema.safeParse(body);
-
-  if (!result.success) {
-    return NextResponse.json({ error: result.error.flatten() }, { status: 400 });
-  }
-
-  const { data, error } = await supabase
-    .from('master_vehicle')
-    .insert([result.data])
-    .select();
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json(data);
-}
-
-export async function PUT(request: Request) {
-  const supabase = await createClient();
-  const body = await request.json();
-
-  const result = vehicleSchema.safeParse(body);
-
-  if (!result.success) {
-    return NextResponse.json({ error: result.error.flatten() }, { status: 400 });
-  }
-
-  const { data, error } = await supabase
-    .from('master_vehicle')
-    .update(result.data)
-    .eq('vehicle_id', result.data.vehicle_id)
-    .select();
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json(data);
-}
-
-export async function DELETE(request: Request) {
-  const supabase = await createClient();
-  const { searchParams } = new URL(request.url);
-  const vehicle_id = searchParams.get('id');
-
-  if (!vehicle_id) {
-    return NextResponse.json({ error: 'Missing vehicle_id' }, { status: 400 });
-  }
-
-  const { error } = await supabase
-    .from('master_vehicle')
-    .delete()
-    .eq('vehicle_id', vehicle_id);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ message: 'Vehicle deleted successfully' });
 }

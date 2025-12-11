@@ -2047,19 +2047,17 @@ const RoutesPage = () => {
     const getSortCellProps = (field: keyof RoutePlan) => ({
         onClick: () => handleSort(field),
         className:
-            'px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200 cursor-pointer'
+            'px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200 cursor-pointer'
     });
 
     return (
         <div className="h-screen bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
             <div className="h-full flex flex-col space-y-2 pt-0 px-2 pb-2">
-                <div className="flex items-center justify-between gap-2 pt-1 flex-shrink-0">
+                <div className="flex items-center justify-between gap-2 flex-shrink-0">
                     <div>
-                        <h1 className="text-xl font-bold text-thai-gray-900 font-thai m-0 p-0 leading-tight flex items-center gap-2">
-                            <Route className="w-6 h-6 text-blue-600" />
-                            จัดเส้นทางรับสินค้า
+                        <h1 className="text-xl font-bold text-thai-gray-900 font-thai m-0 p-0 leading-tight">
+                            จัดเส้นทางส่งสินค้า
                         </h1>
-                        <p className="text-xs text-gray-600 mt-0.5">Vehicle Routing Problem (VRP) Optimization</p>
                     </div>
                     <Button
                         variant="primary"
@@ -2125,24 +2123,24 @@ const RoutesPage = () => {
                                     <table className="min-w-max w-full border-collapse text-sm">
                                         <thead className="sticky top-0 z-10 bg-gray-100">
                                             <tr className="bg-gray-100">
-                                                <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200 w-8">
+                                                <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200 w-8">
                                                     {/* Expand column */}
                                                 </th>
                                                 <th {...getSortCellProps('plan_code')}>รหัสแผน {getSortIcon('plan_code')}</th>
                                                 <th {...getSortCellProps('plan_name')}>ชื่อแผน {getSortIcon('plan_name')}</th>
                                                 <th {...getSortCellProps('plan_date')}>วันที่ {getSortIcon('plan_date')}</th>
-                                                <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">
+                                                <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">
                                                     คลัง
                                                 </th>
-                                                <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">รถ</th>
-                                                <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">ระยะทาง</th>
-                                                <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">เวลาขับ</th>
-                                                <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">น้ำหนัก</th>
-                                                <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">ปริมาตร</th>
-                                                <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">พาเลท</th>
-                                                <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">ต้นทุน</th>
-                                                <th className="px-2 py-3 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">สถานะ</th>
-                                                <th className="px-2 py-3 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">
+                                                <th className="px-2 py-1 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">รถ</th>
+                                                <th className="px-2 py-1 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">ระยะทาง</th>
+                                                <th className="px-2 py-1 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">เวลาขับ</th>
+                                                <th className="px-2 py-1 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">น้ำหนัก</th>
+                                                <th className="px-2 py-1 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">ปริมาตร</th>
+                                                <th className="px-2 py-1 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">พาเลท</th>
+                                                <th className="px-2 py-1 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">ต้นทุน</th>
+                                                <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">สถานะ</th>
+                                                <th className="px-2 py-1 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">
                                                     <Edit className="w-3 h-3 mx-auto" />
                                                 </th>
                                             </tr>
@@ -2958,7 +2956,7 @@ const RoutesPage = () => {
                             <RouteMap
                                 warehouse={previewWarehouse}
                                 trips={previewTripsForMap}
-                                height="700px"
+                                height="500px"
                                 selectedTripIndices={selectedPreviewTripIndices}
                                 onTripSelectMulti={setSelectedPreviewTripIndices}
                                 onMoveOrder={handleMoveOrder}

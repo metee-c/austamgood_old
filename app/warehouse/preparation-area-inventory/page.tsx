@@ -22,9 +22,21 @@ import ReservationDetailsModal from '@/components/warehouse/ReservationDetailsMo
 import ReservationPopover from '@/components/warehouse/ReservationPopover';
 
 interface RelatedDocument {
+  document_type?: string;
+  // Picklist fields
+  picklist_code?: string;
+  plan_code?: string;
+  trip_code?: string;
+  loadlist_code?: string;
+  delivery_number?: string;
+  // Face sheet fields
   face_sheet_id?: number;
   face_sheet_no?: string;
+  face_sheet_code?: string;
   face_sheet_status?: string;
+  // Bonus face sheet fields
+  bonus_face_sheet_code?: string;
+  // Common fields
   package_id?: number;
   package_number?: number;
   barcode_id?: string;
@@ -548,7 +560,7 @@ const InventoryBalancesPage = () => {
                                   <div className="flex flex-col gap-0.5">
                                     {balance.related_documents.map((doc, idx) => (
                                       <span key={idx} className="font-mono text-blue-700 font-semibold text-[11px]">
-                                        {doc.face_sheet_no || '-'}
+                                        {doc.picklist_code || doc.face_sheet_no || '-'}
                                       </span>
                                     ))}
                                   </div>

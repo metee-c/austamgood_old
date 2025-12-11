@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getUserIdFromCookie, setDatabaseUserContext } from '@/lib/database/user-context';
 
 /**
  * POST /api/mobile/bonus-face-sheet/scan
@@ -11,6 +12,12 @@ import { createClient } from '@/lib/supabase/server';
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
+    
+    // ✅ Set user context for audit trail
+    const cookieHeader = request.headers.get('cookie');
+    const userId = await getUserIdFromCookie(cookieHeader) || 1; // Fallback to system user
+    await setDatabaseUserContext(supabase, userId);
+    
     const body = await request.json();
     console.log('📦 [Bonus] Face sheet scan request:', body);
 
@@ -237,6 +244,7 @@ export async function POST(request: NextRequest) {
           reference_doc_type: 'bonus_face_sheet',
           reference_doc_id: bonus_face_sheet_id,
           remarks: `หยิบของแถมจาก ${balance.location_id} (balance_id: ${balance.balance_id})`,
+          created_by: userId,
           skip_balance_sync: true
         });
 
@@ -339,6 +347,7 @@ export async function POST(request: NextRequest) {
       reference_doc_type: 'bonus_face_sheet',
       reference_doc_id: bonus_face_sheet_id,
       remarks: `ย้ายของแถมไป Dispatch`,
+      created_by: userId,
       skip_balance_sync: true
     });
 

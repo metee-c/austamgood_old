@@ -163,7 +163,6 @@ const VehiclesPage = () => {
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold text-thai-gray-900 font-thai">ข้อมูลยานพาหนะ</h1>
-                    <p className="text-thai-gray-600 font-thai mt-1">จัดการข้อมูลยานพาหนะทั้งหมดในระบบ</p>
                 </div>
                 <div className="flex gap-2">
                     <Button variant="outline" icon={Upload} onClick={() => setIsImportModalOpen(true)} className="bg-white/50 hover:bg-white/80 border-white/30 backdrop-blur-sm shadow-sm">
@@ -194,7 +193,7 @@ const VehiclesPage = () => {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
             <input
               type="text"
-              placeholder="ค้นหายานพาหนะ ทะเบียน ยี่ห้อ รุ่น..."
+              placeholder="ค้นหายานพาหนะ ทะเบียน บริษัทขนส่ง ชื่อพนักงานขับ..."
               className="w-full pl-10 pr-4 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm placeholder:text-thai-gray-400"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
@@ -203,7 +202,7 @@ const VehiclesPage = () => {
         </div>
 
         {/* Modern Vehicles Table */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-2xl overflow-hidden shadow-sm">
+        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-2xl overflow-hidden shadow-sm h-[74vh] flex flex-col">
           {loading ? (
             <div className="text-center py-12">
               <div className="loading-spinner w-10 h-10 mx-auto mb-4"></div>
@@ -211,135 +210,226 @@ const VehiclesPage = () => {
             </div>
           ) : (
             <>
-              <div className="overflow-x-auto">
+              <div className="overflow-x-auto flex-1">
                 <Table>
               <Table.Header>
                 <Table.Row>
-                  <SortableHeader field="vehicle_code" className="w-32" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>รหัสรถ</SortableHeader>
-                  <SortableHeader field="plate_number" className="min-w-40" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ทะเบียน</SortableHeader>
-                  <SortableHeader field="vehicle_type" className="w-32" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ประเภท</SortableHeader>
-                  <SortableHeader field="brand" className="min-w-32" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ยี่ห้อ/รุ่น</SortableHeader>
-                  <SortableHeader field="year_of_manufacture" className="w-24" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ปีที่ผลิต</SortableHeader>
-                  <SortableHeader field="capacity_kg" className="w-28" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ความจุ</SortableHeader>
+                  <SortableHeader field="vehicle_id" className="w-20" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ID</SortableHeader>
+                  <SortableHeader field="vehicle_code" className="w-28" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>รหัสรถ</SortableHeader>
+                  <SortableHeader field="plate_number" className="w-28" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ทะเบียน</SortableHeader>
+                  <SortableHeader field="vehicle_type" className="w-24" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ประเภท</SortableHeader>
+                  <SortableHeader field="brand" className="w-28" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>บริษัทขนส่ง</SortableHeader>
+                  <SortableHeader field="model" className="w-28" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ชื่อพนักงานขับ</SortableHeader>
+                  <SortableHeader field="year_of_manufacture" className="w-20" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ปีผลิต</SortableHeader>
+                  <SortableHeader field="capacity_kg" className="w-24" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ความจุ (kg)</SortableHeader>
+                  <SortableHeader field="capacity_cbm" className="w-24" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ความจุ (m³)</SortableHeader>
                   <SortableHeader field="fuel_type" className="w-24" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>เชื้อเพลิง</SortableHeader>
+                  <SortableHeader field="driver_id" className="w-24" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>พนักงานขับ</SortableHeader>
+                  <SortableHeader field="gps_device_id" className="w-28" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>GPS Device</SortableHeader>
+                  <SortableHeader field="location_base_id" className="w-28" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ฐานที่ตั้ง</SortableHeader>
+                  <SortableHeader field="registration_expiry_date" className="w-28" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>วันหมดทะเบียน</SortableHeader>
+                  <SortableHeader field="insurance_expiry_date" className="w-28" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>วันหมดประกัน</SortableHeader>
+                  <SortableHeader field="maintenance_schedule" className="w-32" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>กำหนดซ่อมบำรุง</SortableHeader>
                   <SortableHeader field="current_status" className="w-24" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>สถานะ</SortableHeader>
+                  <SortableHeader field="remarks" className="w-32" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>หมายเหตุ</SortableHeader>
+                  <SortableHeader field="created_by" className="w-28" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>สร้างโดย</SortableHeader>
+                  <SortableHeader field="created_at" className="w-32" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>วันที่สร้าง</SortableHeader>
+                  <SortableHeader field="updated_at" className="w-32" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>วันที่แก้ไข</SortableHeader>
                   <Table.Head className="w-28">การดำเนินการ</Table.Head>
                 </Table.Row>
               </Table.Header>
               <Table.Body>
                 {sortedVehicles.map((vehicle) => (
                   <Table.Row key={vehicle.vehicle_id} className="hover:bg-thai-gray-25">
+                    {/* 1. ID */}
                     <Table.Cell>
-                      <div className="font-mono text-sm font-medium text-primary-600">
+                      <div className="text-xs text-thai-gray-500 font-mono">
+                        {vehicle.vehicle_id}
+                      </div>
+                    </Table.Cell>
+
+                    {/* 2. รหัสรถ */}
+                    <Table.Cell>
+                      <div className="font-mono text-xs font-medium text-primary-600">
                         {vehicle.vehicle_code}
                       </div>
                     </Table.Cell>
+
+                    {/* 3. ทะเบียน */}
                     <Table.Cell>
-                      <div className="space-y-1">
-                        <div className="font-medium font-thai text-sm flex items-center space-x-2">
-                          <Truck className="w-4 h-4 text-thai-gray-400" />
-                          <span>{vehicle.plate_number}</span>
-                        </div>
-                        <div className="text-xs text-thai-gray-500 font-mono">
-                          ID: {vehicle.vehicle_id}
-                        </div>
+                      <div className="font-medium font-thai text-xs">
+                        {vehicle.plate_number}
                       </div>
                     </Table.Cell>
+
+                    {/* 4. ประเภท */}
                     <Table.Cell>
-                      <Badge variant="default" className="bg-blue-100/50 text-blue-700 border-blue-200/50">
-                        {vehicle.vehicle_type === 'รถบรรทุก' ? 'รถบรรทุก' : 
-                         vehicle.vehicle_type === 'รถตู้' ? 'รถตู้' :
-                         vehicle.vehicle_type === 'รถกระบะ' ? 'รถกระบะ' :
-                         vehicle.vehicle_type || '-'}
-                      </Badge>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <div className="space-y-1">
-                        <div className="font-medium font-thai text-sm">
-                          {vehicle.brand || '-'}
-                        </div>
-                        <div className="text-xs text-thai-gray-500">
-                          {vehicle.model || '-'}
-                        </div>
+                      <div className="text-xs font-thai">
+                        {vehicle.vehicle_type || '-'}
                       </div>
                     </Table.Cell>
+
+                    {/* 5. ยี่ห้อ */}
                     <Table.Cell>
-                      <div className="text-center">
-                        {vehicle.year_of_manufacture ? (
-                          <div className="flex items-center justify-center space-x-1">
-                            <Calendar className="w-3 h-3 text-thai-gray-400" />
-                            <span className="text-sm font-medium">{vehicle.year_of_manufacture}</span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-thai-gray-400">-</span>
-                        )}
+                      <div className="text-xs font-thai">
+                        {vehicle.brand || '-'}
                       </div>
                     </Table.Cell>
+
+                    {/* 6. รุ่น */}
                     <Table.Cell>
-                      <div className="text-center space-y-1">
-                        {vehicle.capacity_kg ? (
-                          <div className="flex items-center justify-center space-x-1">
-                            <Weight className="w-3 h-3 text-blue-500" />
-                            <span className="text-xs font-medium text-blue-600">{vehicle.capacity_kg.toLocaleString()} kg</span>
-                          </div>
-                        ) : null}
-                        {vehicle.capacity_cbm ? (
-                          <div className="flex items-center justify-center space-x-1">
-                            <Package2 className="w-3 h-3 text-green-500" />
-                            <span className="text-xs font-medium text-green-600">{vehicle.capacity_cbm} m³</span>
-                          </div>
-                        ) : null}
-                        {!vehicle.capacity_kg && !vehicle.capacity_cbm && (
-                          <span className="text-xs text-thai-gray-400">-</span>
-                        )}
+                      <div className="text-xs font-thai">
+                        {vehicle.model || '-'}
                       </div>
                     </Table.Cell>
+
+                    {/* 7. ปีผลิต */}
                     <Table.Cell>
-                      <div className="text-center">
-                        {vehicle.fuel_type ? (
-                          <div className="flex items-center justify-center space-x-1">
-                            <Fuel className="w-3 h-3 text-orange-500" />
-                            <span className="text-xs font-medium text-orange-600">
-                              {vehicle.fuel_type === 'Gasoline' ? 'เบนซิน' :
-                               vehicle.fuel_type === 'Diesel' ? 'ดีเซล' :
-                               vehicle.fuel_type === 'LPG' ? 'LPG' :
-                               vehicle.fuel_type === 'NGV' ? 'NGV' :
-                               vehicle.fuel_type === 'Electric' ? 'ไฟฟ้า' :
-                               vehicle.fuel_type === 'Hybrid' ? 'ไฮบริด' :
-                               vehicle.fuel_type}
-                            </span>
-                          </div>
-                        ) : (
-                          <span className="text-xs text-thai-gray-400">-</span>
-                        )}
+                      <div className="text-xs text-center">
+                        {vehicle.year_of_manufacture || '-'}
                       </div>
                     </Table.Cell>
+
+                    {/* 8. ความจุ (kg) */}
+                    <Table.Cell>
+                      <div className="text-xs text-right">
+                        {vehicle.capacity_kg ? `${Number(vehicle.capacity_kg).toLocaleString()}` : '-'}
+                      </div>
+                    </Table.Cell>
+
+                    {/* 9. ความจุ (m³) */}
+                    <Table.Cell>
+                      <div className="text-xs text-right">
+                        {vehicle.capacity_cbm ? `${Number(vehicle.capacity_cbm).toFixed(2)}` : '-'}
+                      </div>
+                    </Table.Cell>
+
+                    {/* 10. เชื้อเพลิง */}
+                    <Table.Cell>
+                      <div className="text-xs">
+                        {vehicle.fuel_type || '-'}
+                      </div>
+                    </Table.Cell>
+
+                    {/* 11. พนักงานขับ */}
+                    <Table.Cell>
+                      <div className="text-xs text-center">
+                        {vehicle.driver_id || '-'}
+                      </div>
+                    </Table.Cell>
+
+                    {/* 12. GPS Device */}
+                    <Table.Cell>
+                      <div className="text-xs font-mono">
+                        {vehicle.gps_device_id || '-'}
+                      </div>
+                    </Table.Cell>
+
+                    {/* 13. ฐานที่ตั้ง */}
+                    <Table.Cell>
+                      <div className="text-xs font-mono">
+                        {vehicle.location_base_id || '-'}
+                      </div>
+                    </Table.Cell>
+
+                    {/* 14. วันหมดทะเบียน */}
+                    <Table.Cell>
+                      <div className="text-xs">
+                        {vehicle.registration_expiry_date
+                          ? new Date(vehicle.registration_expiry_date).toLocaleDateString('th-TH')
+                          : '-'}
+                      </div>
+                    </Table.Cell>
+
+                    {/* 15. วันหมดประกัน */}
+                    <Table.Cell>
+                      <div className="text-xs">
+                        {vehicle.insurance_expiry_date
+                          ? new Date(vehicle.insurance_expiry_date).toLocaleDateString('th-TH')
+                          : '-'}
+                      </div>
+                    </Table.Cell>
+
+                    {/* 16. กำหนดซ่อมบำรุง */}
+                    <Table.Cell>
+                      <div className="text-xs max-w-xs truncate" title={vehicle.maintenance_schedule || ''}>
+                        {vehicle.maintenance_schedule || '-'}
+                      </div>
+                    </Table.Cell>
+
+                    {/* 17. สถานะ */}
                     <Table.Cell>
                       <Badge variant={
-                        vehicle.current_status === 'Active' ? 'success' : 
-                        vehicle.current_status === 'Under Maintenance' ? 'warning' : 
+                        vehicle.current_status === 'Active' ? 'success' :
+                        vehicle.current_status === 'Under Maintenance' ? 'warning' :
                         'default'
                       }>
-                        {vehicle.current_status === 'Active' ? 'ใช้งาน' : 
+                        {vehicle.current_status === 'Active' ? 'ใช้งาน' :
                          vehicle.current_status === 'Under Maintenance' ? 'ซ่อมบำรุง' :
                          vehicle.current_status === 'Inactive' ? 'ไม่ใช้งาน' :
                          vehicle.current_status || '-'}
                       </Badge>
                     </Table.Cell>
+
+                    {/* 18. หมายเหตุ */}
+                    <Table.Cell>
+                      <div className="text-xs max-w-xs truncate" title={vehicle.remarks || ''}>
+                        {vehicle.remarks || '-'}
+                      </div>
+                    </Table.Cell>
+
+                    {/* 19. สร้างโดย */}
+                    <Table.Cell>
+                      <div className="text-xs">
+                        {vehicle.created_by || '-'}
+                      </div>
+                    </Table.Cell>
+
+                    {/* 20. วันที่สร้าง */}
+                    <Table.Cell>
+                      <div className="text-xs">
+                        {vehicle.created_at
+                          ? new Date(vehicle.created_at).toLocaleDateString('th-TH', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })
+                          : '-'}
+                      </div>
+                    </Table.Cell>
+
+                    {/* 21. วันที่แก้ไข */}
+                    <Table.Cell>
+                      <div className="text-xs">
+                        {vehicle.updated_at
+                          ? new Date(vehicle.updated_at).toLocaleDateString('th-TH', {
+                              year: 'numeric',
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })
+                          : '-'}
+                      </div>
+                    </Table.Cell>
+
+                    {/* 22. การดำเนินการ */}
                     <Table.Cell>
                       <div className="flex space-x-1">
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          icon={Edit} 
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={Edit}
                           onClick={() => handleEdit(vehicle)}
                           title="แก้ไข"
                           className="hover:bg-blue-50/50 hover:text-blue-600"
                         />
-                        <Button 
-                          variant="ghost" 
-                          size="sm" 
-                          icon={Trash2} 
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          icon={Trash2}
                           onClick={() => handleDelete(vehicle)}
                           title="ลบ"
                           className="hover:bg-red-50/50 hover:text-red-600"

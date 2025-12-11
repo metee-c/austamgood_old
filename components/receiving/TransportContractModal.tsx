@@ -54,7 +54,6 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
   const [selectedSupplier, setSelectedSupplier] = useState<SupplierSummary | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [printMode, setPrintMode] = useState<'accounting' | 'warehouse'>('accounting');
   const [currentUser, setCurrentUser] = useState<string>('');
 
   const printRef = useRef<HTMLDivElement>(null);
@@ -134,19 +133,24 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
 
   const fetchCurrentUser = async () => {
     try {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
+      // ใช้ API /api/auth/me เพื่อดึงข้อมูล user จาก custom session
+      const response = await fetch('/api/auth/me');
+      const result = await response.json();
       
-      if (user?.user_metadata) {
-        const fullName = `${user.user_metadata.first_name || ''} ${user.user_metadata.last_name || ''}`.trim();
-        setCurrentUser(fullName || user.email || 'ไม่ระบุ');
-      } else if (user?.email) {
-        setCurrentUser(user.email);
+      console.log('🔍 [TransportContract] Fetching current user from API:', result);
+      
+      if (result.user) {
+        const user = result.user;
+        const fullName = `${user.first_name || ''} ${user.last_name || ''}`.trim();
+        const displayName = fullName || user.username || user.email || 'ไม่ระบุ';
+        console.log('✅ [TransportContract] Setting user name:', displayName);
+        setCurrentUser(displayName);
       } else {
+        console.log('❌ [TransportContract] No user found in API response');
         setCurrentUser('ไม่ระบุ');
       }
     } catch (err) {
-      console.error('Error fetching user:', err);
+      console.error('❌ [TransportContract] Error fetching user:', err);
       setCurrentUser('ไม่ระบุ');
     }
   };
@@ -323,31 +327,27 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
                   ไม่พบข้อมูลบริษัทขนส่งในแผนนี้
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {supplierSummaries.map((summary) => (
                     <div
                       key={summary.supplier_id}
-                      className={`border-2 rounded-lg p-4 cursor-pointer transition-all ${
+                      className={`border-2 rounded-lg p-3 cursor-pointer transition-all ${
                         selectedSupplier?.supplier_id === summary.supplier_id
                           ? 'border-blue-500 bg-blue-50'
                           : 'border-gray-200 hover:border-blue-300'
                       }`}
                       onClick={() => handleSelectSupplier(summary)}
                     >
-                      <h3 className="font-bold text-lg text-gray-900 font-thai mb-2">
-                        {summary.supplier_name}
-                      </h3>
-                      <p className="text-sm text-gray-600 mb-3">รหัส: {summary.supplier_code}</p>
-                      <div className="space-y-1 text-sm">
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">จำนวนคัน:</span>
-                          <span className="font-semibold">{summary.trip_count} คัน</span>
-                        </div>
-                        <div className="flex justify-between">
-                          <span className="text-gray-600">ค่าขนส่งรวม:</span>
-                          <span className="font-semibold text-green-600">
-                            {summary.total_cost.toLocaleString()} บาท
-                          </span>
+                      <div className="text-sm font-thai">
+                        <p className="font-semibold text-gray-900 text-sm leading-tight mb-1">
+                          {summary.supplier_name}
+                        </p>
+                        <div className="flex items-center justify-between text-xs text-gray-600">
+                          <span className="font-mono">{summary.supplier_code}</span>
+                          <div className="flex items-center gap-2">
+                            <span className="font-medium">{summary.trip_count} คัน</span>
+                            <span className="text-green-700 font-bold">{summary.total_cost.toLocaleString()} ฿</span>
+                          </div>
                         </div>
                       </div>
                     </div>
@@ -358,34 +358,7 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
               {/* Print Preview */}
               {selectedSupplier && (
                 <div className="mt-6">
-                  <div className="flex justify-between items-center mb-4">
-                    {/* Print Mode Selector */}
-                    <div className="flex gap-4 items-center">
-                      <span className="text-sm font-semibold text-gray-700 font-thai">รูปแบบใบว่าจ้าง:</span>
-                      <label className="flex items-center cursor-pointer">
-                        <input
-                          type="radio"
-                          name="print-mode"
-                          value="accounting"
-                          checked={printMode === 'accounting'}
-                          onChange={() => setPrintMode('accounting')}
-                          className="mr-2"
-                        />
-                        <span className="text-sm font-thai">บัญชี (แบบย่อ)</span>
-                      </label>
-                      <label className="flex items-center cursor-pointer">
-                        <input
-                          type="radio"
-                          name="print-mode"
-                          value="warehouse"
-                          checked={printMode === 'warehouse'}
-                          onChange={() => setPrintMode('warehouse')}
-                          className="mr-2"
-                        />
-                        <span className="text-sm font-thai">คลังสินค้า (แบบละเอียด)</span>
-                      </label>
-                    </div>
-
+                  <div className="flex justify-end items-center mb-4">
                     <button
                       onClick={handlePrint}
                       className="inline-flex items-center px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors font-thai"
@@ -400,7 +373,6 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
                     <TransportContractDocument
                       plan={selectedPlan!}
                       supplier={selectedSupplier}
-                      printMode={printMode}
                       currentUser={currentUser}
                     />
                   </div>
@@ -428,11 +400,10 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
 interface TransportContractDocumentProps {
   plan: Plan;
   supplier: SupplierSummary;
-  printMode: 'accounting' | 'warehouse';
   currentUser: string;
 }
 
-const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ plan, supplier, printMode, currentUser }) => {
+const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ plan, supplier, currentUser }) => {
   const contractDate = new Date().toLocaleDateString('th-TH', {
     year: 'numeric',
     month: 'long',
@@ -440,67 +411,44 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
   });
 
   return (
-    <div className="w-[297mm] min-h-[210mm] p-6 bg-white font-thai landscape-page" style={{ fontSize: '12px' }}>
-      {/* Trip Info Cards - Show all trip summary info first */}
-      <div className="mb-4 space-y-3 print-trip-summary">
-        {supplier.trips.map((trip, tripIndex) => {
-          let notes: any = {};
-          try {
-            notes = trip.notes ? JSON.parse(trip.notes) : {};
-          } catch {}
+    <>
+      {/* หน้าที่ 1: ฟอร์มบัญชี (แบบย่อ) */}
+      <div className="w-[297mm] min-h-[210mm] p-6 bg-white font-thai landscape-page page-break-after" style={{ fontSize: '12px' }}>
+        {/* Trip Info Cards - Show all trip summary info first */}
+        <div className="mb-4 space-y-3 print-trip-summary">
+          {supplier.trips.map((trip, tripIndex) => {
+            let notes: any = {};
+            try {
+              notes = trip.notes ? JSON.parse(trip.notes) : {};
+            } catch {}
 
-          const totalStops = trip.stops?.length || 0;
+            const totalStops = trip.stops?.length || 0;
 
-          return (
-            <div key={trip.trip_id} className="bg-blue-50 border border-blue-300 rounded px-4 py-2">
-              <div className="flex justify-between items-center">
-                <div>
-                  <span className="font-bold text-base">คันที่ {tripIndex + 1}</span>
-                  <span className="ml-3 text-sm text-gray-700">
-                    ({totalStops} ร้านค้า / {totalStops} จุดส่ง)
-                  </span>
-                </div>
-                <div className="text-right">
-                  <span className="text-sm mr-4">ระยะทาง: {trip.total_distance_km ? trip.total_distance_km.toFixed(1) : '-'} km</span>
-                  <span className="text-base font-bold text-green-700">
-                    ค่าขนส่ง: {(trip.shipping_cost || 0).toLocaleString()} บาท
-                  </span>
-                </div>
-              </div>
-
-              {/* Warehouse Mode: Show pricing breakdown */}
-              {printMode === 'warehouse' && (
-                <div className="mt-2 pt-2 border-t border-blue-200">
-                  <div className="grid grid-cols-2 gap-4 text-xs">
-                    <div>
-                      <p className="text-gray-700 mb-1">
-                        <span className="font-semibold">รูปแบบการคิดค่าขนส่ง:</span> {(trip as any).pricing_mode === 'formula' ? 'แบบคำนวณ' : 'แบบเหมา'}
-                      </p>
-                      {(trip as any).pricing_mode === 'formula' && (
-                        <>
-                          <p className="text-gray-700">• ราคาเริ่มต้น: {((trip as any).base_price || 0).toLocaleString()} บาท</p>
-                          <p className="text-gray-700">• ค่าเด็กติดรถ: {((trip as any).helper_fee || 0).toLocaleString()} บาท</p>
-                          <p className="text-gray-700">• ค่าจุดเพิ่ม: {Math.max(0, totalStops - 1)} จุด × {((trip as any).extra_stop_fee || 0).toLocaleString()} = {(Math.max(0, totalStops - 1) * ((trip as any).extra_stop_fee || 0)).toLocaleString()} บาท</p>
-                        </>
-                      )}
-                    </div>
-                    <div>
-                      <p className="text-gray-700"><span className="font-semibold">ทะเบียนรถ:</span> {notes.vehicle_label || '-'}</p>
-                      <p className="text-gray-700"><span className="font-semibold">ชื่อผู้ขับ:</span> {notes.driver_label || '-'}</p>
-                    </div>
+            return (
+              <div key={trip.trip_id} className="bg-blue-50 border border-blue-300 rounded px-4 py-2">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <span className="font-bold text-base">คันที่ {tripIndex + 1}</span>
+                    <span className="ml-3 text-sm text-gray-700">
+                      ({totalStops} ร้านค้า / {totalStops} จุดส่ง)
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-base font-bold text-green-700">
+                      ค่าขนส่ง: {(trip.shipping_cost || 0).toLocaleString()} บาท
+                    </span>
                   </div>
                 </div>
-              )}
-            </div>
-          );
-        })}
-      </div>
+              </div>
+            );
+          })}
+        </div>
 
       {/* Unified Table for All Trips */}
       <div className="mb-6">
-        <div className="border-2 border-gray-400 rounded">
+        <div>
           <table className="w-full border-collapse">
-            <thead className="bg-gray-200 page-header-repeat">
+            <thead className="page-header-repeat">
               {/* Header Info Row - Will repeat on every page */}
               <tr>
                 <th colSpan={13} className="border-b-2 border-gray-300 px-4 py-3">
@@ -535,20 +483,20 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                 </th>
               </tr>
               {/* Column Headers */}
-              <tr>
-                <th className="border border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '4%' }}>คันที่</th>
-                <th className="border border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '4%' }}>จุดที่</th>
-                <th className="border border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '5%' }}>จังหวัด</th>
-                <th className="border border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '7%' }}>เลขที่ใบสั่งส่ง</th>
-                <th className="border border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '6%' }}>รหัสลูกค้า</th>
-                <th className="border border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '20%' }}>ชื่อร้านค้า</th>
-                <th className="border border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '6%' }}>น้ำหนัก</th>
-                <th className="border border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '5%' }}>จำนวน</th>
-                <th className="border border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '5%' }}>ประตู</th>
-                <th className="border border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '4%' }}>คิว</th>
-                <th className="border border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '6%' }}>เปิด-ปิด</th>
-                <th className="border border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '16%' }}>หมายเหตุ</th>
-                <th className="border border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '12%' }}>(ละติจูด, ลองจิจูด)</th>
+              <tr className="bg-gray-100">
+                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '4%' }}>คันที่</th>
+                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '4%' }}>จุดที่</th>
+                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '5%' }}>จังหวัด</th>
+                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '7%' }}>เลขที่ใบสั่งส่ง</th>
+                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '6%' }}>รหัสลูกค้า</th>
+                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '20%' }}>ชื่อร้านค้า</th>
+                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '6%' }}>น้ำหนัก</th>
+                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '5%' }}>จำนวน</th>
+                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '5%' }}>ประตู</th>
+                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '4%' }}>คิว</th>
+                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '6%' }}>เปิด-ปิด</th>
+                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '16%' }}>หมายเหตุ</th>
+                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '12%' }}>(ละติจูด, ลองจิจูด)</th>
               </tr>
             </thead>
             <tbody>
@@ -571,37 +519,13 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                             <span className="ml-3 text-xs text-gray-700">
                               ({trip.stops?.length || 0} ร้านค้า / {trip.stops?.length || 0} จุดส่ง)
                             </span>
-                            {printMode === 'warehouse' && (
-                              <>
-                                <span className="ml-4 text-xs">
-                                  <span className="font-semibold">ทะเบียนรถ:</span> {notes.vehicle_label || '-'}
-                                </span>
-                                <span className="ml-4 text-xs">
-                                  <span className="font-semibold">ชื่อผู้ขับ:</span> {notes.driver_label || '-'}
-                                </span>
-                              </>
-                            )}
                           </div>
                           <div className="text-right">
-                            <span className="text-xs mr-4">ระยะทาง: <span className="font-semibold">{trip.total_distance_km ? trip.total_distance_km.toFixed(1) : '-'} km</span></span>
                             <span className="text-sm font-bold text-green-700">
                               ค่าขนส่ง: {(trip.shipping_cost || 0).toLocaleString()} บาท
                             </span>
                           </div>
                         </div>
-                        {printMode === 'warehouse' && (trip as any).pricing_mode === 'formula' && (
-                          <div className="mt-1 pt-1 border-t border-blue-200 text-xs text-gray-700">
-                            <span className="font-semibold">รูปแบบการคิดค่าขนส่ง:</span> แบบคำนวณ
-                            <span className="ml-3">• ราคาเริ่มต้น: {((trip as any).base_price || 0).toLocaleString()} บาท</span>
-                            <span className="ml-3">• ค่าเด็กติดรถ: {((trip as any).helper_fee || 0).toLocaleString()} บาท</span>
-                            <span className="ml-3">• ค่าจุดเพิ่ม: {Math.max(0, (trip.stops?.length || 0) - 1)} จุด × {((trip as any).extra_stop_fee || 0).toLocaleString()} = {(Math.max(0, (trip.stops?.length || 0) - 1) * ((trip as any).extra_stop_fee || 0)).toLocaleString()} บาท</span>
-                          </div>
-                        )}
-                        {printMode === 'warehouse' && (trip as any).pricing_mode !== 'formula' && (
-                          <div className="mt-1 pt-1 border-t border-blue-200 text-xs text-gray-700">
-                            <span className="font-semibold">รูปแบบการคิดค่าขนส่ง:</span> แบบเหมา
-                          </div>
-                        )}
                       </td>
                     </tr>
                     {trip.stops?.map((stop: any, stopIndex: number) => {
@@ -740,15 +664,15 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
             </tbody>
           </table>
         </div>
+      </div>
 
-        {/* Grand Total */}
-        <div className="bg-green-100 border-2 border-green-600 rounded px-4 py-3 mt-4">
-          <div className="flex justify-between items-center">
-            <span className="text-lg font-bold">รวมทั้งสิ้น ({supplier.trip_count} คัน)</span>
-            <span className="text-2xl font-bold text-green-700">
-              {supplier.total_cost.toLocaleString()} บาท
-            </span>
-          </div>
+      {/* Grand Total */}
+      <div className="border-t-2 border-gray-400 mt-6 pt-4">
+        <div className="flex justify-between items-center">
+          <span className="text-base font-bold">รวมทั้งสิ้น ({supplier.trip_count} คัน)</span>
+          <span className="text-lg font-bold">
+            {supplier.total_cost.toLocaleString()} บาท
+          </span>
         </div>
       </div>
 
@@ -773,6 +697,107 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
         <p>หมายเหตุ: เอกสารนี้สร้างโดยระบบอัตโนมัติ กรุณาตรวจสอบความถูกต้องก่อนลงนาม</p>
       </div>
     </div>
+
+    {/* หน้าที่ 2: รายละเอียดค่าขนส่งแต่ละเที่ยว */}
+    <div className="w-[297mm] min-h-[210mm] p-6 bg-white font-thai landscape-page" style={{ fontSize: '12px' }}>
+      {/* Header */}
+      <div className="mb-6">
+        <div className="text-center mb-4">
+          <p className="font-bold text-lg mb-1">รายละเอียดค่าขนส่งแต่ละเที่ยว</p>
+          <p className="text-sm text-gray-700">ผู้ให้บริการ: {supplier.supplier_name} ({supplier.supplier_code})</p>
+        </div>
+      </div>
+
+      {/* Pricing Details - Table Format */}
+      <div>
+        <table className="w-full border-collapse">
+          <thead>
+            <tr className="bg-gray-100">
+              <th className="border border-gray-300 px-3 py-2 text-xs text-center" style={{ width: '5%' }}>คันที่</th>
+              <th className="border border-gray-300 px-3 py-2 text-xs text-center" style={{ width: '10%' }}>จำนวนจุดส่ง</th>
+              <th className="border border-gray-300 px-3 py-2 text-xs text-center" style={{ width: '10%' }}>ทะเบียนรถ</th>
+              <th className="border border-gray-300 px-3 py-2 text-xs text-center" style={{ width: '12%' }}>ชื่อผู้ขับ</th>
+              <th className="border border-gray-300 px-3 py-2 text-xs text-center" style={{ width: '5%' }}>ประตู</th>
+              <th className="border border-gray-300 px-3 py-2 text-xs text-center" style={{ width: '5%' }}>คิว</th>
+              <th className="border border-gray-300 px-3 py-2 text-xs text-center" style={{ width: '10%' }}>รูปแบบการคิด</th>
+              <th className="border border-gray-300 px-3 py-2 text-xs text-center" style={{ width: '10%' }}>ราคาเริ่มต้น</th>
+              <th className="border border-gray-300 px-3 py-2 text-xs text-center" style={{ width: '10%' }}>ค่าเด็กติดรถ</th>
+              <th className="border border-gray-300 px-3 py-2 text-xs text-center" style={{ width: '13%' }}>ค่าจุดเพิ่ม</th>
+              <th className="border border-gray-300 px-3 py-2 text-xs text-center" style={{ width: '10%' }}>รวมค่าขนส่ง</th>
+            </tr>
+          </thead>
+          <tbody>
+            {supplier.trips.map((trip, tripIndex) => {
+              let notes: any = {};
+              try {
+                notes = trip.notes ? JSON.parse(trip.notes) : {};
+              } catch {}
+
+              const totalStops = trip.stops?.length || 0;
+              const pricingMode = (trip as any).pricing_mode;
+              const basePrice = (trip as any).base_price || 0;
+              const helperFee = (trip as any).helper_fee || 0;
+              const extraStopFee = (trip as any).extra_stop_fee || 0;
+              const extraStops = Math.max(0, totalStops - 1);
+              const extraStopTotal = extraStops * extraStopFee;
+
+              return (
+                <tr key={trip.trip_id} className="hover:bg-gray-50">
+                  <td className="border border-gray-300 px-2 py-3 text-center font-semibold text-sm">
+                    {tripIndex + 1}
+                  </td>
+                  <td className="border border-gray-300 px-2 py-3 text-center text-xs">
+                    {totalStops} ร้านค้า / {totalStops} จุดส่ง
+                  </td>
+                  <td className="border border-gray-300 px-2 py-3 text-xs">
+                    {notes.vehicle_label || '-'}
+                  </td>
+                  <td className="border border-gray-300 px-2 py-3 text-xs">
+                    {notes.driver_label || '-'}
+                  </td>
+                  <td className="border border-gray-300 px-2 py-3 text-center text-xs">
+                    {(trip as any).loading_door_number || '-'}
+                  </td>
+                  <td className="border border-gray-300 px-2 py-3 text-center text-xs">
+                    {(trip as any).loading_queue_number || '-'}
+                  </td>
+                  <td className="border border-gray-300 px-2 py-3 text-center text-xs font-semibold">
+                    {pricingMode === 'formula' ? 'แบบคำนวณ' : 'แบบเหมา'}
+                  </td>
+                  <td className="border border-gray-300 px-2 py-3 text-right text-xs">
+                    {pricingMode === 'formula' ? `${basePrice.toLocaleString()} บาท` : '-'}
+                  </td>
+                  <td className="border border-gray-300 px-2 py-3 text-right text-xs">
+                    {pricingMode === 'formula' ? `${helperFee.toLocaleString()} บาท` : '-'}
+                  </td>
+                  <td className="border border-gray-300 px-2 py-3 text-xs">
+                    {pricingMode === 'formula' ? (
+                      <div className="text-right">
+                        {extraStops} จุด × {extraStopFee.toLocaleString()} = {extraStopTotal.toLocaleString()} บาท
+                      </div>
+                    ) : '-'}
+                  </td>
+                  <td className="border border-gray-300 px-2 py-3 text-right text-xs font-bold text-green-700">
+                    {(trip.shipping_cost || 0).toLocaleString()} บาท
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Summary */}
+      <div className="border-t-2 border-gray-400 mt-6 pt-4">
+        <div className="flex justify-between items-center">
+          <span className="text-base font-bold">รวมค่าขนส่งทั้งหมด ({supplier.trip_count} คัน)</span>
+          <span className="text-lg font-bold">
+            {supplier.total_cost.toLocaleString()} บาท
+          </span>
+        </div>
+      </div>
+    </div>
+    </>
   );
 };
 
@@ -807,6 +832,12 @@ if (typeof document !== 'undefined') {
         -webkit-print-color-adjust: exact !important;
         print-color-adjust: exact !important;
         color-adjust: exact !important;
+      }
+
+      /* Force page break after first page */
+      .page-break-after {
+        page-break-after: always !important;
+        break-after: page !important;
       }
 
       /* Hide trip summary cards on print */

@@ -195,17 +195,17 @@ function MobilePickPage() {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'pending':
-        return <Clock className="w-4 h-4 text-gray-500" />;
+        return <Clock className="w-3.5 h-3.5 text-gray-500" />;
       case 'assigned':
-        return <Package className="w-4 h-4 text-blue-500" />;
+        return <Package className="w-3.5 h-3.5 text-blue-500" />;
       case 'picking':
-        return <Package className="w-4 h-4 text-yellow-500" />;
+        return <Package className="w-3.5 h-3.5 text-yellow-500" />;
       case 'completed':
-        return <CheckCircle className="w-4 h-4 text-green-500" />;
+        return <CheckCircle className="w-3.5 h-3.5 text-green-500" />;
       case 'cancelled':
-        return <AlertCircle className="w-4 h-4 text-red-500" />;
+        return <AlertCircle className="w-3.5 h-3.5 text-red-500" />;
       default:
-        return <Clock className="w-4 h-4 text-gray-500" />;
+        return <Clock className="w-3.5 h-3.5 text-gray-500" />;
     }
   };
 
@@ -355,92 +355,93 @@ function MobilePickPage() {
         </div>
       )}
 
-      {/* Task List */}
+      {/* Task List - Table Format */}
       {!loading && filteredTasks.length > 0 && (
-        <div className="p-4 space-y-3">
-          {filteredTasks.map((task) => (
-            <div
-              key={`${task.type}-${task.id}`}
-              onClick={() => {
-                if (task.type === 'picklist') {
-                  router.push(`/mobile/pick/${task.id}`);
-                } else if (task.type === 'bonus_face_sheet') {
-                  router.push(`/mobile/bonus-face-sheet/${task.id}`);
-                } else {
-                  router.push(`/mobile/face-sheet/${task.id}`);
-                }
-              }}
-              className="bg-white rounded-lg shadow-sm border border-gray-200 p-2.5 active:scale-98 transition-all cursor-pointer"
-            >
-              {/* Header */}
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center space-x-2">
-                  {getStatusIcon(task.status)}
-                  <div>
-                    <h3 className="font-bold text-gray-900 font-thai">
-                      {task.type === 'picklist' ? task.picklist_code : task.face_sheet_no}
-                    </h3>
-                    {task.type === 'picklist' && task.receiving_route_trips?.receiving_route_plans && (
-                      <p className="text-xs text-gray-500 font-thai">
-                        {task.receiving_route_trips.receiving_route_plans.plan_code}
-                      </p>
-                    )}
-                    {task.type === 'face_sheet' && (
-                      <p className="text-xs text-gray-500 font-thai">
-                        ใบปะหน้าสินค้า
-                      </p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  {getStatusBadge(task.status)}
-                  <ChevronRight className="w-5 h-5 text-gray-400" />
-                </div>
-              </div>
+        <div className="p-4">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 font-thai">รหัส</th>
+                  <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700 font-thai">สถานะ</th>
+                  <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700 font-thai">จำนวน</th>
+                  <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700 font-thai">อัปเดต</th>
+                  <th className="px-3 py-2 w-10"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredTasks.map((task) => (
+                  <tr
+                    key={`${task.type}-${task.id}`}
+                    onClick={() => {
+                      if (task.type === 'picklist') {
+                        router.push(`/mobile/pick/${task.id}`);
+                      } else if (task.type === 'bonus_face_sheet') {
+                        router.push(`/mobile/bonus-face-sheet/${task.id}`);
+                      } else {
+                        router.push(`/mobile/face-sheet/${task.id}`);
+                      }
+                    }}
+                    className="hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer"
+                  >
+                    {/* รหัส */}
+                    <td className="px-2 py-3">
+                      <div className="flex items-center space-x-1.5">
+                        <div className="flex-shrink-0">
+                          {getStatusIcon(task.status)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-gray-900 font-thai text-xs whitespace-nowrap">
+                            {task.type === 'picklist' ? task.picklist_code : task.face_sheet_no}
+                          </p>
+                          {task.type === 'picklist' && task.receiving_route_trips?.receiving_route_plans && (
+                            <p className="text-[10px] text-gray-500 font-thai whitespace-nowrap">
+                              {task.receiving_route_trips.receiving_route_plans.plan_code}
+                            </p>
+                          )}
+                          {task.type === 'face_sheet' && (
+                            <p className="text-[10px] text-gray-500 font-thai whitespace-nowrap">ใบปะหน้า</p>
+                          )}
+                          {task.type === 'bonus_face_sheet' && (
+                            <p className="text-[10px] text-gray-500 font-thai whitespace-nowrap">ใบปะหน้าของแถม</p>
+                          )}
+                        </div>
+                      </div>
+                    </td>
 
-              {/* Details */}
-              <div className="grid grid-cols-2 gap-3 text-sm">
-                <div className="flex items-center space-x-2">
-                  <Package className="w-4 h-4 text-gray-400" />
-                  <div>
-                    <p className="text-xs text-gray-500 font-thai">
-                      {task.type === 'picklist' ? 'จำนวนรายการ' : 'จำนวนแพ็ค'}
-                    </p>
-                    <p className="font-semibold text-gray-900 font-thai">
-                      {task.type === 'picklist' ? `${task.total_lines} รายการ` : `${task.total_packages} แพ็ค`}
-                    </p>
-                  </div>
-                </div>
-                {task.type === 'picklist' && task.receiving_route_trips?.vehicle_id && (
-                  <div className="flex items-center space-x-2">
-                    <Truck className="w-4 h-4 text-gray-400" />
-                    <div>
-                      <p className="text-xs text-gray-500 font-thai">รถ</p>
-                      <p className="font-semibold text-gray-900 font-thai">
-                        {task.receiving_route_trips.vehicle_id}
-                      </p>
-                    </div>
-                  </div>
-                )}
-                {task.type === 'face_sheet' && (
-                  <div className="flex items-center space-x-2">
-                    <Package className="w-4 h-4 text-gray-400" />
-                    <div>
-                      <p className="text-xs text-gray-500 font-thai">รายการสินค้า</p>
-                      <p className="font-semibold text-gray-900 font-thai">
-                        {task.total_items} รายการ
-                      </p>
-                    </div>
-                  </div>
-                )}
-              </div>
+                    {/* สถานะ */}
+                    <td className="px-3 py-3 text-center">
+                      {getStatusBadge(task.status)}
+                    </td>
 
-              {/* Footer */}
-              <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500 font-thai" suppressHydrationWarning>
-                อัปเดต: {formatDate(task.updated_at)}
-              </div>
-            </div>
-          ))}
+                    {/* จำนวน */}
+                    <td className="px-3 py-3 text-center">
+                      <div>
+                        <p className="font-semibold text-gray-900 font-thai text-sm">
+                          {task.type === 'picklist' ? `${task.total_lines}` : `${task.total_packages}`}
+                        </p>
+                        <p className="text-xs text-gray-500 font-thai">
+                          {task.type === 'picklist' ? 'รายการ' : 'แพ็ค'}
+                        </p>
+                      </div>
+                    </td>
+
+                    {/* อัปเดต */}
+                    <td className="px-3 py-3 text-center" suppressHydrationWarning>
+                      <p className="text-xs text-gray-600 font-thai whitespace-nowrap">
+                        {formatDate(task.updated_at)}
+                      </p>
+                    </td>
+
+                    {/* Arrow */}
+                    <td className="px-3 py-3 text-center">
+                      <ChevronRight className="w-5 h-5 text-gray-400 mx-auto" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

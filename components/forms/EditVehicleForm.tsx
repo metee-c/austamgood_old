@@ -4,7 +4,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { vehicleSchema, VehicleFormValues } from '@/types/vehicle-schema';
 import Button from '@/components/ui/Button';
-import { Save, X, AlertCircle } from 'lucide-react';
+import { Save, X, AlertCircle, Truck, Fuel, Package, MapPin, Calendar, Wrench, User } from 'lucide-react';
 
 interface EditVehicleFormProps {
   vehicle: VehicleFormValues;
@@ -57,7 +57,12 @@ const EditVehicleForm: React.FC<EditVehicleFormProps> = ({ vehicle, onSuccess, o
           </div>
         )}
         <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-2xl p-6 space-y-4 shadow-sm">
-          <h3 className="text-lg font-semibold text-thai-gray-900 font-thai mb-4">ข้อมูลพื้นฐาน</h3>
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="w-10 h-10 rounded-lg bg-blue-100 flex items-center justify-center">
+              <Truck className="w-5 h-5 text-blue-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-thai-gray-900 font-thai">ข้อมูลพื้นฐาน</h3>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="block text-sm font-medium text-thai-gray-700 font-thai" htmlFor="vehicle_code">
@@ -109,11 +114,12 @@ const EditVehicleForm: React.FC<EditVehicleFormProps> = ({ vehicle, onSuccess, o
             </div>
             <div className="space-y-2">
               <label className="block text-sm font-medium text-thai-gray-700 font-thai" htmlFor="brand">
-                ยี่ห้อ
+                บริษัทขนส่ง
               </label>
               <input
                 {...register('brand')}
                 id="brand"
+                placeholder="เช่น ห้างหุ้นส่วนจำกัด ละอองเอก 786 โลจิสติกส์"
                 className="
                   w-full px-4 py-3 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-xl
                   focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
@@ -123,11 +129,12 @@ const EditVehicleForm: React.FC<EditVehicleFormProps> = ({ vehicle, onSuccess, o
             </div>
             <div className="space-y-2">
               <label className="block text-sm font-medium text-thai-gray-700 font-thai" htmlFor="model">
-                รุ่น
+                ชื่อพนักงานขับรถ
               </label>
               <input
                 {...register('model')}
                 id="model"
+                placeholder="เช่น กัมพล, เกรียงไกร"
                 className="
                   w-full px-4 py-3 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-xl
                   focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
@@ -154,7 +161,12 @@ const EditVehicleForm: React.FC<EditVehicleFormProps> = ({ vehicle, onSuccess, o
         </div>
 
         <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-2xl p-6 space-y-4 shadow-sm">
-          <h3 className="text-lg font-semibold text-thai-gray-900 font-thai mb-4">ข้อมูลความจุและเชื้อเพลิง</h3>
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+              <Package className="w-5 h-5 text-green-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-thai-gray-900 font-thai">ความจุและประสิทธิภาพ</h3>
+          </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div className="space-y-2">
               <label className="block text-sm font-medium text-thai-gray-700 font-thai" htmlFor="capacity_kg">
@@ -230,8 +242,130 @@ const EditVehicleForm: React.FC<EditVehicleFormProps> = ({ vehicle, onSuccess, o
           </div>
         </div>
 
+        {/* ส่วนข้อมูลเพิ่มเติม */}
         <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-2xl p-6 space-y-4 shadow-sm">
-          <h3 className="text-lg font-semibold text-thai-gray-900 font-thai mb-4">หมายเหตุเพิ่มเติม</h3>
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
+              <MapPin className="w-5 h-5 text-purple-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-thai-gray-900 font-thai">ข้อมูลเพิ่มเติม</h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-thai-gray-700 font-thai" htmlFor="driver_id">
+                พนักงานขับรถ (ID)
+              </label>
+              <input
+                type="number"
+                {...register('driver_id', { valueAsNumber: true })}
+                id="driver_id"
+                className="
+                  w-full px-4 py-3 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-xl
+                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
+                  text-sm font-thai transition-all duration-300 backdrop-blur-sm
+                "
+                placeholder="ระบุ ID พนักงานขับ"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-thai-gray-700 font-thai" htmlFor="gps_device_id">
+                รหัส GPS Device
+              </label>
+              <input
+                {...register('gps_device_id')}
+                id="gps_device_id"
+                className="
+                  w-full px-4 py-3 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-xl
+                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
+                  text-sm font-thai font-mono transition-all duration-300 backdrop-blur-sm
+                "
+                placeholder="เช่น GPS-12345"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-thai-gray-700 font-thai" htmlFor="location_base_id">
+                ฐานที่ตั้ง (Location Base)
+              </label>
+              <input
+                {...register('location_base_id')}
+                id="location_base_id"
+                className="
+                  w-full px-4 py-3 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-xl
+                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
+                  text-sm font-thai font-mono transition-all duration-300 backdrop-blur-sm
+                "
+                placeholder="เช่น BASE-01"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* ส่วนเอกสารและการบำรุงรักษา */}
+        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-2xl p-6 space-y-4 shadow-sm">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="w-10 h-10 rounded-lg bg-orange-100 flex items-center justify-center">
+              <Calendar className="w-5 h-5 text-orange-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-thai-gray-900 font-thai">เอกสารและการบำรุงรักษา</h3>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-thai-gray-700 font-thai" htmlFor="registration_expiry_date">
+                วันหมดอายุทะเบียน
+              </label>
+              <input
+                type="date"
+                {...register('registration_expiry_date')}
+                id="registration_expiry_date"
+                className="
+                  w-full px-4 py-3 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-xl
+                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
+                  text-sm font-thai transition-all duration-300 backdrop-blur-sm
+                "
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-thai-gray-700 font-thai" htmlFor="insurance_expiry_date">
+                วันหมดอายุประกันภัย
+              </label>
+              <input
+                type="date"
+                {...register('insurance_expiry_date')}
+                id="insurance_expiry_date"
+                className="
+                  w-full px-4 py-3 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-xl
+                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
+                  text-sm font-thai transition-all duration-300 backdrop-blur-sm
+                "
+              />
+            </div>
+            <div className="space-y-2 md:col-span-2">
+              <label className="block text-sm font-medium text-thai-gray-700 font-thai" htmlFor="maintenance_schedule">
+                กำหนดการซ่อมบำรุง
+              </label>
+              <textarea
+                {...register('maintenance_schedule')}
+                id="maintenance_schedule"
+                rows={2}
+                className="
+                  w-full px-4 py-3 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-xl
+                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
+                  text-sm font-thai transition-all duration-300 backdrop-blur-sm resize-none
+                "
+                placeholder="ระบุกำหนดการซ่อมบำรุง เช่น ทุกๆ 10,000 กม."
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* ส่วนหมายเหตุ */}
+        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-2xl p-6 space-y-4 shadow-sm">
+          <div className="flex items-center space-x-3 mb-4">
+            <div className="w-10 h-10 rounded-lg bg-gray-100 flex items-center justify-center">
+              <AlertCircle className="w-5 h-5 text-gray-600" />
+            </div>
+            <h3 className="text-lg font-semibold text-thai-gray-900 font-thai">หมายเหตุเพิ่มเติม</h3>
+          </div>
           <div className="space-y-2">
             <label className="block text-sm font-medium text-thai-gray-700 font-thai" htmlFor="remarks">
               หมายเหตุ
@@ -245,6 +379,7 @@ const EditVehicleForm: React.FC<EditVehicleFormProps> = ({ vehicle, onSuccess, o
                 focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
                 text-sm font-thai transition-all duration-300 backdrop-blur-sm resize-none
               "
+              placeholder="ข้อมูลเพิ่มเติมหรือหมายเหตุพิเศษ"
             />
           </div>
         </div>

@@ -204,12 +204,12 @@ const PicklistDetailPage = ({ params }: { params: Promise<{ id: string }> }) => 
             .summary {
               background: #dbeafe;
               border: 1px solid #93c5fd;
-              border-radius: 4px;
-              padding: 10px 15px;
-              margin-bottom: 10px;
+              border-radius: 3px;
+              padding: 4px 8px;
+              margin-bottom: 6px;
               display: flex;
               justify-content: space-between;
-              font-size: 11px;
+              font-size: 10px;
             }
             table {
               width: 100%;
@@ -280,69 +280,39 @@ const PicklistDetailPage = ({ params }: { params: Promise<{ id: string }> }) => 
         </head>
         <body>
           <div class="container">
-            <!-- QR Code and Document Info Section - Aligned Horizontally -->
-            <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 15px; margin-bottom: 15px;">
-              <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px;">
-                <!-- Left: QR Code -->
-                <div style="display: flex; align-items: center; gap: 15px;">
-                  <div style="text-align: center;">
-                    <div style="background: white; border: 2px solid #d1d5db; border-radius: 8px; padding: 8px; display: inline-block;">
-                      <img src="${qrCodeUrl}" alt="QR Code" width="100" height="100" />
+            <!-- Header - Ultra Compact -->
+            <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 4px; padding: 5px 8px; margin-bottom: 6px;">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 10px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <!-- QR Code -->
+                  <div style="background: white; border: 1px solid #d1d5db; border-radius: 3px; padding: 3px;">
+                    <img src="${qrCodeUrl}" alt="QR" width="50" height="50" />
+                  </div>
+                  <!-- Info -->
+                  <div style="border-left: 1px solid #d1d5db; padding-left: 8px;">
+                    <div style="font-size: 13px; font-weight: bold; color: #1e3a8a; line-height: 1;">ใบหยิบสินค้า</div>
+                    <div style="font-family: monospace; color: #4b5563; font-size: 10px; margin-top: 2px; line-height: 1;">${picklist.picklist_code} | ${new Date(picklist.created_at).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}${picklist.receiving_route_trips?.receiving_route_plans?.plan_name ? ` | ${picklist.receiving_route_trips.receiving_route_plans.plan_name}` : ''}</div>
+                  </div>
+                  ${picklist.receiving_route_trips?.trip_sequence ? `
+                  <!-- Trip & Door -->
+                  <div style="border-left: 1px solid #d1d5db; padding-left: 8px; display: flex; align-items: center; gap: 8px;">
+                    <div style="font-size: 16px; font-weight: bold; color: #1e40af;">รถที่ ${picklist.receiving_route_trips.trip_sequence}${picklist.receiving_route_trips.vehicle_id ? ` <span style="font-size: 10px; color: #3b82f6;">(${picklist.receiving_route_trips.vehicle_id})</span>` : ''}</div>
+                    ${(picklist as any).loading_door_number ? `
+                    <div style="height: 20px; width: 1px; background: #d1d5db;"></div>
+                    <div style="display: flex; align-items: center; gap: 4px;">
+                      <span style="font-size: 10px; color: #6b7280;">ประตู</span>
+                      <div style="padding: 2px 8px; background: #fed7aa; border: 1px solid #f97316; border-radius: 3px;">
+                        <span style="font-size: 16px; font-weight: bold; color: #ea580c; font-family: monospace;">${(picklist as any).loading_door_number}</span>
+                      </div>
                     </div>
-                    <div style="font-size: 10px; color: #6b7280; margin-top: 5px; font-family: monospace;">${picklist.picklist_code}</div>
-                    <div style="font-size: 9px; color: #9ca3af; margin-top: 2px;">สแกนเพื่ออัพเดทสถานะ</div>
+                    ` : ''}
                   </div>
-
-                  <!-- Middle: Document Info -->
-                  <div style="border-left: 2px solid #d1d5db; padding-left: 15px;">
-                    <h1 style="font-size: 20px; font-weight: bold; color: #1e3a8a; margin: 0; line-height: 1.2;">ใบหยิบสินค้า (Picklist)</h1>
-                    <div style="font-family: monospace; color: #4b5563; margin-top: 4px; font-size: 12px; line-height: 1.2;">${picklist.picklist_code}</div>
-                    <div style="font-size: 11px; color: #6b7280; margin-top: 4px; line-height: 1.2;">
-                      วันที่สร้าง: ${new Date(picklist.created_at).toLocaleDateString('th-TH', {
-                        year: 'numeric',
-                        month: 'long',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit'
-                      })}
-                    </div>
-                    ${picklist.receiving_route_trips?.receiving_route_plans?.plan_name ? `
-                    <div style="font-size: 11px; color: #6b7280; margin-top: 2px; line-height: 1.2;">
-                      แผนการส่ง: ${picklist.receiving_route_trips.receiving_route_plans.plan_name}
-                    </div>` : ''}
-                  </div>
+                  ` : ''}
                 </div>
-
-                <!-- Right: Status Badge -->
-                <div style="text-align: center;">
-                  <div style="background: ${getStatusVariant(picklist.status) === 'success' ? '#10b981' : getStatusVariant(picklist.status) === 'warning' ? '#f59e0b' : getStatusVariant(picklist.status) === 'danger' ? '#ef4444' : getStatusVariant(picklist.status) === 'info' ? '#3b82f6' : '#6b7280'}; color: white; padding: 8px 16px; border-radius: 6px; font-size: 14px; font-weight: 600; display: inline-block;">
-                    ${getStatusText(picklist.status)}
-                  </div>
-                </div>
+                <!-- Status -->
+                <div style="background: ${getStatusVariant(picklist.status) === 'success' ? '#10b981' : getStatusVariant(picklist.status) === 'warning' ? '#f59e0b' : getStatusVariant(picklist.status) === 'danger' ? '#ef4444' : getStatusVariant(picklist.status) === 'info' ? '#3b82f6' : '#6b7280'}; color: white; padding: 3px 10px; border-radius: 3px; font-size: 10px; font-weight: 600;">${getStatusText(picklist.status)}</div>
               </div>
             </div>
-
-            ${picklist.receiving_route_trips?.trip_sequence ? `
-            <div style="text-align: center; margin: 15px 0; padding: 15px; background: #dbeafe; border: 2px solid #3b82f6; border-radius: 8px;">
-              <div style="display: flex; align-items: center; justify-content: center; gap: 20px;">
-                <div style="font-size: 28px; font-weight: bold; color: #1e40af;">
-                  รถที่ ${picklist.receiving_route_trips.trip_sequence}
-                  ${picklist.receiving_route_trips.vehicle_id ? `<span style="font-size: 18px; color: #3b82f6; margin-left: 10px;">(${picklist.receiving_route_trips.vehicle_id})</span>` : ''}
-                </div>
-                ${(picklist as any).loading_door_number ? `
-                <div style="height: 40px; width: 2px; background: #93c5fd;"></div>
-                <div style="display: flex; align-items: center; gap: 10px;">
-                  <span style="font-size: 16px; color: #1e40af; font-weight: 600;">ประตูโหลดสินค้า</span>
-                  <div style="padding: 8px 20px; background: #fed7aa; border: 2px solid #f97316; border-radius: 6px;">
-                    <span style="font-size: 32px; font-weight: bold; color: #ea580c; font-family: monospace;">
-                      ${(picklist as any).loading_door_number}
-                    </span>
-                  </div>
-                </div>
-                ` : ''}
-              </div>
-            </div>
-            ` : ''}
 
             <div class="summary">
               <div>

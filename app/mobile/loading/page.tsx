@@ -111,20 +111,25 @@ function MobileLoadingPage() {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'pending':
-        return <Clock className="w-4 h-4 text-yellow-500" />;
+        return <Clock className="w-3.5 h-3.5 text-yellow-500" />;
       case 'loaded':
-        return <CheckCircle className="w-4 h-4 text-green-500" />;
+        return <CheckCircle className="w-3.5 h-3.5 text-green-500" />;
       case 'completed':
-        return <CheckCircle className="w-4 h-4 text-blue-500" />;
+        return <CheckCircle className="w-3.5 h-3.5 text-blue-500" />;
       default:
-        return <Clock className="w-4 h-4 text-gray-500" />;
+        return <Clock className="w-3.5 h-3.5 text-gray-500" />;
     }
   };
 
   const formatDate = (dateString: string) => {
+    if (typeof window === 'undefined') {
+      // Server-side: return simple format
+      return new Date(dateString).toISOString().slice(0, 16).replace('T', ' ');
+    }
+    // Client-side: use Thai locale
     const date = new Date(dateString);
     return date.toLocaleDateString('th-TH', {
-      day: '2-digit',
+      day: 'numeric',
       month: 'short',
       year: 'numeric',
       hour: '2-digit',
@@ -237,62 +242,79 @@ function MobileLoadingPage() {
         </div>
       )}
 
-      {/* Loadlist List */}
+      {/* Loadlist List - Table Format */}
       {!loading && filteredLoadlists.length > 0 && (
-        <div className="p-4 space-y-3">
-          {filteredLoadlists.map((loadlist) => (
-            <div
-              key={loadlist.loadlist_id}
-              onClick={() => router.push(`/mobile/loading/${loadlist.loadlist_code}`)}
-              className="bg-white rounded-lg shadow-sm border border-gray-200 p-2.5 active:scale-98 transition-all cursor-pointer"
-            >
-              {/* Header */}
-              <div className="flex items-start justify-between mb-3">
-                <div className="flex items-center space-x-2">
-                  {getStatusIcon(loadlist.status)}
-                  <div>
-                    <h3 className="font-bold text-gray-900 font-thai">
-                      {loadlist.loadlist_code}
-                    </h3>
-                    {loadlist.vehicle && (
-                      <p className="text-xs text-gray-500 font-thai">
-                        {loadlist.vehicle.plate_number}
+        <div className="p-4">
+          <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+            <table className="w-full">
+              <thead className="bg-gray-50 border-b border-gray-200">
+                <tr>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 font-thai">รหัส</th>
+                  <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700 font-thai">สถานะ</th>
+                  <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700 font-thai">จำนวน</th>
+                  <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700 font-thai">อัปเดต</th>
+                  <th className="px-3 py-2 w-10"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filteredLoadlists.map((loadlist) => (
+                  <tr
+                    key={loadlist.loadlist_id}
+                    onClick={() => router.push(`/mobile/loading/${loadlist.loadlist_code}`)}
+                    className="hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer"
+                  >
+                    {/* รหัส */}
+                    <td className="px-2 py-3">
+                      <div className="flex items-center space-x-1.5">
+                        <div className="flex-shrink-0">
+                          {getStatusIcon(loadlist.status)}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-semibold text-gray-900 font-thai text-xs whitespace-nowrap">
+                            {loadlist.loadlist_code}
+                          </p>
+                          {loadlist.vehicle && (
+                            <p className="text-[10px] text-gray-500 font-thai whitespace-nowrap">
+                              {loadlist.vehicle.plate_number}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    </td>
+
+                    {/* สถานะ */}
+                    <td className="px-3 py-3 text-center">
+                      {getStatusBadge(loadlist.status)}
+                    </td>
+
+                    {/* จำนวน */}
+                    <td className="px-3 py-3 text-center">
+                      <div>
+                        <p className="font-semibold text-gray-900 font-thai text-sm">
+                          {loadlist.total_items}
+                        </p>
+                        <p className="text-xs text-gray-500 font-thai">
+                          รายการ
+                        </p>
+                      </div>
+                    </td>
+
+                    {/* อัปเดต */}
+                    <td className="px-3 py-3 text-center" suppressHydrationWarning>
+                      <p className="text-xs text-gray-600 font-thai whitespace-nowrap">
+                        {formatDate(loadlist.updated_at)}
                       </p>
-                    )}
-                  </div>
-                </div>
-                <div className="flex items-center space-x-2">
-                  {getStatusBadge(loadlist.status)}
-                  <ChevronRight className="w-5 h-5 text-gray-400" />
-                </div>
-              </div>
+                    </td>
 
-              {/* Details - Summary */}
-              <div className="grid grid-cols-4 gap-1.5 text-xs">
-                <div className="bg-blue-50 rounded p-1.5 text-center">
-                  <p className="text-[9px] text-blue-600 font-thai mb-0.5">รายการ</p>
-                  <p className="font-bold text-blue-700 font-thai">{loadlist.total_items}</p>
-                </div>
-                <div className="bg-purple-50 rounded p-1.5 text-center">
-                  <p className="text-[9px] text-purple-600 font-thai mb-0.5">ชิ้น</p>
-                  <p className="font-bold text-purple-700 font-thai">{loadlist.total_pieces}</p>
-                </div>
-                <div className="bg-green-50 rounded p-1.5 text-center">
-                  <p className="text-[9px] text-green-600 font-thai mb-0.5">แพ็ค</p>
-                  <p className="font-bold text-green-700 font-thai">{loadlist.total_packs}</p>
-                </div>
-                <div className="bg-orange-50 rounded p-1.5 text-center">
-                  <p className="text-[9px] text-orange-600 font-thai mb-0.5">น้ำหนัก</p>
-                  <p className="font-bold text-orange-700 font-thai text-[10px]">{loadlist.total_weight.toFixed(1)}</p>
-                </div>
-              </div>
-
-              {/* Footer */}
-              <div className="mt-3 pt-3 border-t border-gray-100 text-xs text-gray-500 font-thai">
-                อัปเดต: {formatDate(loadlist.updated_at)}
-              </div>
-            </div>
-          ))}
+                    {/* Arrow */}
+                    <td className="px-3 py-3 text-center">
+                      <ChevronRight className="w-5 h-5 text-gray-400 mx-auto" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>

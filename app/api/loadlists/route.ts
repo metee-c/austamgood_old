@@ -276,22 +276,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'delivery_number is required' }, { status: 400 });
     }
 
-    // Fetch picklists to get plan_id and trip_id
-    const { data: selectedPicklists, error: picklistsError } = await supabase
-      .from('picklists')
-      .select('id, plan_id, trip_id')
-      .in('id', picklist_ids);
+    // Fetch picklists to get plan_id and trip_id (only if we have picklist_ids)
+    let plan_id = null;
+    let trip_id = null;
 
-    if (picklistsError) {
-      return NextResponse.json(
-        { error: 'Failed to fetch picklists', details: picklistsError.message },
-        { status: 500 }
-      );
+    if (hasPicklists) {
+      const { data: selectedPicklists, error: picklistsError } = await supabase
+        .from('picklists')
+        .select('id, plan_id, trip_id')
+        .in('id', picklist_ids);
+
+      if (picklistsError) {
+        return NextResponse.json(
+          { error: 'Failed to fetch picklists', details: picklistsError.message },
+          { status: 500 }
+        );
+      }
+
+      // Get plan_id and trip_id from first picklist (assuming all picklists belong to same plan/trip)
+      plan_id = selectedPicklists && selectedPicklists.length > 0 ? selectedPicklists[0].plan_id : null;
+      trip_id = selectedPicklists && selectedPicklists.length > 0 ? selectedPicklists[0].trip_id : null;
     }
-
-    // Get plan_id and trip_id from first picklist (assuming all picklists belong to same plan/trip)
-    const plan_id = selectedPicklists && selectedPicklists.length > 0 ? selectedPicklists[0].plan_id : null;
-    const trip_id = selectedPicklists && selectedPicklists.length > 0 ? selectedPicklists[0].trip_id : null;
 
     // Generate loadlist code with pattern: LD-YYYYMMDD-####
     const today = new Date();

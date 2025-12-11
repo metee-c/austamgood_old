@@ -91,6 +91,10 @@ const InventoryLedgerPage = () => {
           wms_move_items!move_item_id (
             parent_pallet_id,
             new_pallet_id
+          ),
+          master_system_user!created_by (
+            username,
+            full_name
           )
         `)
         .order('movement_at', { ascending: false })
@@ -544,7 +548,11 @@ const InventoryLedgerPage = () => {
                           <span className="text-gray-700 font-thai">{ledger.remarks || '-'}</span>
                         </td>
                         <td className="px-2 py-0.5 whitespace-nowrap align-top">
-                          <span className="font-mono text-thai-gray-700">{ledger.created_by || '-'}</span>
+                          <span className="text-thai-gray-700 font-thai">
+                            {(ledger as any).master_system_user?.full_name || 
+                             (ledger as any).master_system_user?.username || 
+                             (ledger.created_by ? `User #${ledger.created_by}` : '-')}
+                          </span>
                         </td>
                       </tr>
                       );

@@ -154,7 +154,7 @@ const RouteMap: React.FC<RouteMapProps> = ({
         el.className = 'warehouse-marker';
         el.style.width = '30px';
         el.style.height = '30px';
-        el.style.backgroundImage = 'url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAiIGhlaWdodD0iMzAiIHZpZXdCb3g9IjAgMCAzMCAzMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIxNSIgY3k9IjE1IiByPSIxNCIgZmlsbD0iIzM0OThkYiIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iMTYiIGZpbGw9IndoaXRlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIj7guIg8L3RleHQ+PC9zdmc+)';
+        el.style.backgroundImage = 'url(data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAiIGhlaWdodD0iMzAiIHZpZXdCb3g9IjAgMCAzMCAzMCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48Y2lyY2xlIGN4PSIxNSIgY3k9IjE1IiByPSIxNCIgZmlsbD0iIzM0OThkYiIgc3Ryb2tlPSJ3aGl0ZSIgc3Ryb2tlLXdpZHRoPSIyIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iMTEiIGZpbGw9IndoaXRlIiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBkb21pbmFudC1iYXNlbGluZT0ibWlkZGxlIiBmb250LXdlaWdodD0iYm9sZCI+REM8L3RleHQ+PC9zdmc+)';
         el.style.backgroundSize = 'cover';
 
         const marker = new mapboxgl.Marker(el)
@@ -294,15 +294,6 @@ const RouteMap: React.FC<RouteMapProps> = ({
             coordinates.push([lng, lat]);
           }
         });
-        
-        // Add warehouse as ending point (return to warehouse)
-        if (warehouse?.latitude && warehouse?.longitude) {
-          const warehouseLng = Number(warehouse.longitude);
-          const warehouseLat = Number(warehouse.latitude);
-          if (Number.isFinite(warehouseLng) && Number.isFinite(warehouseLat)) {
-            coordinates.push([warehouseLng, warehouseLat]);
-          }
-        }
 
         if (coordinates.length > 1) {
           const sourceId = `route-${tripIndex}`;

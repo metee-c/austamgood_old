@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ordersService } from '@/lib/database/orders.service';
 import * as XLSX from 'xlsx';
+import { createClient } from '@/lib/supabase/server';
+import { getUserIdFromCookie, setDatabaseUserContext } from '@/lib/database/user-context';
 
 function parseCSV(text: string): string[][] {
   const lines = text.split('\n');
@@ -81,6 +83,12 @@ function parseDate(dateStr: string): string | null {
 
 export async function POST(request: NextRequest) {
   try {
+    // Get user ID from session cookie and set database context
+    const supabase = await createClient();
+    const cookieHeader = request.headers.get('cookie');
+    const userId = await getUserIdFromCookie(cookieHeader) || 1; // Fallback to system user
+    await setDatabaseUserContext(supabase, userId);
+
     const formData = await request.formData();
     const file = formData.get('file') as File;
     const fileType = formData.get('fileType') as 'route_planning' | 'express' | 'special';
@@ -718,7 +726,9 @@ export async function POST(request: NextRequest) {
             pack_4: pack4,
             pack_6: pack6,
             pack_2: pack2,
-            pack_1: pack1
+            pack_1: pack1,
+            created_by: userId,
+            updated_by: userId
         });
 
         if (error || !createdOrder) {

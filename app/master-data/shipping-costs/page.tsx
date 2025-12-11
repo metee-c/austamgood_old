@@ -263,18 +263,10 @@ const ShippingCostsPage = () => {
       <div className="pt-0 px-2 pb-2 space-y-2">
         {/* Title */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-500 flex items-center justify-center shadow-lg">
-              <DollarSign className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-thai-gray-900 font-thai">
-                ข้อมูลค่าขนส่ง (Freight Rates)
-              </h1>
-              <p className="text-xs text-thai-gray-600 font-thai">
-                จัดการราคาค่าขนส่งและเส้นทางขนส่ง
-              </p>
-            </div>
+          <div>
+            <h1 className="text-xl font-bold text-thai-gray-900 font-thai">
+              ข้อมูลค่าขนส่ง (Freight Rates)
+            </h1>
           </div>
           <div className="flex gap-2">
             <Button 

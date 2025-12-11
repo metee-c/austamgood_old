@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getUserIdFromCookie, setDatabaseUserContext } from '@/lib/database/user-context';
 
 /**
  * POST /api/mobile/loading/complete
@@ -17,6 +18,12 @@ import { createClient } from '@/lib/supabase/server';
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
+    
+    // ✅ Set user context for audit trail
+    const cookieHeader = request.headers.get('cookie');
+    const userId = await getUserIdFromCookie(cookieHeader) || 1; // Fallback to system user
+    await setDatabaseUserContext(supabase, userId);
+    
     const body = await request.json();
     const { loadlist_id, loadlist_code, scanned_code, checker_employee_id } = body;
 
@@ -648,6 +655,7 @@ export async function POST(request: NextRequest) {
         reference_doc_type: 'loadlist',
         reference_doc_id: loadlist.id,
         remarks: `ออกจาก ${sourceLocationName} - ${docCode}`,
+        created_by: userId,
         skip_balance_sync: true
       });
 
@@ -730,6 +738,7 @@ export async function POST(request: NextRequest) {
         reference_doc_type: 'loadlist',
         reference_doc_id: loadlist.id,
         remarks: `เข้า Delivery-In-Progress - ${docCode}`,
+        created_by: userId,
         skip_balance_sync: true
       });
 
