@@ -71,6 +71,8 @@ interface TripFormData {
   vehicle_label: string;
   driver_label: string;
   supplier_id: string;
+  vehicle_id?: number | null;
+  driver_id?: number | null;
   base_price: number;
   helper_fee: number;
   extra_stop_fee: number;
@@ -95,10 +97,23 @@ interface Customer {
   province?: string;
 }
 
+interface Vehicle {
+  vehicle_id: number;
+  vehicle_code: string;
+  plate_number: string;
+  driver_id?: number;
+  driver_name?: string;
+  supplier_id?: string;
+}
+
 const TripEditForm: React.FC<TripEditFormProps> = ({ trip, tripIndex, suppliers, onDataChange }) => {
   // State for customer data mapping
   const [customerMap, setCustomerMap] = useState<Record<string, Customer>>({});
   const [loadingCustomers, setLoadingCustomers] = useState(false);
+  
+  // State for vehicles
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
+  const [loadingVehicles, setLoadingVehicles] = useState(false);
 
   // Parse notes if it's a JSON string
   let parsedNotes = {
@@ -157,6 +172,8 @@ const TripEditForm: React.FC<TripEditFormProps> = ({ trip, tripIndex, suppliers,
     shipping_cost: trip.shipping_cost || 0,
     vehicle_label: parsedNotes.vehicle_label,
     driver_label: parsedNotes.driver_label,
+    vehicle_id: trip.vehicle_id || null,
+    driver_id: trip.driver_id || null,
     supplier_id: (trip as any).supplier_id || '',
     base_price: (trip as any).base_price || 0,
     helper_fee: (trip as any).helper_fee || 0,
@@ -178,6 +195,35 @@ const TripEditForm: React.FC<TripEditFormProps> = ({ trip, tripIndex, suppliers,
   // State for reference province (จุดอ้างอิงราคา)
   const [referenceProvinceIndex, setReferenceProvinceIndex] = useState<number | null>(null);
   const [loadingRateFromMaster, setLoadingRateFromMaster] = useState(false);
+
+  // Fetch vehicles when supplier changes
+  useEffect(() => {
+    const fetchVehicles = async () => {
+      if (!formData.supplier_id) {
+        setVehicles([]);
+        return;
+      }
+
+      setLoadingVehicles(true);
+      try {
+        const res = await fetch(`/api/master-vehicle?supplier_id=${formData.supplier_id}`);
+        const { data, error } = await res.json();
+
+        if (!error && data) {
+          setVehicles(data);
+        } else {
+          setVehicles([]);
+        }
+      } catch (err) {
+        console.error('Error fetching vehicles:', err);
+        setVehicles([]);
+      } finally {
+        setLoadingVehicles(false);
+      }
+    };
+
+    fetchVehicles();
+  }, [formData.supplier_id]);
 
   // Notify parent when formData changes
   useEffect(() => {
@@ -660,13 +706,53 @@ ${otherFees.length > 0 ? `ค่าอื่นๆ: ${otherFees.length} รา�
               <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">
                 ทะเบียนรถ
               </label>
-              <input
-                type="text"
-                value={formData.vehicle_label}
-                onChange={(e) => handleChange('vehicle_label', e.target.value)}
-                className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-thai bg-white"
-                placeholder="เช่น กข 1234 กรุงเทพ"
-              />
+              {!formData.supplier_id ? (
+                <div className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded bg-gray-50 text-gray-500 font-thai">
+                  กรุณาเลือกผู้ให้บริการขนส่งก่อน
+                </div>
+              ) : loadingVehicles ? (
+                <div className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded bg-gray-50 text-gray-500 font-thai">
+                  กำลังโหลดรถ...
+                </div>
+              ) : vehicles.length === 0 ? (
+                <div className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded bg-yellow-50 text-yellow-700 font-thai">
+                  ไม่มีรถสำหรับผู้ให้บริการนี้
+                </div>
+              ) : (
+                <select
+                  value={formData.vehicle_id?.toString() || ''}
+                  onChange={(e) => {
+                    const vehicleId = e.target.value ? Number(e.target.value) : null;
+                    const selectedVehicle = vehicles.find(v => v.vehicle_id === vehicleId);
+                    
+                    // Update all fields including driver_id
+                    const newFormData = {
+                      ...formData,
+                      vehicle_id: vehicleId,
+                      driver_id: selectedVehicle?.driver_id || null,
+                      vehicle_label: selectedVehicle?.plate_number || '',
+                      driver_label: selectedVehicle?.driver_name || ''
+                    };
+                    setFormData(newFormData);
+                    
+                    // Notify parent
+                    onDataChange(trip.trip_id, {
+                      pricingMode,
+                      ...newFormData,
+                      other_fees: otherFees,
+                      orderRemarks
+                    });
+                  }}
+                  className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-thai bg-white"
+                >
+                  <option value="">เลือกทะเบียนรถ</option>
+                  {vehicles.map((vehicle) => (
+                    <option key={vehicle.vehicle_id} value={vehicle.vehicle_id}>
+                      {vehicle.plate_number}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">
@@ -675,9 +761,9 @@ ${otherFees.length > 0 ? `ค่าอื่นๆ: ${otherFees.length} รา�
               <input
                 type="text"
                 value={formData.driver_label}
-                onChange={(e) => handleChange('driver_label', e.target.value)}
-                className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-blue-500 font-thai bg-white"
-                placeholder="ชื่อผู้ขับรถ"
+                readOnly
+                className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded bg-gray-50 text-gray-700 font-thai"
+                placeholder="เลือกรถเพื่อแสดงชื่อผู้ขับ"
               />
             </div>
           </div>
@@ -968,13 +1054,53 @@ ${otherFees.length > 0 ? `ค่าอื่นๆ: ${otherFees.length} รา�
               <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">
                 ทะเบียนรถ
               </label>
-              <input
-                type="text"
-                value={formData.vehicle_label}
-                onChange={(e) => handleChange('vehicle_label', e.target.value)}
-                className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500 font-thai bg-white"
-                placeholder="เช่น กข 1234 กรุงเทพ"
-              />
+              {!formData.supplier_id ? (
+                <div className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded bg-gray-50 text-gray-500 font-thai">
+                  กรุณาเลือกผู้ให้บริการขนส่งก่อน
+                </div>
+              ) : loadingVehicles ? (
+                <div className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded bg-gray-50 text-gray-500 font-thai">
+                  กำลังโหลดรถ...
+                </div>
+              ) : vehicles.length === 0 ? (
+                <div className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded bg-yellow-50 text-yellow-700 font-thai">
+                  ไม่มีรถสำหรับผู้ให้บริการนี้
+                </div>
+              ) : (
+                <select
+                  value={formData.vehicle_id?.toString() || ''}
+                  onChange={(e) => {
+                    const vehicleId = e.target.value ? Number(e.target.value) : null;
+                    const selectedVehicle = vehicles.find(v => v.vehicle_id === vehicleId);
+                    
+                    // Update all fields including driver_id
+                    const newFormData = {
+                      ...formData,
+                      vehicle_id: vehicleId,
+                      driver_id: selectedVehicle?.driver_id || null,
+                      vehicle_label: selectedVehicle?.plate_number || '',
+                      driver_label: selectedVehicle?.driver_name || ''
+                    };
+                    setFormData(newFormData);
+                    
+                    // Notify parent
+                    onDataChange(trip.trip_id, {
+                      pricingMode,
+                      ...newFormData,
+                      other_fees: otherFees,
+                      orderRemarks
+                    });
+                  }}
+                  className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500 font-thai bg-white"
+                >
+                  <option value="">เลือกทะเบียนรถ</option>
+                  {vehicles.map((vehicle) => (
+                    <option key={vehicle.vehicle_id} value={vehicle.vehicle_id}>
+                      {vehicle.plate_number}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">
@@ -983,9 +1109,9 @@ ${otherFees.length > 0 ? `ค่าอื่นๆ: ${otherFees.length} รา�
               <input
                 type="text"
                 value={formData.driver_label}
-                onChange={(e) => handleChange('driver_label', e.target.value)}
-                className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-green-500 font-thai bg-white"
-                placeholder="ชื่อผู้ขับรถ"
+                readOnly
+                className="w-full px-2.5 py-2 text-sm border border-gray-300 rounded bg-gray-50 text-gray-700 font-thai"
+                placeholder="เลือกรถเพื่อแสดงชื่อผู้ขับ"
               />
             </div>
           </div>
@@ -1124,6 +1250,8 @@ const EditShippingCostModal: React.FC<EditShippingCostModalProps> = ({
         const porterage_fee = tripData?.porterage_fee ?? (trip as any).porterage_fee ?? 0;
         const other_fees = tripData?.other_fees ?? (trip as any).other_fees ?? [];
         const supplierId = tripData?.supplier_id || (trip as any).supplier_id || null;
+        const vehicleId = tripData?.vehicle_id || trip.vehicle_id || null;
+        const driverId = tripData?.driver_id || trip.driver_id || null;
         const vehicleLabel = tripData?.vehicle_label ?? existingNotes.vehicle_label ?? '';
         const driverLabel = tripData?.driver_label ?? existingNotes.driver_label ?? '';
         const orderRemarks = tripData?.orderRemarks ?? existingNotes.order_remarks ?? {};
@@ -1141,7 +1269,9 @@ const EditShippingCostModal: React.FC<EditShippingCostModalProps> = ({
           const payload: any = {
             notes: JSON.stringify(notesData),
             pricing_mode: pricingMode,
-            supplier_id: supplierId
+            supplier_id: supplierId,
+            vehicle_id: vehicleId,
+            driver_id: driverId
           };
 
           // Add formula-specific fields if in formula mode

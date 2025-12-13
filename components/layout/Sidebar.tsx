@@ -113,7 +113,7 @@ const menuItems = [
       {
         path: '/warehouse/preparation-area-inventory',
         icon: PackageSearch,
-        label: 'สินค้าบ้านหยิบ',
+        label: 'สินค้าออก',
         englishLabel: 'Preparation Area Inventory'
       }
     ]

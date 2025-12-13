@@ -38,8 +38,15 @@ export async function GET(request: NextRequest) {
         trip:trip_id (
           trip_id,
           trip_code,
+          vehicle_id,
+          driver_id,
           vehicle:vehicle_id (
-            plate_number
+            plate_number,
+            model
+          ),
+          driver:driver_id (
+            first_name,
+            last_name
           )
         )
       `)
@@ -130,6 +137,11 @@ export async function GET(request: NextRequest) {
       const province = tripId ? (provinceMap[tripId] || '-') : '-';
       const tripStats = tripId ? tripStatsMap[tripId] : null;
 
+      // Get driver name: prioritize employee name, fallback to vehicle model
+      const driverName = picklist.trip?.driver
+        ? `${picklist.trip.driver.first_name || ''} ${picklist.trip.driver.last_name || ''}`.trim()
+        : picklist.trip?.vehicle?.model || '-';
+
       return {
         id: picklist.id,
         picklist_code: picklist.picklist_code,
@@ -146,7 +158,8 @@ export async function GET(request: NextRequest) {
           trip_code: picklist.trip?.trip_code || '-',
           vehicle: {
             plate_number: picklist.trip?.vehicle?.plate_number || '-'
-          }
+          },
+          driver_name: driverName
         }
       };
     });

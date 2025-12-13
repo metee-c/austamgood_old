@@ -80,6 +80,7 @@ const VehiclesPage = () => {
 
   const fetchVehicles = async () => {
     setLoading(true);
+    setError(null);
     try {
       const params = new URLSearchParams();
       if (searchTerm) params.append('search', searchTerm);
@@ -88,14 +89,19 @@ const VehiclesPage = () => {
       if (!response.ok) {
         throw new Error('Failed to fetch data');
       }
-      const data = await response.json();
-      if (Array.isArray(data)) {
-        setVehicles(data);
+      const result = await response.json();
+      
+      // Handle both response formats: direct array or { success, data } object
+      if (Array.isArray(result)) {
+        setVehicles(result);
+      } else if (result.success && Array.isArray(result.data)) {
+        setVehicles(result.data);
       } else {
         setVehicles([]);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'An unknown error occurred');
+      setVehicles([]);
     } finally {
       setLoading(false);
     }
@@ -218,8 +224,10 @@ const VehiclesPage = () => {
                   <SortableHeader field="vehicle_code" className="w-28" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>รหัสรถ</SortableHeader>
                   <SortableHeader field="plate_number" className="w-28" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ทะเบียน</SortableHeader>
                   <SortableHeader field="vehicle_type" className="w-24" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ประเภท</SortableHeader>
-                  <SortableHeader field="brand" className="w-28" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>บริษัทขนส่ง</SortableHeader>
-                  <SortableHeader field="model" className="w-28" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ชื่อพนักงานขับ</SortableHeader>
+                  <SortableHeader field="supplier_name" className="w-40" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>บริษัทขนส่ง</SortableHeader>
+                  <SortableHeader field="driver_name" className="w-32" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ชื่อพนักงานขับ</SortableHeader>
+                  <SortableHeader field="brand" className="w-28" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ยี่ห้อ</SortableHeader>
+                  <SortableHeader field="model" className="w-28" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>รุ่น</SortableHeader>
                   <SortableHeader field="year_of_manufacture" className="w-20" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ปีผลิต</SortableHeader>
                   <SortableHeader field="capacity_kg" className="w-24" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ความจุ (kg)</SortableHeader>
                   <SortableHeader field="capacity_cbm" className="w-24" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ความจุ (m³)</SortableHeader>
@@ -269,70 +277,84 @@ const VehiclesPage = () => {
                       </div>
                     </Table.Cell>
 
-                    {/* 5. ยี่ห้อ */}
+                    {/* 5. บริษัทขนส่ง */}
+                    <Table.Cell>
+                      <div className="text-xs font-thai">
+                        {vehicle.supplier_name || '-'}
+                      </div>
+                    </Table.Cell>
+
+                    {/* 6. ชื่อพนักงานขับ */}
+                    <Table.Cell>
+                      <div className="text-xs font-thai">
+                        {vehicle.driver_name || '-'}
+                      </div>
+                    </Table.Cell>
+
+                    {/* 7. ยี่ห้อ */}
                     <Table.Cell>
                       <div className="text-xs font-thai">
                         {vehicle.brand || '-'}
                       </div>
                     </Table.Cell>
 
-                    {/* 6. รุ่น */}
+                    {/* 8. รุ่น */}
                     <Table.Cell>
                       <div className="text-xs font-thai">
                         {vehicle.model || '-'}
                       </div>
                     </Table.Cell>
 
-                    {/* 7. ปีผลิต */}
+                    {/* 10. ปีผลิต */}
                     <Table.Cell>
                       <div className="text-xs text-center">
                         {vehicle.year_of_manufacture || '-'}
                       </div>
                     </Table.Cell>
 
-                    {/* 8. ความจุ (kg) */}
+                    {/* 11. ความจุ (kg) */}
                     <Table.Cell>
                       <div className="text-xs text-right">
                         {vehicle.capacity_kg ? `${Number(vehicle.capacity_kg).toLocaleString()}` : '-'}
                       </div>
                     </Table.Cell>
 
-                    {/* 9. ความจุ (m³) */}
+                    {/* 12. ความจุ (m³) */}
                     <Table.Cell>
                       <div className="text-xs text-right">
                         {vehicle.capacity_cbm ? `${Number(vehicle.capacity_cbm).toFixed(2)}` : '-'}
                       </div>
                     </Table.Cell>
 
-                    {/* 10. เชื้อเพลิง */}
+                    {/* 13. เชื้อเพลิง */}
                     <Table.Cell>
                       <div className="text-xs">
                         {vehicle.fuel_type || '-'}
                       </div>
                     </Table.Cell>
 
-                    {/* 11. พนักงานขับ */}
+                    {/* 14. พนักงานขับ ID */}
                     <Table.Cell>
                       <div className="text-xs text-center">
                         {vehicle.driver_id || '-'}
                       </div>
                     </Table.Cell>
 
-                    {/* 12. GPS Device */}
+                    {/* 15. GPS Device */}
                     <Table.Cell>
                       <div className="text-xs font-mono">
                         {vehicle.gps_device_id || '-'}
                       </div>
                     </Table.Cell>
 
-                    {/* 13. ฐานที่ตั้ง */}
+                    {/* 16. ฐานที่ตั้ง */}
                     <Table.Cell>
                       <div className="text-xs font-mono">
                         {vehicle.location_base_id || '-'}
                       </div>
                     </Table.Cell>
 
-                    {/* 14. วันหมดทะเบียน */}
+                    {/* 17. วันหมดทะเบียน */}
                     <Table.Cell>
                       <div className="text-xs">
                         {vehicle.registration_expiry_date
@@ -341,7 +363,7 @@ const VehiclesPage = () => {
                       </div>
                     </Table.Cell>
 
-                    {/* 15. วันหมดประกัน */}
+                    {/* 18. วันหมดประกัน */}
                     <Table.Cell>
                       <div className="text-xs">
                         {vehicle.insurance_expiry_date
@@ -350,14 +372,14 @@ const VehiclesPage = () => {
                       </div>
                     </Table.Cell>
 
-                    {/* 16. กำหนดซ่อมบำรุง */}
+                    {/* 19. กำหนดซ่อมบำรุง */}
                     <Table.Cell>
                       <div className="text-xs max-w-xs truncate" title={vehicle.maintenance_schedule || ''}>
                         {vehicle.maintenance_schedule || '-'}
                       </div>
                     </Table.Cell>
 
-                    {/* 17. สถานะ */}
+                    {/* 20. สถานะ */}
                     <Table.Cell>
                       <Badge variant={
                         vehicle.current_status === 'Active' ? 'success' :
@@ -371,21 +393,21 @@ const VehiclesPage = () => {
                       </Badge>
                     </Table.Cell>
 
-                    {/* 18. หมายเหตุ */}
+                    {/* 21. หมายเหตุ */}
                     <Table.Cell>
                       <div className="text-xs max-w-xs truncate" title={vehicle.remarks || ''}>
                         {vehicle.remarks || '-'}
                       </div>
                     </Table.Cell>
 
-                    {/* 19. สร้างโดย */}
+                    {/* 22. สร้างโดย */}
                     <Table.Cell>
                       <div className="text-xs">
                         {vehicle.created_by || '-'}
                       </div>
                     </Table.Cell>
 
-                    {/* 20. วันที่สร้าง */}
+                    {/* 23. วันที่สร้าง */}
                     <Table.Cell>
                       <div className="text-xs">
                         {vehicle.created_at
@@ -400,7 +422,7 @@ const VehiclesPage = () => {
                       </div>
                     </Table.Cell>
 
-                    {/* 21. วันที่แก้ไข */}
+                    {/* 24. วันที่แก้ไข */}
                     <Table.Cell>
                       <div className="text-xs">
                         {vehicle.updated_at
@@ -415,7 +437,7 @@ const VehiclesPage = () => {
                       </div>
                     </Table.Cell>
 
-                    {/* 22. การดำเนินการ */}
+                    {/* 25. การดำเนินการ */}
                     <Table.Cell>
                       <div className="flex space-x-1">
                         <Button

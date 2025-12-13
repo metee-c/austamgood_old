@@ -98,14 +98,16 @@ interface AvailablePicklist {
   total_quantity: number;
   total_stops?: number;
   total_weight?: number;
+  loading_door_number?: string;
   created_at: string;
   province?: string;
-  trip: {
+  trip?: {
     trip_id: number;
     trip_code: string;
     vehicle?: {
       plate_number: string;
     };
+    driver_name?: string;
   };
 }
 
@@ -1014,85 +1016,11 @@ const LoadlistsPage = () => {
                             <span className="text-gray-400 text-xs">{vehicleType || '-'}</span>
                           )}
                         </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          {index === 0 ? (
-                            <select
-                              value={vehicleId}
-                              onChange={(e) => {
-                                const selectedVehicleId = e.target.value;
-                                setVehicleId(selectedVehicleId);
-                                
-                                // Auto-populate vehicle type and driver when vehicle is selected
-                                if (selectedVehicleId) {
-                                  const selectedVehicle = vehicles.find(v => v.vehicle_id === selectedVehicleId);
-                                  if (selectedVehicle) {
-                                    // Set vehicle type if available
-                                    if (selectedVehicle.vehicle_type) {
-                                      setVehicleType(selectedVehicle.vehicle_type);
-                                    }
-                                    // Set driver_id if available (from master_vehicle.driver_id)
-                                    if (selectedVehicle.driver_id) {
-                                      const driverId = Number(selectedVehicle.driver_id);
-                                      setDriverEmployeeId(driverId);
-                                      // Update driverName for display
-                                      const driver = drivers.find(d => d.employee_id === driverId);
-                                      if (driver) {
-                                        setDriverName(`${driver.first_name} ${driver.last_name}`);
-                                      }
-                                    }
-                                  }
-                                }
-                              }}
-                              className="w-28 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
-                            >
-                              <option value="">-- เลือก --</option>
-                              {vehicles.map((vehicle) => (
-                                <option key={vehicle.vehicle_id} value={vehicle.vehicle_id}>
-                                  {vehicle.plate_number}
-                                </option>
-                              ))}
-                            </select>
-                          ) : vehicleId ? (
-                            <span className="text-gray-400 text-xs">
-                              {vehicles.find(v => v.vehicle_id === vehicleId)?.plate_number || '-'}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400 text-xs">-</span>
-                          )}
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700 font-mono">
+                          {picklist.trip?.vehicle?.plate_number || '-'}
                         </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          {index === 0 ? (
-                            <select
-                              value={driverEmployeeId}
-                              onChange={(e) => {
-                                const selectedDriverId = e.target.value ? Number(e.target.value) : '';
-                                setDriverEmployeeId(selectedDriverId);
-                                // Update driverName for display
-                                if (selectedDriverId) {
-                                  const selectedDriver = drivers.find(d => d.employee_id === selectedDriverId);
-                                  if (selectedDriver) {
-                                    setDriverName(`${selectedDriver.first_name} ${selectedDriver.last_name}`);
-                                  }
-                                } else {
-                                  setDriverName('');
-                                }
-                              }}
-                              className="w-32 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
-                            >
-                              <option value="">-- เลือก --</option>
-                              {drivers.map((driver) => (
-                                <option key={driver.employee_id} value={driver.employee_id}>
-                                  {driver.first_name} {driver.last_name}
-                                </option>
-                              ))}
-                            </select>
-                          ) : driverEmployeeId ? (
-                            <span className="text-gray-400 text-xs">
-                              {drivers.find(d => d.employee_id === driverEmployeeId)?.first_name || '-'} {drivers.find(d => d.employee_id === driverEmployeeId)?.last_name || ''}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400 text-xs">-</span>
-                          )}
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700">
+                          {picklist.trip?.driver_name || '-'}
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-center text-gray-700 text-xs">
                           {(picklist as any).loading_door_number || '-'}

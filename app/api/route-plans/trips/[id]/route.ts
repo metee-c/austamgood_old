@@ -27,6 +27,14 @@ export async function PATCH(
       updateData.supplier_id = body.supplier_id;
     }
 
+    // Add vehicle_id and driver_id if provided
+    if (body.vehicle_id !== undefined) {
+      updateData.vehicle_id = body.vehicle_id;
+    }
+    if (body.driver_id !== undefined) {
+      updateData.driver_id = body.driver_id;
+    }
+
     // Add formula-specific fields if in formula mode
     if (body.pricing_mode === 'formula') {
       if (body.base_price !== undefined) updateData.base_price = body.base_price;
