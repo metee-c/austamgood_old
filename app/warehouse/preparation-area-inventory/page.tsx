@@ -109,6 +109,7 @@ const InventoryBalancesPage = () => {
   const [preparationAreaCodes, setPreparationAreaCodes] = useState<string[]>([]);
 
   useEffect(() => {
+    console.log('🔴 [INIT] useEffect called - fetching all data');
     fetchWarehouses();
     fetchPreparationAreas();
     fetchBalanceData();
@@ -184,15 +185,20 @@ const InventoryBalancesPage = () => {
   };
 
   const fetchDispatchData = async () => {
+    console.log('🟢 [FRONTEND] fetchDispatchData called');
     try {
       const response = await fetch('/api/warehouse/dispatch-inventory');
+      console.log('🟢 [FRONTEND] Dispatch API response status:', response.status);
       if (!response.ok) {
         throw new Error('Failed to fetch dispatch inventory');
       }
       const data = await response.json();
+      console.log('🟢 [FRONTEND] Dispatch data received:', data.data?.length, 'items');
+      console.log('🟢 [FRONTEND] Sample dispatch item:', data.data?.[0]);
+      console.log('🟢 [FRONTEND] Related docs:', data.data?.[0]?.related_documents);
       setDispatchData(data.data || []);
     } catch (err: any) {
-      console.error('Error fetching dispatch data:', err);
+      console.error('❌ Error fetching dispatch data:', err);
     }
   };
 
@@ -259,8 +265,25 @@ const InventoryBalancesPage = () => {
   };
 
   const tabFilteredData = getFilteredDataByTab();
-  
-  const filteredData = tabFilteredData.filter(item => {
+
+  // สำหรับ dispatch และ delivery tabs: แยกแต่ละ related_document ออกมาเป็นแถวแยก
+  const expandedData = (activeTab === 'dispatch' || activeTab === 'delivery')
+    ? tabFilteredData.flatMap(item => {
+        if (item.related_documents && item.related_documents.length > 0) {
+          // แยกแต่ละ document ออกมาเป็นแถวแยก
+          return item.related_documents.map((doc: any) => ({
+            ...item,
+            related_documents: [doc], // เก็บแค่ document เดียวต่อแถว
+            _document: doc // เก็บ reference ไว้ใช้งาน
+          }));
+        } else {
+          // ถ้าไม่มี document ให้แสดงแถวเดียว
+          return [item];
+        }
+      })
+    : tabFilteredData;
+
+  const filteredData = expandedData.filter(item => {
     const searchLower = searchTerm.toLowerCase();
     const matchesSearch = !searchTerm || (
       (item.sku_id?.toLowerCase().includes(searchLower)) ||
@@ -325,16 +348,18 @@ const InventoryBalancesPage = () => {
     });
   }
 
-  // นับจำนวนสินค้าในแต่ละ Tab
-  const preparationCount = balanceData.filter(item => 
+  // นับจำนวนสินค้าในแต่ละ Tab (นับจากข้อมูลต้นฉบับก่อนแยกแถว)
+  const preparationCount = balanceData.filter(item =>
     item.location_id ? preparationAreaCodes.includes(item.location_id) : false
   ).reduce((sum, item) => sum + item.total_piece_qty, 0);
 
-  const dispatchCount = dispatchData.reduce((sum, item) => sum + item.total_piece_qty, 0);
+  const dispatchCount = tabFilteredData.length > 0 && activeTab === 'dispatch'
+    ? tabFilteredData.reduce((sum, item) => sum + item.total_piece_qty, 0)
+    : dispatchData.reduce((sum, item) => sum + item.total_piece_qty, 0);
 
-  const deliveryCount = balanceData.filter(item => 
-    item.location_id === 'WH001-DELIVERY-IN-PROGRESS' || item.location_name === 'Delivery-In-Progress'
-  ).reduce((sum, item) => sum + item.total_piece_qty, 0);
+  const deliveryCount = tabFilteredData.length > 0 && activeTab === 'delivery'
+    ? tabFilteredData.reduce((sum, item) => sum + item.total_piece_qty, 0)
+    : deliveryData.reduce((sum, item) => sum + item.total_piece_qty, 0);
 
   return (
     <div className="h-screen bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
@@ -533,9 +558,9 @@ const InventoryBalancesPage = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
-                    {filteredData.map((balance) => (
+                    {filteredData.map((balance, idx) => (
                         <tr
-                          key={balance.balance_id}
+                          key={`${balance.balance_id}-${idx}`}
                           className={`hover:bg-blue-50/30 transition-colors duration-150 ${
                             isExpired(balance.expiry_date) ? 'bg-red-50' :
                             isExpiringSoon(balance.expiry_date) ? 'bg-orange-50' :
@@ -557,39 +582,27 @@ const InventoryBalancesPage = () => {
                             <>
                               <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-blue-50/30">
                                 {balance.related_documents && balance.related_documents.length > 0 ? (
-                                  <div className="flex flex-col gap-0.5">
-                                    {balance.related_documents.map((doc, idx) => (
-                                      <span key={idx} className="font-mono text-blue-700 font-semibold text-[11px]">
-                                        {doc.picklist_code || doc.face_sheet_no || '-'}
-                                      </span>
-                                    ))}
-                                  </div>
+                                  <span className="font-mono text-blue-700 font-semibold text-[11px]">
+                                    {balance.related_documents[0].picklist_code || balance.related_documents[0].face_sheet_no || '-'}
+                                  </span>
                                 ) : (
                                   <span className="text-gray-400 text-[11px]">-</span>
                                 )}
                               </td>
                               <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-blue-50/30">
                                 {balance.related_documents && balance.related_documents.length > 0 ? (
-                                  <div className="flex flex-col gap-0.5">
-                                    {balance.related_documents.map((doc, idx) => (
-                                      <span key={idx} className="font-mono text-blue-700 text-[11px]">
-                                        {doc.order_no || '-'}
-                                      </span>
-                                    ))}
-                                  </div>
+                                  <span className="font-mono text-blue-700 text-[11px]">
+                                    {balance.related_documents[0].order_no || '-'}
+                                  </span>
                                 ) : (
                                   <span className="text-gray-400 text-[11px]">-</span>
                                 )}
                               </td>
                               <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-blue-50/30">
                                 {balance.related_documents && balance.related_documents.length > 0 ? (
-                                  <div className="flex flex-col gap-0.5">
-                                    {balance.related_documents.map((doc, idx) => (
-                                      <span key={idx} className="text-thai-gray-700 font-thai text-[11px]">
-                                        {doc.shop_name || '-'}
-                                      </span>
-                                    ))}
-                                  </div>
+                                  <span className="text-thai-gray-700 font-thai text-[11px]">
+                                    {balance.related_documents[0].shop_name || '-'}
+                                  </span>
                                 ) : (
                                   <span className="text-gray-400 text-[11px]">-</span>
                                 )}
@@ -600,78 +613,54 @@ const InventoryBalancesPage = () => {
                             <>
                               <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-purple-50/30">
                                 {balance.related_documents && balance.related_documents.length > 0 ? (
-                                  <div className="flex flex-col gap-0.5">
-                                    {balance.related_documents.map((doc: any, idx: number) => (
-                                      <span key={idx} className="font-mono text-purple-700 font-semibold text-[11px]">
-                                        {doc.plan_code || '-'}
-                                      </span>
-                                    ))}
-                                  </div>
+                                  <span className="font-mono text-purple-700 font-semibold text-[11px]">
+                                    {balance.related_documents[0].plan_code || '-'}
+                                  </span>
                                 ) : (
                                   <span className="text-gray-400 text-[11px]">-</span>
                                 )}
                               </td>
                               <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-purple-50/30">
                                 {balance.related_documents && balance.related_documents.length > 0 ? (
-                                  <div className="flex flex-col gap-0.5">
-                                    {balance.related_documents.map((doc: any, idx: number) => (
-                                      <span key={idx} className="font-mono text-purple-700 text-[11px]">
-                                        {doc.trip_code || '-'}
-                                      </span>
-                                    ))}
-                                  </div>
+                                  <span className="font-mono text-purple-700 text-[11px]">
+                                    {balance.related_documents[0].trip_code || '-'}
+                                  </span>
                                 ) : (
                                   <span className="text-gray-400 text-[11px]">-</span>
                                 )}
                               </td>
                               <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-purple-50/30">
                                 {balance.related_documents && balance.related_documents.length > 0 ? (
-                                  <div className="flex flex-col gap-0.5">
-                                    {balance.related_documents.map((doc: any, idx: number) => (
-                                      <span key={idx} className="font-mono text-blue-700 font-semibold text-[11px]">
-                                        {doc.picklist_code || doc.face_sheet_code || doc.bonus_face_sheet_code || '-'}
-                                      </span>
-                                    ))}
-                                  </div>
+                                  <span className="font-mono text-blue-700 font-semibold text-[11px]">
+                                    {balance.related_documents[0].picklist_code || balance.related_documents[0].face_sheet_code || balance.related_documents[0].bonus_face_sheet_code || '-'}
+                                  </span>
                                 ) : (
                                   <span className="text-gray-400 text-[11px]">-</span>
                                 )}
                               </td>
                               <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-purple-50/30">
                                 {balance.related_documents && balance.related_documents.length > 0 ? (
-                                  <div className="flex flex-col gap-0.5">
-                                    {balance.related_documents.map((doc: any, idx: number) => (
-                                      <span key={idx} className="font-mono text-green-700 font-semibold text-[11px]">
-                                        {doc.loadlist_code || '-'}
-                                      </span>
-                                    ))}
-                                  </div>
+                                  <span className="font-mono text-green-700 font-semibold text-[11px]">
+                                    {balance.related_documents[0].loadlist_code || '-'}
+                                  </span>
                                 ) : (
                                   <span className="text-gray-400 text-[11px]">-</span>
                                 )}
                               </td>
                               <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-purple-50/30">
                                 {balance.related_documents && balance.related_documents.length > 0 ? (
-                                  <div className="flex flex-col gap-0.5">
-                                    {balance.related_documents.map((doc: any, idx: number) => (
-                                      <span key={idx} className="font-mono text-blue-700 text-[11px]">
-                                        {doc.order_no || '-'}
-                                      </span>
-                                    ))}
-                                  </div>
+                                  <span className="font-mono text-blue-700 text-[11px]">
+                                    {balance.related_documents[0].order_no || '-'}
+                                  </span>
                                 ) : (
                                   <span className="text-gray-400 text-[11px]">-</span>
                                 )}
                               </td>
                               <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-purple-50/30">
                                 {balance.related_documents && balance.related_documents.length > 0 ? (
-                                  <div className="flex flex-col gap-0.5">
-                                    {balance.related_documents.map((doc: any, idx: number) => (
-                                      <span key={idx} className="text-thai-gray-700 font-thai text-[11px]">
-                                        {doc.shop_name || '-'}
-                                      </span>
-                                    ))}
-                                  </div>
+                                  <span className="text-thai-gray-700 font-thai text-[11px]">
+                                    {balance.related_documents[0].shop_name || '-'}
+                                  </span>
                                 ) : (
                                   <span className="text-gray-400 text-[11px]">-</span>
                                 )}

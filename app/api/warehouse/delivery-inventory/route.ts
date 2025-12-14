@@ -83,9 +83,9 @@ export async function GET() {
                   plan_date
                 )
               ),
-              loadlist_picklists (
+              wms_loadlist_picklists (
                 loadlist_id,
-                loadlist:loadlists (
+                loadlists (
                   loadlist_code,
                   delivery_number,
                   status
@@ -103,16 +103,15 @@ export async function GET() {
             }
           }
 
-          // Filter picklists that are either:
-          // 1. In loaded loadlists, OR
-          // 2. Completed but not yet assigned to any loadlist (items waiting to be loaded)
+          // กรองเฉพาะ picklists ที่มี loadlist status='loaded' เท่านั้น
+          // ถ้ายังไม่มี loadlist หรือ loadlist ยัง pending = ยังอยู่ที่ Dispatch ไม่ใช่ที่ Delivery-In-Progress
           const loadedPicklists = picklists?.filter(pl => {
-            const hasLoadedLoadlist = pl.loadlist_picklists?.some((lp: any) => lp.loadlist?.status === 'loaded');
-            const isCompletedNoLoadlist = pl.status === 'completed' && (!pl.loadlist_picklists || pl.loadlist_picklists.length === 0);
-            return hasLoadedLoadlist || isCompletedNoLoadlist;
+            const hasLoadedLoadlist = pl.wms_loadlist_picklists?.some((lp: any) => lp.loadlists?.status === 'loaded');
+            console.log(`[DELIVERY-INVENTORY] Picklist ${pl.picklist_code}: hasLoadedLoadlist=${hasLoadedLoadlist}`);
+            return hasLoadedLoadlist;
           }) || [];
 
-          console.log(`[DELIVERY-INVENTORY] ✅ Found ${loadedPicklists.length} picklists (loaded or completed without loadlist)`);
+          console.log(`[DELIVERY-INVENTORY] ✅ Found ${loadedPicklists.length} picklists with loaded loadlist`);
 
           if (loadedPicklists.length > 0) {
             // Get order details for these picklist items
@@ -137,7 +136,7 @@ export async function GET() {
 
             // Build the documents
             const picklistDocs = loadedPicklists.map((pl: any) => {
-              const loadlistPicklist = pl.loadlist_picklists?.find((lp: any) => lp.loadlist?.status === 'loaded');
+              const loadlistPicklist = pl.wms_loadlist_picklists?.find((lp: any) => lp.loadlists?.status === 'loaded');
               const picklistItem = picklistItems.find(pi => pi.picklist_id === pl.id);
               const order = orders?.find(o => o.order_id === picklistItem?.order_id);
 
@@ -146,15 +145,15 @@ export async function GET() {
                 plan_code: pl.route_plan_trip?.route_plan?.plan_code || null,
                 trip_code: pl.route_plan_trip?.trip_code || null,
                 picklist_code: pl.picklist_code || null,
-                loadlist_code: loadlistPicklist?.loadlist?.loadlist_code || null,
-                delivery_number: loadlistPicklist?.loadlist?.delivery_number || null,
+                loadlist_code: loadlistPicklist?.loadlists?.loadlist_code || null,
+                delivery_number: loadlistPicklist?.loadlists?.delivery_number || null,
                 order_no: order?.order_no || null,
                 shop_name: order?.shop_name || null,
                 province: order?.province || null,
                 phone: order?.phone || null,
                 // Add status info for debugging
                 picklist_status: pl.status,
-                has_loadlist: pl.loadlist_picklists && pl.loadlist_picklists.length > 0
+                has_loadlist: pl.wms_loadlist_picklists && pl.wms_loadlist_picklists.length > 0
               };
 
               console.log(`[DELIVERY-INVENTORY] 📄 Built picklist doc:`, JSON.stringify(doc, null, 2));
@@ -214,14 +213,15 @@ export async function GET() {
             console.log(`[DELIVERY-INVENTORY] 📦 Found ${faceSheets?.length || 0} face sheets`);
           }
 
-          // Filter face sheets that are either in loaded loadlists OR completed without loadlist
+          // กรองเฉพาะ face sheets ที่มี loadlist status='loaded' เท่านั้น
+          // ถ้ายังไม่มี loadlist หรือ loadlist ยัง pending = ยังอยู่ที่ Dispatch ไม่ใช่ที่ Delivery-In-Progress
           const loadedFaceSheets = faceSheets?.filter(fs => {
             const hasLoadedLoadlist = fs.loadlist_face_sheets?.some((lfs: any) => lfs.loadlist?.status === 'loaded');
-            const isCompletedNoLoadlist = fs.status === 'completed' && (!fs.loadlist_face_sheets || fs.loadlist_face_sheets.length === 0);
-            return hasLoadedLoadlist || isCompletedNoLoadlist;
+            console.log(`[DELIVERY-INVENTORY] Face Sheet ${fs.face_sheet_no}: hasLoadedLoadlist=${hasLoadedLoadlist}`);
+            return hasLoadedLoadlist;
           }) || [];
 
-          console.log(`[DELIVERY-INVENTORY] ✅ Found ${loadedFaceSheets.length} face sheets (loaded or completed without loadlist)`);
+          console.log(`[DELIVERY-INVENTORY] ✅ Found ${loadedFaceSheets.length} face sheets with loaded loadlist`);
 
           if (loadedFaceSheets.length > 0) {
             const orderIds = [...new Set(faceSheetItems
@@ -287,23 +287,26 @@ export async function GET() {
           .eq('bonus_face_sheet.wms_loadlist_bonus_face_sheets.loadlist.status', 'loaded');
 
         if (bonusFaceSheetError) {
-          console.error(`[DELIVERY-INVENTORY] Error fetching bonus face sheet items:`, bonusFaceSheetError);
-        } else if (bonusFaceSheetItems && bonusFaceSheetItems.length > 0) {
-          const bonusFaceSheetDocs = bonusFaceSheetItems.map((bfs: any) => {
-            const loadlist = bfs.bonus_face_sheet?.wms_loadlist_bonus_face_sheets?.[0]?.loadlist;
-            return {
-              document_type: 'bonus_face_sheet',
-              bonus_face_sheet_code: bfs.bonus_face_sheet?.face_sheet_no || null,
-              loadlist_code: loadlist?.loadlist_code || null,
-              delivery_number: loadlist?.delivery_number || null,
-              order_no: bfs.package?.order_no || null,
-              shop_name: bfs.package?.shop_name || null,
-              province: bfs.package?.province || null,
-              phone: bfs.package?.phone || null
-            };
-          });
-          relatedDocuments.push(...bonusFaceSheetDocs);
-          console.log(`[DELIVERY-INVENTORY] Found ${bonusFaceSheetDocs.length} bonus face sheet items for SKU ${item.sku_id}`);
+          console.error(`[DELIVERY-INVENTORY] ❌ Error fetching bonus face sheet items:`, bonusFaceSheetError);
+        } else {
+          console.log(`[DELIVERY-INVENTORY] 📋 Found ${bonusFaceSheetItems?.length || 0} bonus face sheet items with loaded loadlist for SKU ${item.sku_id}`);
+          if (bonusFaceSheetItems && bonusFaceSheetItems.length > 0) {
+            const bonusFaceSheetDocs = bonusFaceSheetItems.map((bfs: any) => {
+              const loadlist = bfs.bonus_face_sheet?.wms_loadlist_bonus_face_sheets?.[0]?.loadlist;
+              return {
+                document_type: 'bonus_face_sheet',
+                bonus_face_sheet_code: bfs.bonus_face_sheet?.face_sheet_no || null,
+                loadlist_code: loadlist?.loadlist_code || null,
+                delivery_number: loadlist?.delivery_number || null,
+                order_no: bfs.package?.order_no || null,
+                shop_name: bfs.package?.shop_name || null,
+                province: bfs.package?.province || null,
+                phone: bfs.package?.phone || null
+              };
+            });
+            relatedDocuments.push(...bonusFaceSheetDocs);
+            console.log(`[DELIVERY-INVENTORY] ✅ Added ${bonusFaceSheetDocs.length} bonus face sheet documents for SKU ${item.sku_id}`);
+          }
         }
 
         console.log(`[DELIVERY-INVENTORY] Total related_documents for SKU ${item.sku_id}: ${relatedDocuments.length}`);

@@ -34,18 +34,28 @@ interface Loadlist {
     employee_id: number;
     first_name: string;
     last_name: string;
+    nickname?: string;
     employee_code: string;
   };
   picker_employee?: {
     employee_id: number;
     first_name: string;
     last_name: string;
+    nickname?: string;
     employee_code: string;
   };
   picker_employees?: Array<{
     employee_id: number;
     first_name: string;
     last_name: string;
+    nickname?: string;
+    employee_code: string;
+  }>;
+  checker_employees?: Array<{
+    employee_id: number;
+    first_name: string;
+    last_name: string;
+    nickname?: string;
     employee_code: string;
   }>;
   vehicle?: {
@@ -122,7 +132,8 @@ export default function MobileLoadingDetailPage() {
       return;
     }
 
-    if (!confirm(`ยืนยันการโหลดสินค้าโดย ${employee.first_name} ${employee.last_name}?`)) {
+    const employeeName = employee.nickname || `${employee.first_name} ${employee.last_name}`;
+    if (!confirm(`ยืนยันการโหลดสินค้าโดย ${employeeName}?`)) {
       return;
     }
 
@@ -363,6 +374,7 @@ export default function MobileLoadingDetailPage() {
           checkerEmployee={loadlist?.checker_employee}
           pickerEmployee={loadlist?.picker_employee}
           pickerEmployees={loadlist?.picker_employees}
+          checkerEmployees={loadlist?.checker_employees}
         />
       )}
     </div>

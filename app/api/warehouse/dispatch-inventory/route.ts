@@ -2,10 +2,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
 export async function GET(request: NextRequest) {
+  console.log('🔵 [DISPATCH-INVENTORY] API called!');
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
     const warehouseId = searchParams.get('warehouse_id') || 'WH001';
+    console.log(`🔵 [DISPATCH-INVENTORY] Warehouse: ${warehouseId}`);
 
     // ดึงข้อมูล inventory ที่ Dispatch location พร้อมข้อมูลใบหยิบและออเดอร์
     const { data: dispatchInventory, error } = await supabase
@@ -42,7 +44,11 @@ export async function GET(request: NextRequest) {
 
     if (error) throw error;
 
-    // ดึงข้อมูล bonus face sheet items ที่เกี่ยวข้อง
+    // ✅ ดึงข้อมูล bonus face sheet items ที่มี SKU ตรงกับ inventory ที่ Dispatch
+    // Query จาก bonus_face_sheet_items โดยไม่กรอง status เพื่อดูทุก item ที่เคยถูก pick
+    const skuIds = (dispatchInventory || []).map(item => item.sku_id);
+    console.log(`[DISPATCH-INVENTORY] Looking for bonus face sheets with SKUs:`, skuIds);
+
     const { data: bonusFaceSheetData, error: bfsError } = await supabase
       .from('bonus_face_sheet_items')
       .select(`
@@ -58,7 +64,14 @@ export async function GET(request: NextRequest) {
           id,
           face_sheet_no,
           status,
-          picking_completed_at
+          picking_completed_at,
+          wms_loadlist_bonus_face_sheets (
+            loadlist_id,
+            loadlists (
+              loadlist_code,
+              status
+            )
+          )
         ),
         bonus_face_sheet_packages!package_id (
           id,
@@ -83,11 +96,17 @@ export async function GET(request: NextRequest) {
           )
         )
       `)
-      .eq('status', 'picked');
+      .in('sku_id', skuIds);
+      // ไม่กรอง status เพราะ items ที่ย้ายมา Dispatch แล้วอาจมี status เป็น 'picked' หรือ 'completed'
 
     if (bfsError) throw bfsError;
 
-    // ดึงข้อมูล picklist items ที่เกี่ยวข้อง (สำหรับ route_plan orders)
+    console.log(`[DISPATCH-INVENTORY] Bonus Face Sheet Items: Found ${bonusFaceSheetData?.length || 0} items (all statuses)`);
+    const filteredBonusFaceSheets = bonusFaceSheetData || [];
+
+    // ✅ ดึงข้อมูล picklist items ที่มี SKU ตรงกับ inventory ที่ Dispatch
+    console.log(`[DISPATCH-INVENTORY] Looking for picklists with SKUs:`, skuIds);
+
     const { data: picklistData, error: picklistError } = await supabase
       .from('picklist_items')
       .select(`
@@ -104,7 +123,14 @@ export async function GET(request: NextRequest) {
           id,
           picklist_code,
           status,
-          picking_completed_at
+          picking_completed_at,
+          wms_loadlist_picklists (
+            loadlist_id,
+            loadlists (
+              loadlist_code,
+              status
+            )
+          )
         ),
         wms_orders!order_id (
           order_id,
@@ -117,30 +143,86 @@ export async function GET(request: NextRequest) {
           delivery_date
         )
       `)
-      .eq('status', 'picked');
+      .in('sku_id', skuIds);
+      // ไม่กรอง status เพราะ items ที่ย้ายมา Dispatch แล้วอาจมี status เป็น 'picked' หรือ 'completed'
 
     if (picklistError) throw picklistError;
 
-    // จับคู่ข้อมูล inventory กับ bonus face sheet และ picklist
+    console.log(`[DISPATCH-INVENTORY] Picklist Items: Found ${picklistData?.length || 0} items (all statuses)`);
+    const filteredPicklists = picklistData || [];
+
+    // ✅ ดึงข้อมูล face sheet items ที่มี SKU ตรงกับ inventory ที่ Dispatch (ใบปะหน้า)
+    console.log(`[DISPATCH-INVENTORY] Looking for face sheets with SKUs:`, skuIds);
+
+    const { data: faceSheetData, error: faceSheetError } = await supabase
+      .from('face_sheet_items')
+      .select(`
+        id,
+        face_sheet_id,
+        order_id,
+        sku_id,
+        quantity_to_pick,
+        quantity_picked,
+        status,
+        picked_at,
+        face_sheets!face_sheet_id (
+          id,
+          face_sheet_no,
+          status,
+          picking_completed_at,
+          loadlist_face_sheets (
+            loadlist_id,
+            loadlist:loadlists (
+              loadlist_code,
+              delivery_number,
+              status
+            )
+          )
+        ),
+        wms_orders!order_id (
+          order_id,
+          order_no,
+          customer_id,
+          shop_name,
+          province,
+          phone,
+          status,
+          delivery_date
+        )
+      `)
+      .in('sku_id', skuIds);
+      // ไม่กรอง status เพราะ items ที่ย้ายมา Dispatch แล้วอาจมี status เป็น 'picked' หรือ 'completed'
+
+    if (faceSheetError) throw faceSheetError;
+
+    console.log(`[DISPATCH-INVENTORY] Face Sheet Items: Found ${faceSheetData?.length || 0} items (all statuses)`);
+    const filteredFaceSheets = faceSheetData || [];
+
+    // จับคู่ข้อมูล inventory กับ face sheet, bonus face sheet และ picklist
     const enrichedData = (dispatchInventory || []).map(balance => {
-      // หา bonus face sheet items ที่ตรงกับ SKU
-      const relatedBonusItems = (bonusFaceSheetData || []).filter(
+      // หา bonus face sheet items ที่ตรงกับ SKU (เฉพาะที่ยังไม่ loaded)
+      const relatedBonusItems = filteredBonusFaceSheets.filter(
         item => item.sku_id === balance.sku_id
       );
 
       // หา picklist items ที่ตรงกับ SKU
-      const relatedPicklistItems = (picklistData || []).filter(
+      const relatedPicklistItems = filteredPicklists.filter(
         item => item.sku_id === balance.sku_id
       );
 
-      // รวมเอกสารทั้งสองประเภท
+      // หา face sheet items ที่ตรงกับ SKU (ใบปะหน้า)
+      const relatedFaceSheetItems = filteredFaceSheets.filter(
+        item => item.sku_id === balance.sku_id
+      );
+
+      // รวมเอกสารทั้งสามประเภท
       const allRelatedDocuments = [
         // Bonus face sheet documents
         ...relatedBonusItems.map(item => {
           const faceSheet = Array.isArray(item.bonus_face_sheets) ? item.bonus_face_sheets[0] : item.bonus_face_sheets;
           const faceSheetPackage = Array.isArray(item.bonus_face_sheet_packages) ? item.bonus_face_sheet_packages[0] : item.bonus_face_sheet_packages;
           const order = faceSheetPackage?.wms_orders ? (Array.isArray(faceSheetPackage.wms_orders) ? faceSheetPackage.wms_orders[0] : faceSheetPackage.wms_orders) : null;
-          
+
           return {
             document_type: 'bonus_face_sheet',
             face_sheet_id: faceSheet?.id,
@@ -163,7 +245,7 @@ export async function GET(request: NextRequest) {
         ...relatedPicklistItems.map(item => {
           const picklist = Array.isArray(item.picklists) ? item.picklists[0] : item.picklists;
           const order = Array.isArray(item.wms_orders) ? item.wms_orders[0] : item.wms_orders;
-          
+
           return {
             document_type: 'picklist',
             picklist_id: picklist?.id,
@@ -171,6 +253,26 @@ export async function GET(request: NextRequest) {
             picklist_status: picklist?.status,
             order_id: order?.order_id || item.order_id,
             order_no: order?.order_no || item.order_no,
+            shop_name: order?.shop_name,
+            province: order?.province,
+            phone: order?.phone,
+            delivery_date: order?.delivery_date,
+            quantity_picked: item.quantity_picked,
+            picked_at: item.picked_at
+          };
+        }),
+        // Face sheet documents (ใบปะหน้า)
+        ...relatedFaceSheetItems.map(item => {
+          const faceSheet = Array.isArray(item.face_sheets) ? item.face_sheets[0] : item.face_sheets;
+          const order = Array.isArray(item.wms_orders) ? item.wms_orders[0] : item.wms_orders;
+
+          return {
+            document_type: 'face_sheet',
+            face_sheet_id: faceSheet?.id,
+            face_sheet_no: faceSheet?.face_sheet_no,
+            face_sheet_status: faceSheet?.status,
+            order_id: order?.order_id || item.order_id,
+            order_no: order?.order_no,
             shop_name: order?.shop_name,
             province: order?.province,
             phone: order?.phone,
@@ -187,6 +289,21 @@ export async function GET(request: NextRequest) {
         related_documents: allRelatedDocuments
       };
     });
+
+    const totalRelatedDocs = enrichedData.reduce((sum, item) => sum + (item.related_documents?.length || 0), 0);
+    console.log(`[DISPATCH-INVENTORY] Final enriched data: ${enrichedData.length} items, Total related docs: ${totalRelatedDocs}`);
+
+    // Debug: แสดงตัวอย่าง item ที่มี related_documents
+    const itemWithDocs = enrichedData.find(item => item.related_documents && item.related_documents.length > 0);
+    if (itemWithDocs) {
+      console.log(`[DISPATCH-INVENTORY] ✅ Sample item WITH docs:`, {
+        sku_id: itemWithDocs.sku_id,
+        related_docs_count: itemWithDocs.related_documents?.length,
+        first_doc: itemWithDocs.related_documents?.[0]
+      });
+    } else {
+      console.log(`[DISPATCH-INVENTORY] ⚠️ NO items have related_documents!`);
+    }
 
     return NextResponse.json({
       success: true,

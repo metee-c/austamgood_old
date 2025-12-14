@@ -40,7 +40,7 @@ export async function GET(request: Request) {
 
     const documents: PreparedDocument[] = [];
 
-    // 1. ดึงข้อมูล Picklists ที่จัดเสร็จแล้ว พร้อมข้อมูล inventory balances จาก Dispatch
+    // 1. ดึงข้อมูล Picklists ที่จัดเสร็จแล้ว แต่ยังไม่ได้เพิ่มเข้า loadlist
     const { data: picklists, error: picklistError } = await supabase
       .from('picklists')
       .select(`
@@ -56,15 +56,30 @@ export async function GET(request: Request) {
           sku_name,
           quantity_to_pick,
           source_location_id
+        ),
+        wms_loadlist_picklists (
+          loadlist_id,
+          loadlists (
+            loadlist_code
+          )
         )
       `)
-      .in('status', ['picking', 'completed'])
+      .eq('status', 'completed')  // ✅ เฉพาะที่หยิบเสร็จแล้ว
       .order('created_at', { ascending: false });
 
     if (!picklistError && picklists) {
       const dispatchLocationId = 'WH001-02642';
       
       for (const pl of picklists) {
+        // ✅ ตรวจสอบว่ายังไม่ได้เพิ่มเข้า loadlist
+        const loadlistCode = (pl as any).wms_loadlist_picklists?.[0]?.loadlists?.loadlist_code;
+        
+        // ข้ามถ้าถูกเพิ่มเข้า loadlist แล้ว
+        if (loadlistCode) {
+          console.log(`⏭️ Skip picklist ${pl.picklist_code} - already in loadlist ${loadlistCode}`);
+          continue;
+        }
+        
         const items = [];
         
         for (const item of (pl.picklist_items || [])) {
@@ -112,7 +127,9 @@ export async function GET(request: Request) {
             updated_at: balances?.updated_at
           });
         }
-
+        
+        console.log(`✅ Include picklist ${pl.picklist_code} - not in any loadlist yet`);
+        
         documents.push({
           document_type: 'picklist',
           document_id: pl.id,
@@ -121,12 +138,13 @@ export async function GET(request: Request) {
           total_items: pl.total_lines || 0,
           total_quantity: pl.total_quantity || 0,
           created_at: pl.created_at,
+          loadlist_code: null,  // ✅ ยืนยันว่ายังไม่มี loadlist
           items
-        });
+        } as any);
       }
     }
 
-    // 2. ดึงข้อมูล Face Sheets ที่จัดเสร็จแล้ว พร้อมข้อมูล inventory balances จาก Dispatch
+    // 2. ดึงข้อมูล Face Sheets ที่จัดเสร็จแล้ว แต่ยังไม่ได้เพิ่มเข้า loadlist
     const { data: faceSheets, error: faceSheetError } = await supabase
       .from('face_sheets')
       .select(`
@@ -142,9 +160,15 @@ export async function GET(request: Request) {
           product_name,
           quantity_to_pick,
           source_location_id
+        ),
+        loadlist_face_sheets (
+          loadlist_id,
+          loadlists (
+            loadlist_code
+          )
         )
       `)
-      .in('status', ['picking', 'completed', 'generated'])
+      .eq('status', 'completed')  // ✅ เฉพาะที่หยิบเสร็จแล้ว
       .eq('warehouse_id', warehouseId)
       .order('created_at', { ascending: false });
 
@@ -152,6 +176,15 @@ export async function GET(request: Request) {
       const dispatchLocationId = 'WH001-02642';
       
       for (const fs of faceSheets) {
+        // ✅ ตรวจสอบว่ายังไม่ได้เพิ่มเข้า loadlist
+        const loadlistCode = (fs as any).loadlist_face_sheets?.[0]?.loadlists?.loadlist_code;
+        
+        // ข้ามถ้าถูกเพิ่มเข้า loadlist แล้ว
+        if (loadlistCode) {
+          console.log(`⏭️ Skip face sheet ${fs.face_sheet_no} - already in loadlist ${loadlistCode}`);
+          continue;
+        }
+        
         const items = [];
         const totalQty = (fs.face_sheet_items || []).reduce((sum: number, item: any) => 
           sum + (item.quantity_to_pick || 0), 0
@@ -202,6 +235,8 @@ export async function GET(request: Request) {
           });
         }
         
+        console.log(`✅ Include face sheet ${fs.face_sheet_no} - not in any loadlist yet`);
+        
         documents.push({
           document_type: 'face_sheet',
           document_id: fs.id,
@@ -210,12 +245,13 @@ export async function GET(request: Request) {
           total_items: fs.total_items || 0,
           total_quantity: totalQty,
           created_at: fs.created_at,
+          loadlist_code: null,  // ✅ ยืนยันว่ายังไม่มี loadlist
           items
-        });
+        } as any);
       }
     }
 
-    // 3. ดึงข้อมูล Bonus Face Sheets ที่จัดเสร็จแล้ว พร้อมข้อมูล inventory balances จาก Dispatch
+    // 3. ดึงข้อมูล Bonus Face Sheets ที่จัดเสร็จแล้ว แต่ยังไม่ได้เพิ่มเข้า loadlist
     const { data: bonusFaceSheets, error: bonusFaceSheetError } = await supabase
       .from('bonus_face_sheets')
       .select(`
@@ -231,21 +267,35 @@ export async function GET(request: Request) {
           product_name,
           quantity_to_pick,
           source_location_id
+        ),
+        wms_loadlist_bonus_face_sheets (
+          loadlist_id,
+          loadlists (
+            loadlist_code
+          )
         )
       `)
-      .in('status', ['picking', 'completed', 'generated'])
+      .eq('status', 'completed')  // ✅ เฉพาะที่หยิบเสร็จแล้ว
       .eq('warehouse_id', warehouseId)
       .order('created_at', { ascending: false });
 
     if (!bonusFaceSheetError && bonusFaceSheets) {
+      const dispatchLocationId = 'WH001-02642';
+      
       for (const bfs of bonusFaceSheets) {
+        // ✅ ตรวจสอบว่ายังไม่ได้เพิ่มเข้า loadlist
+        const loadlistCode = (bfs as any).wms_loadlist_bonus_face_sheets?.[0]?.loadlists?.loadlist_code;
+        
+        // ข้ามถ้าถูกเพิ่มเข้า loadlist แล้ว
+        if (loadlistCode) {
+          console.log(`⏭️ Skip bonus face sheet ${bfs.face_sheet_no} - already in loadlist ${loadlistCode}`);
+          continue;
+        }
+        
         const items = [];
         const totalQty = (bfs.bonus_face_sheet_items || []).reduce((sum: number, item: any) => 
           sum + (item.quantity_to_pick || 0), 0
         );
-        
-        // ดึงข้อมูลจาก Dispatch location แทน source_location
-        const dispatchLocationId = 'WH001-02642';
         
         for (const item of (bfs.bonus_face_sheet_items || [])) {
           const { data: balances } = await supabase
@@ -292,6 +342,8 @@ export async function GET(request: Request) {
           });
         }
         
+        console.log(`✅ Include bonus face sheet ${bfs.face_sheet_no} - not in any loadlist yet`);
+        
         documents.push({
           document_type: 'bonus_face_sheet',
           document_id: bfs.id,
@@ -300,8 +352,9 @@ export async function GET(request: Request) {
           total_items: bfs.total_items || 0,
           total_quantity: totalQty,
           created_at: bfs.created_at,
+          loadlist_code: null,  // ✅ ยืนยันว่ายังไม่มี loadlist
           items
-        });
+        } as any);
       }
     }
 

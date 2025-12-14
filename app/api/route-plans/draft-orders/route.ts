@@ -16,7 +16,7 @@ export async function GET(request: NextRequest) {
       .from('wms_orders')
       .select('*')
       .eq('status', 'draft')
-      .in('order_type', ['route_planning', 'special'])
+      .eq('order_type', 'route_planning')
       .order('order_date', { ascending: true });
 
     if (warehouseId) {

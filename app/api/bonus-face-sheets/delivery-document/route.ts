@@ -384,8 +384,8 @@ function generateDeliveryHTML(
                 </div>
                 <div>
                     <span style="font-weight: 600;">คนขับ:</span>
-                    <span style="${loadlistData?.driver_employee ? '' : 'border-bottom: 1px solid #000;'} display: inline-block; min-width: 120px; padding: 0 5px;">
-                        ${loadlistData?.driver_employee ? `${loadlistData.driver_employee.first_name} ${loadlistData.driver_employee.last_name}` : '____________________'}
+                    <span style="${loadlistData?.vehicle?.model ? '' : 'border-bottom: 1px solid #000;'} display: inline-block; min-width: 120px; padding: 0 5px;">
+                        ${loadlistData?.vehicle?.model || '____________________'}
                     </span>
                 </div>
             </div>
@@ -472,13 +472,13 @@ export async function GET(request: NextRequest) {
             .select('first_name, last_name')
             .eq('employee_id', loadlist.driver_employee_id)
             .single();
-          loadlist.driver_employee = driver;
+          loadlist.driver = driver;
         }
         
         if (loadlist.vehicle_id) {
           const { data: vehicle } = await supabase
             .from('master_vehicle')
-            .select('plate_number')
+            .select('plate_number, model')
             .eq('vehicle_id', loadlist.vehicle_id)
             .single();
           loadlist.vehicle = vehicle;

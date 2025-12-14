@@ -848,14 +848,12 @@ const OrdersPage = () => {
                               <span className="text-gray-400 text-xs">-</span>
                             )
                           ) : (
-                            // แสดง plan_code และ trip_code สำหรับ route_planning
+                            // แสดง plan_code สำหรับ route_planning
                             order.plan_code ? (
                               <div className="text-xs space-y-0.5">
                                 <div className="font-semibold text-blue-600">{order.plan_code}</div>
-                                {order.trip_code ? (
+                                {order.trip_code && (
                                   <div className="text-gray-600 font-medium">เที่ยวที่ {order.trip_sequence || '?'}</div>
-                                ) : (
-                                  <div className="text-gray-400 italic">ยังไม่จัดคัน</div>
                                 )}
                               </div>
                             ) : (

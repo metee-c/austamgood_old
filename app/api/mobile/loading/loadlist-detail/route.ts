@@ -33,7 +33,7 @@ export async function GET(request: NextRequest) {
     if (loadlist.checker_employee_id) {
       const { data: checkerData } = await supabase
         .from('master_employee')
-        .select('employee_id, first_name, last_name, employee_code')
+        .select('employee_id, first_name, last_name, nickname, employee_code')
         .eq('employee_id', loadlist.checker_employee_id)
         .single();
       
@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
     let totalWeight = 0;
     const ordersMap = new Map();
 
-    // Get picklists with picker info
+    // Get picklists with picker and checker info
     const { data: picklistData } = await supabase
       .from('wms_loadlist_picklists')
       .select(`
@@ -62,6 +62,7 @@ export async function GET(request: NextRequest) {
           picklist_code,
           assigned_to_employee_id,
           picker_employee_ids,
+          checker_employee_ids,
           assigned_employee:assigned_to_employee_id (
             employee_id,
             first_name,
@@ -276,22 +277,24 @@ export async function GET(request: NextRequest) {
 
     const orders = Array.from(ordersMap.values());
 
-    // Get picker info from first picklist or bonus face sheet
-    // ใช้ picker_employee_ids ที่บันทึกตอนยืนยันหยิบสินค้าเสร็จ
+    // Get picker and checker info from first picklist or bonus face sheet
+    // ใช้ picker_employee_ids และ checker_employee_ids ที่บันทึกตอนยืนยันหยิบสินค้าเสร็จ
     let pickerEmployee = null;
     let pickerEmployees: any[] = [];
+    let checkerEmployees: any[] = [];
     
     // ลองดึงจาก picklist ก่อน
     if (picklistData && picklistData.length > 0) {
       const firstPicklist = picklistData[0].picklists as any;
       const pickerIds = firstPicklist?.picker_employee_ids;
+      const checkerIds = firstPicklist?.checker_employee_ids;
       
       // ถ้ามี picker_employee_ids (บันทึกตอนยืนยันหยิบเสร็จ)
       if (pickerIds && Array.isArray(pickerIds) && pickerIds.length > 0) {
         const pickerIdsInt = pickerIds.map((id: any) => parseInt(id));
         const { data: pickerData } = await supabase
           .from('master_employee')
-          .select('employee_id, first_name, last_name, employee_code')
+          .select('employee_id, first_name, last_name, nickname, employee_code')
           .in('employee_id', pickerIdsInt);
         
         if (pickerData && pickerData.length > 0) {
@@ -304,29 +307,62 @@ export async function GET(request: NextRequest) {
         pickerEmployee = firstPicklist.assigned_employee;
         pickerEmployees = [firstPicklist.assigned_employee];
       }
+
+      // ดึงข้อมูล checker_employee_ids
+      if (checkerIds && Array.isArray(checkerIds) && checkerIds.length > 0) {
+        const checkerIdsInt = checkerIds.map((id: any) => parseInt(id));
+        const { data: checkerData } = await supabase
+          .from('master_employee')
+          .select('employee_id, first_name, last_name, nickname, employee_code')
+          .in('employee_id', checkerIdsInt);
+        
+        if (checkerData && checkerData.length > 0) {
+          checkerEmployees = checkerData;
+        }
+      }
     }
     
-    // ถ้ายังไม่มี picker ให้ลองดึงจาก bonus face sheet
-    if (pickerEmployees.length === 0 && bonusFaceSheetData && bonusFaceSheetData.length > 0) {
-      // ดึงข้อมูล picker_employee_ids จาก bonus_face_sheets
+    // ถ้ายังไม่มี picker หรือ checker ให้ลองดึงจาก bonus face sheet
+    if ((pickerEmployees.length === 0 || checkerEmployees.length === 0) && bonusFaceSheetData && bonusFaceSheetData.length > 0) {
+      // ดึงข้อมูล picker_employee_ids และ checker_employee_ids จาก bonus_face_sheets
       const { data: bfsData } = await supabase
         .from('bonus_face_sheets')
-        .select('picker_employee_ids')
+        .select('picker_employee_ids, checker_employee_ids')
         .eq('id', bonusFaceSheetData[0].bonus_face_sheet_id)
         .single();
       
-      const pickerIds = bfsData?.picker_employee_ids;
-      
-      if (pickerIds && Array.isArray(pickerIds) && pickerIds.length > 0) {
-        const pickerIdsInt = pickerIds.map((id: any) => parseInt(id));
-        const { data: pickerData } = await supabase
-          .from('master_employee')
-          .select('employee_id, first_name, last_name, employee_code')
-          .in('employee_id', pickerIdsInt);
+      // ดึง picker employees
+      if (pickerEmployees.length === 0) {
+        const pickerIds = bfsData?.picker_employee_ids;
         
-        if (pickerData && pickerData.length > 0) {
-          pickerEmployees = pickerData;
-          pickerEmployee = pickerData[0]; // เก็บคนแรกไว้เพื่อ backward compatibility
+        if (pickerIds && Array.isArray(pickerIds) && pickerIds.length > 0) {
+          const pickerIdsInt = pickerIds.map((id: any) => parseInt(id));
+          const { data: pickerData } = await supabase
+            .from('master_employee')
+            .select('employee_id, first_name, last_name, nickname, employee_code')
+            .in('employee_id', pickerIdsInt);
+          
+          if (pickerData && pickerData.length > 0) {
+            pickerEmployees = pickerData;
+            pickerEmployee = pickerData[0]; // เก็บคนแรกไว้เพื่อ backward compatibility
+          }
+        }
+      }
+
+      // ดึง checker employees
+      if (checkerEmployees.length === 0) {
+        const checkerIds = bfsData?.checker_employee_ids;
+        
+        if (checkerIds && Array.isArray(checkerIds) && checkerIds.length > 0) {
+          const checkerIdsInt = checkerIds.map((id: any) => parseInt(id));
+          const { data: checkerData } = await supabase
+            .from('master_employee')
+            .select('employee_id, first_name, last_name, nickname, employee_code')
+            .in('employee_id', checkerIdsInt);
+          
+          if (checkerData && checkerData.length > 0) {
+            checkerEmployees = checkerData;
+          }
         }
       }
     }
@@ -341,6 +377,7 @@ export async function GET(request: NextRequest) {
         checker_employee: checkerEmployee,
         picker_employee: pickerEmployee,
         picker_employees: pickerEmployees, // ส่งรายชื่อพนักงานจัดสินค้าทั้งหมด
+        checker_employees: checkerEmployees, // ส่งรายชื่อผู้เช็คจัดสินค้าทั้งหมด
         orders
       }
     });

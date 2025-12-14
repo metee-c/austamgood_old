@@ -151,7 +151,7 @@ export async function GET(request: NextRequest) {
         loading_door_number: loadlist.loading_door_number,
         vehicle_id: loadlist.vehicle_id,
         vehicleIdNum,
-        vehicle: vehicle ? { vehicle_id: vehicle.vehicle_id, plate_number: vehicle.plate_number } : null,
+        vehicle: vehicle ? { vehicle_id: vehicle.vehicle_id, plate_number: vehicle.plate_number, model: vehicle.model } : null,
         driver_employee_id: loadlist.driver_employee_id,
         driver: driver ? { employee_id: driver.employee_id, name: `${driver.first_name} ${driver.last_name}` } : null
       });

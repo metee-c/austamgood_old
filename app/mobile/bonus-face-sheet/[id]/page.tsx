@@ -395,7 +395,8 @@ const BonusFaceSheetPickPage = () => {
             }
           }
         }}
-        title="เลือกพนักงาน"
+        title="ยืนยันการหยิบสินค้า"
+        mode="both"
       />
 
       {/* Loading Overlay */}

@@ -1137,9 +1137,27 @@ const LoadlistsPage = () => {
                                   const selectedVehicle = vehicles.find(v => String(v.vehicle_id) === selectedVehicleId);
                                   if (selectedVehicle) {
                                     // Set driver name from vehicle.model
-                                    setDriverName(selectedVehicle.model || '');
-                                    // Clear driver_employee_id (user can select later if needed)
-                                    setDriverEmployeeId('');
+                                    const driverNameFromVehicle = selectedVehicle.model || '';
+                                    setDriverName(driverNameFromVehicle);
+                                    
+                                    // Try to find matching employee by name
+                                    if (driverNameFromVehicle) {
+                                      const matchingEmployee = employees.find(emp => {
+                                        const fullName = `${emp.first_name} ${emp.last_name}`.trim();
+                                        return fullName.includes(driverNameFromVehicle) || driverNameFromVehicle.includes(emp.first_name);
+                                      });
+                                      
+                                      if (matchingEmployee) {
+                                        setDriverEmployeeId(matchingEmployee.employee_id);
+                                        console.log('✅ Auto-matched driver:', matchingEmployee.first_name, matchingEmployee.last_name);
+                                      } else {
+                                        // No matching employee found, keep driver_employee_id empty
+                                        setDriverEmployeeId('');
+                                        console.log('⚠️ No matching employee found for driver name:', driverNameFromVehicle);
+                                      }
+                                    } else {
+                                      setDriverEmployeeId('');
+                                    }
                                   }
                                 } else {
                                   setDriverName('');

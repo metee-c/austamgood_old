@@ -22,18 +22,28 @@ interface EmployeeSelectionModalProps {
     employee_id: number;
     first_name: string;
     last_name: string;
+    nickname?: string;
     employee_code: string;
   };
   pickerEmployee?: {
     employee_id: number;
     first_name: string;
     last_name: string;
+    nickname?: string;
     employee_code: string;
   };
   pickerEmployees?: Array<{
     employee_id: number;
     first_name: string;
     last_name: string;
+    nickname?: string;
+    employee_code: string;
+  }>;
+  checkerEmployees?: Array<{
+    employee_id: number;
+    first_name: string;
+    last_name: string;
+    nickname?: string;
     employee_code: string;
   }>;
 }
@@ -47,7 +57,8 @@ export default function EmployeeSelectionModal({
   defaultCheckerId,
   checkerEmployee,
   pickerEmployee,
-  pickerEmployees
+  pickerEmployees,
+  checkerEmployees
 }: EmployeeSelectionModalProps) {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
@@ -121,11 +132,8 @@ export default function EmployeeSelectionModal({
 
   const toggleChecker = (employeeId: number) => {
     const idStr = employeeId.toString();
-    setCheckerIds(prev => 
-      prev.includes(idStr)
-        ? prev.filter(id => id !== idStr)
-        : [...prev, idStr]
-    );
+    // เลือกได้แค่คนเดียว (radio behavior)
+    setCheckerIds([idStr]);
   };
 
   const togglePicker = (employeeId: number) => {
@@ -171,7 +179,7 @@ export default function EmployeeSelectionModal({
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2 font-thai">
                   <User className="w-4 h-4 inline mr-1" />
-                  เลือกผู้เช็คโหลดใหม่ ({checkerIds.length} คน)
+                  {mode === 'checker-only' ? 'เลือกผู้เช็คโหลดใหม่' : 'เลือกผู้เช็คสินค้า'} ({checkerIds.length} คน)
                 </label>
                 <div className="border border-gray-300 rounded-lg max-h-48 overflow-y-auto">
                   {employees.length === 0 && !loading && (
@@ -185,10 +193,11 @@ export default function EmployeeSelectionModal({
                       className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
                     >
                       <input
-                        type="checkbox"
+                        type="radio"
+                        name="checker"
                         checked={checkerIds.includes(emp.employee_id.toString())}
                         onChange={() => toggleChecker(emp.employee_id)}
-                        className="w-4 h-4 text-sky-500 border-gray-300 rounded focus:ring-sky-500"
+                        className="w-4 h-4 text-sky-500 border-gray-300 focus:ring-sky-500"
                       />
                       <span className="ml-2 text-sm font-thai text-gray-900">
                         {getEmployeeDisplay(emp)}
@@ -208,13 +217,13 @@ export default function EmployeeSelectionModal({
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2 font-thai">
                       <User className="w-4 h-4 inline mr-1" />
-                      ผู้เช็คโหลด
+                      ผู้เช็คโหลดที่กำหนดไว้
                     </label>
                     <div className="border border-blue-300 rounded-lg bg-blue-50 px-3 py-2">
                       {checkerEmployee ? (
                         <>
                           <span className="text-sm font-thai text-gray-900">
-                            {checkerEmployee.first_name} {checkerEmployee.last_name}
+                            {checkerEmployee.nickname || `${checkerEmployee.first_name} ${checkerEmployee.last_name}`}
                           </span>
                           <span className="text-gray-500 text-xs ml-2">
                             ({checkerEmployee.employee_code})
@@ -232,18 +241,28 @@ export default function EmployeeSelectionModal({
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2 font-thai">
                       <User className="w-4 h-4 inline mr-1" />
-                      พนักงานจัดสินค้า {pickerEmployees && pickerEmployees.length > 0 && `(${pickerEmployees.length} คน)`}
+                      พนักงานจัดสินค้า {((pickerEmployees?.length || 0) + (checkerEmployees?.length || 0)) > 0 && `(${(pickerEmployees?.length || 0) + (checkerEmployees?.length || 0)} คน)`}
                     </label>
                     <div className="border border-gray-300 rounded-lg bg-gray-50 px-3 py-2">
-                      {pickerEmployees && pickerEmployees.length > 0 ? (
+                      {(pickerEmployees && pickerEmployees.length > 0) || (checkerEmployees && checkerEmployees.length > 0) ? (
                         <div className="space-y-1">
-                          {pickerEmployees.map((picker, index) => (
+                          {pickerEmployees?.map((picker, index) => (
                             <div key={picker.employee_id} className="flex items-center">
                               <span className="text-sm font-thai text-gray-900">
-                                {index + 1}. {picker.first_name} {picker.last_name}
+                                {index + 1}. {picker.nickname || `${picker.first_name} ${picker.last_name}`}
                               </span>
                               <span className="text-gray-500 text-xs ml-2">
                                 ({picker.employee_code})
+                              </span>
+                            </div>
+                          ))}
+                          {checkerEmployees?.map((checker, index) => (
+                            <div key={checker.employee_id} className="flex items-center">
+                              <span className="text-sm font-thai text-gray-900">
+                                {(pickerEmployees?.length || 0) + index + 1}. {checker.nickname || `${checker.first_name} ${checker.last_name}`}
+                              </span>
+                              <span className="text-gray-500 text-xs ml-2">
+                                ({checker.employee_code})
                               </span>
                             </div>
                           ))}
@@ -251,7 +270,7 @@ export default function EmployeeSelectionModal({
                       ) : pickerEmployee ? (
                         <>
                           <span className="text-sm font-thai text-gray-900">
-                            {pickerEmployee.first_name} {pickerEmployee.last_name}
+                            {pickerEmployee.nickname || `${pickerEmployee.first_name} ${pickerEmployee.last_name}`}
                           </span>
                           <span className="text-gray-500 text-xs ml-2">
                             ({pickerEmployee.employee_code})
@@ -302,7 +321,7 @@ export default function EmployeeSelectionModal({
               {mode === 'checker-only' && checkerIds.length > 0 && (
                 <div className="bg-sky-50 border border-sky-200 rounded-lg p-3 text-sm font-thai">
                   <p className="text-gray-700">
-                    <span className="font-medium">ผู้เช็คโหลด:</span>{' '}
+                    <span className="font-medium">ผู้เช็คโหลดจริง:</span>{' '}
                     {checkerIds.map(id => {
                       const emp = employees.find(e => e.employee_id.toString() === id);
                       return emp ? getEmployeeDisplay(emp) : '';
