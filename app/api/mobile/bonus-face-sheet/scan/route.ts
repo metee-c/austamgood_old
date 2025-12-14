@@ -372,6 +372,20 @@ export async function POST(request: NextRequest) {
 
     if (itemUpdateError) {
       console.error('Error updating bonus_face_sheet_item:', itemUpdateError);
+      
+      // ✅ Check if this is a duplicate constraint violation (already processed)
+      if ((itemUpdateError as any).code === '23505') {
+        console.log('⚠️ Duplicate detected - item already processed, returning success');
+        return NextResponse.json({
+          success: true,
+          message: 'รายการนี้ถูกบันทึกไปแล้ว',
+          already_processed: true,
+          bonus_face_sheet_status: 'picking',
+          bonus_face_sheet_completed: false,
+          quantity_picked: quantity_picked
+        });
+      }
+      
       return NextResponse.json(
         { error: 'ไม่สามารถอัปเดตรายการสินค้าได้', details: itemUpdateError.message },
         { status: 500 }

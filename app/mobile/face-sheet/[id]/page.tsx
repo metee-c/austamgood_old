@@ -121,7 +121,7 @@ export default function MobileFaceSheetPickPage() {
 
       if (!hasError) {
         alert('บันทึกการหยิบสำเร็จ');
-        router.push('/mobile/face-sheet');
+        router.push('/mobile/pick');
       }
     } catch (error) {
       console.error('Error picking items:', error);
@@ -146,7 +146,7 @@ export default function MobileFaceSheetPickPage() {
         <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
         <p className="text-gray-700 font-thai text-lg">ไม่พบข้อมูลใบปะหน้า</p>
         <button
-          onClick={() => router.push('/receiving/picklists/face-sheets')}
+          onClick={() => router.push('/mobile/pick')}
           className="mt-4 px-4 py-2 bg-sky-500 text-white rounded-lg font-thai"
         >
           กลับ
@@ -176,7 +176,7 @@ export default function MobileFaceSheetPickPage() {
       <div className="bg-gradient-to-br from-sky-400 to-sky-500 text-white p-4 sticky top-0 z-10 shadow-lg">
         <div className="flex items-center space-x-3 mb-3">
           <button
-            onClick={() => router.push('/receiving/picklists/face-sheets')}
+            onClick={() => router.push('/mobile/pick')}
             className="p-1.5 bg-white/20 rounded-lg hover:bg-white/30 transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />

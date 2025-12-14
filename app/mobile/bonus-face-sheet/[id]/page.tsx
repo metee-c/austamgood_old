@@ -185,7 +185,7 @@ const BonusFaceSheetPickPage = () => {
         <div className="text-center">
           <AlertCircle className="w-12 h-12 text-red-500 mx-auto mb-3" />
           <p className="text-red-600 mb-4">{error || 'ไม่พบข้อมูล'}</p>
-          <Button onClick={() => router.push('/mobile/bonus-face-sheet')} variant="secondary">
+          <Button onClick={() => router.push('/mobile/pick')} variant="secondary">
             <ArrowLeft className="w-4 h-4 mr-2" />
             กลับ
           </Button>
@@ -202,7 +202,7 @@ const BonusFaceSheetPickPage = () => {
       <div className="bg-gradient-to-br from-sky-400 to-sky-500 text-white p-4 sticky top-0 z-10 shadow-lg">
         <div className="flex items-center space-x-3 mb-3">
           <button
-            onClick={() => router.push('/mobile/bonus-face-sheet')}
+            onClick={() => router.push('/mobile/pick')}
             className="p-1.5 bg-white/20 rounded-lg hover:bg-white/30 transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />

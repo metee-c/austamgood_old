@@ -36,7 +36,7 @@ export async function GET(request: Request) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
-    const warehouseId = searchParams.get('warehouse_id') || 'WH01';
+    const warehouseId = searchParams.get('warehouse_id') || 'WH001';
 
     const documents: PreparedDocument[] = [];
 
@@ -158,7 +158,8 @@ export async function GET(request: Request) {
           id,
           sku_id,
           product_name,
-          quantity_to_pick,
+          quantity,
+          quantity_picked,
           source_location_id
         ),
         loadlist_face_sheets (
@@ -185,64 +186,123 @@ export async function GET(request: Request) {
           continue;
         }
         
-        const items = [];
+        // Group items by SKU and aggregate quantities/packages
+        const groupedItems = new Map<string, {
+          sku_id: string;
+          sku_name: string;
+          total_quantity: number;
+          package_count: number;
+          package_ids: Set<number>;
+          balance_id?: number;
+          location_id: string;
+          pallet_id?: string;
+          pallet_id_external?: string;
+          lot_no?: string;
+          production_date?: string;
+          expiry_date?: string;
+          total_pack_qty?: number;
+          total_piece_qty?: number;
+          reserved_pack_qty?: number;
+          reserved_piece_qty?: number;
+          warehouse_id?: string;
+          last_movement_at?: string;
+          updated_at?: string;
+        }>();
+        
         const totalQty = (fs.face_sheet_items || []).reduce((sum: number, item: any) => 
-          sum + (item.quantity_to_pick || 0), 0
+          sum + (parseFloat(item.quantity_picked) || parseFloat(item.quantity) || 0), 0
         );
         
+        // First pass: group by SKU
         for (const item of (fs.face_sheet_items || [])) {
-          const { data: balances } = await supabase
-            .from('wms_inventory_balances')
-            .select(`
-              balance_id,
-              pallet_id,
-              pallet_id_external,
-              lot_no,
-              production_date,
-              expiry_date,
-              total_pack_qty,
-              total_piece_qty,
-              reserved_pack_qty,
-              reserved_piece_qty,
-              warehouse_id,
-              location_id,
-              last_movement_at,
-              updated_at
-            `)
-            .eq('location_id', dispatchLocationId)
-            .eq('sku_id', item.sku_id)
-            .limit(1)
-            .single();
-
-          items.push({
-            balance_id: balances?.balance_id,
-            sku_id: item.sku_id || '-',
-            sku_name: item.product_name || item.sku_id || '-',
-            quantity: item.quantity_to_pick || 0,
-            location_id: balances?.location_id || dispatchLocationId,
-            pallet_id: balances?.pallet_id,
-            pallet_id_external: balances?.pallet_id_external,
-            lot_no: balances?.lot_no,
-            production_date: balances?.production_date,
-            expiry_date: balances?.expiry_date,
-            total_pack_qty: balances?.total_pack_qty,
-            total_piece_qty: balances?.total_piece_qty,
-            reserved_pack_qty: balances?.reserved_pack_qty,
-            reserved_piece_qty: balances?.reserved_piece_qty,
-            warehouse_id: balances?.warehouse_id,
-            last_movement_at: balances?.last_movement_at,
-            updated_at: balances?.updated_at
-          });
+          const skuId = item.sku_id || '-';
+          const qty = parseFloat(item.quantity_picked) || parseFloat(item.quantity) || 0;
+          
+          if (!groupedItems.has(skuId)) {
+            // Fetch balance data for this SKU
+            const { data: balances } = await supabase
+              .from('wms_inventory_balances')
+              .select(`
+                balance_id,
+                pallet_id,
+                pallet_id_external,
+                lot_no,
+                production_date,
+                expiry_date,
+                total_pack_qty,
+                total_piece_qty,
+                reserved_pack_qty,
+                reserved_piece_qty,
+                warehouse_id,
+                location_id,
+                last_movement_at,
+                updated_at
+              `)
+              .eq('location_id', dispatchLocationId)
+              .eq('sku_id', skuId)
+              .limit(1)
+              .single();
+            
+            groupedItems.set(skuId, {
+              sku_id: skuId,
+              sku_name: item.product_name || skuId,
+              total_quantity: qty,
+              package_count: 1,
+              package_ids: new Set([item.package_id]),
+              balance_id: balances?.balance_id,
+              location_id: balances?.location_id || dispatchLocationId,
+              pallet_id: balances?.pallet_id,
+              pallet_id_external: balances?.pallet_id_external,
+              lot_no: balances?.lot_no,
+              production_date: balances?.production_date,
+              expiry_date: balances?.expiry_date,
+              total_pack_qty: balances?.total_pack_qty,
+              total_piece_qty: balances?.total_piece_qty,
+              reserved_pack_qty: balances?.reserved_pack_qty,
+              reserved_piece_qty: balances?.reserved_piece_qty,
+              warehouse_id: balances?.warehouse_id,
+              last_movement_at: balances?.last_movement_at,
+              updated_at: balances?.updated_at
+            });
+          } else {
+            // Add to existing group
+            const existing = groupedItems.get(skuId)!;
+            existing.total_quantity += qty;
+            existing.package_ids.add(item.package_id);
+            existing.package_count = existing.package_ids.size;
+          }
         }
         
-        console.log(`✅ Include face sheet ${fs.face_sheet_no} - not in any loadlist yet`);
+        // Convert grouped items to array
+        const items = Array.from(groupedItems.values()).map(group => ({
+          balance_id: group.balance_id,
+          sku_id: group.sku_id,
+          sku_name: group.sku_name,
+          quantity: group.total_quantity,
+          package_count: group.package_count, // จำนวนแพ็คของ SKU นี้
+          location_id: group.location_id,
+          pallet_id: group.pallet_id,
+          pallet_id_external: group.pallet_id_external,
+          lot_no: group.lot_no,
+          production_date: group.production_date,
+          expiry_date: group.expiry_date,
+          total_pack_qty: group.total_pack_qty,
+          total_piece_qty: group.total_piece_qty,
+          reserved_pack_qty: group.reserved_pack_qty,
+          reserved_piece_qty: group.reserved_piece_qty,
+          warehouse_id: group.warehouse_id,
+          last_movement_at: group.last_movement_at,
+          updated_at: group.updated_at
+        }));
+        
+        console.log(`✅ Include face sheet ${fs.face_sheet_no} - not in any loadlist yet - ${items.length} unique SKUs, ${fs.total_packages} packages`);
         
         documents.push({
           document_type: 'face_sheet',
           document_id: fs.id,
           document_no: fs.face_sheet_no,
           status: fs.status,
-          total_items: fs.total_items || 0,
+          total_items: items.length, // จำนวน SKU ที่ไม่ซ้ำ
           total_quantity: totalQty,
           created_at: fs.created_at,
           loadlist_code: null,  // ✅ ยืนยันว่ายังไม่มี loadlist
@@ -265,7 +325,8 @@ export async function GET(request: Request) {
           id,
           sku_id,
           product_name,
-          quantity_to_pick,
+          quantity,
+          quantity_picked,
           source_location_id
         ),
         wms_loadlist_bonus_face_sheets (
@@ -292,64 +353,123 @@ export async function GET(request: Request) {
           continue;
         }
         
-        const items = [];
+        // Group items by SKU and aggregate quantities/packages
+        const groupedItems = new Map<string, {
+          sku_id: string;
+          sku_name: string;
+          total_quantity: number;
+          package_count: number;
+          package_ids: Set<number>;
+          balance_id?: number;
+          location_id: string;
+          pallet_id?: string;
+          pallet_id_external?: string;
+          lot_no?: string;
+          production_date?: string;
+          expiry_date?: string;
+          total_pack_qty?: number;
+          total_piece_qty?: number;
+          reserved_pack_qty?: number;
+          reserved_piece_qty?: number;
+          warehouse_id?: string;
+          last_movement_at?: string;
+          updated_at?: string;
+        }>();
+        
         const totalQty = (bfs.bonus_face_sheet_items || []).reduce((sum: number, item: any) => 
-          sum + (item.quantity_to_pick || 0), 0
+          sum + (parseFloat(item.quantity_picked) || parseFloat(item.quantity) || 0), 0
         );
         
+        // First pass: group by SKU
         for (const item of (bfs.bonus_face_sheet_items || [])) {
-          const { data: balances } = await supabase
-            .from('wms_inventory_balances')
-            .select(`
-              balance_id,
-              pallet_id,
-              pallet_id_external,
-              lot_no,
-              production_date,
-              expiry_date,
-              total_pack_qty,
-              total_piece_qty,
-              reserved_pack_qty,
-              reserved_piece_qty,
-              warehouse_id,
-              location_id,
-              last_movement_at,
-              updated_at
-            `)
-            .eq('location_id', dispatchLocationId)
-            .eq('sku_id', item.sku_id)
-            .limit(1)
-            .single();
-
-          items.push({
-            balance_id: balances?.balance_id,
-            sku_id: item.sku_id || '-',
-            sku_name: item.product_name || item.sku_id || '-',
-            quantity: item.quantity_to_pick || 0,
-            location_id: balances?.location_id || dispatchLocationId,
-            pallet_id: balances?.pallet_id,
-            pallet_id_external: balances?.pallet_id_external,
-            lot_no: balances?.lot_no,
-            production_date: balances?.production_date,
-            expiry_date: balances?.expiry_date,
-            total_pack_qty: balances?.total_pack_qty,
-            total_piece_qty: balances?.total_piece_qty,
-            reserved_pack_qty: balances?.reserved_pack_qty,
-            reserved_piece_qty: balances?.reserved_piece_qty,
-            warehouse_id: balances?.warehouse_id,
-            last_movement_at: balances?.last_movement_at,
-            updated_at: balances?.updated_at
-          });
+          const skuId = item.sku_id || '-';
+          const qty = parseFloat(item.quantity_picked) || parseFloat(item.quantity) || 0;
+          
+          if (!groupedItems.has(skuId)) {
+            // Fetch balance data for this SKU
+            const { data: balances } = await supabase
+              .from('wms_inventory_balances')
+              .select(`
+                balance_id,
+                pallet_id,
+                pallet_id_external,
+                lot_no,
+                production_date,
+                expiry_date,
+                total_pack_qty,
+                total_piece_qty,
+                reserved_pack_qty,
+                reserved_piece_qty,
+                warehouse_id,
+                location_id,
+                last_movement_at,
+                updated_at
+              `)
+              .eq('location_id', dispatchLocationId)
+              .eq('sku_id', skuId)
+              .limit(1)
+              .single();
+            
+            groupedItems.set(skuId, {
+              sku_id: skuId,
+              sku_name: item.product_name || skuId,
+              total_quantity: qty,
+              package_count: 1,
+              package_ids: new Set([item.package_id]),
+              balance_id: balances?.balance_id,
+              location_id: balances?.location_id || dispatchLocationId,
+              pallet_id: balances?.pallet_id,
+              pallet_id_external: balances?.pallet_id_external,
+              lot_no: balances?.lot_no,
+              production_date: balances?.production_date,
+              expiry_date: balances?.expiry_date,
+              total_pack_qty: balances?.total_pack_qty,
+              total_piece_qty: balances?.total_piece_qty,
+              reserved_pack_qty: balances?.reserved_pack_qty,
+              reserved_piece_qty: balances?.reserved_piece_qty,
+              warehouse_id: balances?.warehouse_id,
+              last_movement_at: balances?.last_movement_at,
+              updated_at: balances?.updated_at
+            });
+          } else {
+            // Add to existing group
+            const existing = groupedItems.get(skuId)!;
+            existing.total_quantity += qty;
+            existing.package_ids.add(item.package_id);
+            existing.package_count = existing.package_ids.size;
+          }
         }
         
-        console.log(`✅ Include bonus face sheet ${bfs.face_sheet_no} - not in any loadlist yet`);
+        // Convert grouped items to array
+        const items = Array.from(groupedItems.values()).map(group => ({
+          balance_id: group.balance_id,
+          sku_id: group.sku_id,
+          sku_name: group.sku_name,
+          quantity: group.total_quantity,
+          package_count: group.package_count, // จำนวนแพ็คของ SKU นี้
+          location_id: group.location_id,
+          pallet_id: group.pallet_id,
+          pallet_id_external: group.pallet_id_external,
+          lot_no: group.lot_no,
+          production_date: group.production_date,
+          expiry_date: group.expiry_date,
+          total_pack_qty: group.total_pack_qty,
+          total_piece_qty: group.total_piece_qty,
+          reserved_pack_qty: group.reserved_pack_qty,
+          reserved_piece_qty: group.reserved_piece_qty,
+          warehouse_id: group.warehouse_id,
+          last_movement_at: group.last_movement_at,
+          updated_at: group.updated_at
+        }));
+        
+        console.log(`✅ Include bonus face sheet ${bfs.face_sheet_no} - not in any loadlist yet - ${items.length} unique SKUs, ${bfs.total_packages} packages`);
         
         documents.push({
           document_type: 'bonus_face_sheet',
           document_id: bfs.id,
           document_no: bfs.face_sheet_no,
           status: bfs.status,
-          total_items: bfs.total_items || 0,
+          total_items: items.length, // จำนวน SKU ที่ไม่ซ้ำ
           total_quantity: totalQty,
           created_at: bfs.created_at,
           loadlist_code: null,  // ✅ ยืนยันว่ายังไม่มี loadlist

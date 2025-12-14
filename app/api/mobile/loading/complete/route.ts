@@ -631,15 +631,47 @@ export async function POST(request: NextRequest) {
 
       console.log(`📦 Processing item: SKU=${sku_id}, qty=${qty}, from=${sourceLocationName}, production_date=${sourceBalance.production_date}, expiry_date=${sourceBalance.expiry_date}`);
 
-      // Update source balance (decrease)
-      await supabase
+      // ✅ FIX: Fetch current balance before updating to avoid stale data
+      const { data: currentBalance, error: fetchError } = await supabase
+        .from('wms_inventory_balances')
+        .select('total_pack_qty, total_piece_qty')
+        .eq('balance_id', sourceBalance.balance_id)
+        .single();
+
+      if (fetchError || !currentBalance) {
+        console.error(`❌ Error fetching current balance for balance_id ${sourceBalance.balance_id}:`, fetchError);
+        throw new Error(`Failed to fetch balance ${sourceBalance.balance_id}: ${fetchError?.message}`);
+      }
+
+      console.log(`📊 Current balance for ${sku_id} (balance_id: ${sourceBalance.balance_id}): ${currentBalance.total_piece_qty} pcs, deducting: ${qty} pcs`);
+
+      const newPackQty = Math.max(0, currentBalance.total_pack_qty - qtyPack);
+      const newPieceQty = Math.max(0, currentBalance.total_piece_qty - qty);
+
+      console.log(`🔄 Updating balance_id ${sourceBalance.balance_id}: ${currentBalance.total_piece_qty} → ${newPieceQty} pcs`);
+
+      // Update source balance (decrease) using current values
+      const { data: updateResult, error: updateError } = await supabase
         .from('wms_inventory_balances')
         .update({
-          total_pack_qty: sourceBalance.total_pack_qty - qtyPack,
-          total_piece_qty: sourceBalance.total_piece_qty - qty,
+          total_pack_qty: newPackQty,
+          total_piece_qty: newPieceQty,
           updated_at: now
         })
-        .eq('balance_id', sourceBalance.balance_id);
+        .eq('balance_id', sourceBalance.balance_id)
+        .select();
+
+      if (updateError) {
+        console.error(`❌ Error updating source balance ${sourceBalance.balance_id}:`, updateError);
+        throw new Error(`Failed to update source balance ${sourceBalance.balance_id}: ${updateError.message}`);
+      }
+
+      if (!updateResult || updateResult.length === 0) {
+        console.error(`❌ No rows updated for balance_id ${sourceBalance.balance_id}`);
+        throw new Error(`Failed to update balance ${sourceBalance.balance_id}: No rows affected`);
+      }
+
+      console.log(`✅ Successfully updated balance_id ${sourceBalance.balance_id} to ${newPieceQty} pcs`);
 
       // Create ledger: OUT from source location
       ledgerEntries.push({

@@ -96,8 +96,8 @@ export async function GET(request: NextRequest) {
           )
         )
       `)
-      .in('sku_id', skuIds);
-      // ไม่กรอง status เพราะ items ที่ย้ายมา Dispatch แล้วอาจมี status เป็น 'picked' หรือ 'completed'
+      .in('sku_id', skuIds)
+      .gt('quantity_picked', 0); // ✅ กรองเฉพาะที่หยิบแล้ว (quantity_picked > 0)
 
     if (bfsError) throw bfsError;
 
@@ -143,8 +143,8 @@ export async function GET(request: NextRequest) {
           delivery_date
         )
       `)
-      .in('sku_id', skuIds);
-      // ไม่กรอง status เพราะ items ที่ย้ายมา Dispatch แล้วอาจมี status เป็น 'picked' หรือ 'completed'
+      .in('sku_id', skuIds)
+      .gt('quantity_picked', 0); // ✅ กรองเฉพาะที่หยิบแล้ว (quantity_picked > 0)
 
     if (picklistError) throw picklistError;
 
@@ -190,8 +190,8 @@ export async function GET(request: NextRequest) {
           delivery_date
         )
       `)
-      .in('sku_id', skuIds);
-      // ไม่กรอง status เพราะ items ที่ย้ายมา Dispatch แล้วอาจมี status เป็น 'picked' หรือ 'completed'
+      .in('sku_id', skuIds)
+      .gt('quantity_picked', 0); // ✅ กรองเฉพาะที่หยิบแล้ว (quantity_picked > 0)
 
     if (faceSheetError) throw faceSheetError;
 

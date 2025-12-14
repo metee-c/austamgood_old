@@ -153,10 +153,10 @@ export default function EmployeeSelectionModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
+      <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] my-auto overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-sky-50">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-sky-50 flex-shrink-0">
           <h2 className="text-lg font-bold text-gray-900 font-thai">{title}</h2>
           <button
             onClick={handleClose}
@@ -167,7 +167,7 @@ export default function EmployeeSelectionModal({
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 overflow-y-auto p-4 space-y-4" style={{ WebkitOverflowScrolling: 'touch' }}>
           {loading ? (
             <div className="text-center py-8">
               <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500 mx-auto"></div>
@@ -356,7 +356,7 @@ export default function EmployeeSelectionModal({
         </div>
 
         {/* Footer */}
-        <div className="p-4 border-t border-gray-200 bg-gray-50 flex space-x-3">
+        <div className="p-4 border-t border-gray-200 bg-gray-50 flex space-x-3 flex-shrink-0">
           <button
             onClick={handleClose}
             className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-thai font-medium hover:bg-gray-100 transition-colors"

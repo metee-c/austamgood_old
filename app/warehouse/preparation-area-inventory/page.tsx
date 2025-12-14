@@ -23,6 +23,7 @@ import Modal from '@/components/ui/Modal';
 import { createClient } from '@/lib/supabase/client';
 import ReservationDetailsModal from '@/components/warehouse/ReservationDetailsModal';
 import ReservationPopover from '@/components/warehouse/ReservationPopover';
+import PreparedDocumentsTable from '@/components/warehouse/PreparedDocumentsTable';
 
 interface RelatedDocument {
   document_type?: string;
@@ -529,6 +530,9 @@ const InventoryBalancesPage = () => {
 
         {/* Data Table */}
         <div className="flex-1 min-h-0">
+          {activeTab === 'dispatch' ? (
+            <PreparedDocumentsTable warehouseId={selectedWarehouse === 'all' ? 'WH001' : selectedWarehouse} />
+          ) : (
           <div className="w-full h-[74vh] bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col">
             {loading ? (
               <div className="h-full flex flex-col items-center justify-center text-thai-gray-500 gap-2">
@@ -557,6 +561,7 @@ const InventoryBalancesPage = () => {
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชื่อสินค้า</th>
                       {activeTab === 'dispatch' && (
                         <>
+                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">ประเภท</th>
                           <th 
                             className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50 cursor-pointer hover:bg-blue-100 transition-colors select-none"
                             onClick={() => handleSort('picklist_code')}
@@ -646,6 +651,23 @@ const InventoryBalancesPage = () => {
                           </td>
                           {activeTab === 'dispatch' && (
                             <>
+                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-blue-50/30">
+                                {balance.related_documents && balance.related_documents.length > 0 && balance.related_documents[0].document_type ? (
+                                  <span className={`text-[10px] font-thai font-medium ${
+                                    balance.related_documents[0].document_type === 'picklist' ? 'text-green-600' :
+                                    balance.related_documents[0].document_type === 'face_sheet' ? 'text-purple-600' :
+                                    balance.related_documents[0].document_type === 'bonus_face_sheet' ? 'text-orange-600' :
+                                    'text-gray-500'
+                                  }`}>
+                                    {balance.related_documents[0].document_type === 'picklist' ? 'ใบหยิบ' :
+                                     balance.related_documents[0].document_type === 'face_sheet' ? 'ใบปะหน้า' :
+                                     balance.related_documents[0].document_type === 'bonus_face_sheet' ? 'ใบปะหน้าโบนัส' :
+                                     '-'}
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-400 text-[10px]">-</span>
+                                )}
+                              </td>
                               <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-blue-50/30">
                                 {balance.related_documents && balance.related_documents.length > 0 ? (
                                   <span className="font-mono text-blue-700 font-semibold text-[11px]">
@@ -892,6 +914,7 @@ const InventoryBalancesPage = () => {
               </div>
             )}
           </div>
+          )}
         </div>
       </div>
 

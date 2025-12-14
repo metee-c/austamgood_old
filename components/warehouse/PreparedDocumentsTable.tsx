@@ -9,6 +9,7 @@ interface DocumentItem {
   sku_id: string;
   sku_name: string;
   quantity: number;
+  package_count?: number; // จำนวนแพ็คของ SKU นี้
   location_id: string;
   pallet_id?: string;
   pallet_id_external?: string;
@@ -252,8 +253,8 @@ const PreparedDocumentsTable: React.FC<PreparedDocumentsTableProps> = ({ warehou
                                 <th className="px-2 py-1 text-left border-b border-r border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '60px' }}>คลัง</th>
                                 <th className="px-2 py-1 text-left border-b border-r border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '100px' }}>Location ID</th>
                                 <th className="px-2 py-1 text-left border-b border-r border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '100px' }}>Lot No</th>
-                                <th className="px-2 py-1 text-center border-b border-r border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '70px' }}>แพ็ครวม</th>
-                                <th className="px-2 py-1 text-center border-b border-r border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '70px' }}>ชิ้นรวม</th>
+                                <th className="px-2 py-1 text-center border-b border-r border-gray-200 font-thai whitespace-nowrap bg-blue-50" style={{ minWidth: '70px' }}>แพ็ครวม</th>
+                                <th className="px-2 py-1 text-center border-b border-r border-gray-200 font-thai whitespace-nowrap bg-blue-50" style={{ minWidth: '70px' }}>ชิ้นรวม</th>
                                 <th className="px-2 py-1 text-center border-b border-r border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '70px' }}>แพ็คจอง</th>
                                 <th className="px-2 py-1 text-center border-b border-r border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '70px' }}>ชิ้นจอง</th>
                                 <th className="px-2 py-1 text-left border-b border-r border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '100px' }}>วันผลิต</th>
@@ -296,14 +297,14 @@ const PreparedDocumentsTable: React.FC<PreparedDocumentsTableProps> = ({ warehou
                                   <td className="px-2 py-1 border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '100px' }}>
                                     <span className="font-mono text-gray-700">{item.lot_no || '-'}</span>
                                   </td>
-                                  <td className="px-2 py-1 text-center border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '70px' }}>
-                                    <span className="font-bold text-green-600">
-                                      {item.total_pack_qty?.toLocaleString() || '-'}
+                                  <td className="px-2 py-1 text-center border-b border-r border-gray-200 whitespace-nowrap bg-blue-50" style={{ minWidth: '70px' }}>
+                                    <span className="font-bold text-blue-600">
+                                      {item.package_count?.toLocaleString() || '1'}
                                     </span>
                                   </td>
-                                  <td className="px-2 py-1 text-center border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '70px' }}>
-                                    <span className="font-bold text-green-600">
-                                      {item.total_piece_qty?.toLocaleString() || '-'}
+                                  <td className="px-2 py-1 text-center border-b border-r border-gray-200 whitespace-nowrap bg-blue-50" style={{ minWidth: '70px' }}>
+                                    <span className="font-bold text-blue-600">
+                                      {item.quantity?.toLocaleString() || '0'}
                                     </span>
                                   </td>
                                   <td className="px-2 py-1 text-center border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '70px' }}>

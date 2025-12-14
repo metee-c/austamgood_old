@@ -154,10 +154,10 @@ export default function MobilePickDetailPage() {
   ) => {
     try {
       setScanning(true);
-      let hasError = false;
 
-      for (const item of items) {
-        const response = await fetch('/api/mobile/pick/scan', {
+      // ✅ เรียก API แบบ parallel เพื่อความเร็ว
+      const promises = items.map(item => 
+        fetch('/api/mobile/pick/scan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -168,24 +168,23 @@ export default function MobilePickDetailPage() {
             checker_ids: checkerIds.length > 0 ? checkerIds : undefined,
             picker_ids: pickerIds.length > 0 ? pickerIds : undefined
           })
-        });
+        }).then(async (response) => {
+          const result = await response.json();
+          if (!response.ok) {
+            throw new Error(result.error || 'เกิดข้อผิดพลาด');
+          }
+          return result;
+        })
+      );
 
-        const result = await response.json();
-
-        if (!response.ok) {
-          alert(`เกิดข้อผิดพลาด: ${result.error}`);
-          hasError = true;
-          break;
-        }
-      }
-
-      if (!hasError) {
-        alert('บันทึกการหยิบสำเร็จ');
-        fetchPicklist();
-      }
-    } catch (error) {
+      // รอให้ทุก request เสร็จ
+      await Promise.all(promises);
+      
+      alert('บันทึกการหยิบสำเร็จ');
+      fetchPicklist();
+    } catch (error: any) {
       console.error('Error picking items:', error);
-      alert('เกิดข้อผิดพลาดในการบันทึก');
+      alert(`เกิดข้อผิดพลาด: ${error.message || 'ไม่สามารถบันทึกได้'}`);
     } finally {
       setScanning(false);
       setPendingShopItems([]);

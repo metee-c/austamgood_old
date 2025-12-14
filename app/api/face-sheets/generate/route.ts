@@ -22,6 +22,50 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ✅ FIX: Filter out orders that already have face sheets
+    if (order_ids && order_ids.length > 0) {
+      const { data: existingFaceSheetOrders, error: checkError } = await supabase
+        .from('face_sheet_items')
+        .select('order_id')
+        .in('order_id', order_ids);
+
+      if (checkError) {
+        console.error('Error checking existing face sheets:', checkError);
+        return NextResponse.json(
+          { error: 'ไม่สามารถตรวจสอบใบปะหน้าที่มีอยู่ได้', details: checkError.message },
+          { status: 500 }
+        );
+      }
+
+      // Get list of orders that already have face sheets
+      const ordersWithFaceSheets = new Set(
+        (existingFaceSheetOrders || []).map(item => item.order_id)
+      );
+
+      // Filter out orders that already have face sheets
+      const filteredOrderIds = order_ids.filter(id => !ordersWithFaceSheets.has(id));
+
+      if (filteredOrderIds.length === 0) {
+        return NextResponse.json(
+          { 
+            error: 'ออเดอร์ที่เลือกถูกสร้างใบปะหน้าไปแล้วทั้งหมด', 
+            details: 'กรุณาเลือกออเดอร์อื่นที่ยังไม่มีใบปะหน้า',
+            already_processed: true
+          },
+          { status: 400 }
+        );
+      }
+
+      // If some orders were filtered out, log it
+      if (filteredOrderIds.length < order_ids.length) {
+        console.log(`⚠️ Filtered out ${order_ids.length - filteredOrderIds.length} orders that already have face sheets`);
+        console.log(`📋 Processing ${filteredOrderIds.length} remaining orders`);
+      }
+
+      // Update order_ids to only include orders without face sheets
+      body.order_ids = filteredOrderIds;
+    }
+
     // Validate customers and hubs before proceeding
     const { data: validationResult, error: validationError } = await supabase
       .rpc('validate_express_orders_for_face_sheet');
@@ -113,9 +157,9 @@ export async function POST(request: NextRequest) {
       p_delivery_date: delivery_date
     };
 
-    // Add order_ids if provided
-    if (order_ids && order_ids.length > 0) {
-      rpcParams.p_order_ids = order_ids;
+    // Add order_ids if provided (use the filtered list from body)
+    if (body.order_ids && body.order_ids.length > 0) {
+      rpcParams.p_order_ids = body.order_ids;
     }
 
     const { data, error } = await supabase
@@ -123,6 +167,19 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('Error creating face sheet:', error);
+      
+      // ✅ Check if this is a duplicate constraint violation
+      if ((error as any).code === '23505') {
+        return NextResponse.json(
+          { 
+            error: 'ใบปะหน้าสำหรับวันที่นี้ถูกสร้างไปแล้ว', 
+            details: 'มีใบปะหน้าที่มีรายการเดียวกันอยู่แล้วในระบบ กรุณาตรวจสอบใบปะหน้าที่มีอยู่',
+            duplicate: true
+          },
+          { status: 409 } // 409 Conflict
+        );
+      }
+      
       return NextResponse.json(
         { error: 'Failed to create face sheet', details: error.message },
         { status: 500 }
