@@ -9,6 +9,8 @@ const nextConfig = {
     ],
     qualities: [50, 75, 90, 100],
   },
+  // Enable Turbopack (Next.js 16 default)
+  turbopack: {},
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.fallback = {
