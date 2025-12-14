@@ -11,6 +11,14 @@ const nextConfig = {
   },
   // Enable Turbopack (Next.js 16 default)
   turbopack: {},
+  // Strict mode for better error detection
+  reactStrictMode: true,
+  // Type checking during build
+  typescript: {
+    ignoreBuildErrors: false,
+  },
+  // Note: ESLint config is no longer supported in next.config.js
+  // Use 'next lint' command or configure in .eslintrc.json instead
   webpack: (config, { isServer }) => {
     if (!isServer) {
       config.resolve.fallback = {

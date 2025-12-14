@@ -1,4 +1,4 @@
-import { createClientComponentClient } from '@supabase/auth-helpers-nextjs';
+import { createClient } from '@/lib/supabase/client';
 
 export interface WmsReceive {
   receive_id?: string;
@@ -15,7 +15,7 @@ export class WmsReceiveService {
   private supabase;
 
   constructor() {
-    this.supabase = createClientComponentClient();
+    this.supabase = createClient();
   }
 
   async getAllReceives(options?: { search?: string; limit?: number }) {

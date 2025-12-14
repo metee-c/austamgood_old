@@ -13,37 +13,52 @@ export interface Permission {
 
 /**
  * Hook to check if user has a specific permission (by module_key)
+ * Returns null while loading, false if no permission, true if has permission
  */
-export function usePermission(moduleKey: string): boolean {
-  const { user } = useAuthContext();
+export function usePermission(moduleKey: string): boolean | null {
+  const { user, loading } = useAuthContext();
 
   return useMemo(() => {
+    // Return null while loading (not false)
+    if (loading) {
+      return null;
+    }
+
     if (!user) {
-      console.log(`🔒 [usePermission] No user for permission: ${moduleKey}`);
+      // Only warn in development mode
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`🔒 [usePermission] No user for permission: ${moduleKey}`);
+      }
       return false;
     }
 
-    console.log(`🔍 [usePermission] Checking "${moduleKey}" for user:`, {
-      email: user.email,
-      role: user.role_name,
-      permissions_count: user.permissions?.length || 0,
-      has_permissions_array: !!user.permissions
-    });
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`🔍 [usePermission] Checking "${moduleKey}" for user:`, {
+        email: user.email,
+        role: user.role_name,
+        permissions_count: user.permissions?.length || 0,
+        has_permissions_array: !!user.permissions
+      });
+    }
 
     // Admin and Super Admin have all permissions
     if (user.role_name === 'Admin' || user.role_name === 'Super Admin') {
-      console.log(`✅ [usePermission] ${user.role_name} has full access to: ${moduleKey}`);
+      if (process.env.NODE_ENV === 'development') {
+        console.log(`✅ [usePermission] ${user.role_name} has full access to: ${moduleKey}`);
+      }
       return true;
     }
 
     // Check if user has the specific permission
     const hasPermission = user.permissions?.includes(moduleKey) || false;
-    console.log(`🔑 [usePermission] Check "${moduleKey}":`, hasPermission);
-    if (!hasPermission && user.permissions) {
-      console.log(`🔑 [usePermission] Available permissions (first 10):`, user.permissions.slice(0, 10));
+    if (process.env.NODE_ENV === 'development') {
+      console.log(`🔑 [usePermission] Check "${moduleKey}":`, hasPermission);
+      if (!hasPermission && user.permissions) {
+        console.log(`🔑 [usePermission] Available permissions (first 10):`, user.permissions.slice(0, 10));
+      }
     }
     return hasPermission;
-  }, [user, moduleKey]);
+  }, [user, loading, moduleKey]);
 }
 
 /**

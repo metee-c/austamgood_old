@@ -1,4 +1,12 @@
-// Next.js middleware for authentication and route protection
+/**
+ * Next.js middleware for authentication and route protection
+ * 
+ * TODO: Migrate to proxy.ts when Next.js 17 is released
+ * @see https://nextjs.org/docs/app/building-your-application/routing/middleware
+ * 
+ * Note: middleware.ts convention is deprecated in Next.js 15+
+ * and will not be supported in Next.js 17+
+ */
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 import { createServerClient } from '@supabase/ssr';
