@@ -1,22 +1,250 @@
-
-> austamgood-wms@0.1.0 build
-> next build
-
-   ▲ Next.js 15.5.6
+ ⚠ `eslint` configuration in next.config.js is no longer supported. See more info here: https://nextjs.org/docs/app/api-reference/cli/next#next-lint-options
+ ⚠ Invalid next.config.js options detected: 
+ ⚠     Unrecognized key(s) in object: 'eslint'
+ ⚠ See more info here: https://nextjs.org/docs/messages/invalid-next-config
+   ▲ Next.js 16.0.10 (Turbopack)
    - Environments: .env.local
 
+ ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
    Creating an optimized production build ...
- ✓ Compiled successfully in 13.2s
-   Linting and checking validity of types ...
-   Collecting page data ...
-[Error [PageNotFoundError]: Cannot find module for page: /api/face-sheets/generate] {
-  code: 'ENOENT'
-}
-[Error [PageNotFoundError]: Cannot find module for page: /api/face-sheets/orders] {
-  code: 'ENOENT'
-}
+ ✓ Compiled successfully in 17.7s
+   Running TypeScript ...
+   Collecting page data using 13 workers ...
+   Generating static pages using 13 workers (0/151) ...
+   Generating static pages using 13 workers (37/151) 
+   Generating static pages using 13 workers (75/151) 
+   Generating static pages using 13 workers (113/151) 
+ ✓ Generating static pages using 13 workers (151/151) in 1497.9ms
+   Finalizing page optimization ...
 
-> Build error occurred
-[Error: Failed to collect page data for /api/face-sheets/generate] {
-  type: 'Error'
-}
+Route (app)
+┌ ƒ /
+├ ƒ /api/admin/migrate-supplier
+├ ƒ /api/auth/audit-logs
+├ ƒ /api/auth/change-password
+├ ƒ /api/auth/login
+├ ƒ /api/auth/login-attempts
+├ ƒ /api/auth/logout
+├ ƒ /api/auth/me
+├ ƒ /api/auth/password-reset/request
+├ ƒ /api/auth/password-reset/reset
+├ ƒ /api/auth/permissions
+├ ƒ /api/auth/register
+├ ƒ /api/auth/sessions
+├ ƒ /api/auth/sessions/[id]
+├ ƒ /api/auth/settings
+├ ƒ /api/auth/settings/[key]
+├ ƒ /api/bonus-face-sheets
+├ ƒ /api/bonus-face-sheets/checklist
+├ ƒ /api/bonus-face-sheets/delivery-document
+├ ƒ /api/bonus-face-sheets/[id]
+├ ƒ /api/bonus-face-sheets/orders
+├ ƒ /api/bonus-face-sheets/upload
+├ ƒ /api/debug-receives
+├ ƒ /api/employees
+├ ƒ /api/export-jobs
+├ ƒ /api/face-sheets/checklist
+├ ƒ /api/face-sheets/delivery-document
+├ ƒ /api/face-sheets/generate
+├ ƒ /api/face-sheets/[id]
+├ ƒ /api/face-sheets/orders
+├ ƒ /api/file-uploads
+├ ƒ /api/freight-rates
+├ ƒ /api/freight-rates/by-province
+├ ƒ /api/geocoding
+├ ƒ /api/import-jobs
+├ ƒ /api/inventory/balances
+├ ƒ /api/inventory-balances/reset-reservations
+├ ƒ /api/inventory/reservations
+├ ƒ /api/loadlists
+├ ƒ /api/loadlists/available-bonus-face-sheets
+├ ƒ /api/loadlists/available-face-sheets
+├ ƒ /api/loadlists/available-picklists
+├ ƒ /api/loadlists/[id]
+├ ƒ /api/loadlists/[id]/depart
+├ ƒ /api/loadlists/[id]/scan
+├ ƒ /api/locations
+├ ƒ /api/master-customer
+├ ƒ /api/master-customer/import
+├ ƒ /api/master-customer-no-price-goods
+├ ƒ /api/master-customer-no-price-goods/import
+├ ƒ /api/master-customer/update-coordinates
+├ ƒ /api/master-data/locations
+├ ƒ /api/master-employee
+├ ƒ /api/master-employee/import
+├ ƒ /api/master-iv-document-type
+├ ƒ /api/master-iv-document-type/import
+├ ƒ /api/master-location
+├ ƒ /api/master-location/location-types
+├ ƒ /api/master-location/zones
+├ ƒ /api/master-sku
+├ ƒ /api/master-supplier
+├ ƒ /api/master-supplier/next-code
+├ ƒ /api/master-vehicle
+├ ƒ /api/master-warehouse
+├ ƒ /api/mobile/bonus-face-sheet/scan
+├ ƒ /api/mobile/bonus-face-sheet/tasks/[id]
+├ ƒ /api/mobile/face-sheet/scan
+├ ƒ /api/mobile/face-sheet/tasks/[id]
+├ ƒ /api/mobile/loading/assign-employee
+├ ƒ /api/mobile/loading/complete
+├ ƒ /api/mobile/loading/items
+├ ƒ /api/mobile/loading/loadlist-detail
+├ ƒ /api/mobile/loading/tasks
+├ ƒ /api/mobile/loading/tasks/[id]
+├ ƒ /api/mobile/loading/update
+├ ƒ /api/mobile/loading/update-status
+├ ƒ /api/mobile/pick/scan
+├ ƒ /api/mobile/pick/tasks
+├ ƒ /api/mobile/pick/tasks/[id]
+├ ƒ /api/moves
+├ ƒ /api/moves/[id]/status
+├ ƒ /api/moves/item/[id]/status
+├ ƒ /api/moves/items/[id]
+├ ƒ /api/moves/quick-move
+├ ƒ /api/orders
+├ ƒ /api/orders/dashboard
+├ ƒ /api/orders/[id]
+├ ƒ /api/orders/[id]/rollback
+├ ƒ /api/orders/import
+├ ƒ /api/orders/import/confirm
+├ ƒ /api/orders/with-items
+├ ƒ /api/permission-modules
+├ ƒ /api/picklists
+├ ƒ /api/picklists/create-from-trip
+├ ƒ /api/picklists/[id]
+├ ƒ /api/picklists/[id]/complete
+├ ƒ /api/picklists/[id]/items
+├ ƒ /api/picklists/[id]/items/confirm
+├ ƒ /api/picklists/[id]/print
+├ ƒ /api/preparation-areas
+├ ƒ /api/preparation-areas/[id]
+├ ƒ /api/preparation-areas/import
+├ ƒ /api/preparation-areas/template
+├ ƒ /api/preparation-areas/zones
+├ ƒ /api/receives
+├ ƒ /api/receives/dashboard
+├ ƒ /api/receives/generate-pallet-id
+├ ƒ /api/receives/generate-receive-no
+├ ƒ /api/receives/[id]
+├ ƒ /api/receives/latest-pallet-id
+├ ƒ /api/receives/validate-pallet
+├ ƒ /api/receive/update-external-pallet
+├ ƒ /api/roles
+├ ƒ /api/roles/[id]
+├ ƒ /api/roles/[id]/permissions
+├ ƒ /api/route-plans
+├ ƒ /api/route-plans/draft-orders
+├ ƒ /api/route-plans/[id]
+├ ƒ /api/route-plans/[id]/add-order
+├ ƒ /api/route-plans/[id]/editor
+├ ƒ /api/route-plans/[id]/metrics
+├ ƒ /api/route-plans/[id]/move-order
+├ ƒ /api/route-plans/[id]/reorder-stops
+├ ƒ /api/route-plans/[id]/split-stop
+├ ƒ /api/route-plans/[id]/trips
+├ ƒ /api/route-plans/inputs
+├ ƒ /api/route-plans/next-code
+├ ƒ /api/route-plans/optimize
+├ ƒ /api/route-plans/published
+├ ƒ /api/route-plans/stops/[id]/order
+├ ƒ /api/route-plans/trips/[id]
+├ ƒ /api/sku-options
+├ ƒ /api/skus
+├ ƒ /api/stock-alerts
+├ ƒ /api/stock-import/batches
+├ ƒ /api/stock-import/batches/[id]
+├ ƒ /api/stock-import/picking-area
+├ ƒ /api/stock-import/picking-area/process
+├ ƒ /api/stock-import/picking-area/validate
+├ ƒ /api/stock-import/process
+├ ƒ /api/stock-import/upload
+├ ƒ /api/stock-import/validate
+├ ƒ /api/storage-strategies
+├ ƒ /api/storage-strategies/import
+├ ƒ /api/storage-strategies/template
+├ ƒ /api/suppliers
+├ ƒ /api/system-users
+├ ƒ /api/trips/with-special-orders
+├ ƒ /api/users
+├ ƒ /api/users/[id]
+├ ƒ /api/warehouse/delivery-inventory
+├ ƒ /api/warehouse/dispatch-inventory
+├ ƒ /api/warehouse/prepared-documents
+├ ƒ /api/warehouses
+├ ○ /change-password
+├ ○ /dashboard
+├ ○ /forgot-password
+├ ○ /login
+├ ○ /master-data
+├ ○ /master-data/assets
+├ ○ /master-data/bom
+├ ○ /master-data/customer-rejection
+├ ○ /master-data/customers
+├ ○ /master-data/document-verification
+├ ○ /master-data/document-verification/iv-document-types
+├ ○ /master-data/employees
+├ ○ /master-data/file-management
+├ ○ /master-data/locations
+├ ○ /master-data/preparation-area
+├ ○ /master-data/products
+├ ○ /master-data/roles
+├ ○ /master-data/shipping-costs
+├ ○ /master-data/storage-strategy
+├ ○ /master-data/suppliers
+├ ○ /master-data/users
+├ ○ /master-data/vehicles
+├ ○ /master-data/warehouses
+├ ○ /mobile
+├ ƒ /mobile/bonus-face-sheet/[id]
+├ ƒ /mobile/face-sheet/[id]
+├ ○ /mobile/loading
+├ ƒ /mobile/loading/[code]
+├ ○ /mobile/pick
+├ ƒ /mobile/pick/[id]
+├ ○ /mobile/receive
+├ ƒ /mobile/receive/[id]
+├ ○ /mobile/receive/new
+├ ○ /mobile/transfer
+├ ƒ /mobile/transfer/[id]
+├ ○ /_not-found
+├ ○ /online-packing
+├ ○ /online-packing/dashboard
+├ ○ /online-packing/erp
+├ ○ /online-packing/import
+├ ○ /online-packing/products
+├ ○ /online-packing/promotions
+├ ○ /online-packing/returns
+├ ○ /online-packing/settings
+├ ○ /online-packing/users
+├ ○ /production/orders
+├ ○ /profile
+├ ○ /profile/sessions
+├ ○ /receiving
+├ ○ /receiving/loadlists
+├ ○ /receiving/orders
+├ ○ /receiving/picklists
+├ ○ /receiving/picklists/bonus-face-sheets
+├ ○ /receiving/picklists/bonus-face-sheets/pack-form
+├ ○ /receiving/picklists/face-sheets
+├ ƒ /receiving/picklists/[id]
+├ ○ /receiving/routes
+├ ○ /reports
+├ ○ /reset-password
+├ ○ /shipping
+├ ○ /stock-management/adjustment
+├ ○ /stock-management/count
+├ ○ /stock-management/import
+├ ○ /warehouse/inbound
+├ ○ /warehouse/inbound-new
+├ ○ /warehouse/inventory-balances
+├ ○ /warehouse/inventory-ledger
+├ ○ /warehouse/preparation-area-inventory
+└ ○ /warehouse/transfer
+
+
+ƒ Proxy (Middleware)
+
+○  (Static)   prerendered as static content
+ƒ  (Dynamic)  server-rendered on demand
+
