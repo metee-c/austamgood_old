@@ -59,6 +59,7 @@ interface Loadlist {
     vehicle_id: string;
     plate_number: string;
     vehicle_type: string;
+    model?: string;
   };
   driver?: {
     employee_id: number;
@@ -104,6 +105,8 @@ interface AvailablePicklist {
   trip?: {
     trip_id: number;
     trip_code: string;
+    vehicle_id?: number;
+    driver_id?: number;
     vehicle?: {
       plate_number: string;
     };
@@ -140,6 +143,15 @@ interface Employee {
   first_name: string;
   last_name: string;
   employee_code: string;
+  position?: string;
+}
+
+interface Vehicle {
+  vehicle_id: number;
+  plate_number: string;
+  vehicle_type: string;
+  model?: string;
+  driver_id?: number;
 }
 
 const statusMap: Record<string, { label: string; variant: 'default' | 'info' | 'warning' | 'success' | 'danger' }> = {
@@ -154,7 +166,7 @@ const LoadlistsPage = () => {
   const [availableFaceSheets, setAvailableFaceSheets] = useState<AvailableFaceSheet[]>([]);
   const [availableBonusFaceSheets, setAvailableBonusFaceSheets] = useState<AvailableBonusFaceSheet[]>([]);
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [vehicles, setVehicles] = useState<any[]>([]);
+  const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [drivers, setDrivers] = useState<Employee[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -175,6 +187,7 @@ const LoadlistsPage = () => {
   const [driverEmployeeId, setDriverEmployeeId] = useState<number | ''>('');
   const [driverName, setDriverName] = useState<string>(''); // Driver name from vehicle.model
   const [loadingQueueNumber, setLoadingQueueNumber] = useState<string>('');
+  const [loadingDoorNumber, setLoadingDoorNumber] = useState<string>('');
 
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [viewingLoadlist, setViewingLoadlist] = useState<Loadlist | null>(null);
@@ -194,6 +207,12 @@ const LoadlistsPage = () => {
         throw new Error('Unable to load loadlists');
       }
       const data = await response.json();
+      console.log('📦 Fetched loadlists:', data.map((l: any) => ({
+        code: l.loadlist_code,
+        loading_door: l.loading_door_number,
+        vehicle: l.vehicle,
+        driver: l.driver
+      })));
       setLoadlists(data);
     } catch (err: any) {
       setError(err.message ?? 'An unexpected error occurred');
@@ -208,6 +227,52 @@ const LoadlistsPage = () => {
     fetchVehicles();
   }, []);
 
+  // Auto-fill form fields from selected picklists
+  useEffect(() => {
+    if (selectedPicklists.length > 0 && availablePicklists.length > 0) {
+      // Get the first selected picklist
+      const firstSelectedPicklist = availablePicklists.find(p => p.id === selectedPicklists[0]);
+      
+      if (firstSelectedPicklist) {
+        console.log('🔄 Auto-filling from picklist:', {
+          picklist_code: firstSelectedPicklist.picklist_code,
+          loading_door: firstSelectedPicklist.loading_door_number,
+          vehicle_id: firstSelectedPicklist.trip?.vehicle_id,
+          driver_id: firstSelectedPicklist.trip?.driver_id,
+          current_state: {
+            loadingDoorNumber,
+            vehicleId,
+            driverEmployeeId
+          }
+        });
+
+        // Set loading door number from picklist (always override)
+        if (firstSelectedPicklist.loading_door_number) {
+          setLoadingDoorNumber(firstSelectedPicklist.loading_door_number);
+          console.log('✅ Set loading door:', firstSelectedPicklist.loading_door_number);
+        }
+        
+        // Set vehicle and driver from trip
+        if (firstSelectedPicklist.trip) {
+          // Set vehicle if available (always override)
+          if (firstSelectedPicklist.trip.vehicle_id) {
+            const vehicleIdStr = String(firstSelectedPicklist.trip.vehicle_id);
+            setVehicleId(vehicleIdStr);
+            console.log('✅ Set vehicle ID:', vehicleIdStr);
+          }
+          
+          // Set driver if available (always override)
+          if (firstSelectedPicklist.trip.driver_id) {
+            setDriverEmployeeId(firstSelectedPicklist.trip.driver_id);
+            console.log('✅ Set driver ID:', firstSelectedPicklist.trip.driver_id);
+          } else {
+            console.log('⚠️ No driver_id in trip (driver_id is null)');
+          }
+        }
+      }
+    }
+  }, [selectedPicklists, availablePicklists]);
+
   const fetchAvailablePicklists = async () => {
     try {
       const response = await fetch('/api/loadlists/available-picklists');
@@ -215,6 +280,16 @@ const LoadlistsPage = () => {
         throw new Error('Unable to load available picklists');
       }
       const data = await response.json();
+      console.log('📋 Available picklists:', JSON.stringify(data.map((p: any) => ({
+        code: p.picklist_code,
+        loading_door: p.loading_door_number,
+        trip: p.trip ? {
+          vehicle_id: p.trip.vehicle_id,
+          driver_id: p.trip.driver_id,
+          vehicle_plate: p.trip.vehicle?.plate_number,
+          driver_name: p.trip.driver_name
+        } : null
+      })), null, 2));
       setAvailablePicklists(data);
     } catch (err: any) {
       setCreateError('Unable to load picklists: ' + (err.message ?? 'unknown error'));
@@ -260,6 +335,7 @@ const LoadlistsPage = () => {
       const result = await response.json();
       // API returns array directly
       const employeeData = Array.isArray(result) ? result : [];
+      console.log('👥 Fetched employees:', employeeData.length, employeeData.slice(0, 3));
       setEmployees(employeeData);
       setDrivers(employeeData); // Use same employee list for drivers
     } catch (err: any) {
@@ -276,7 +352,9 @@ const LoadlistsPage = () => {
         throw new Error('Unable to load vehicles');
       }
       const result = await response.json();
-      setVehicles(Array.isArray(result.data) ? result.data : []);
+      const vehicleData = Array.isArray(result.data) ? result.data : [];
+      console.log('🚗 Fetched vehicles:', vehicleData.length, vehicleData.slice(0, 3));
+      setVehicles(vehicleData);
     } catch (err: any) {
       console.error('Failed to fetch vehicles:', err);
       setVehicles([]);
@@ -328,6 +406,7 @@ const LoadlistsPage = () => {
   }, [loadlists, searchTerm, sortField, sortDirection]);
 
   const handleOpenCreateModal = async () => {
+    console.log('🔓 Opening create modal...');
     setIsCreateModalOpen(true);
     setCreateError(null);
     setSelectedPicklists([]);
@@ -342,6 +421,7 @@ const LoadlistsPage = () => {
     setDriverEmployeeId('');
     setDriverName('');
     setLoadingQueueNumber('');
+    setLoadingDoorNumber(''); // Reset loading door to allow useEffect to set it
     await Promise.all([
       fetchAvailablePicklists(),
       fetchAvailableFaceSheets(),
@@ -349,6 +429,11 @@ const LoadlistsPage = () => {
       fetchEmployees(),
       fetchVehicles()
     ]);
+    console.log('✅ Modal data loaded:', {
+      vehicles: vehicles.length,
+      employees: employees.length,
+      availablePicklists: availablePicklists.length
+    });
   };
 
   const handleTogglePicklist = (picklistId: number) => {
@@ -405,8 +490,16 @@ const LoadlistsPage = () => {
         delivery_number: deliveryNumber || `FS-${Date.now()}`,
         vehicle_id: vehicleId || null,
         driver_employee_id: driverEmployeeId || null,
-        loading_queue_number: loadingQueueNumber || null
+        loading_queue_number: loadingQueueNumber || null,
+        loading_door_number: loadingDoorNumber || null
       };
+
+      console.log('🚀 Creating loadlist with data:', {
+        vehicle_id: requestBody.vehicle_id,
+        driver_employee_id: requestBody.driver_employee_id,
+        loading_door_number: requestBody.loading_door_number,
+        checker_employee_id: requestBody.checker_employee_id
+      });
       
       if (hasPicklists) {
         requestBody.picklist_ids = selectedPicklists;
@@ -687,16 +780,16 @@ const LoadlistsPage = () => {
                             className="w-20 px-1 py-0.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-700"
                           >
                             <option value="">-- เลือก --</option>
-                            <option value="D-01">D-01</option>
-                            <option value="D-02">D-02</option>
-                            <option value="D-03">D-03</option>
-                            <option value="D-04">D-04</option>
-                            <option value="D-05">D-05</option>
-                            <option value="D-06">D-06</option>
-                            <option value="D-07">D-07</option>
-                            <option value="D-08">D-08</option>
-                            <option value="D-09">D-09</option>
-                            <option value="D-10">D-10</option>
+                            <option value="D01">D01</option>
+                            <option value="D02">D02</option>
+                            <option value="D03">D03</option>
+                            <option value="D04">D04</option>
+                            <option value="D05">D05</option>
+                            <option value="D06">D06</option>
+                            <option value="D07">D07</option>
+                            <option value="D08">D08</option>
+                            <option value="D09">D09</option>
+                            <option value="D10">D10</option>
                           </select>
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
@@ -771,6 +864,7 @@ const LoadlistsPage = () => {
                             value={loadlist.vehicle?.vehicle_id || ''}
                             onChange={async (e) => {
                               const newVehicleId = e.target.value || null;
+                              console.log('🚗 Updating vehicle:', { loadlist_id: loadlist.id, new_vehicle_id: newVehicleId });
                               try {
                                 const response = await fetch(`/api/loadlists/${loadlist.id}`, {
                                   method: 'PUT',
@@ -785,13 +879,18 @@ const LoadlistsPage = () => {
                               }
                             }}
                             className="w-28 px-1 py-0.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-700"
+                            title={`Vehicles available: ${vehicles.length}, Current: ${loadlist.vehicle?.vehicle_id || 'none'}`}
                           >
                             <option value="">-- เลือก --</option>
-                            {vehicles.map((vehicle) => (
-                              <option key={vehicle.vehicle_id} value={vehicle.vehicle_id}>
-                                {vehicle.plate_number}
-                              </option>
-                            ))}
+                            {vehicles.length === 0 ? (
+                              <option disabled>ไม่มีข้อมูลรถ</option>
+                            ) : (
+                              vehicles.map((vehicle) => (
+                                <option key={vehicle.vehicle_id} value={vehicle.vehicle_id}>
+                                  {vehicle.plate_number}
+                                </option>
+                              ))
+                            )}
                           </select>
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
@@ -799,6 +898,7 @@ const LoadlistsPage = () => {
                             value={loadlist.driver?.employee_id || ''}
                             onChange={async (e) => {
                               const newDriverId = e.target.value ? Number(e.target.value) : null;
+                              console.log('👤 Updating driver:', { loadlist_id: loadlist.id, new_driver_id: newDriverId });
                               try {
                                 const response = await fetch(`/api/loadlists/${loadlist.id}`, {
                                   method: 'PUT',
@@ -813,13 +913,22 @@ const LoadlistsPage = () => {
                               }
                             }}
                             className="w-32 px-1 py-0.5 border border-gray-200 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-700"
+                            title={`Drivers available: ${drivers.length}, Current: ${loadlist.driver?.employee_id || 'none'}`}
                           >
-                            <option value="">-- เลือก --</option>
-                            {drivers.map((driver) => (
-                              <option key={driver.employee_id} value={driver.employee_id}>
-                                {driver.first_name} {driver.last_name}
-                              </option>
-                            ))}
+                            <option value="">
+                              {loadlist.driver 
+                                ? `${loadlist.driver.first_name} ${loadlist.driver.last_name}`.trim()
+                                : (loadlist.vehicle?.model || '-- เลือก --')
+                              }
+                            </option>
+                            {drivers
+                              .filter(emp => emp.position?.includes('ขับ') || emp.position?.toLowerCase().includes('driver'))
+                              .map((driver) => (
+                                <option key={driver.employee_id} value={driver.employee_id}>
+                                  {driver.first_name} {driver.last_name}
+                                </option>
+                              ))
+                            }
                           </select>
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700">
@@ -1016,14 +1125,94 @@ const LoadlistsPage = () => {
                             <span className="text-gray-400 text-xs">{vehicleType || '-'}</span>
                           )}
                         </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700 font-mono">
-                          {picklist.trip?.vehicle?.plate_number || '-'}
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          {index === 0 ? (
+                            <select
+                              value={vehicleId || (picklist.trip?.vehicle_id ? String(picklist.trip.vehicle_id) : '')}
+                              onChange={(e) => {
+                                const selectedVehicleId = e.target.value;
+                                setVehicleId(selectedVehicleId);
+                                // Auto-update driver name from vehicle.model when vehicle is selected
+                                if (selectedVehicleId) {
+                                  const selectedVehicle = vehicles.find(v => String(v.vehicle_id) === selectedVehicleId);
+                                  if (selectedVehicle) {
+                                    // Set driver name from vehicle.model
+                                    setDriverName(selectedVehicle.model || '');
+                                    // Clear driver_employee_id (user can select later if needed)
+                                    setDriverEmployeeId('');
+                                  }
+                                } else {
+                                  setDriverName('');
+                                  setDriverEmployeeId('');
+                                }
+                              }}
+                              className="w-28 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                            >
+                              <option value="">-- เลือก --</option>
+                              {vehicles.map((vehicle) => (
+                                <option key={vehicle.vehicle_id} value={String(vehicle.vehicle_id)}>
+                                  {vehicle.plate_number}
+                                </option>
+                              ))}
+                            </select>
+                          ) : (
+                            <span className="text-gray-700 text-xs">{picklist.trip?.vehicle?.plate_number || '-'}</span>
+                          )}
                         </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700">
-                          {picklist.trip?.driver_name || '-'}
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          {index === 0 ? (
+                            <select
+                              value={driverEmployeeId || ''}
+                              onChange={(e) => {
+                                const selectedDriverId = e.target.value ? parseInt(e.target.value, 10) : '';
+                                setDriverEmployeeId(selectedDriverId);
+                                // Update driver name when employee is selected
+                                if (selectedDriverId) {
+                                  const selectedEmployee = employees.find(emp => emp.employee_id === selectedDriverId);
+                                  if (selectedEmployee) {
+                                    setDriverName(`${selectedEmployee.first_name} ${selectedEmployee.last_name}`.trim());
+                                  }
+                                }
+                              }}
+                              className="w-32 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                            >
+                              <option value="">
+                                {driverName || picklist.trip?.driver_name || '-- เลือก --'}
+                              </option>
+                              {employees
+                                .filter(emp => emp.position?.includes('ขับ') || emp.position?.toLowerCase().includes('driver'))
+                                .map((employee) => (
+                                  <option key={employee.employee_id} value={employee.employee_id}>
+                                    {`${employee.first_name} ${employee.last_name}`.trim()}
+                                  </option>
+                                ))}
+                            </select>
+                          ) : (
+                            <span className="text-gray-700 text-xs">{picklist.trip?.driver_name || '-'}</span>
+                          )}
                         </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-center text-gray-700 text-xs">
-                          {(picklist as any).loading_door_number || '-'}
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          {index === 0 ? (
+                            <select
+                              value={loadingDoorNumber || (picklist as any).loading_door_number || ''}
+                              onChange={(e) => setLoadingDoorNumber(e.target.value)}
+                              className="w-20 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                            >
+                              <option value="">-- เลือก --</option>
+                              <option value="D01">D01</option>
+                              <option value="D02">D02</option>
+                              <option value="D03">D03</option>
+                              <option value="D04">D04</option>
+                              <option value="D05">D05</option>
+                              <option value="D06">D06</option>
+                              <option value="D07">D07</option>
+                              <option value="D08">D08</option>
+                              <option value="D09">D09</option>
+                              <option value="D10">D10</option>
+                            </select>
+                          ) : (
+                            <span className="text-gray-400 text-xs">{loadingDoorNumber || (picklist as any).loading_door_number || '-'}</span>
+                          )}
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                           {index === 0 ? (

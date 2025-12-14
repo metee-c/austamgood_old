@@ -99,13 +99,15 @@ export async function GET(request: NextRequest) {
     // Get vehicle IDs to fetch vehicle data
     const vehicleIds = loadlists
       ?.map((l: any) => l.vehicle_id)
-      .filter((id: any) => id != null) || [];
+      .filter((id: any) => id != null)
+      .map((id: any) => parseInt(id, 10))
+      .filter((id: any) => !isNaN(id)) || [];
 
-    let vehicleMap: Record<string, any> = {};
+    let vehicleMap: Record<number, any> = {};
     if (vehicleIds.length > 0) {
       const { data: vehicles } = await supabase
         .from('master_vehicle')
-        .select('vehicle_id, plate_number, vehicle_type')
+        .select('vehicle_id, plate_number, vehicle_type, model')
         .in('vehicle_id', vehicleIds);
 
       vehicles?.forEach((vehicle: any) => {
@@ -140,8 +142,19 @@ export async function GET(request: NextRequest) {
       const faceSheets = loadlist.loadlist_face_sheets || [];
       const bonusFaceSheets = loadlist.wms_loadlist_bonus_face_sheets || [];
       const tripCode = loadlist.trip_id ? tripMap[loadlist.trip_id] : null;
-      const vehicle = loadlist.vehicle_id ? vehicleMap[loadlist.vehicle_id] : null;
+      const vehicleIdNum = loadlist.vehicle_id ? parseInt(loadlist.vehicle_id, 10) : null;
+      const vehicle = vehicleIdNum && !isNaN(vehicleIdNum) ? vehicleMap[vehicleIdNum] : null;
       const driver = loadlist.driver_employee_id ? driverMap[loadlist.driver_employee_id] : null;
+
+      // Debug logging
+      console.log(`🚚 Loadlist ${loadlist.loadlist_code}:`, {
+        loading_door_number: loadlist.loading_door_number,
+        vehicle_id: loadlist.vehicle_id,
+        vehicleIdNum,
+        vehicle: vehicle ? { vehicle_id: vehicle.vehicle_id, plate_number: vehicle.plate_number } : null,
+        driver_employee_id: loadlist.driver_employee_id,
+        driver: driver ? { employee_id: driver.employee_id, name: `${driver.first_name} ${driver.last_name}` } : null
+      });
 
       // คำนวณจำนวนพัสดุจาก picklists เท่านั้น (ไม่นับ face sheets และ bonus face sheets)
       const totalPackages = picklists.reduce((sum: number, p: any) => sum + (p.picklists?.total_lines || 0), 0);
@@ -250,7 +263,8 @@ export async function POST(request: NextRequest) {
       driver_employee_id,
       driver_phone,
       helper_employee_id,
-      loading_queue_number
+      loading_queue_number,
+      loading_door_number
     } = body;
 
     // Validation - ต้องมีอย่างน้อย picklist_ids, face_sheet_ids หรือ bonus_face_sheet_ids
@@ -325,26 +339,44 @@ export async function POST(request: NextRequest) {
 
     const loadlistCode = `LD-${datePrefix}-${String(sequenceNumber).padStart(4, '0')}`;
 
+    // Debug: Log what we're about to insert
+    const insertData = {
+      loadlist_code: loadlistCode,
+      plan_id,
+      trip_id,
+      status: 'pending',
+      checker_employee_id,
+      vehicle_type,
+      delivery_number,
+      vehicle_id: vehicle_id || null,
+      driver_employee_id: driver_employee_id || null,
+      driver_phone: driver_phone || null,
+      helper_employee_id: helper_employee_id || null,
+      loading_queue_number: loading_queue_number || null,
+      loading_door_number: loading_door_number || null,
+      created_by: null // In real app, get from auth (UUID)
+    };
+
+    console.log('📝 [API] Inserting loadlist:', {
+      vehicle_id: insertData.vehicle_id,
+      driver_employee_id: insertData.driver_employee_id,
+      loading_door_number: insertData.loading_door_number
+    });
+
     // Create loadlist
     const { data: loadlist, error: loadlistError } = await supabase
       .from('loadlists')
-      .insert({
-        loadlist_code: loadlistCode,
-        plan_id,
-        trip_id,
-        status: 'pending',
-        checker_employee_id,
-        vehicle_type,
-        delivery_number,
-        vehicle_id: vehicle_id || null,
-        driver_employee_id: driver_employee_id || null,
-        driver_phone: driver_phone || null,
-        helper_employee_id: helper_employee_id || null,
-        loading_queue_number: loading_queue_number || null,
-        created_by: null // In real app, get from auth (UUID)
-      })
+      .insert(insertData)
       .select()
       .single();
+
+    console.log('✅ [API] Loadlist created:', {
+      id: loadlist?.id,
+      code: loadlist?.loadlist_code,
+      vehicle_id: loadlist?.vehicle_id,
+      driver_employee_id: loadlist?.driver_employee_id,
+      loading_door_number: loadlist?.loading_door_number
+    });
 
     if (loadlistError) {
       return NextResponse.json(

@@ -113,7 +113,9 @@ export default function MobileLoadingDetailPage() {
     // Find employee details
     const response = await fetch('/api/employees');
     const result = await response.json();
-    const employee = result.data?.find((e: any) => e.employee_id === checkerId);
+    // API returns array directly, not wrapped in {data: [...]}
+    const employees = Array.isArray(result) ? result : (result.data || []);
+    const employee = employees.find((e: any) => e.employee_id === checkerId);
 
     if (!employee) {
       setErrorMessage('ไม่พบข้อมูลพนักงาน');

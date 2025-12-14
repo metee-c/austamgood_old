@@ -73,11 +73,22 @@ export default function EmployeeSelectionModal({
       const response = await fetch('/api/employees');
       const result = await response.json();
 
-      if (response.ok && result.data) {
-        setEmployees(result.data);
+      if (response.ok) {
+        // API returns array directly
+        if (Array.isArray(result)) {
+          console.log('✅ [fetchEmployees] Loaded employees:', result.length);
+          setEmployees(result);
+        } else if (result.data && Array.isArray(result.data)) {
+          console.log('✅ [fetchEmployees] Loaded employees from data:', result.data.length);
+          setEmployees(result.data);
+        } else {
+          console.error('❌ [fetchEmployees] Unexpected response format:', result);
+        }
+      } else {
+        console.error('❌ [fetchEmployees] Response not OK:', response.status);
       }
     } catch (error) {
-      console.error('Error fetching employees:', error);
+      console.error('❌ [fetchEmployees] Error:', error);
     } finally {
       setLoading(false);
     }
@@ -160,9 +171,14 @@ export default function EmployeeSelectionModal({
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2 font-thai">
                   <User className="w-4 h-4 inline mr-1" />
-                  พนักงานเช็ค ({checkerIds.length} คน)
+                  เลือกผู้เช็คโหลดใหม่ ({checkerIds.length} คน)
                 </label>
                 <div className="border border-gray-300 rounded-lg max-h-48 overflow-y-auto">
+                  {employees.length === 0 && !loading && (
+                    <div className="px-3 py-2 text-sm text-gray-500 font-thai">
+                      ไม่พบข้อมูลพนักงาน
+                    </div>
+                  )}
                   {employees.map((emp) => (
                     <label
                       key={`checker-${emp.employee_id}`}
@@ -185,43 +201,70 @@ export default function EmployeeSelectionModal({
                 </div>
               </div>
 
-              {/* Picker Info (Read-only for checker-only mode) */}
+              {/* Read-only Info for checker-only mode */}
               {mode === 'checker-only' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2 font-thai">
-                    <User className="w-4 h-4 inline mr-1" />
-                    พนักงานจัดสินค้า {pickerEmployees && pickerEmployees.length > 0 && `(${pickerEmployees.length} คน)`}
-                  </label>
-                  <div className="border border-gray-300 rounded-lg bg-gray-50 px-3 py-2">
-                    {pickerEmployees && pickerEmployees.length > 0 ? (
-                      <div className="space-y-1">
-                        {pickerEmployees.map((picker, index) => (
-                          <div key={picker.employee_id} className="flex items-center">
-                            <span className="text-sm font-thai text-gray-900">
-                              {index + 1}. {picker.first_name} {picker.last_name}
-                            </span>
-                            <span className="text-gray-500 text-xs ml-2">
-                              ({picker.employee_code})
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : pickerEmployee ? (
-                      <>
-                        <span className="text-sm font-thai text-gray-900">
-                          {pickerEmployee.first_name} {pickerEmployee.last_name}
+                <>
+                  {/* Checker Info (Read-only) */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2 font-thai">
+                      <User className="w-4 h-4 inline mr-1" />
+                      ผู้เช็คโหลด
+                    </label>
+                    <div className="border border-blue-300 rounded-lg bg-blue-50 px-3 py-2">
+                      {checkerEmployee ? (
+                        <>
+                          <span className="text-sm font-thai text-gray-900">
+                            {checkerEmployee.first_name} {checkerEmployee.last_name}
+                          </span>
+                          <span className="text-gray-500 text-xs ml-2">
+                            ({checkerEmployee.employee_code})
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-sm font-thai text-gray-500 italic">
+                          ยังไม่ได้กำหนดผู้เช็คโหลด
                         </span>
-                        <span className="text-gray-500 text-xs ml-2">
-                          ({pickerEmployee.employee_code})
-                        </span>
-                      </>
-                    ) : (
-                      <span className="text-sm font-thai text-gray-500 italic">
-                        ยังไม่ได้กำหนดผู้จัดสินค้า
-                      </span>
-                    )}
+                      )}
+                    </div>
                   </div>
-                </div>
+
+                  {/* Picker Info (Read-only) */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-2 font-thai">
+                      <User className="w-4 h-4 inline mr-1" />
+                      พนักงานจัดสินค้า {pickerEmployees && pickerEmployees.length > 0 && `(${pickerEmployees.length} คน)`}
+                    </label>
+                    <div className="border border-gray-300 rounded-lg bg-gray-50 px-3 py-2">
+                      {pickerEmployees && pickerEmployees.length > 0 ? (
+                        <div className="space-y-1">
+                          {pickerEmployees.map((picker, index) => (
+                            <div key={picker.employee_id} className="flex items-center">
+                              <span className="text-sm font-thai text-gray-900">
+                                {index + 1}. {picker.first_name} {picker.last_name}
+                              </span>
+                              <span className="text-gray-500 text-xs ml-2">
+                                ({picker.employee_code})
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      ) : pickerEmployee ? (
+                        <>
+                          <span className="text-sm font-thai text-gray-900">
+                            {pickerEmployee.first_name} {pickerEmployee.last_name}
+                          </span>
+                          <span className="text-gray-500 text-xs ml-2">
+                            ({pickerEmployee.employee_code})
+                          </span>
+                        </>
+                      ) : (
+                        <span className="text-sm font-thai text-gray-500 italic">
+                          ยังไม่ได้กำหนดผู้จัดสินค้า
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </>
               )}
 
               {/* Picker Selection (for both mode) */}

@@ -114,6 +114,10 @@ const TripEditForm: React.FC<TripEditFormProps> = ({ trip, tripIndex, suppliers,
   // State for vehicles
   const [vehicles, setVehicles] = useState<Vehicle[]>([]);
   const [loadingVehicles, setLoadingVehicles] = useState(false);
+  
+  // State for drivers (employees)
+  const [drivers, setDrivers] = useState<Array<{employee_id: number; first_name: string; last_name: string}>>([]);
+  const [loadingDrivers, setLoadingDrivers] = useState(false);
 
   // Parse notes if it's a JSON string
   let parsedNotes = {
@@ -161,6 +165,31 @@ const TripEditForm: React.FC<TripEditFormProps> = ({ trip, tripIndex, suppliers,
     };
 
     fetchCustomers();
+  }, []);
+
+  // Fetch drivers (employees with driver position) when component mounts
+  useEffect(() => {
+    const fetchDrivers = async () => {
+      setLoadingDrivers(true);
+      try {
+        const res = await fetch('/api/employees');
+        const employees = await res.json();
+
+        if (employees && Array.isArray(employees)) {
+          // Filter only drivers
+          const driverList = employees.filter((emp: any) => 
+            emp.position?.includes('ขับ') || emp.position?.toLowerCase().includes('driver')
+          );
+          setDrivers(driverList);
+        }
+      } catch (err) {
+        console.error('Error fetching drivers:', err);
+      } finally {
+        setLoadingDrivers(false);
+      }
+    };
+
+    fetchDrivers();
   }, []);
 
   // Initialize pricing mode from trip data

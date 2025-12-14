@@ -14,21 +14,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get loadlist basic info with checker
+    // Get loadlist basic info
     const { data: loadlist, error: loadlistError } = await supabase
       .from('loadlists')
-      .select(`
-        id, 
-        loadlist_code, 
-        status,
-        checker_employee_id,
-        checker_employee:checker_employee_id (
-          employee_id,
-          first_name,
-          last_name,
-          employee_code
-        )
-      `)
+      .select('id, loadlist_code, status, checker_employee_id')
       .eq('loadlist_code', code.toUpperCase())
       .single();
 
@@ -37,6 +26,20 @@ export async function GET(request: NextRequest) {
         { error: 'ไม่พบใบโหลดนี้', details: loadlistError?.message },
         { status: 404 }
       );
+    }
+
+    // Get checker employee info separately
+    let checkerEmployee = null;
+    if (loadlist.checker_employee_id) {
+      const { data: checkerData } = await supabase
+        .from('master_employee')
+        .select('employee_id, first_name, last_name, employee_code')
+        .eq('employee_id', loadlist.checker_employee_id)
+        .single();
+      
+      if (checkerData) {
+        checkerEmployee = checkerData;
+      }
     }
 
     // Check if already loaded
@@ -335,7 +338,7 @@ export async function GET(request: NextRequest) {
         status: loadlist.status,
         total_weight: totalWeight,
         checker_employee_id: loadlist.checker_employee_id,
-        checker_employee: (loadlist as any).checker_employee,
+        checker_employee: checkerEmployee,
         picker_employee: pickerEmployee,
         picker_employees: pickerEmployees, // ส่งรายชื่อพนักงานจัดสินค้าทั้งหมด
         orders

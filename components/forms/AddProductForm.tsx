@@ -62,7 +62,7 @@ const AddProductForm: React.FC<AddProductFormProps> = ({ onSuccess, onCancel, in
     lot_tracking_required: initialData?.lot_tracking_required || false,
     expiry_date_required: initialData?.expiry_date_required || false,
     abc_class: initialData?.abc_class || '',
-    putaway_rotation_method: initialData?.putaway_rotation_method || '',
+    putaway_rotation_method: initialData?.putaway_rotation_method || null,
     hazard_class: initialData?.hazard_class || '',
     allow_mixed_expiry: initialData?.allow_mixed_expiry || false,
     allow_mixed_lot: initialData?.allow_mixed_lot || false,

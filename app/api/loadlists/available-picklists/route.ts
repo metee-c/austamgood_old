@@ -156,6 +156,8 @@ export async function GET(request: NextRequest) {
         trip: {
           trip_id: picklist.trip?.trip_id,
           trip_code: picklist.trip?.trip_code || '-',
+          vehicle_id: picklist.trip?.vehicle_id,
+          driver_id: picklist.trip?.driver_id,
           vehicle: {
             plate_number: picklist.trip?.vehicle?.plate_number || '-'
           },

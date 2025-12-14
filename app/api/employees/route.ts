@@ -47,10 +47,8 @@ export async function GET(request: NextRequest) {
       wms_role: emp.wms_role
     })) || [];
 
-    return NextResponse.json({
-      success: true,
-      data: employees
-    });
+    // Return array directly (not wrapped in object) to match expected format
+    return NextResponse.json(employees);
 
   } catch (error) {
     console.error('API Error in GET /api/employees:', error);
