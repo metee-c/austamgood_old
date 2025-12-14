@@ -124,6 +124,8 @@ export async function GET(request: NextRequest) {
         face_sheet_id,
         face_sheets:face_sheet_id (
           face_sheet_no,
+          picker_employee_ids,
+          checker_employee_ids,
           face_sheet_items (
             sku_id,
             quantity,
@@ -277,7 +279,7 @@ export async function GET(request: NextRequest) {
 
     const orders = Array.from(ordersMap.values());
 
-    // Get picker and checker info from first picklist or bonus face sheet
+    // Get picker and checker info from first picklist, face sheet, or bonus face sheet
     // ใช้ picker_employee_ids และ checker_employee_ids ที่บันทึกตอนยืนยันหยิบสินค้าเสร็จ
     let pickerEmployee = null;
     let pickerEmployees: any[] = [];
@@ -318,6 +320,46 @@ export async function GET(request: NextRequest) {
         
         if (checkerData && checkerData.length > 0) {
           checkerEmployees = checkerData;
+        }
+      }
+    }
+    
+    // ถ้ายังไม่มี picker หรือ checker ให้ลองดึงจาก face sheet
+    if ((pickerEmployees.length === 0 || checkerEmployees.length === 0) && faceSheetData && faceSheetData.length > 0) {
+      const firstFaceSheet = faceSheetData[0].face_sheets as any;
+      
+      // ดึง picker employees
+      if (pickerEmployees.length === 0) {
+        const pickerIds = firstFaceSheet?.picker_employee_ids;
+        
+        if (pickerIds && Array.isArray(pickerIds) && pickerIds.length > 0) {
+          const pickerIdsInt = pickerIds.map((id: any) => parseInt(id));
+          const { data: pickerData } = await supabase
+            .from('master_employee')
+            .select('employee_id, first_name, last_name, nickname, employee_code')
+            .in('employee_id', pickerIdsInt);
+          
+          if (pickerData && pickerData.length > 0) {
+            pickerEmployees = pickerData;
+            pickerEmployee = pickerData[0]; // เก็บคนแรกไว้เพื่อ backward compatibility
+          }
+        }
+      }
+
+      // ดึง checker employees
+      if (checkerEmployees.length === 0) {
+        const checkerIds = firstFaceSheet?.checker_employee_ids;
+        
+        if (checkerIds && Array.isArray(checkerIds) && checkerIds.length > 0) {
+          const checkerIdsInt = checkerIds.map((id: any) => parseInt(id));
+          const { data: checkerData } = await supabase
+            .from('master_employee')
+            .select('employee_id, first_name, last_name, nickname, employee_code')
+            .in('employee_id', checkerIdsInt);
+          
+          if (checkerData && checkerData.length > 0) {
+            checkerEmployees = checkerData;
+          }
         }
       }
     }

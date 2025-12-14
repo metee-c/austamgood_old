@@ -11,7 +11,10 @@ import {
   Loader2,
   PackageSearch,
   CheckCircle2,
-  Truck
+  Truck,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
@@ -102,6 +105,10 @@ const InventoryBalancesPage = () => {
   const [showLowStock, setShowLowStock] = useState(false);
   const [showExpiringSoon, setShowExpiringSoon] = useState(false);
   const [showZeroBalance, setShowZeroBalance] = useState(true);
+
+  // Sorting state
+  const [sortColumn, setSortColumn] = useState<'picklist_code' | 'location_id'>('picklist_code');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   // Warehouses for filter
   const [warehouses, setWarehouses] = useState<any[]>([]);
@@ -225,6 +232,17 @@ const InventoryBalancesPage = () => {
     setReservationModalOpen(true);
   };
 
+  const handleSort = (column: 'picklist_code' | 'location_id') => {
+    if (sortColumn === column) {
+      // Toggle direction if clicking the same column
+      setSortDirection(sortDirection === 'desc' ? 'asc' : 'desc');
+    } else {
+      // Set new column with default descending order
+      setSortColumn(column);
+      setSortDirection('desc');
+    }
+  };
+
 
 
   const isExpiringSoon = (expiryDate: string) => {
@@ -329,10 +347,26 @@ const InventoryBalancesPage = () => {
     
     return passes;
   }).sort((a, b) => {
-    // เรียงตาม location_id แบบ Z-A
-    const locationA = a.location_id || '';
-    const locationB = b.location_id || '';
-    return locationB.localeCompare(locationA);
+    // เรียงตามคอลัมน์ที่เลือก
+    if (sortColumn === 'picklist_code') {
+      // เรียงตามรหัสใบหยิบ (picklist_code, face_sheet_code, หรือ bonus_face_sheet_code)
+      const picklistA = a.related_documents?.[0]?.picklist_code || 
+                        a.related_documents?.[0]?.face_sheet_code || 
+                        a.related_documents?.[0]?.bonus_face_sheet_code || '';
+      const picklistB = b.related_documents?.[0]?.picklist_code || 
+                        b.related_documents?.[0]?.face_sheet_code || 
+                        b.related_documents?.[0]?.bonus_face_sheet_code || '';
+      return sortDirection === 'desc' 
+        ? picklistB.localeCompare(picklistA)
+        : picklistA.localeCompare(picklistB);
+    } else {
+      // เรียงตาม location_id
+      const locationA = a.location_id || '';
+      const locationB = b.location_id || '';
+      return sortDirection === 'desc' 
+        ? locationB.localeCompare(locationA)
+        : locationA.localeCompare(locationB);
+    }
   });
   
   // Debug log final result
@@ -523,7 +557,23 @@ const InventoryBalancesPage = () => {
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชื่อสินค้า</th>
                       {activeTab === 'dispatch' && (
                         <>
-                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">ใบหยิบ</th>
+                          <th 
+                            className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50 cursor-pointer hover:bg-blue-100 transition-colors select-none"
+                            onClick={() => handleSort('picklist_code')}
+                          >
+                            <div className="flex items-center gap-1">
+                              <span>ใบหยิบ</span>
+                              {sortColumn === 'picklist_code' ? (
+                                sortDirection === 'desc' ? (
+                                  <ArrowDown className="w-3 h-3 text-blue-600" />
+                                ) : (
+                                  <ArrowUp className="w-3 h-3 text-blue-600" />
+                                )
+                              ) : (
+                                <ArrowUpDown className="w-3 h-3 text-gray-400" />
+                              )}
+                            </div>
+                          </th>
                           <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">เลขออเดอร์</th>
                           <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">ร้านค้า</th>
                         </>
@@ -532,7 +582,23 @@ const InventoryBalancesPage = () => {
                         <>
                           <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">เลขแผนส่ง</th>
                           <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">คันที่</th>
-                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">ใบหยิบ</th>
+                          <th 
+                            className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50 cursor-pointer hover:bg-purple-100 transition-colors select-none"
+                            onClick={() => handleSort('picklist_code')}
+                          >
+                            <div className="flex items-center gap-1">
+                              <span>ใบหยิบ</span>
+                              {sortColumn === 'picklist_code' ? (
+                                sortDirection === 'desc' ? (
+                                  <ArrowDown className="w-3 h-3 text-purple-600" />
+                                ) : (
+                                  <ArrowUp className="w-3 h-3 text-purple-600" />
+                                )
+                              ) : (
+                                <ArrowUpDown className="w-3 h-3 text-gray-400" />
+                              )}
+                            </div>
+                          </th>
                           <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">ใบโหลด</th>
                           <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">เลขออเดอร์</th>
                           <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">ร้านค้า</th>

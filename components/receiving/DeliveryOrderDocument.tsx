@@ -290,7 +290,7 @@ const DeliveryOrderDocument: React.FC<DeliveryOrderDocumentProps> = ({
           <div style={{ marginBottom: '4px' }}>
             <strong>ทะเบียนรถ:</strong> {loadlist.vehicle?.plate_number || '_______________'}
             <span style={{ marginLeft: '20px' }}>
-              <strong>ชื่อคนขับ:</strong> {loadlist.vehicle?.model || '_______________'}
+              <strong>ประเภทรถ:</strong> {loadlist.vehicle?.vehicle_type || '_______________'}
             </span>
           </div>
           <div>
