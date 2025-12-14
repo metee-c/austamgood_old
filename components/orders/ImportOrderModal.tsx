@@ -214,7 +214,7 @@ const ImportOrderModal: React.FC<ImportOrderModalProps> = ({ isOpen, onClose, on
         isOpen={isOpen}
         onClose={handleClose}
         title="นำเข้าออเดอร์"
-        size="md"
+        size="xl"
       >
         <div className="space-y-6">
           {/* เลือกประเภทการนำเข้า */}

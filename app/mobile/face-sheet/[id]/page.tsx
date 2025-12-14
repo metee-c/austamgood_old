@@ -121,7 +121,7 @@ export default function MobileFaceSheetPickPage() {
 
       if (!hasError) {
         alert('บันทึกการหยิบสำเร็จ');
-        fetchFaceSheet();
+        router.push('/mobile/face-sheet');
       }
     } catch (error) {
       console.error('Error picking items:', error);

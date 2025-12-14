@@ -201,6 +201,12 @@ export async function GET(request: NextRequest) {
         }
       }
 
+      // Determine which document types are present
+      const documentTypes: string[] = [];
+      if (picklists.length > 0) documentTypes.push('ใบหยิบ');
+      if (faceSheets.length > 0) documentTypes.push('ใบปะหน้า');
+      if (bonusFaceSheets.length > 0) documentTypes.push('ของแถม');
+
       return {
         loadlist_id: loadlist.id,
         loadlist_code: loadlist.loadlist_code,
@@ -212,7 +218,8 @@ export async function GET(request: NextRequest) {
         created_at: loadlist.created_at,
         updated_at: loadlist.updated_at,
         vehicle: loadlist.vehicle_id ? vehicleMap[loadlist.vehicle_id] : null,
-        driver: loadlist.driver_employee_id ? driverMap[loadlist.driver_employee_id] : null
+        driver: loadlist.driver_employee_id ? driverMap[loadlist.driver_employee_id] : null,
+        document_types: documentTypes
       };
     }) || []);
 

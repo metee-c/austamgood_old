@@ -12,8 +12,7 @@ import {
   AlertTriangle,
   RefreshCw,
   Loader2,
-  X,
-  Package
+  X
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Badge from '@/components/ui/Badge';
@@ -30,6 +29,7 @@ interface LoadlistTask {
   updated_at: string;
   vehicle?: { plate_number: string };
   driver?: { first_name: string; last_name: string };
+  document_types?: string[];
 }
 
 const LOADLIST_STATUSES = [
@@ -276,6 +276,11 @@ function MobileLoadingPage() {
                           {loadlist.vehicle && (
                             <p className="text-[10px] text-gray-500 font-thai whitespace-nowrap">
                               {loadlist.vehicle.plate_number}
+                            </p>
+                          )}
+                          {loadlist.document_types && loadlist.document_types.length > 0 && (
+                            <p className="text-[9px] text-sky-600 font-thai whitespace-nowrap mt-0.5">
+                              {loadlist.document_types.join(', ')}
                             </p>
                           )}
                         </div>

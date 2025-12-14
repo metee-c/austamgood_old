@@ -772,7 +772,12 @@ const OrdersPage = () => {
                             <select
                               value={order.order_type || ''}
                               onChange={(e) => handleTypeChange(order.order_id, e.target.value as OrderType)}
-                              className="w-full px-2 py-1 border border-gray-300 rounded text-xs font-thai appearance-none focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+                              className={`w-full px-2 py-1 border rounded text-xs font-thai appearance-none focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer ${
+                                order.order_type === 'route_planning' ? 'bg-blue-100 border-blue-300' :
+                                order.order_type === 'express' ? 'bg-orange-100 border-orange-300' :
+                                order.order_type === 'special' ? 'bg-purple-100 border-purple-300' :
+                                'border-gray-300'
+                              }`}
                               style={{ color: 'transparent' }}
                               onClick={(e) => e.stopPropagation()}
                             >
@@ -781,12 +786,22 @@ const OrdersPage = () => {
                               <option value="special" className="text-gray-900">สินค้าพิเศษ</option>
                             </select>
                             <div className="pointer-events-none absolute inset-y-0 left-0 right-6 flex items-center px-2">
-                              <span className="text-xs font-thai text-gray-900 truncate">
+                              <span className={`text-xs font-thai font-semibold truncate ${
+                                order.order_type === 'route_planning' ? 'text-blue-700' :
+                                order.order_type === 'express' ? 'text-orange-700' :
+                                order.order_type === 'special' ? 'text-purple-700' :
+                                'text-gray-900'
+                              }`}>
                                 {getTypeText(order.order_type)}
                               </span>
                             </div>
                             <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
-                              <ChevronDown className="w-3.5 h-3.5 text-gray-600" />
+                              <ChevronDown className={`w-3.5 h-3.5 ${
+                                order.order_type === 'route_planning' ? 'text-blue-600' :
+                                order.order_type === 'express' ? 'text-orange-600' :
+                                order.order_type === 'special' ? 'text-purple-600' :
+                                'text-gray-600'
+                              }`} />
                             </div>
                           </div>
                         </Table.Cell>
