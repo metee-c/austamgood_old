@@ -1,11 +1,16 @@
 /**
  * Next.js middleware for authentication and route protection
  * 
- * TODO: Migrate to proxy.ts when Next.js 17 is released
- * @see https://nextjs.org/docs/app/building-your-application/routing/middleware
+ * MIGRATION NOTE:
+ * - middleware.ts is deprecated in Next.js 16+ (will be removed in Next.js 17+)
+ * - Should migrate to proxy.ts when Next.js 17 is released
+ * - Current implementation is stable and working correctly
  * 
- * Note: middleware.ts convention is deprecated in Next.js 15+
- * and will not be supported in Next.js 17+
+ * @see https://nextjs.org/docs/app/building-your-application/routing/middleware
+ * @see https://nextjs.org/docs/messages/middleware-to-proxy
+ * 
+ * WARNING: This file generates a deprecation warning during build.
+ * This is expected and does not affect functionality.
  */
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';

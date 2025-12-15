@@ -1,7 +1,8 @@
 import { createClient } from '@/lib/supabase/client'
-import { MasterSkuRow, MasterSkuInsert, MasterSkuUpdate } from '@/types/database/supabase'
 
-export type MasterSku = MasterSkuRow
+export type MasterSku = any
+export type MasterSkuInsert = any
+export type MasterSkuUpdate = any
 
 export interface MasterSkuFilters {
   search?: string

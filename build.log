@@ -1,20 +1,16 @@
- ⚠ `eslint` configuration in next.config.js is no longer supported. See more info here: https://nextjs.org/docs/app/api-reference/cli/next#next-lint-options
- ⚠ Invalid next.config.js options detected: 
- ⚠     Unrecognized key(s) in object: 'eslint'
- ⚠ See more info here: https://nextjs.org/docs/messages/invalid-next-config
    ▲ Next.js 16.0.10 (Turbopack)
    - Environments: .env.local
 
  ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
    Creating an optimized production build ...
- ✓ Compiled successfully in 17.7s
+ ✓ Compiled successfully in 10.1s
    Running TypeScript ...
    Collecting page data using 13 workers ...
    Generating static pages using 13 workers (0/151) ...
    Generating static pages using 13 workers (37/151) 
    Generating static pages using 13 workers (75/151) 
    Generating static pages using 13 workers (113/151) 
- ✓ Generating static pages using 13 workers (151/151) in 1497.9ms
+ ✓ Generating static pages using 13 workers (151/151) in 1244.1ms
    Finalizing page optimization ...
 
 Route (app)
@@ -151,6 +147,15 @@ Route (app)
 ├ ƒ /api/route-plans/trips/[id]
 ├ ƒ /api/sku-options
 ├ ƒ /api/skus
+├ ƒ /api/stock-adjustments
+├ ƒ /api/stock-adjustments/check-availability
+├ ƒ /api/stock-adjustments/[id]
+├ ƒ /api/stock-adjustments/[id]/approve
+├ ƒ /api/stock-adjustments/[id]/cancel
+├ ƒ /api/stock-adjustments/[id]/complete
+├ ƒ /api/stock-adjustments/[id]/reject
+├ ƒ /api/stock-adjustments/[id]/submit
+├ ƒ /api/stock-adjustments/reasons
 ├ ƒ /api/stock-alerts
 ├ ƒ /api/stock-import/batches
 ├ ƒ /api/stock-import/batches/[id]

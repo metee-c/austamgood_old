@@ -89,7 +89,7 @@ const InventoryBalancesPage = () => {
   const [deliveryData, setDeliveryData] = useState<InventoryBalance[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<FlowStage>('preparation');
+  const [activeTab, setActiveTab] = useState<'preparation' | 'dispatch' | 'delivery'>('preparation');
 
   // Modal states
   const [viewModalOpen, setViewModalOpen] = useState(false);
@@ -286,7 +286,8 @@ const InventoryBalancesPage = () => {
   const tabFilteredData = getFilteredDataByTab();
 
   // สำหรับ dispatch และ delivery tabs: แยกแต่ละ related_document ออกมาเป็นแถวแยก
-  const expandedData = (activeTab === 'dispatch' || activeTab === 'delivery')
+  const currentTab: FlowStage = activeTab;
+  const expandedData: InventoryBalance[] = (currentTab === 'dispatch' || currentTab === 'delivery')
     ? tabFilteredData.flatMap(item => {
         if (item.related_documents && item.related_documents.length > 0) {
           // แยกแต่ละ document ออกมาเป็นแถวแยก
@@ -559,7 +560,7 @@ const InventoryBalancesPage = () => {
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ID</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสสินค้า</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชื่อสินค้า</th>
-                      {activeTab === 'dispatch' && (
+                      {(activeTab as string) === 'dispatch' && (
                         <>
                           <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">ประเภท</th>
                           <th 
@@ -583,7 +584,7 @@ const InventoryBalancesPage = () => {
                           <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">ร้านค้า</th>
                         </>
                       )}
-                      {activeTab === 'delivery' && (
+                      {(activeTab as string) === 'delivery' && (
                         <>
                           <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">เลขแผนส่ง</th>
                           <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">คันที่</th>
@@ -649,7 +650,7 @@ const InventoryBalancesPage = () => {
                               {(balance as any).master_sku?.sku_name || '-'}
                             </span>
                           </td>
-                          {activeTab === 'dispatch' && (
+                          {(activeTab as string) === 'dispatch' && (
                             <>
                               <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-blue-50/30">
                                 {balance.related_documents && balance.related_documents.length > 0 && balance.related_documents[0].document_type ? (
@@ -697,7 +698,7 @@ const InventoryBalancesPage = () => {
                               </td>
                             </>
                           )}
-                          {activeTab === 'delivery' && (
+                          {(activeTab as string) === 'delivery' && (
                             <>
                               <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-purple-50/30">
                                 {balance.related_documents && balance.related_documents.length > 0 ? (

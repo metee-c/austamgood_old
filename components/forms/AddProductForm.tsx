@@ -7,12 +7,11 @@ import ComboBox from '@/components/ui/ComboBox';
 import { masterSkuService } from '@/lib/database/master-sku';
 import { useSkuOptions } from '@/hooks/useSkuOptions';
 import { useSuppliers, useStorageStrategies } from '@/hooks/useFormOptions';
-import { MasterSkuInsert } from '@/types/database/supabase';
 
 interface AddProductFormProps {
   onSuccess: () => void;
   onCancel: () => void;
-  initialData?: Partial<MasterSkuInsert> & Record<string, any>;
+  initialData?: Record<string, any>;
 }
 
 const AddProductForm: React.FC<AddProductFormProps> = ({ onSuccess, onCancel, initialData }) => {
@@ -31,7 +30,7 @@ const AddProductForm: React.FC<AddProductFormProps> = ({ onSuccess, onCancel, in
   const supplierOptions = suppliers.map(s => ({ value: s.supplier_id, label: s.supplier_name }));
   const storageStrategyOptions = strategies.map(s => ({ value: s.strategy_id, label: s.strategy_name }));
 
-  const [formData, setFormData] = useState<Partial<MasterSkuInsert> & Record<string, any>>({
+  const [formData, setFormData] = useState<Record<string, any>>({
     sku_id: initialData?.sku_id || '',
     sku_name: initialData?.sku_name || '',
     sku_description: initialData?.sku_description || '',

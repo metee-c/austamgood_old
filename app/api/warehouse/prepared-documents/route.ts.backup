@@ -264,7 +264,7 @@ export async function GET(request: Request) {
               sku_name: item.product_name || skuId,
               total_quantity: qty,
               package_count: 1,
-              package_ids: new Set(),
+              package_ids: new Set([item.package_id]),
               balance_id: balances?.balance_id,
               location_id: balances?.location_id || dispatchLocationId,
               pallet_id: balances?.pallet_id,
@@ -284,8 +284,8 @@ export async function GET(request: Request) {
             // Add to existing group
             const existing = groupedItems.get(skuId)!;
             existing.total_quantity += qty;
-            existing.package_count += 1;
-            
+            existing.package_ids.add(item.package_id);
+            existing.package_count = existing.package_ids.size;
           }
         }
         
@@ -439,7 +439,7 @@ export async function GET(request: Request) {
               sku_name: item.product_name || skuId,
               total_quantity: qty,
               package_count: 1,
-              package_ids: new Set(),
+              package_ids: new Set([item.package_id]),
               balance_id: balances?.balance_id,
               location_id: balances?.location_id || dispatchLocationId,
               pallet_id: balances?.pallet_id,
@@ -459,8 +459,8 @@ export async function GET(request: Request) {
             // Add to existing group
             const existing = groupedItems.get(skuId)!;
             existing.total_quantity += qty;
-            existing.package_count += 1;
-            
+            existing.package_ids.add(item.package_id);
+            existing.package_count = existing.package_ids.size;
           }
         }
         
