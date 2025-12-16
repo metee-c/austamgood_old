@@ -7,6 +7,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { stockAdjustmentService } from '@/lib/database/stock-adjustment';
 import { createAdjustmentSchema } from '@/types/stock-adjustment-schema';
 import type { AdjustmentFilters } from '@/types/stock-adjustment-schema';
+import { cookies } from 'next/headers';
+import { setUserContext } from '@/lib/supabase/with-user-context';
 
 export const dynamic = 'force-dynamic';
 
@@ -15,14 +17,25 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
 
-    // Check authentication
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-    if (authError || !user) {
+    // Check authentication from session cookie
+    const cookieStore = await cookies();
+    const sessionToken = cookieStore.get('session_token');
+    
+    if (!sessionToken?.value) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    // Validate session
+    const { data: sessionData, error: sessionError } = await supabase.rpc('validate_session_token', {
+      p_token: sessionToken.value
+    });
+
+    if (sessionError || !sessionData || sessionData.length === 0 || !sessionData[0].is_valid) {
+      return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
+    }
+
+    // Set user context for audit trail
+    await setUserContext(supabase);
 
     // Parse query parameters
     const searchParams = request.nextUrl.searchParams;
@@ -74,14 +87,32 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
 
-    // Check authentication
-    const {
-      data: { user },
-      error: authError,
-    } = await supabase.auth.getUser();
-    if (authError || !user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    // Check authentication from session cookie
+    const cookieStore = await cookies();
+    const sessionToken = cookieStore.get('session_token');
+    
+    console.log('[Stock Adjustment API] Session token exists:', !!sessionToken);
+    
+    if (!sessionToken?.value) {
+      console.log('[Stock Adjustment API] No session token found');
+      return NextResponse.json({ error: 'Unauthorized - No session' }, { status: 401 });
     }
+
+    // Validate session and get user_id
+    const { data: sessionData, error: sessionError } = await supabase.rpc('validate_session_token', {
+      p_token: sessionToken.value
+    });
+
+    if (sessionError || !sessionData || sessionData.length === 0 || !sessionData[0].is_valid) {
+      console.log('[Stock Adjustment API] Invalid session');
+      return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
+    }
+
+    const userId = sessionData[0].user_id;
+    console.log('[Stock Adjustment API] User ID from session:', userId);
+
+    // Set user context for audit trail
+    await setUserContext(supabase);
 
     // Parse request body
     const body = await request.json();
@@ -95,16 +126,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Add created_by from session if not provided
+    const payloadWithUser = {
+      ...validation.data,
+      created_by: validation.data.created_by || userId,
+    };
+
     // Create adjustment
-    const { data: adjustment, error } = await stockAdjustmentService.createAdjustment(validation.data);
+    console.log('[Stock Adjustment API] Creating adjustment with payload:', JSON.stringify(payloadWithUser, null, 2));
+    const { data: adjustment, error } = await stockAdjustmentService.createAdjustment(payloadWithUser);
 
     if (error) {
+      console.log('[Stock Adjustment API] Service error:', error);
       return NextResponse.json({ error }, { status: 400 });
     }
 
+    console.log('[Stock Adjustment API] Successfully created adjustment:', adjustment?.adjustment_id);
     return NextResponse.json({ data: adjustment }, { status: 201 });
   } catch (error: any) {
-    console.error('Error creating stock adjustment:', error);
+    console.error('[Stock Adjustment API] Unexpected error:', error);
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

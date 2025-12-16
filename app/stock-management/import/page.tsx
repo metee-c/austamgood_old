@@ -618,109 +618,110 @@ function StockImportPage() {
   };
 
   return (
-    <MainLayout>
-      <div className="h-screen bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
-        <div className="h-full flex flex-col space-y-2 pt-0 px-2 pb-2">
-          <div className="flex items-center justify-between gap-2 pt-1 flex-shrink-0">
-            <h1 className="text-xl font-bold text-thai-gray-900 font-thai m-0 p-0 leading-tight">นำเข้าสต็อก (Stock Import)</h1>
-            <div className="flex gap-2">
-              <Button
-                variant="secondary"
-                icon={Plus}
-                className="bg-green-500 hover:bg-green-600 text-white shadow-lg"
-                onClick={() => setShowPickingAreaModal(true)}
-              >
-                นำเข้าพื้นที่หยิบ
-              </Button>
-              <Button
-                variant="primary"
-                icon={Plus}
-                className="bg-blue-500 hover:bg-blue-600 shadow-lg"
-                onClick={() => setShowUploadModal(true)}
-              >
-                อัพโหลดไฟล์
-              </Button>
-            </div>
+    <>
+      <div className="h-screen overflow-hidden flex flex-col bg-gradient-to-br from-thai-gray-25 to-white">
+      <div className="pt-0 px-2 pb-2 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <h1 className="text-xl font-bold text-thai-gray-900 font-thai">นำเข้าสต็อก (Stock Import)</h1>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              icon={Plus}
+              className="bg-green-500 hover:bg-green-600 text-white shadow-lg"
+              onClick={() => setShowPickingAreaModal(true)}
+            >
+              นำเข้าพื้นที่หยิบ
+            </Button>
+            <Button
+              variant="primary"
+              icon={Plus}
+              className="bg-blue-500 hover:bg-blue-600 shadow-lg"
+              onClick={() => setShowUploadModal(true)}
+            >
+              อัพโหลดไฟล์
+            </Button>
           </div>
+        </div>
 
-          <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm flex-shrink-0">
-            <div className="flex items-center space-x-3">
-              <div className="flex-1">
-                <div className="relative">
-                  <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="ค้นหาด้วย Batch ID, ชื่อไฟล์, คลังสินค้า..."
-                    className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm placeholder:text-thai-gray-400"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="flex space-x-2">
-                <select
-                  className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-24"
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                >
-                  <option value="all">ทุกสถานะ</option>
-                  <option value="uploading">กำลังอัพโหลด</option>
-                  <option value="validating">กำลังตรวจสอบ</option>
-                  <option value="validated">ตรวจสอบแล้ว</option>
-                  <option value="processing">กำลังนำเข้า</option>
-                  <option value="completed">เสร็จสมบูรณ์</option>
-                  <option value="failed">ล้มเหลว</option>
-                </select>
+        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm">
+          <div className="flex items-center space-x-3">
+            <div className="flex-1">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
+                <input
+                  type="text"
+                  placeholder="ค้นหาด้วย Batch ID, ชื่อไฟล์, คลังสินค้า..."
+                  className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm placeholder:text-thai-gray-400"
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                />
               </div>
             </div>
+            <div className="flex space-x-2">
+              <select
+                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-32"
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+              >
+                <option value="all">ทุกสถานะ</option>
+                <option value="uploading">กำลังอัพโหลด</option>
+                <option value="validating">กำลังตรวจสอบ</option>
+                <option value="validated">ตรวจสอบแล้ว</option>
+                <option value="processing">กำลังนำเข้า</option>
+                <option value="completed">เสร็จสมบูรณ์</option>
+                <option value="failed">ล้มเหลว</option>
+              </select>
+            </div>
           </div>
+        </div>
+      </div>
 
-          <div className="flex-1 min-h-0">
-            <div className="w-full h-[74vh] bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col">
-              {loading ? (
-                <div className="h-full flex flex-col items-center justify-center text-thai-gray-500 gap-2">
-                  <Loader2 className="w-6 h-6 animate-spin" />
-                  <p className="text-sm font-thai">กำลังโหลด...</p>
+      <div className="flex-1 min-h-0 px-2 pb-2">
+        <div className="h-full bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col">
+          <div className="flex-1 overflow-auto thin-scrollbar">
+            {loading ? (
+              <div className="flex flex-col items-center justify-center text-thai-gray-500 gap-4 py-20">
+                <Loader2 className="w-10 h-10 animate-spin" />
+                <p className="font-thai">กำลังโหลด...</p>
+              </div>
+            ) : sortedBatches.length === 0 ? (
+              <div className="flex flex-col items-center justify-center text-thai-gray-500 gap-4 py-20">
+                <FileText className="w-16 h-16" />
+                <div className="text-center">
+                  <p className="font-medium font-thai">ไม่พบข้อมูลการนำเข้า</p>
+                  <p className="text-sm text-thai-gray-400 mt-1 font-thai">คลิก 'อัพโหลดไฟล์' เพื่อเริ่มต้น</p>
                 </div>
-              ) : sortedBatches.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-thai-gray-500 gap-4">
-                  <FileText className="w-12 h-12" />
-                  <div className="text-center">
-                    <p className="text-sm font-medium font-thai">ไม่พบข้อมูลการนำเข้า</p>
-                    <p className="text-xs text-thai-gray-400 mt-1 font-thai">คลิก 'อัพโหลดไฟล์' เพื่อเริ่มต้น</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex-1 overflow-auto thin-scrollbar">
-                  <table className="w-full border-collapse text-sm">
-                    <thead className="sticky top-0 z-10 bg-gray-100">
-                      <tr>
-                        <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200 font-thai" onClick={() => handleSort('batch_id')}>
-                          รหัส Batch{getSortIcon('batch_id')}
-                        </th>
-                        <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200 font-thai" onClick={() => handleSort('batch_name')}>
-                          ชื่อ Batch{getSortIcon('batch_name')}
-                        </th>
-                        <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200 font-thai" onClick={() => handleSort('file_name')}>
-                          ไฟล์{getSortIcon('file_name')}
-                        </th>
-                        <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200 font-thai" onClick={() => handleSort('warehouse_id')}>
-                          คลังสินค้า{getSortIcon('warehouse_id')}
-                        </th>
-                        <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200 font-thai" onClick={() => handleSort('total_rows')}>
-                          แถว{getSortIcon('total_rows')}
-                        </th>
-                        <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200 font-thai" onClick={() => handleSort('status')}>
-                          สถานะ{getSortIcon('status')}
-                        </th>
-                        <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200 font-thai" onClick={() => handleSort('created_at')}>
-                          วันที่สร้าง{getSortIcon('created_at')}
-                        </th>
-                        <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap font-thai">การดำเนินการ</th>
-                      </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
-                      {sortedBatches.map((batch) => {
+              </div>
+            ) : (
+              <table className="w-full border-collapse text-sm">
+                <thead className="sticky top-0 z-10 bg-gray-100">
+                  <tr>
+                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200 font-thai" onClick={() => handleSort('batch_id')}>
+                      รหัส Batch{getSortIcon('batch_id')}
+                    </th>
+                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200 font-thai" onClick={() => handleSort('batch_name')}>
+                      ชื่อ Batch{getSortIcon('batch_name')}
+                    </th>
+                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200 font-thai" onClick={() => handleSort('file_name')}>
+                      ไฟล์{getSortIcon('file_name')}
+                    </th>
+                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200 font-thai" onClick={() => handleSort('warehouse_id')}>
+                      คลังสินค้า{getSortIcon('warehouse_id')}
+                    </th>
+                    <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200 font-thai" onClick={() => handleSort('total_rows')}>
+                      แถว{getSortIcon('total_rows')}
+                    </th>
+                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200 font-thai" onClick={() => handleSort('status')}>
+                      สถานะ{getSortIcon('status')}
+                    </th>
+                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200 font-thai" onClick={() => handleSort('created_at')}>
+                      วันที่สร้าง{getSortIcon('created_at')}
+                    </th>
+                    <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap font-thai">การดำเนินการ</th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
+                  {sortedBatches.map((batch) => {
                         const isExpanded = !!expandedRows[batch.batch_id];
                         return (
                           <React.Fragment key={batch.batch_id}>
@@ -864,16 +865,16 @@ function StockImportPage() {
                           </React.Fragment>
                         );
                       })}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+                </tbody>
+              </table>
+            )}
           </div>
         </div>
       </div>
+    </div>
 
-      <Modal
+    {/* Modals */}
+    <Modal
         isOpen={showUploadModal}
         onClose={() => {
           setShowUploadModal(false);
@@ -1334,27 +1335,10 @@ function StockImportPage() {
           <p className="text-sm text-gray-500 font-thai mt-2">กรุณารอสักครู่...</p>
         </div>
       </Modal>
-    </MainLayout>
+    </>
   );
 }
 
 export default function StockImportPageWithPermission() {
-  return (
-    <PermissionGuard 
-      permission="warehouse.inventory.manage"
-      fallback={
-        <MainLayout>
-          <div className="flex items-center justify-center min-h-[400px]">
-            <div className="text-center">
-              <AlertTriangle className="h-12 w-12 text-red-500 mx-auto mb-4" />
-              <h2 className="text-xl font-semibold text-gray-900 mb-2">ไม่มีสิทธิ์เข้าถึง</h2>
-              <p className="text-gray-600">คุณไม่มีสิทธิ์ในการนำเข้าสต็อก</p>
-            </div>
-          </div>
-        </MainLayout>
-      }
-    >
-      <StockImportPage />
-    </PermissionGuard>
-  );
+  return <StockImportPage />;
 }

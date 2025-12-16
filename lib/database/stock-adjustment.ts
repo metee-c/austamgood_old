@@ -17,7 +17,7 @@ const supabase = createClient(
 
 const ADJUSTMENT_SELECT = `
   *,
-  reason:wms_adjustment_reasons!fk_adjustment_reason (
+  reason:wms_adjustment_reasons!reason_id (
     reason_id,
     reason_code,
     reason_name_th,
@@ -25,14 +25,14 @@ const ADJUSTMENT_SELECT = `
     reason_type,
     requires_approval
   ),
-  warehouse:master_warehouse!fk_adjustment_warehouse (warehouse_name),
-  created_by_user:master_system_user!fk_adjustment_created_by (first_name, last_name),
-  approved_by_user:master_system_user!fk_adjustment_approved_by (first_name, last_name),
-  completed_by_user:master_system_user!fk_adjustment_completed_by (first_name, last_name),
+  warehouse:master_warehouse!warehouse_id (warehouse_name),
+  created_by_user:master_system_user!created_by (full_name),
+  approved_by_user:master_system_user!approved_by (full_name),
+  completed_by_user:master_system_user!completed_by (full_name),
   wms_stock_adjustment_items (
     *,
-    master_sku (sku_name, barcode, qty_per_pack),
-    master_location (location_name, location_code)
+    master_sku!sku_id (sku_name, barcode, qty_per_pack),
+    master_location!location_id (location_name, location_code)
   )
 `;
 
@@ -191,7 +191,7 @@ class StockAdjustmentService {
         payload.items.map(async (item, index) => {
           const packSize = skuPackSizeMap.get(item.sku_id) || 1;
           
-          // Get current balance
+          // Get current balance - try exact match first
           let balanceQuery = this.supabase
             .from('wms_inventory_balances')
             .select('total_pack_qty, total_piece_qty')
@@ -205,10 +205,23 @@ class StockAdjustmentService {
             balanceQuery = balanceQuery.is('pallet_id', null);
           }
 
-          const { data: balance } = await balanceQuery.maybeSingle();
+          let { data: balance } = await balanceQuery.maybeSingle();
 
-          const beforePackQty = balance?.total_pack_qty || 0;
-          const beforePieceQty = balance?.total_piece_qty || 0;
+          // If not found with pallet_id=null, try without pallet filter (for picking locations like PK001)
+          if (!balance && !item.pallet_id) {
+            const { data: aggregatedBalance } = await this.supabase
+              .from('wms_inventory_balances')
+              .select('total_pack_qty, total_piece_qty')
+              .eq('warehouse_id', payload.warehouse_id)
+              .eq('location_id', item.location_id)
+              .eq('sku_id', item.sku_id)
+              .maybeSingle();
+            
+            balance = aggregatedBalance;
+          }
+
+          const beforePackQty = Number(balance?.total_pack_qty) || 0;
+          const beforePieceQty = Number(balance?.total_piece_qty) || 0;
 
           const adjustmentPieceQty = item.adjustment_piece_qty;
           const adjustmentPackQty = packSize > 0 ? Math.floor(Math.abs(adjustmentPieceQty) / packSize) : 0;
@@ -468,8 +481,8 @@ class StockAdjustmentService {
         }
       }
 
-      // Record to ledger (single-entry pattern)
-      const recordResult = await this.recordAdjustmentToLedger(existing);
+      // Record to ledger (single-entry pattern) - pass userId directly
+      const recordResult = await this.recordAdjustmentToLedger(existing, userId);
       if (recordResult.error) {
         return { data: null, error: recordResult.error };
       }
@@ -533,6 +546,7 @@ class StockAdjustmentService {
 
   /**
    * Validate reserved stock before decrease adjustment
+   * For picking locations (like PK001), inventory is aggregated without pallet_id
    */
   async validateReservedStock(
     warehouseId: string,
@@ -542,9 +556,10 @@ class StockAdjustmentService {
       for (const item of items) {
         if (item.adjustment_piece_qty >= 0) continue; // Skip increase adjustments
 
+        // First try exact match with pallet_id
         let balanceQuery = this.supabase
           .from('wms_inventory_balances')
-          .select('total_piece_qty, reserved_piece_qty, available_piece_qty')
+          .select('total_piece_qty, reserved_piece_qty')
           .eq('warehouse_id', warehouseId)
           .eq('location_id', item.location_id)
           .eq('sku_id', item.sku_id);
@@ -555,7 +570,20 @@ class StockAdjustmentService {
           balanceQuery = balanceQuery.is('pallet_id', null);
         }
 
-        const { data: balance } = await balanceQuery.maybeSingle();
+        let { data: balance } = await balanceQuery.maybeSingle();
+
+        // If not found with pallet_id=null, try without pallet filter (for picking locations)
+        if (!balance && !item.pallet_id) {
+          const { data: aggregatedBalance } = await this.supabase
+            .from('wms_inventory_balances')
+            .select('total_piece_qty, reserved_piece_qty')
+            .eq('warehouse_id', warehouseId)
+            .eq('location_id', item.location_id)
+            .eq('sku_id', item.sku_id)
+            .maybeSingle();
+          
+          balance = aggregatedBalance;
+        }
 
         if (!balance) {
           return {
@@ -564,13 +592,15 @@ class StockAdjustmentService {
           };
         }
 
-        const availableQty = balance.available_piece_qty || 0;
+        const totalQty = Number(balance.total_piece_qty) || 0;
+        const reservedQty = Number(balance.reserved_piece_qty) || 0;
+        const availableQty = totalQty - reservedQty;
         const requestedQty = Math.abs(item.adjustment_piece_qty);
 
         if (requestedQty > availableQty) {
           return {
             data: null,
-            error: `Cannot adjust SKU ${item.sku_id}: Requested ${requestedQty} pieces but only ${availableQty} available (${balance.reserved_piece_qty || 0} reserved)`,
+            error: `Cannot adjust SKU ${item.sku_id}: Requested ${requestedQty} pieces but only ${availableQty} available (${reservedQty} reserved)`,
           };
         }
       }
@@ -583,37 +613,91 @@ class StockAdjustmentService {
   }
 
   /**
-   * Record adjustment to inventory ledger (single-entry pattern)
+   * Record adjustment to inventory ledger (double-entry pattern for decrease)
+   * - Decrease: OUT from source location + IN to ADJ-LOSS
+   * - Increase: IN to target location (single entry)
+   * @param adjustment - The adjustment record
+   * @param userId - The user ID who is completing the adjustment (used for created_by)
    */
-  async recordAdjustmentToLedger(adjustment: AdjustmentRecord): Promise<{ data: any | null; error: string | null }> {
+  async recordAdjustmentToLedger(adjustment: AdjustmentRecord, userId: number): Promise<{ data: any | null; error: string | null }> {
     try {
       if (!adjustment.wms_stock_adjustment_items || adjustment.wms_stock_adjustment_items.length === 0) {
         return { data: null, error: 'No items to record' };
       }
 
-      const ledgerRecords = adjustment.wms_stock_adjustment_items.map(item => {
+      const ADJ_LOSS_LOCATION = 'LOC-ADJ-LOSS-001'; // Virtual location for stock loss/adjustment
+      const ledgerRecords: any[] = [];
+
+      adjustment.wms_stock_adjustment_items.forEach(item => {
         const packQty = Math.abs(item.adjustment_pack_qty);
         const pieceQty = Math.abs(item.adjustment_piece_qty);
-        const direction = adjustment.adjustment_type === 'increase' ? 'in' : 'out';
+        const movementAt = new Date().toISOString();
 
-        return {
-          movement_at: new Date().toISOString(),
-          transaction_type: 'adjustment',
-          direction: direction,
-          warehouse_id: adjustment.warehouse_id,
-          location_id: item.location_id,
-          sku_id: item.sku_id,
-          pallet_id: item.pallet_id,
-          pallet_id_external: item.pallet_id_external,
-          lot_no: item.lot_no,
-          production_date: item.production_date,
-          expiry_date: item.expiry_date,
-          pack_qty: packQty,
-          piece_qty: pieceQty,
-          reference_no: adjustment.adjustment_no,
-          remarks: item.remarks || adjustment.remarks,
-          created_by: adjustment.completed_by,
-        };
+        if (adjustment.adjustment_type === 'increase') {
+          // Increase: Single entry - IN to target location
+          ledgerRecords.push({
+            movement_at: movementAt,
+            transaction_type: 'adjustment',
+            direction: 'in',
+            warehouse_id: adjustment.warehouse_id,
+            location_id: item.location_id,
+            sku_id: item.sku_id,
+            pallet_id: item.pallet_id,
+            pallet_id_external: item.pallet_id_external,
+            production_date: item.production_date,
+            expiry_date: item.expiry_date,
+            pack_qty: packQty,
+            piece_qty: pieceQty,
+            reference_no: adjustment.adjustment_no,
+            reference_doc_type: 'adjustment',
+            reference_doc_id: adjustment.adjustment_id,
+            remarks: item.remarks || adjustment.remarks,
+            created_by: userId,
+          });
+        } else {
+          // Decrease: Double entry
+          // 1. OUT from source location
+          ledgerRecords.push({
+            movement_at: movementAt,
+            transaction_type: 'adjustment',
+            direction: 'out',
+            warehouse_id: adjustment.warehouse_id,
+            location_id: item.location_id,
+            sku_id: item.sku_id,
+            pallet_id: item.pallet_id,
+            pallet_id_external: item.pallet_id_external,
+            production_date: item.production_date,
+            expiry_date: item.expiry_date,
+            pack_qty: packQty,
+            piece_qty: pieceQty,
+            reference_no: adjustment.adjustment_no,
+            reference_doc_type: 'adjustment',
+            reference_doc_id: adjustment.adjustment_id,
+            remarks: `ลดสต็อกจาก ${item.location_id}: ${item.remarks || adjustment.remarks || ''}`.trim(),
+            created_by: userId,
+          });
+
+          // 2. IN to ADJ-LOSS location (virtual location for tracking losses)
+          ledgerRecords.push({
+            movement_at: movementAt,
+            transaction_type: 'adjustment',
+            direction: 'in',
+            warehouse_id: adjustment.warehouse_id,
+            location_id: ADJ_LOSS_LOCATION,
+            sku_id: item.sku_id,
+            pallet_id: null, // No pallet for ADJ-LOSS
+            pallet_id_external: null,
+            production_date: item.production_date,
+            expiry_date: item.expiry_date,
+            pack_qty: packQty,
+            piece_qty: pieceQty,
+            reference_no: adjustment.adjustment_no,
+            reference_doc_type: 'adjustment',
+            reference_doc_id: adjustment.adjustment_id,
+            remarks: `รับจาก ${item.location_id}: ${item.remarks || adjustment.remarks || ''}`.trim(),
+            created_by: userId,
+          });
+        }
       });
 
       const { data, error } = await this.supabase
@@ -626,11 +710,15 @@ class StockAdjustmentService {
         return { data: null, error: error.message };
       }
 
-      // Update adjustment items with ledger_id
+      // Update adjustment items with ledger_id (use first ledger entry for each item)
       if (data && data.length > 0) {
-        for (let i = 0; i < data.length; i++) {
-          const ledgerId = data[i].ledger_id;
-          const itemId = adjustment.wms_stock_adjustment_items[i].adjustment_item_id;
+        const items = adjustment.wms_stock_adjustment_items;
+        for (let i = 0; i < items.length; i++) {
+          // For decrease, we have 2 entries per item, so index is i*2
+          // For increase, we have 1 entry per item, so index is i
+          const ledgerIndex = adjustment.adjustment_type === 'decrease' ? i * 2 : i;
+          const ledgerId = data[ledgerIndex]?.ledger_id;
+          const itemId = items[i].adjustment_item_id;
 
           await this.supabase
             .from('wms_stock_adjustment_items')

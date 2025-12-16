@@ -1,5 +1,4 @@
-// Stock Adjustment Detail View Modal
-// Shows complete adjustment information with workflow actions
+// Stock Adjustment Detail View Modal - Compact Professional Design
 
 'use client';
 
@@ -7,15 +6,14 @@ import React, { useState } from 'react';
 import {
   X,
   FileText,
-  Calendar,
-  User,
-  Package,
-  MapPin,
   CheckCircle,
   XCircle,
   Send,
   Trash2,
   AlertTriangle,
+  Clock,
+  Warehouse,
+  Edit,
 } from 'lucide-react';
 import {
   type AdjustmentRecord,
@@ -63,18 +61,16 @@ export default function StockAdjustmentDetailModal({
   const statusLabel = getStatusLabelTH(adjustment.status);
   const typeLabel = getAdjustmentTypeLabelTH(adjustment.adjustment_type);
 
-  const statusColorClasses = {
-    gray: 'bg-gray-100 text-gray-800',
-    yellow: 'bg-yellow-100 text-yellow-800',
-    green: 'bg-green-100 text-green-800',
-    red: 'bg-red-100 text-red-800',
-    blue: 'bg-blue-100 text-blue-800',
+  const statusColorClasses: Record<string, string> = {
+    gray: 'bg-gray-100 text-gray-700 border-gray-300',
+    yellow: 'bg-amber-50 text-amber-700 border-amber-300',
+    green: 'bg-emerald-50 text-emerald-700 border-emerald-300',
+    red: 'bg-red-50 text-red-700 border-red-300',
+    blue: 'bg-blue-50 text-blue-700 border-blue-300',
   };
 
-  // Handle workflow actions
   const handleSubmit = async () => {
-    if (!confirm('ยืนยันส่งใบปรับสต็อกเพื่ออนุมัติ?')) return;
-
+    if (!confirm('ยืนยันส่งอนุมัติ?')) return;
     setIsProcessing(true);
     setError(null);
     try {
@@ -89,8 +85,7 @@ export default function StockAdjustmentDetailModal({
   };
 
   const handleApprove = async () => {
-    if (!confirm('ยืนยันอนุมัติใบปรับสต็อก?')) return;
-
+    if (!confirm('ยืนยันอนุมัติ?')) return;
     setIsProcessing(true);
     setError(null);
     try {
@@ -106,10 +101,9 @@ export default function StockAdjustmentDetailModal({
 
   const handleReject = async () => {
     if (!rejectReason.trim()) {
-      alert('กรุณาระบุเหตุผลในการไม่อนุมัติ');
+      alert('กรุณาระบุเหตุผล');
       return;
     }
-
     setIsProcessing(true);
     setError(null);
     try {
@@ -125,8 +119,7 @@ export default function StockAdjustmentDetailModal({
   };
 
   const handleComplete = async () => {
-    if (!confirm('ยืนยันดำเนินการปรับสต็อกเสร็จสิ้น? (จะบันทึกลงบัญชี Ledger)')) return;
-
+    if (!confirm('ยืนยันดำเนินการเสร็จสิ้น?')) return;
     setIsProcessing(true);
     setError(null);
     try {
@@ -142,10 +135,9 @@ export default function StockAdjustmentDetailModal({
 
   const handleCancel = async () => {
     if (!cancelReason.trim()) {
-      alert('กรุณาระบุเหตุผลในการยกเลิก');
+      alert('กรุณาระบุเหตุผล');
       return;
     }
-
     setIsProcessing(true);
     setError(null);
     try {
@@ -161,8 +153,7 @@ export default function StockAdjustmentDetailModal({
   };
 
   const handleDelete = async () => {
-    if (!confirm('ยืนยันลบใบปรับสต็อก? (ไม่สามารถกู้คืนได้)')) return;
-
+    if (!confirm('ยืนยันลบ?')) return;
     setIsProcessing(true);
     setError(null);
     try {
@@ -177,207 +168,130 @@ export default function StockAdjustmentDetailModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-xl shadow-2xl max-w-5xl w-full my-8">
-        {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-thai-gray-200">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-thai-primary/10 rounded-full flex items-center justify-center">
-              <FileText className="w-6 h-6 text-thai-primary" />
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] flex flex-col">
+        {/* Header - Compact */}
+        <div className="flex items-center justify-between px-4 py-3 border-b bg-gray-50 rounded-t-lg">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 bg-blue-100 rounded-lg flex items-center justify-center">
+              <FileText className="w-4 h-4 text-blue-600" />
             </div>
             <div>
-              <h2 className="text-2xl font-bold text-thai-gray-900 font-thai">
+              <h2 className="text-base font-bold text-gray-900 font-thai">
                 {adjustment.adjustment_no}
               </h2>
-              <p className="text-sm text-thai-gray-600 font-thai">
-                รายละเอียดใบปรับสต็อก
-              </p>
+              <div className="flex items-center gap-2 mt-0.5">
+                <span
+                  className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${
+                    statusColorClasses[statusColor] || statusColorClasses.gray
+                  }`}
+                >
+                  {statusLabel}
+                </span>
+                <span
+                  className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium border ${
+                    adjustment.adjustment_type === 'increase'
+                      ? 'bg-emerald-50 text-emerald-700 border-emerald-300'
+                      : 'bg-rose-50 text-rose-700 border-rose-300'
+                  }`}
+                >
+                  {typeLabel}
+                </span>
+              </div>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-thai-gray-400 hover:text-thai-gray-600 transition-colors"
+            className="p-1.5 hover:bg-gray-200 rounded-lg transition-colors"
           >
-            <X className="w-6 h-6" />
+            <X className="w-5 h-5 text-gray-500" />
           </button>
         </div>
 
         {/* Content */}
-        <div className="p-6 space-y-6 max-h-[calc(100vh-300px)] overflow-y-auto">
-          {/* Error Alert */}
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {/* Error */}
           {error && (
-            <div className="bg-red-50 border-l-4 border-red-500 p-4 rounded-lg">
-              <div className="flex items-center gap-3">
-                <AlertTriangle className="w-5 h-5 text-red-500" />
-                <p className="text-red-700 font-thai">{error}</p>
-              </div>
+            <div className="flex items-center gap-2 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+              <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+              <span className="font-thai">{error}</span>
             </div>
           )}
 
-          {/* Status and Type */}
-          <div className="flex items-center gap-4">
-            <span
-              className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-medium font-thai ${
-                statusColorClasses[statusColor as keyof typeof statusColorClasses]
-              }`}
-            >
-              {statusLabel}
-            </span>
-            <span
-              className={`inline-flex items-center px-4 py-2 rounded-full text-sm font-medium font-thai ${
-                adjustment.adjustment_type === 'increase'
-                  ? 'bg-emerald-100 text-emerald-800'
-                  : 'bg-rose-100 text-rose-800'
-              }`}
-            >
-              {typeLabel}
-            </span>
-          </div>
-
-          {/* Header Information */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <InfoCard
-              icon={<Calendar className="w-5 h-5" />}
-              label="วันที่ปรับสต็อก"
-              value={format(new Date(adjustment.adjustment_date), 'dd/MM/yyyy HH:mm')}
+          {/* Info Grid - Compact */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <InfoItem
+              icon={<Clock className="w-3.5 h-3.5" />}
+              label="วันที่"
+              value={format(new Date(adjustment.adjustment_date), 'dd/MM/yy HH:mm')}
             />
-            <InfoCard
-              icon={<Package className="w-5 h-5" />}
-              label="คลังสินค้า"
+            <InfoItem
+              icon={<Warehouse className="w-3.5 h-3.5" />}
+              label="คลัง"
               value={adjustment.warehouse?.warehouse_name || adjustment.warehouse_id}
             />
-            <InfoCard
-              icon={<FileText className="w-5 h-5" />}
-              label="เหตุผลการปรับ"
+            <InfoItem
+              icon={<FileText className="w-3.5 h-3.5" />}
+              label="เหตุผล"
               value={adjustment.reason?.reason_name_th || '-'}
             />
             {adjustment.reference_no && (
-              <InfoCard
-                icon={<FileText className="w-5 h-5" />}
-                label="เลขที่อ้างอิง"
+              <InfoItem
+                icon={<FileText className="w-3.5 h-3.5" />}
+                label="อ้างอิง"
                 value={adjustment.reference_no}
               />
             )}
           </div>
 
-          {/* Workflow Tracking */}
-          {(adjustment.created_by_user ||
-            adjustment.approved_by_user ||
-            adjustment.completed_by_user) && (
-            <div className="bg-thai-gray-50 rounded-lg p-4 space-y-3">
-              <h3 className="font-bold text-thai-gray-900 font-thai mb-3">
-                ประวัติการดำเนินการ
-              </h3>
-              {adjustment.created_by_user && (
-                <div className="flex items-center gap-3 text-sm">
-                  <User className="w-4 h-4 text-thai-gray-500" />
-                  <span className="text-thai-gray-600 font-thai">
-                    สร้างโดย: {`${adjustment.created_by_user.first_name || ''} ${adjustment.created_by_user.last_name || ''}`.trim() || '-'}
-                  </span>
-                  <span className="text-thai-gray-500 font-thai">
-                    {format(new Date(adjustment.created_at), 'dd/MM/yyyy HH:mm')}
-                  </span>
-                </div>
-              )}
-              {adjustment.approved_by_user && adjustment.approved_at && (
-                <div className="flex items-center gap-3 text-sm">
-                  <CheckCircle className="w-4 h-4 text-green-500" />
-                  <span className="text-thai-gray-600 font-thai">
-                    อนุมัติโดย: {`${adjustment.approved_by_user.first_name || ''} ${adjustment.approved_by_user.last_name || ''}`.trim() || '-'}
-                  </span>
-                  <span className="text-thai-gray-500 font-thai">
-                    {format(new Date(adjustment.approved_at), 'dd/MM/yyyy HH:mm')}
-                  </span>
-                </div>
-              )}
-              {adjustment.completed_by_user && adjustment.completed_at && (
-                <div className="flex items-center gap-3 text-sm">
-                  <CheckCircle className="w-4 h-4 text-blue-500" />
-                  <span className="text-thai-gray-600 font-thai">
-                    ดำเนินการเสร็จสิ้นโดย: {`${adjustment.completed_by_user.first_name || ''} ${adjustment.completed_by_user.last_name || ''}`.trim() || '-'}
-                  </span>
-                  <span className="text-thai-gray-500 font-thai">
-                    {format(new Date(adjustment.completed_at), 'dd/MM/yyyy HH:mm')}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* Remarks */}
+          {/* Remarks - Compact */}
           {adjustment.remarks && (
-            <div className="bg-yellow-50 border-l-4 border-yellow-400 p-4 rounded-lg">
-              <p className="text-sm font-bold text-thai-gray-900 font-thai mb-1">
-                หมายเหตุ:
-              </p>
-              <p className="text-sm text-thai-gray-700 font-thai">
-                {adjustment.remarks}
-              </p>
+            <div className="p-2 bg-amber-50 border border-amber-200 rounded text-sm">
+              <span className="font-medium text-amber-800 font-thai">หมายเหตุ: </span>
+              <span className="text-amber-700 font-thai">{adjustment.remarks}</span>
             </div>
           )}
 
-          {/* Items Table */}
+          {/* Items Table - Compact */}
           <div>
-            <h3 className="font-bold text-thai-gray-900 font-thai mb-3">
-              รายการสินค้า ({adjustment.wms_stock_adjustment_items?.length || 0} รายการ)
+            <h3 className="text-sm font-semibold text-gray-700 font-thai mb-2">
+              รายการ ({adjustment.wms_stock_adjustment_items?.length || 0})
             </h3>
-            <div className="overflow-x-auto border border-thai-gray-200 rounded-lg">
-              <table className="min-w-full divide-y divide-thai-gray-200">
-                <thead className="bg-thai-gray-50">
+            <div className="border rounded-lg overflow-hidden">
+              <table className="w-full text-sm">
+                <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-thai-gray-700 font-thai">
-                      #
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-thai-gray-700 font-thai">
-                      SKU
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-thai-gray-700 font-thai">
-                      Location
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-bold text-thai-gray-700 font-thai">
-                      Pallet
-                    </th>
-                    <th className="px-4 py-3 text-right text-xs font-bold text-thai-gray-700 font-thai">
-                      ก่อนปรับ
-                    </th>
-                    <th className="px-4 py-3 text-right text-xs font-bold text-thai-gray-700 font-thai">
-                      ปรับ
-                    </th>
-                    <th className="px-4 py-3 text-right text-xs font-bold text-thai-gray-700 font-thai">
-                      หลังปรับ
-                    </th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">#</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">SKU</th>
+                    <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Location</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">ก่อน</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">ปรับ</th>
+                    <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">หลัง</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-thai-gray-200">
-                  {adjustment.wms_stock_adjustment_items?.map((item, index) => (
-                    <tr key={item.adjustment_item_id} className="hover:bg-thai-gray-50">
-                      <td className="px-4 py-3 text-sm text-thai-gray-900 font-thai">
-                        {item.line_no}
+                <tbody className="divide-y divide-gray-100">
+                  {adjustment.wms_stock_adjustment_items?.map((item) => (
+                    <tr key={item.adjustment_item_id} className="hover:bg-gray-50">
+                      <td className="px-3 py-2 text-gray-600">{item.line_no}</td>
+                      <td className="px-3 py-2">
+                        <div className="font-medium text-gray-900 truncate max-w-[200px]" title={item.master_sku?.sku_name || item.sku_id}>
+                          {item.master_sku?.sku_name || item.sku_id}
+                        </div>
+                        <div className="text-xs text-gray-500">{item.sku_id}</div>
                       </td>
-                      <td className="px-4 py-3 text-sm text-thai-gray-900 font-thai">
-                        <div>{item.master_sku?.sku_name || item.sku_id}</div>
-                        <div className="text-xs text-thai-gray-500">{item.sku_id}</div>
-                      </td>
-                      <td className="px-4 py-3 text-sm text-thai-gray-900 font-thai">
+                      <td className="px-3 py-2 text-gray-700 font-mono text-xs">
                         {item.master_location?.location_code || item.location_id}
                       </td>
-                      <td className="px-4 py-3 text-sm text-thai-gray-900 font-thai">
-                        {item.pallet_id || '-'}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-right text-thai-gray-900 font-thai">
+                      <td className="px-3 py-2 text-right text-gray-600">
                         {item.before_piece_qty.toLocaleString()}
                       </td>
-                      <td
-                        className={`px-4 py-3 text-sm text-right font-bold font-thai ${
-                          item.adjustment_piece_qty > 0
-                            ? 'text-green-600'
-                            : 'text-red-600'
-                        }`}
-                      >
+                      <td className={`px-3 py-2 text-right font-semibold ${
+                        item.adjustment_piece_qty > 0 ? 'text-emerald-600' : 'text-rose-600'
+                      }`}>
                         {item.adjustment_piece_qty > 0 ? '+' : ''}
                         {item.adjustment_piece_qty.toLocaleString()}
                       </td>
-                      <td className="px-4 py-3 text-sm text-right font-bold text-thai-gray-900 font-thai">
+                      <td className="px-3 py-2 text-right font-semibold text-gray-900">
                         {item.after_piece_qty.toLocaleString()}
                       </td>
                     </tr>
@@ -386,26 +300,60 @@ export default function StockAdjustmentDetailModal({
               </table>
             </div>
           </div>
+
+          {/* Workflow History - Compact */}
+          {(adjustment.created_by_user || adjustment.approved_by_user || adjustment.completed_by_user) && (
+            <div className="text-xs text-gray-500 space-y-1 pt-2 border-t">
+              {adjustment.created_by_user && (
+                <div className="flex items-center gap-2">
+                  <span className="w-16 text-gray-400">สร้าง:</span>
+                  <span>{adjustment.created_by_user.full_name || '-'}</span>
+                  <span className="text-gray-400">
+                    {format(new Date(adjustment.created_at), 'dd/MM/yy HH:mm')}
+                  </span>
+                </div>
+              )}
+              {adjustment.approved_by_user && adjustment.approved_at && (
+                <div className="flex items-center gap-2">
+                  <span className="w-16 text-gray-400">อนุมัติ:</span>
+                  <span>{adjustment.approved_by_user.full_name || '-'}</span>
+                  <span className="text-gray-400">
+                    {format(new Date(adjustment.approved_at), 'dd/MM/yy HH:mm')}
+                  </span>
+                </div>
+              )}
+              {adjustment.completed_by_user && adjustment.completed_at && (
+                <div className="flex items-center gap-2">
+                  <span className="w-16 text-gray-400">เสร็จสิ้น:</span>
+                  <span>{adjustment.completed_by_user.full_name || '-'}</span>
+                  <span className="text-gray-400">
+                    {format(new Date(adjustment.completed_at), 'dd/MM/yy HH:mm')}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* Footer with Actions */}
-        <div className="flex items-center justify-between p-6 border-t border-thai-gray-200 bg-thai-gray-50">
-          <div className="flex items-center gap-3">
+        {/* Footer - Compact */}
+        <div className="flex items-center justify-between px-4 py-3 border-t bg-gray-50 rounded-b-lg">
+          <div className="flex items-center gap-2">
             {canEditAdjustment(adjustment.status) && (
               <>
                 <button
                   onClick={() => onEdit(adjustment)}
                   disabled={isProcessing}
-                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-thai text-sm transition-colors disabled:opacity-50"
+                  className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-thai transition-colors disabled:opacity-50 flex items-center gap-1.5"
                 >
+                  <Edit className="w-3.5 h-3.5" />
                   แก้ไข
                 </button>
                 <button
                   onClick={handleDelete}
                   disabled={isProcessing}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-thai text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
+                  className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded text-sm font-thai transition-colors disabled:opacity-50 flex items-center gap-1.5"
                 >
-                  <Trash2 className="w-4 h-4" />
+                  <Trash2 className="w-3.5 h-3.5" />
                   ลบ
                 </button>
               </>
@@ -415,9 +363,9 @@ export default function StockAdjustmentDetailModal({
               <button
                 onClick={handleSubmit}
                 disabled={isProcessing}
-                className="px-4 py-2 bg-yellow-600 hover:bg-yellow-700 text-white rounded-lg font-thai text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
+                className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-sm font-thai transition-colors disabled:opacity-50 flex items-center gap-1.5"
               >
-                <Send className="w-4 h-4" />
+                <Send className="w-3.5 h-3.5" />
                 ส่งอนุมัติ
               </button>
             )}
@@ -427,17 +375,17 @@ export default function StockAdjustmentDetailModal({
                 <button
                   onClick={handleApprove}
                   disabled={isProcessing}
-                  className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg font-thai text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-sm font-thai transition-colors disabled:opacity-50 flex items-center gap-1.5"
                 >
-                  <CheckCircle className="w-4 h-4" />
+                  <CheckCircle className="w-3.5 h-3.5" />
                   อนุมัติ
                 </button>
                 <button
                   onClick={() => setShowRejectModal(true)}
                   disabled={isProcessing}
-                  className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg font-thai text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
+                  className="px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded text-sm font-thai transition-colors disabled:opacity-50 flex items-center gap-1.5"
                 >
-                  <XCircle className="w-4 h-4" />
+                  <XCircle className="w-3.5 h-3.5" />
                   ไม่อนุมัติ
                 </button>
               </>
@@ -447,9 +395,9 @@ export default function StockAdjustmentDetailModal({
               <button
                 onClick={handleComplete}
                 disabled={isProcessing}
-                className="px-4 py-2 bg-thai-primary hover:bg-thai-primary-dark text-white rounded-lg font-thai text-sm transition-colors disabled:opacity-50 flex items-center gap-2"
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded text-sm font-thai transition-colors disabled:opacity-50 flex items-center gap-1.5"
               >
-                <CheckCircle className="w-4 h-4" />
+                <CheckCircle className="w-3.5 h-3.5" />
                 ดำเนินการเสร็จสิ้น
               </button>
             )}
@@ -458,7 +406,7 @@ export default function StockAdjustmentDetailModal({
               <button
                 onClick={() => setShowCancelModal(true)}
                 disabled={isProcessing}
-                className="px-4 py-2 border border-thai-gray-300 hover:bg-thai-gray-100 text-thai-gray-700 rounded-lg font-thai text-sm transition-colors disabled:opacity-50"
+                className="px-3 py-1.5 border border-gray-300 hover:bg-gray-100 text-gray-700 rounded text-sm font-thai transition-colors disabled:opacity-50"
               >
                 ยกเลิก
               </button>
@@ -468,7 +416,7 @@ export default function StockAdjustmentDetailModal({
           <button
             onClick={onClose}
             disabled={isProcessing}
-            className="px-6 py-2 border border-thai-gray-300 rounded-lg font-thai text-sm text-thai-gray-700 hover:bg-thai-gray-100 transition-colors disabled:opacity-50"
+            className="px-4 py-1.5 border border-gray-300 rounded text-sm text-gray-600 hover:bg-gray-100 transition-colors disabled:opacity-50 font-thai"
           >
             ปิด
           </button>
@@ -478,14 +426,13 @@ export default function StockAdjustmentDetailModal({
       {/* Reject Modal */}
       {showRejectModal && (
         <ReasonModal
-          title="ไม่อนุมัติใบปรับสต็อก"
-          label="เหตุผลที่ไม่อนุมัติ"
+          title="ไม่อนุมัติ"
           value={rejectReason}
           onChange={setRejectReason}
           onConfirm={handleReject}
           onClose={() => setShowRejectModal(false)}
           isProcessing={isProcessing}
-          confirmText="ยืนยันไม่อนุมัติ"
+          confirmText="ยืนยัน"
           confirmColor="red"
         />
       )}
@@ -493,14 +440,13 @@ export default function StockAdjustmentDetailModal({
       {/* Cancel Modal */}
       {showCancelModal && (
         <ReasonModal
-          title="ยกเลิกใบปรับสต็อก"
-          label="เหตุผลในการยกเลิก"
+          title="ยกเลิก"
           value={cancelReason}
           onChange={setCancelReason}
           onConfirm={handleCancel}
           onClose={() => setShowCancelModal(false)}
           isProcessing={isProcessing}
-          confirmText="ยืนยันยกเลิก"
+          confirmText="ยืนยัน"
           confirmColor="orange"
         />
       )}
@@ -508,33 +454,22 @@ export default function StockAdjustmentDetailModal({
   );
 }
 
-// Info Card Component
-function InfoCard({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-}) {
+function InfoItem({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
   return (
-    <div className="bg-thai-gray-50 rounded-lg p-4">
-      <div className="flex items-center gap-3 mb-2">
-        <div className="text-thai-gray-500">{icon}</div>
-        <p className="text-sm text-thai-gray-600 font-thai">{label}</p>
+    <div className="bg-gray-50 rounded-lg p-2">
+      <div className="flex items-center gap-1.5 text-gray-500 mb-0.5">
+        {icon}
+        <span className="text-xs font-thai">{label}</span>
       </div>
-      <p className="text-lg font-bold text-thai-gray-900 font-thai pl-8">
+      <p className="text-sm font-medium text-gray-900 font-thai truncate" title={value}>
         {value}
       </p>
     </div>
   );
 }
 
-// Reason Modal Component
 function ReasonModal({
   title,
-  label,
   value,
   onChange,
   onConfirm,
@@ -544,7 +479,6 @@ function ReasonModal({
   confirmColor,
 }: {
   title: string;
-  label: string;
   value: string;
   onChange: (value: string) => void;
   onConfirm: () => void;
@@ -555,39 +489,35 @@ function ReasonModal({
 }) {
   const colorClasses = {
     red: 'bg-red-600 hover:bg-red-700',
-    orange: 'bg-orange-600 hover:bg-orange-700',
+    orange: 'bg-orange-500 hover:bg-orange-600',
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[60] p-4">
-      <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6">
-        <h3 className="text-xl font-bold text-thai-gray-900 font-thai mb-4">
-          {title}
-        </h3>
-        <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
-          {label} <span className="text-red-500">*</span>
-        </label>
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[60] p-4">
+      <div className="bg-white rounded-lg shadow-xl max-w-sm w-full p-4">
+        <h3 className="text-base font-bold text-gray-900 font-thai mb-3">{title}</h3>
         <textarea
           value={value}
           onChange={(e) => onChange(e.target.value)}
-          rows={4}
+          rows={3}
           placeholder="ระบุเหตุผล..."
-          className="w-full px-4 py-3 border border-thai-gray-300 rounded-lg font-thai focus:ring-2 focus:ring-thai-primary focus:border-transparent resize-none"
+          className="w-full px-3 py-2 border border-gray-300 rounded text-sm font-thai focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+          autoFocus
         />
-        <div className="flex items-center justify-end gap-3 mt-6">
+        <div className="flex items-center justify-end gap-2 mt-4">
           <button
             onClick={onClose}
             disabled={isProcessing}
-            className="px-4 py-2 border border-thai-gray-300 rounded-lg font-thai text-sm hover:bg-thai-gray-100 transition-colors disabled:opacity-50"
+            className="px-3 py-1.5 border border-gray-300 rounded text-sm font-thai hover:bg-gray-100 transition-colors disabled:opacity-50"
           >
             ยกเลิก
           </button>
           <button
             onClick={onConfirm}
             disabled={isProcessing || !value.trim()}
-            className={`px-4 py-2 text-white rounded-lg font-thai text-sm transition-colors disabled:opacity-50 ${colorClasses[confirmColor]}`}
+            className={`px-3 py-1.5 text-white rounded text-sm font-thai transition-colors disabled:opacity-50 ${colorClasses[confirmColor]}`}
           >
-            {isProcessing ? 'กำลังดำเนินการ...' : confirmText}
+            {isProcessing ? '...' : confirmText}
           </button>
         </div>
       </div>

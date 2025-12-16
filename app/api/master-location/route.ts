@@ -56,7 +56,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (location_type === 'receiving') {
-      baseQuery = baseQuery.or('location_type.eq.receiving,location_name.ilike.%รับสินค้า%,location_name.ilike.%Receiving%,location_code.ilike.RCV%,location_code.ilike.Receiving%,location_id.eq.WH001-02639');
+      baseQuery = baseQuery.or('location_type.eq.receiving,location_name.ilike.%รับสินค้า%,location_name.ilike.%Receiving%,location_code.ilike.RCV%,location_code.ilike.Receiving%,location_id.eq.Receiving');
     } else if (location_type) {
       baseQuery = baseQuery.eq('location_type', location_type);
     }
@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
     let filteredData = allData;
 
     if (location_type === 'receiving') {
-      const allowedReceivingIds = ['WH001-02639'];
+      const allowedReceivingIds = ['Receiving'];
       filteredData = filteredData.filter((location) => {
         const locationId = location.location_id ?? '';
         const locationCode = (location.location_code ?? '').toLowerCase();

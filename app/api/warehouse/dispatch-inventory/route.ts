@@ -38,7 +38,7 @@ export async function GET(request: NextRequest) {
           weight_per_piece_kg
         )
       `)
-      .eq('location_id', 'WH001-02642')
+      .eq('location_id', 'Dispatch')
       .eq('warehouse_id', warehouseId)
       .order('updated_at', { ascending: false });
 

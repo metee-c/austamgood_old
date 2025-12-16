@@ -332,7 +332,7 @@ const InventoryBalancesPage = () => {
     const passes = matchesSearch && matchesWarehouse && matchesLowStock && matchesExpiring && matchesZeroBalance;
     
     // Debug log สำหรับ dispatch items
-    if (activeTab === 'dispatch' && item.location_id === 'WH001-02642' && !passes) {
+    if (activeTab === 'dispatch' && item.location_id === 'Dispatch' && !passes) {
       console.log('❌ Dispatch item filtered out:', {
         balance_id: item.balance_id,
         sku_id: item.sku_id,

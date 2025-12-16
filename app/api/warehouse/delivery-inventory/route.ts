@@ -21,7 +21,7 @@ export async function GET() {
           weight_per_piece_kg
         )
       `)
-      .eq('location_id', 'WH001-DELIVERY-IN-PROGRESS')
+      .eq('location_id', 'Delivery-In-Progress')
       .order('updated_at', { ascending: false });
 
     if (inventoryError) {

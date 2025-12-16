@@ -211,11 +211,11 @@ const InventoryBalancesPage = () => {
     const isPreparationArea = item.location_id ? preparationAreaCodes.includes(item.location_id) : false;
 
     // กรองโลเคชั่น Dispatch ออก (ย้ายไปแสดงในหน้า preparation-area-inventory แทน)
-    const isDispatchLocation = item.location_id === 'WH001-02642' || item.location_name === 'Dispatch';
+    const isDispatchLocation = item.location_id === 'Dispatch' || item.location_name === 'Dispatch';
 
     // กรองโลเคชั่น Delivery-In-Progress ออก (ย้ายไปแสดงในหน้า preparation-area-inventory แทน)
     const isDeliveryInProgress =
-      item.location_id === 'WH001-DELIVERY-IN-PROGRESS' ||
+      item.location_id === 'Delivery-In-Progress' ||
       item.location_name === 'Delivery-In-Progress';
 
     return matchesSearch && matchesWarehouse && matchesLowStock && matchesExpiring && matchesZeroBalance && !isTemporaryZeroBalance && !isPreparationArea && !isDispatchLocation && !isDeliveryInProgress;

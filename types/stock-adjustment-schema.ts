@@ -71,9 +71,9 @@ export interface StockAdjustmentItem {
 export interface AdjustmentRecord extends StockAdjustment {
   reason?: AdjustmentReason | null;
   warehouse?: { warehouse_name: string | null } | null;
-  created_by_user?: { first_name: string | null; last_name: string | null } | null;
-  approved_by_user?: { first_name: string | null; last_name: string | null } | null;
-  completed_by_user?: { first_name: string | null; last_name: string | null } | null;
+  created_by_user?: { full_name: string | null } | null;
+  approved_by_user?: { full_name: string | null } | null;
+  completed_by_user?: { full_name: string | null } | null;
   wms_stock_adjustment_items?: (StockAdjustmentItem & {
     master_sku?: { sku_name: string | null; barcode: string | null } | null;
     master_location?: { location_name: string | null; location_code: string | null } | null;
@@ -85,15 +85,15 @@ export interface AdjustmentRecord extends StockAdjustment {
 // ============================================================================
 
 export const createAdjustmentItemSchema = z.object({
-  sku_id: z.string().min(1, 'SKU ID is required'),
-  location_id: z.string().min(1, 'Location ID is required'),
+  sku_id: z.string().min(1, 'กรุณาเลือก SKU'),
+  location_id: z.string().min(1, 'กรุณาเลือก Location'),
   pallet_id: z.string().optional().nullable(),
   pallet_id_external: z.string().optional().nullable(),
   lot_no: z.string().optional().nullable(),
   production_date: z.string().optional().nullable(),
   expiry_date: z.string().optional().nullable(),
   adjustment_piece_qty: z.number().int().refine(val => val !== 0, {
-    message: 'Adjustment quantity cannot be zero'
+    message: 'จำนวนต้องไม่เป็น 0'
   }),
   remarks: z.string().optional().nullable(),
 });
@@ -102,12 +102,12 @@ export const createAdjustmentSchema = z.object({
   adjustment_type: z.enum(['increase', 'decrease']),
   warehouse_id: z.string().min(1, 'Warehouse ID is required'),
   reason_id: z.number().int().refine(val => val > 0 || val === -1, {
-    message: 'Reason is required'
+    message: 'กรุณาเลือกเหตุผล'
   }),
   reference_no: z.string().optional().nullable(),
   remarks: z.string().optional().nullable(),
   created_by: z.number().int().positive().optional().nullable(),
-  items: z.array(createAdjustmentItemSchema).min(1, 'At least one item is required'),
+  items: z.array(createAdjustmentItemSchema).min(1, 'กรุณาเพิ่มรายการสินค้าอย่างน้อย 1 รายการ'),
 });
 
 export const updateAdjustmentSchema = z.object({

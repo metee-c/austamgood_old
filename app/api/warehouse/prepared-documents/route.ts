@@ -69,7 +69,7 @@ export async function GET(request: Request) {
       .order('created_at', { ascending: false });
 
     if (!picklistError && picklists) {
-      const dispatchLocationId = 'WH001-02642';
+      const dispatchLocationId = 'Dispatch';
       
       for (const pl of picklists) {
         // ✅ ตรวจสอบว่ายังไม่ได้เพิ่มเข้า loadlist หรืออยู่ใน loadlist ที่ยังไม่ loaded
@@ -183,7 +183,7 @@ export async function GET(request: Request) {
       .order('created_at', { ascending: false });
 
     if (!faceSheetError && faceSheets) {
-      const dispatchLocationId = 'WH001-02642';
+      const dispatchLocationId = 'Dispatch';
       
       for (const fs of faceSheets) {
         // ✅ ตรวจสอบว่ายังไม่ได้เพิ่มเข้า loadlist หรืออยู่ใน loadlist ที่ยังไม่ loaded
@@ -358,7 +358,7 @@ export async function GET(request: Request) {
       .order('created_at', { ascending: false });
 
     if (!bonusFaceSheetError && bonusFaceSheets) {
-      const dispatchLocationId = 'WH001-02642';
+      const dispatchLocationId = 'Dispatch';
       
       for (const bfs of bonusFaceSheets) {
         // ✅ ตรวจสอบว่ายังไม่ได้เพิ่มเข้า loadlist หรืออยู่ใน loadlist ที่ยังไม่ loaded
