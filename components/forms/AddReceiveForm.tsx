@@ -13,6 +13,7 @@ import AddSupplierForm from '@/components/forms/AddSupplierForm';
 import { useCreateReceive, useGeneratePalletId, useUpdateReceive } from '@/hooks/useReceive';
 import { useSuppliers, useSkus, useWarehouses, useLocations, useCustomers, useSystemUsers } from '@/hooks/useFormOptions';
 import { ReceiveType, ReceiveStatus, CreateReceivePayload, PalletScanStatus } from '@/lib/database/receive';
+import { useAuth } from '@/hooks/useAuth';
 
 // Validation schema for a single item
 const itemSchema = z.object({
@@ -20,11 +21,11 @@ const itemSchema = z.object({
   product_name: z.string().optional(),
   barcode: z.string().optional(),
   production_date: z.string().optional(), // เปลี่ยนจาก lot_no เป็น production_date
-  expiry_date: z.string().optional(),
+  expiry_date: z.string().min(1, 'กรุณาระบุวันหมดอายุ'),
   pack_quantity: z.number().min(0, 'จำนวนแพ็คต้องไม่น้อยกว่า 0'),
   piece_quantity: z.number().min(0, 'จำนวนชิ้นต้องไม่น้อยกว่า 0'),
   weight_kg: z.number().optional(),
-  location_id: z.string().optional(),
+  location_id: z.string().min(1, 'กรุณาเลือกสถานที่รับสินค้า'),
   pallet_id_external: z.string().optional(),
   pallet_scan_status: z.enum(['ไม่จำเป็น', 'สแกนแล้ว', 'รอดำเนินการ'] as const).default('ไม่จำเป็น'),
   generate_pallet: z.boolean().default(false),
@@ -70,6 +71,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
   const [previewPalletIds, setPreviewPalletIds] = useState<Record<number, string[]>>({});
   const [showAddSupplierModal, setShowAddSupplierModal] = useState(false);
   const [selectedSupplierName, setSelectedSupplierName] = useState('');
+  const [selectedCustomerName, setSelectedCustomerName] = useState('');
   const [uploadedImages, setUploadedImages] = useState<{url: string, name: string}[]>([]);
   const [uploading, setUploading] = useState(false);
   const [latestPalletId, setLatestPalletId] = useState<string>(''); // เก็บเลขพาเลทล่าสุด
@@ -161,6 +163,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
   const { createReceive, loading: creating, error: createError } = useCreateReceive();
   const { updateReceive, loading: updating, error: updateError } = useUpdateReceive();
   const { generateMultiplePalletIds, getLatestPalletId } = useGeneratePalletId();
+  const { user: currentUser } = useAuth();
 
   // Form options hooks
   const { suppliers, refetch: refetchSuppliers } = useSuppliers();
@@ -169,6 +172,13 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
   const { warehouses } = useWarehouses();
   const { customers } = useCustomers();
   const { users: systemUsers } = useSystemUsers();
+
+  // Auto-set received_by from logged-in user's employee_id
+  useEffect(() => {
+    if (!isEditMode && currentUser?.employee_id && !watch('received_by')) {
+      setValue('received_by', currentUser.employee_id);
+    }
+  }, [currentUser, isEditMode, setValue, watch]);
   const watchedWarehouseId = watch('warehouse_id');
   const warehouseIdString = typeof watchedWarehouseId === 'string' ? watchedWarehouseId : '';
   
@@ -194,6 +204,18 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
       }
     }
   }, [watchedSupplierId, suppliers]);
+
+  // Sync customer name when customer_id changes
+  const watchedCustomerId = watch('customer_id');
+  const customerOptions = useMemo(() => customers.map(c => c.customer_name), [customers]);
+  useEffect(() => {
+    if (watchedCustomerId && customers.length > 0) {
+      const customer = customers.find(c => c.customer_id === watchedCustomerId);
+      if (customer) {
+        setSelectedCustomerName(customer.customer_name);
+      }
+    }
+  }, [watchedCustomerId, customers]);
 
   // Initialize uploaded images for edit mode
   useEffect(() => {
@@ -604,7 +626,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
         ...item,
         location_id: item.location_id || undefined
       })) as any,
-      created_by: data.received_by || 11, // Use received_by from form, fallback to 11 if not specified
+      created_by: currentUser?.employee_id || data.received_by, // Use employee_id (references master_employee.employee_id)
     };
 
     console.log('📦 Payload ที่ส่งไป API:', JSON.stringify(payload, null, 2));
@@ -678,10 +700,26 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
         {['รับสินค้าชำรุด', 'รับสินค้าหมดอายุ', 'รับสินค้าคืน', 'รับสินค้าตีกลับ'].includes(type) && (
           <div>
             <label className="block text-xs font-medium text-thai-gray-700 font-thai mb-1">ลูกค้า *</label>
-            <select {...register('customer_id')} className="w-full p-2 border border-thai-gray-200 rounded-md text-sm">
-              <option value="">กรุณาเลือกลูกค้า</option>
-              {customers.map(c => <option key={c.customer_id} value={c.customer_id}>{c.customer_name}</option>)}
-            </select>
+            <ComboBox
+              name="customer_name"
+              value={selectedCustomerName}
+              onChange={(e) => {
+                const inputValue = e.target.value;
+                setSelectedCustomerName(inputValue);
+                
+                // Find customer by name and set the ID
+                const customer = customers.find(c => c.customer_name === inputValue);
+                if (customer) {
+                  setValue('customer_id', customer.customer_id);
+                } else {
+                  setValue('customer_id', '');
+                }
+              }}
+              options={customerOptions}
+              placeholder="ค้นหาลูกค้า"
+              className="w-full p-2 border border-thai-gray-200 rounded-md text-sm"
+              required
+            />
             {errors.customer_id && <p className="text-red-500 text-xs mt-1">{errors.customer_id.message}</p>}
           </div>
         )}
@@ -962,19 +1000,14 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
                   </div>
 
 
-                  {/* Optional Details - ซ่อนในกรณีพิเศษ */}
-                  {watchedPalletBoxOption !== 'ไม่สร้าง_Pallet_ID' && 
-                   !(watchedType === 'รับสินค้าปกติ' && watchedPalletBoxOption === 'สร้าง_Pallet_ID_และ_Box_ID') &&
-                   !(watchedType === 'รับสินค้าปกติ' && watchedPalletBoxOption === 'สร้าง_Pallet_ID_และ_สแกน_Pallet_ID_ภายนอก') && (
-                    <details className="group">
-                      <summary className="cursor-pointer text-xs text-thai-gray-600 hover:text-thai-gray-800 flex items-center gap-1">
-                        <span className="font-medium">รายละเอียดเพิ่มเติม</span>
-                        <span className="text-xs">▼</span>
-                      </summary>
-                      <div className="mt-2 grid grid-cols-2 gap-2">
+                  {/* Optional Details - แสดงเฉพาะเมื่อเลือก "สร้าง Pallet ID + สแกน Pallet ID ภายนอก" */}
+                  {watchedPalletBoxOption === 'สร้าง_Pallet_ID_และ_สแกน_Pallet_ID_ภายนอก' && (
+                    <div className="mt-2 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <h4 className="text-xs font-medium text-blue-800 mb-2">ข้อมูลพาเลทภายนอก</h4>
+                      <div className="grid grid-cols-3 gap-2">
                         <div>
-                          <label className="block text-xs font-medium text-thai-gray-700 mb-1">รหัสพาเลท</label>
-                          <input {...register(`items.${index}.pallet_id`)} placeholder="PLT-001" className="w-full p-2 border border-gray-300 rounded-md text-sm" />
+                          <label className="block text-xs font-medium text-thai-gray-700 mb-1">รหัสพาเลทภายนอก</label>
+                          <input {...register(`items.${index}.pallet_id_external`)} placeholder="EXT-PLT-001" className="w-full p-2 border border-gray-300 rounded-md text-sm" />
                         </div>
                         <div>
                           <label className="block text-xs font-medium text-thai-gray-700 mb-1">สี Pallet</label>
@@ -996,16 +1029,15 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
                           <select 
                             {...register(`items.${index}.pallet_scan_status`)} 
                             className="w-full p-2 border border-gray-300 rounded-md text-sm"
-                            value={watchedPalletBoxOption === 'สร้าง_Pallet_ID_และ_สแกน_Pallet_ID_ภายนอก' ? 'รอดำเนินการ' : watch(`items.${index}.pallet_scan_status`) || 'ไม่จำเป็น'}
+                            value={watch(`items.${index}.pallet_scan_status`) || 'รอดำเนินการ'}
                             onChange={(e) => setValue(`items.${index}.pallet_scan_status`, e.target.value as any)}
                           >
-                            <option value="ไม่จำเป็น">ไม่จำเป็น</option>
                             <option value="รอดำเนินการ">รอดำเนินการ</option>
                             <option value="สแกนแล้ว">สแกนแล้ว</option>
                           </select>
                         </div>
                       </div>
-                    </details>
+                    </div>
                   )}
                   
                   {/* ช่องพื้นฐานที่แสดงในทุกกรณี */}
@@ -1015,15 +1047,35 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
                       <input type="date" {...register(`items.${index}.production_date`)} className="w-full p-2 border border-gray-300 rounded-md text-sm" />
                     </div>
                     <div>
-                      <label className="block text-xs font-medium text-thai-gray-700 mb-1">วันหมดอายุ</label>
-                      <input type="date" {...register(`items.${index}.expiry_date`)} className="w-full p-2 border border-gray-300 rounded-md text-sm" />
+                      <label className="block text-xs font-medium text-thai-gray-700 mb-1">วันหมดอายุ *</label>
+                      <input type="date" {...register(`items.${index}.expiry_date`)} className="w-full p-2 border border-gray-300 rounded-md text-sm" required />
+                      {errors.items?.[index]?.expiry_date && <p className="text-red-500 text-xs mt-1">{errors.items[index]?.expiry_date?.message}</p>}
                     </div>
                   </div>
+                  
+                  {/* สี Pallet - แสดงเมื่อเลือกสร้าง Pallet */}
+                  {watchedPalletBoxOption !== 'ไม่สร้าง_Pallet_ID' && (
+                    <div className="mt-2 p-3 bg-purple-50 rounded-lg border border-purple-200">
+                      <label className="block text-xs font-medium text-purple-800 mb-1">สี Pallet</label>
+                      <select {...register(`items.${index}.pallet_color`)} className="w-full p-2 border border-purple-300 rounded-md text-sm bg-white">
+                        <option value="">กรุณาเลือกสี</option>
+                        <option value="แดง">แดง</option>
+                        <option value="เขียว">เขียว</option>
+                        <option value="น้ำเงิน">น้ำเงิน</option>
+                        <option value="เหลือง">เหลือง</option>
+                        <option value="ส้ม">ส้ม</option>
+                        <option value="ม่วง">ม่วง</option>
+                        <option value="ชมพู">ชมพู</option>
+                        <option value="ดำ">ดำ</option>
+                        <option value="ขาว">ขาว</option>
+                      </select>
+                    </div>
+                  )}
 
                   {/* ช่องเลือกสถานที่รับสินค้า (Location) */}
                   <div className="mt-2">
                     <label className="block text-xs font-medium text-thai-gray-700 mb-1">
-                      สถานที่รับสินค้า
+                      สถานที่รับสินค้า *
                       {locations && locations.length > 0 && (
                         <span className="ml-2 text-xs text-gray-500 font-normal">
                           ({locations.length.toLocaleString()} ตำแหน่ง)
@@ -1040,12 +1092,22 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
                       })()}
                       onChange={(e) => {
                         const inputValue = e.target.value;
-                        // Find location by label or value
+                        // Find location by value (location_id) first, then by label, then by location_code
                         const location = locations?.find(loc => 
-                          loc.location_id === inputValue || 
+                          loc.location_id === inputValue
+                        ) || locations?.find(loc => 
                           `${loc.location_code}${loc.location_name ? ' - ' + loc.location_name : ''}` === inputValue
+                        ) || locations?.find(loc => 
+                          loc.location_code === inputValue || loc.location_code.toLowerCase() === inputValue.toLowerCase()
                         );
-                        setValue(`items.${index}.location_id`, location?.location_id || inputValue);
+                        // Always set the location_id, not the label
+                        if (location) {
+                          setValue(`items.${index}.location_id`, location.location_id, { shouldValidate: true });
+                        } else {
+                          // If no match found, check if it's already a valid location_id
+                          const existingLocation = locations?.find(loc => loc.location_id === inputValue);
+                          setValue(`items.${index}.location_id`, existingLocation ? existingLocation.location_id : '', { shouldValidate: true });
+                        }
                       }}
                       options={(locations || []).map(loc => ({
                         value: loc.location_id,
@@ -1076,6 +1138,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
                         ⚠️ ไม่พบข้อมูลสถานที่ในคลังนี้
                       </div>
                     ) : null}
+                    {errors.items?.[index]?.location_id && <p className="text-red-500 text-xs mt-1">{errors.items[index]?.location_id?.message}</p>}
                   </div>
                   
                   
@@ -1290,7 +1353,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
 
         <div className="mt-6 flex justify-end space-x-3">
           <Button type="button" variant="outline" onClick={onClose} disabled={creating || updating || generatingPallets}>ยกเลิก</Button>
-          <Button type="submit" variant="primary" loading={creating || updating || generatingPallets} disabled={!isValid}>
+          <Button type="submit" variant="primary" loading={creating || updating || generatingPallets} disabled={creating || updating || generatingPallets}>
             {(creating || updating) ? (isEditMode ? 'กำลังอัปเดต...' : 'กำลังสร้าง...') : generatingPallets ? 'กำลังสร้าง Pallet...' : (isEditMode ? 'อัปเดตการรับสินค้า' : 'สร้างการรับสินค้า')}
           </Button>
         </div>

@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  Search,
   Plus,
   Edit,
   Trash2,
@@ -11,18 +10,21 @@ import {
   ChevronUp,
   ChevronDown,
   ChevronsUpDown,
-  Package,
-  Warehouse,
-  MapPin,
-  Layers
+  Package
 } from 'lucide-react';
-import MainLayout from '@/components/layout/MainLayout';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import { usePreparationAreas, PreparationArea } from '@/hooks/usePreparationAreas';
 import ImportPreparationAreaForm from '@/components/forms/ImportPreparationAreaForm';
 import AddPreparationAreaForm from '@/components/forms/AddPreparationAreaForm';
 import EditPreparationAreaForm from '@/components/forms/EditPreparationAreaForm';
+import {
+  PageContainer,
+  PageHeaderWithFilters,
+  SearchInput,
+  FilterSelect,
+  PaginationBar
+} from '@/components/ui/page-components';
 
 const PreparationAreaPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
@@ -39,6 +41,8 @@ const PreparationAreaPage = () => {
   const [showImportModal, setShowImportModal] = useState(false);
   const [sortField, setSortField] = useState<keyof PreparationArea | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 100;
 
   const {
     preparationAreas,
@@ -281,140 +285,97 @@ const PreparationAreaPage = () => {
     }
   };
 
+  // Build options for FilterSelect
+  const warehouseFilterOptions = [
+    { value: '', label: 'ทุกคลัง' },
+    ...warehouses.map((w) => ({ value: w.warehouse_id, label: w.warehouse_name }))
+  ];
+
+  const zoneFilterOptions = zones.map((zone) => ({ 
+    value: zone === 'ทั้งหมด' ? '' : zone, 
+    label: zone 
+  }));
+
+  const areaTypeFilterOptions = [
+    { value: '', label: 'ทุกประเภท' },
+    ...areaTypes.map((type) => ({ value: type.value, label: type.label }))
+  ];
+
+  const statusFilterOptions = [
+    { value: '', label: 'ทุกสถานะ' },
+    { value: 'active', label: 'ใช้งาน' },
+    { value: 'inactive', label: 'ไม่ใช้งาน' },
+    { value: 'maintenance', label: 'ซ่อมบำรุง' }
+  ];
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-thai-gray-25 to-white">
-      <div className="space-y-3">
-        {/* Modern Page Header */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-0 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-thai-gray-900 font-thai">พื้นที่จัดเตรียมสินค้า</h1>
-              <p className="text-thai-gray-600 font-thai mt-1">จัดการพื้นที่จัดเตรียมสินค้าและการใช้งานพื้นที่ในคลังสินค้า</p>
-            </div>
-            <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                icon={Package}
-                onClick={() => setShowImportModal(true)}
-                className="bg-white/50 hover:bg-white/80 border-white/30 backdrop-blur-sm shadow-sm"
-              >
-                นำเข้าข้อมูล
-              </Button>
-              <Button 
-                variant="primary" 
-                icon={Plus}
-                onClick={() => setShowAddModal(true)}
-                className="bg-blue-500 hover:bg-blue-600 shadow-lg"
-              >
-                เพิ่มพื้นที่
-              </Button>
-            </div>
+    <PageContainer>
+      <PageHeaderWithFilters title="พื้นที่จัดเตรียมสินค้า">
+        <SearchInput
+          value={searchTerm}
+          onChange={setSearchTerm}
+          placeholder="ค้นหาพื้นที่จัดเตรียมสินค้า รหัส หรือชื่อ..."
+        />
+        <FilterSelect
+          value={selectedWarehouse}
+          onChange={setSelectedWarehouse}
+          options={warehouseFilterOptions}
+        />
+        <FilterSelect
+          value={selectedZone}
+          onChange={setSelectedZone}
+          options={zoneFilterOptions}
+        />
+        <FilterSelect
+          value={selectedAreaType}
+          onChange={setSelectedAreaType}
+          options={areaTypeFilterOptions}
+        />
+        <FilterSelect
+          value={selectedStatus}
+          onChange={setSelectedStatus}
+          options={statusFilterOptions}
+        />
+        <Button 
+          variant="outline" 
+          icon={Package}
+          onClick={() => setShowImportModal(true)}
+        >
+          นำเข้าข้อมูล
+        </Button>
+        <Button 
+          variant="primary" 
+          icon={Plus}
+          onClick={() => setShowAddModal(true)}
+        >
+          เพิ่มพื้นที่
+        </Button>
+      </PageHeaderWithFilters>
+
+      {/* Error Message */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
+          <div className="flex items-center space-x-3 text-red-600">
+            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+            <span className="font-thai text-sm">เกิดข้อผิดพลาด: {error}</span>
           </div>
         </div>
+      )}
 
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-50/80 backdrop-blur-sm border border-red-200/50 rounded-2xl p-4 shadow-sm">
-            <div className="flex items-center space-x-3 text-red-600">
-              <div className="flex-shrink-0">
-                <AlertCircle className="w-5 h-5" />
-              </div>
-              <span className="font-thai text-sm">เกิดข้อผิดพลาด: {error}</span>
-            </div>
+      {/* Preparation Areas Table */}
+      <div className="flex-1 min-h-0 bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col overflow-hidden">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center h-full text-thai-gray-400">
+            <div className="loading-spinner w-10 h-10 mx-auto mb-4"></div>
+            <p className="text-thai-gray-500 font-thai text-lg">กำลังโหลดข้อมูล...</p>
           </div>
-        )}
-
-        {/* Modern Search and Filters */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm">
-          <div className="flex items-center space-x-3">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
-                <input
-                  type="text"
-                  placeholder="ค้นหาพื้นที่จัดเตรียมสินค้า รหัส หรือชื่อ..."
-                  className="
-                    w-full pl-10 pr-4 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                    focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                    text-sm font-thai transition-all duration-300 backdrop-blur-sm
-                    placeholder:text-thai-gray-400
-                  "
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-            </div>
-            
-            <div className="flex space-x-2">
-              <select
-                className="
-                  px-3 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                  text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-28
-                "
-                value={selectedWarehouse}
-                onChange={(e) => setSelectedWarehouse(e.target.value)}
-              >
-                <option value="">ทั้งหมด</option>
-                {warehouses.map((warehouse) => (
-                  <option key={warehouse.warehouse_id} value={warehouse.warehouse_id}>
-                    {warehouse.warehouse_name}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                className="
-                  px-3 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                  text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-24
-                "
-                value={selectedZone}
-                onChange={(e) => setSelectedZone(e.target.value)}
-              >
-                {zones.map((zone) => (
-                  <option key={zone} value={zone === 'ทั้งหมด' ? '' : zone}>
-                    {zone}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                className="
-                  px-3 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                  text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-28
-                "
-                value={selectedAreaType}
-                onChange={(e) => setSelectedAreaType(e.target.value)}
-              >
-                <option value="">ทั้งหมด</option>
-                {areaTypes.map((type) => (
-                  <option key={type.value} value={type.value}>
-                    {type.label}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                className="
-                  px-3 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                  text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-24
-                "
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-              >
-                <option value="">ทั้งหมด</option>
-                <option value="active">ใช้งาน</option>
-                <option value="inactive">ไม่ใช้งาน</option>
-                <option value="maintenance">ซ่อมบำรุง</option>
-              </select>
-            </div>
+        ) : sortedAreas.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-thai-gray-500">
+            <Box className="w-12 h-12 mb-2" />
+            <p className="font-thai">ไม่พบข้อมูลพื้นที่จัดเตรียมสินค้าที่ตรงกับการค้นหา</p>
           </div>
-        </div>
-
-        <div className="h-[74vh] bg-white border border-gray-200 rounded-lg shadow-sm overflow-auto">
+        ) : (
+          <div className="flex-1 overflow-auto thin-scrollbar">
           <table className="w-full border-collapse text-sm">
             <thead className="sticky top-0 z-10 bg-gray-100">
               <tr>
@@ -433,26 +394,7 @@ const PreparationAreaPage = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-100">
-              {loading ? (
-                <tr>
-                  <td colSpan={12} className="px-4 py-8 text-center text-sm text-gray-500">
-                    กำลังโหลดข้อมูล...
-                  </td>
-                </tr>
-              ) : error ? (
-                <tr>
-                  <td colSpan={12} className="px-4 py-8 text-center text-sm text-red-500">
-                    เกิดข้อผิดพลาด: {error}
-                  </td>
-                </tr>
-              ) : sortedAreas.length === 0 ? (
-                <tr>
-                  <td colSpan={12} className="px-4 py-8 text-center text-sm text-gray-500">
-                    ไม่พบข้อมูล
-                  </td>
-                </tr>
-              ) : (
-                sortedAreas.map((area) => {
+              {sortedAreas.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((area) => {
                   const usagePercentage = area.current_utilization_pct || 0;
                   return (
                     <tr key={area.area_id} className="hover:bg-blue-50/30 transition-colors duration-150">
@@ -521,13 +463,20 @@ const PreparationAreaPage = () => {
                       </td>
                     </tr>
                   );
-                })
-              )}
+                })}
             </tbody>
           </table>
-        </div>
+          </div>
+        )}
+        <PaginationBar
+          currentPage={currentPage}
+          totalItems={sortedAreas.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+        />
+      </div>
 
-        {/* Add Area Modal */}
+      {/* Add Area Modal */}
         <Modal
           isOpen={showAddModal}
           onClose={() => setShowAddModal(false)}
@@ -573,8 +522,7 @@ const PreparationAreaPage = () => {
             onCancel={() => setShowImportModal(false)}
           />
         </Modal>
-      </div>
-    </div>
+    </PageContainer>
   );
 };
 

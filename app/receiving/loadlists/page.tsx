@@ -3,7 +3,6 @@ import React, { useState, useEffect, useMemo } from 'react';
 import {
   Truck,
   Plus,
-  Search,
   Printer,
   Loader2,
   AlertCircle,
@@ -21,6 +20,12 @@ import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
 import DeliveryOrderDocument from '@/components/receiving/DeliveryOrderDocument';
+import {
+  PageContainer,
+  PageHeaderWithFilters,
+  SearchInput,
+  PaginationBar
+} from '@/components/ui/page-components';
 
 interface Loadlist {
   id: number;
@@ -364,6 +369,8 @@ const LoadlistsPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [sortField, setSortField] = useState<keyof Loadlist>('created_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 100;
 
   const handleSort = (field: keyof Loadlist) => {
     if (sortField === field) {
@@ -648,59 +655,46 @@ const LoadlistsPage = () => {
 
   return (
     <>
-      <div className="h-screen bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
-        <div className="h-full flex flex-col space-y-2 pt-0 px-2 pb-2">
-          <div className="flex items-center justify-between gap-2 pt-1 flex-shrink-0">
-            <h1 className="text-xl font-bold text-thai-gray-900 m-0 leading-tight flex items-center gap-2">
-              <Truck className="w-6 h-6 text-green-600" />
-              ใบโหลดสินค้า (Loadlists)
-            </h1>
-            <div className="flex gap-2">
-              <Button
-                variant="primary"
-                icon={Plus}
-                className="bg-green-500 hover:bg-green-600 shadow-lg"
-                onClick={handleOpenCreateModal}
-              >
-                สร้างใบโหลดใหม่
+      <PageContainer>
+        <PageHeaderWithFilters title="ใบโหลดสินค้า (Loadlists)">
+          <SearchInput
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="ค้นหารหัสใบโหลด, ทะเบียนรถ, ชื่อคนขับ..."
+          />
+          <Button
+            variant="primary"
+            size="sm"
+            icon={Plus}
+            className="text-xs py-1 px-2 bg-green-500 hover:bg-green-600"
+            onClick={handleOpenCreateModal}
+          >
+            สร้างใบโหลดใหม่
+          </Button>
+        </PageHeaderWithFilters>
+
+        <div className="flex-1 min-h-0 bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col overflow-hidden">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center h-full text-thai-gray-400">
+              <Loader2 className="w-8 h-8 animate-spin mb-2" />
+              <p className="text-sm font-thai">กำลังโหลดข้อมูล...</p>
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center h-full text-red-500">
+              <AlertCircle className="w-8 h-8 mb-2" />
+              <p className="text-sm font-thai">{error}</p>
+              <Button variant="outline" size="sm" onClick={fetchLoadlists} className="mt-4">
+                ลองอีกครั้ง
               </Button>
             </div>
-          </div>
-
-          <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm flex-shrink-0">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
-              <input
-                type="text"
-                placeholder="ค้นหารหัสใบโหลด, ทะเบียนรถ, ชื่อคนขับ..."
-                className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm transition-all duration-300 placeholder:text-thai-gray-400"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-              />
+          ) : filteredLoadlists.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-thai-gray-500">
+              <Truck className="w-12 h-12 mb-2" />
+              <p className="text-sm font-thai">ไม่พบใบโหลดสินค้า</p>
             </div>
-          </div>
-
-          <div className="flex-1 min-h-0">
-            <div className="w-full h-[74vh] overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-sm">
-              {loading ? (
-                <div className="flex items-center justify-center h-full text-gray-500">
-                  <Loader2 className="w-8 h-8 animate-spin mr-2" />
-                  กำลังโหลดใบโหลดสินค้า...
-                </div>
-              ) : error ? (
-                <div className="flex flex-col items-center justify-center h-full text-red-500">
-                  <AlertCircle className="w-8 h-8 mb-2" />
-                  <p>{error}</p>
-                  <Button variant="outline" size="sm" onClick={fetchLoadlists} className="mt-4">
-                    ลองอีกครั้ง
-                  </Button>
-                </div>
-              ) : filteredLoadlists.length === 0 ? (
-                <div className="flex items-center justify-center h-full text-gray-500">
-                  ไม่พบใบโหลดสินค้า
-                </div>
-              ) : (
-                <table className="min-w-full border-collapse text-sm table-fixed">
+          ) : (
+            <div className="flex-1 overflow-auto thin-scrollbar">
+              <table className="min-w-full border-collapse text-sm table-fixed">
                   <thead className="sticky top-0 z-10 bg-gray-100">
                     <tr>
                       <th className="w-[10%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 cursor-pointer hover:bg-gray-200" onClick={() => handleSort('loadlist_code')}>
@@ -745,7 +739,7 @@ const LoadlistsPage = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
-                    {filteredLoadlists.map((loadlist) => (
+                    {filteredLoadlists.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((loadlist) => (
                       <tr key={loadlist.id} className="hover:bg-blue-50/30 transition-colors duration-150">
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap font-semibold text-green-600">
                           {loadlist.loadlist_code}
@@ -952,11 +946,16 @@ const LoadlistsPage = () => {
                     ))}
                   </tbody>
                 </table>
-              )}
             </div>
-          </div>
+          )}
+          <PaginationBar
+            currentPage={currentPage}
+            totalItems={filteredLoadlists.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+          />
         </div>
-      </div>
+      </PageContainer>
 
       <Modal
         isOpen={isCreateModalOpen}

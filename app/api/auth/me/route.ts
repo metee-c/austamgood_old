@@ -30,6 +30,7 @@ export async function GET(request: NextRequest) {
         last_name: session.full_name.split(' ').slice(1).join(' ') || '',
         role_id: session.role_id,
         role_name: session.role_name,
+        employee_id: session.employee_id,
         is_active: true,
       },
       session: {

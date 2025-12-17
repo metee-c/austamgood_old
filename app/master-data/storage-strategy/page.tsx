@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect, useCallback, useMemo, useRef, useId } from 'react';
 import {
-  Search,
   Plus,
   Edit,
   Trash2,
@@ -11,17 +10,19 @@ import {
   ChevronUp,
   ChevronDown,
   ChevronsUpDown,
-  Box,
-  Package,
-  Warehouse,
-  Settings,
-  Download,
-  Upload
+  Package
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import ComboBox from '@/components/ui/ComboBox';
 import ImportStorageStrategyForm from '@/components/forms/ImportStorageStrategyForm';
+import {
+  PageContainer,
+  PageHeaderWithFilters,
+  SearchInput,
+  FilterSelect,
+  PaginationBar
+} from '@/components/ui/page-components';
 
 type StorageStrategyStatus = 'draft' | 'active' | 'inactive' | 'archived';
 type StorageRotation = 'FIFO' | 'LIFO' | 'FEFO' | 'LEFO' | 'custom';
@@ -158,6 +159,8 @@ const StorageStrategyPage = () => {
   const [selectedStrategy, setSelectedStrategy] = useState<StorageStrategyView | null>(null);
   const [sortField, setSortField] = useState<SortField | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 100;
   const [isSaving, setIsSaving] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -632,137 +635,101 @@ const StorageStrategyPage = () => {
       }
     : null;
 
+  // Build options for FilterSelect
+  const warehouseFilterOptions = [
+    { value: '', label: 'ทุกคลัง' },
+    ...warehouses.map((w) => ({ value: w.warehouse_id, label: w.warehouse_name }))
+  ];
+
+  const zoneFilterOptions = zones.map((zone) => ({ value: zone, label: zone }));
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-thai-gray-25 to-white">
-      <div className="space-y-3">
-        {/* Modern Page Header */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-0 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-thai-gray-900 font-thai">กลยุทธ์การเก็บสินค้า</h1>
-              <p className="text-thai-gray-600 font-thai mt-1">จัดการกลยุทธ์การเก็บสินค้าในคลังสินค้า</p>
-            </div>
-            <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                icon={Package}
-                className="bg-white/50 hover:bg-white/80 border-white/30 backdrop-blur-sm shadow-sm"
-                onClick={() => {
-                  setImportSummary(null);
-                  setImportErrorMessage(null);
-                  setImportFile(null);
-                  setShowImportModal(true);
-                }}
-              >
-                นำเข้าข้อมูล
-              </Button>
-              <Button 
-                variant="primary" 
-                icon={Plus}
-                onClick={() => {
-                  // Fetch fresh zones data before opening add modal
-                  const refreshZones = async () => {
-                    try {
-                      const response = await fetch('/api/master-location/zones');
-                      const payload = await response.json().catch(() => null);
+    <PageContainer>
+      <PageHeaderWithFilters title="กลยุทธ์การเก็บสินค้า">
+        <SearchInput
+          value={searchTerm}
+          onChange={setSearchTerm}
+          placeholder="ค้นหากลยุทธ์ รหัส หรือชื่อ..."
+        />
+        <FilterSelect
+          value={selectedWarehouse}
+          onChange={setSelectedWarehouse}
+          options={warehouseFilterOptions}
+        />
+        <FilterSelect
+          value={selectedZone}
+          onChange={setSelectedZone}
+          options={zoneFilterOptions}
+        />
+        <Button 
+          variant="outline" 
+          icon={Package}
+          onClick={() => {
+            setImportSummary(null);
+            setImportErrorMessage(null);
+            setImportFile(null);
+            setShowImportModal(true);
+          }}
+        >
+          นำเข้าข้อมูล
+        </Button>
+        <Button 
+          variant="primary" 
+          icon={Plus}
+          onClick={() => {
+            // Fetch fresh zones data before opening add modal
+            const refreshZones = async () => {
+              try {
+                const response = await fetch('/api/master-location/zones');
+                const payload = await response.json().catch(() => null);
 
-                      if (!response.ok) {
-                        throw new Error(
-                          (payload && payload.error) || 'ไม่สามารถดึงข้อมูลโซนได้'
-                        );
-                      }
+                if (!response.ok) {
+                  throw new Error(
+                    (payload && payload.error) || 'ไม่สามารถดึงข้อมูลโซนได้'
+                  );
+                }
 
-                      const zoneList: string[] = Array.isArray(payload) ? payload : [];
-                      const zoneOptions = [ZONE_ALL_OPTION, ...zoneList.sort()];
-                      setZones(zoneOptions);
-                    } catch (err) {
-                      console.error('[storage-strategy] refreshZones error in add modal', err);
-                    }
-                  };
-                  
-                  refreshZones().then(() => {
-                    setShowAddModal(true);
-                  });
-                }}
-                className="bg-blue-500 hover:bg-blue-600 shadow-lg"
-              >
-                เพิ่มกลยุทธ์
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-50/80 backdrop-blur-sm border border-red-200/50 rounded-2xl p-4 shadow-sm">
-            <div className="flex items-center space-x-3 text-red-600">
-              <div className="flex-shrink-0">
-                <AlertCircle className="w-5 h-5" />
-              </div>
-              <span className="font-thai text-sm">เกิดข้อผิดพลาด: {error}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Modern Search and Filters */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm">
-          <div className="flex items-center space-x-3">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
-                <input
-                  type="text"
-                  placeholder="ค้นหากลยุทธ์ รหัส หรือชื่อ..."
-                  className="
-                    w-full pl-10 pr-4 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                    focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                    text-sm font-thai transition-all duration-300 backdrop-blur-sm
-                    placeholder:text-thai-gray-400
-                  "
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-            </div>
+                const zoneList: string[] = Array.isArray(payload) ? payload : [];
+                const zoneOptions = [ZONE_ALL_OPTION, ...zoneList.sort()];
+                setZones(zoneOptions);
+              } catch (err) {
+                console.error('[storage-strategy] refreshZones error in add modal', err);
+              }
+            };
             
-            <div className="flex space-x-2">
-              <select
-                className="
-                  px-3 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                  text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-28
-                "
-                value={selectedWarehouse}
-                onChange={(e) => setSelectedWarehouse(e.target.value)}
-              >
-                <option value="">ทั้งหมด</option>
-                {warehouses.map((warehouse) => (
-                  <option key={warehouse.warehouse_id} value={warehouse.warehouse_id}>
-                    {warehouse.warehouse_name}
-                  </option>
-                ))}
-              </select>
+            refreshZones().then(() => {
+              setShowAddModal(true);
+            });
+          }}
+        >
+          เพิ่มกลยุทธ์
+        </Button>
+      </PageHeaderWithFilters>
 
-              <select
-                className="
-                  px-3 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                  text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-24
-                "
-                value={selectedZone}
-                onChange={(e) => setSelectedZone(e.target.value)}
-              >
-                {zones.map((zone) => (
-                  <option key={zone} value={zone}>
-                    {zone}
-                  </option>
-                ))}
-              </select>
-            </div>
+      {/* Error Message */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
+          <div className="flex items-center space-x-3 text-red-600">
+            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+            <span className="font-thai text-sm">เกิดข้อผิดพลาด: {error}</span>
           </div>
         </div>
+      )}
 
-        <div className="h-[74vh] bg-white border border-gray-200 rounded-lg shadow-sm overflow-auto">
+      {/* Strategies Table */}
+      <div className="flex-1 min-h-0 bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col overflow-hidden">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center h-full text-thai-gray-400">
+            <div className="loading-spinner w-10 h-10 mx-auto mb-4"></div>
+            <p className="text-thai-gray-500 font-thai text-lg">กำลังโหลดข้อมูล...</p>
+          </div>
+        ) : sortedStrategies.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-thai-gray-500">
+            <Layers className="w-12 h-12 mb-2" />
+            <p className="font-thai">ไม่พบข้อมูลกลยุทธ์ที่ตรงกับการค้นหา</p>
+          </div>
+        ) : (
+          <div className="flex-1 overflow-auto thin-scrollbar">
           <table className="w-full border-collapse text-sm">
             <thead className="sticky top-0 z-10 bg-gray-100">
               <tr>
@@ -779,26 +746,7 @@ const StorageStrategyPage = () => {
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-100">
-              {loading ? (
-                <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-500">
-                    กำลังโหลดข้อมูล...
-                  </td>
-                </tr>
-              ) : error ? (
-                <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-sm text-red-500">
-                    เกิดข้อผิดพลาด: {error}
-                  </td>
-                </tr>
-              ) : sortedStrategies.length === 0 ? (
-                <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-500">
-                    ไม่พบข้อมูล
-                  </td>
-                </tr>
-              ) : (
-                sortedStrategies.map((strategy) => {
+              {sortedStrategies.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((strategy) => {
                   const statusLabel =
                     STATUS_OPTIONS.find(
                       (option) => option.value === strategy.status
@@ -872,13 +820,20 @@ const StorageStrategyPage = () => {
                     </td>
                     </tr>
                   );
-                })
-              )}
+                })}
             </tbody>
           </table>
-        </div>
+          </div>
+        )}
+        <PaginationBar
+          currentPage={currentPage}
+          totalItems={sortedStrategies.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+        />
+      </div>
 
-        {/* Add Strategy Modal */}
+      {/* Add Strategy Modal */}
         <Modal
           isOpen={showAddModal}
           onClose={() => {
@@ -951,8 +906,7 @@ const StorageStrategyPage = () => {
             onCancel={() => setShowImportModal(false)}
           />
         </Modal>
-      </div>
-    </div>
+    </PageContainer>
   );
 };
 

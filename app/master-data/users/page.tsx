@@ -2,23 +2,27 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  Search,
   Plus,
   Edit,
-  UserCheck,
   AlertCircle,
   ChevronUp,
   ChevronDown,
   ChevronsUpDown,
   Users,
   Shield,
-  Settings
 } from 'lucide-react';
 import Table from '@/components/ui/Table';
 import Button from '@/components/ui/Button';
 import AddUserForm from '@/components/forms/AddUserForm';
 import EditUserModal from '@/components/forms/EditUserModal';
 import { SystemUserWithRoles, SystemRole, CreateUserData } from '@/types/user-management-schema';
+import {
+  PageContainer,
+  PageHeaderWithFilters,
+  SearchInput,
+  FilterSelect,
+  PaginationBar,
+} from '@/components/ui/page-components';
 
 // Types for sorting
 interface SortConfig {
@@ -217,6 +221,8 @@ const UsersPage = () => {
   const [showAddUserForm, setShowAddUserForm] = useState(false);
   const [showEditUserModal, setShowEditUserModal] = useState(false);
   const [editingUser, setEditingUser] = useState<SystemUserWithRoles | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 100;
 
   useEffect(() => {
     fetchData();
@@ -330,113 +336,74 @@ const UsersPage = () => {
     return component;
   };
 
+  const roleOptions = [
+    { value: '', label: 'ทุกบทบาท' },
+    ...roles.map((role) => ({ value: role.role_id.toString(), label: role.role_name }))
+  ];
+
+  const statusOptions = [
+    { value: '', label: 'ทุกสถานะ' },
+    { value: 'true', label: 'ใช้งาน' },
+    { value: 'false', label: 'ไม่ใช้งาน' },
+  ];
+
   return (
-    <div className="h-screen bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
-      <div className="h-full flex flex-col space-y-2 pt-0 px-2 pb-2">
-        {/* Modern Page Header */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-0 shadow-sm flex-shrink-0">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-bold text-thai-gray-900 font-thai m-0 p-0 leading-tight">ข้อมูลผู้ใช้งาน</h1>
-              <p className="text-sm text-thai-gray-600 font-thai mt-0">จัดการข้อมูลผู้ใช้งานและสิทธิ์การเข้าถึง</p>
+    <PageContainer>
+      <PageHeaderWithFilters title="ข้อมูลผู้ใช้งาน">
+        <SearchInput
+          value={searchTerm}
+          onChange={setSearchTerm}
+          placeholder="ค้นหาผู้ใช้งาน ชื่อ หรืออีเมล..."
+        />
+        <FilterSelect
+          value={selectedRole}
+          onChange={setSelectedRole}
+          options={roleOptions}
+        />
+        <FilterSelect
+          value={selectedStatus}
+          onChange={setSelectedStatus}
+          options={statusOptions}
+        />
+        <Button
+          variant="outline"
+          icon={Shield}
+          onClick={handleRoleManagement}
+        >
+          จัดการบทบาท
+        </Button>
+        <Button
+          variant="primary"
+          icon={Plus}
+          onClick={() => setShowAddUserForm(true)}
+        >
+          เพิ่มผู้ใช้งาน
+        </Button>
+      </PageHeaderWithFilters>
+
+      {/* Error Message */}
+      {error && (
+        <div className="bg-red-50/80 backdrop-blur-sm border border-red-200/50 rounded-2xl p-4 shadow-sm">
+          <div className="flex items-center space-x-3 text-red-600">
+            <div className="flex-shrink-0">
+              <AlertCircle className="w-5 h-5" />
             </div>
-            <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                icon={Shield}
-                className="bg-white/50 hover:bg-white/80 border-white/30 backdrop-blur-sm shadow-sm"
-                onClick={handleRoleManagement}
-              >
-                จัดการบทบาท
-              </Button>
-              <Button 
-                variant="primary" 
-                icon={Plus}
-                className="bg-blue-500 hover:bg-blue-600 shadow-lg"
-                onClick={() => setShowAddUserForm(true)}
-              >
-                เพิ่มผู้ใช้งาน
-              </Button>
-            </div>
+            <span className="font-thai text-sm">เกิดข้อผิดพลาด: {error}</span>
           </div>
         </div>
+      )}
 
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-50/80 backdrop-blur-sm border border-red-200/50 rounded-2xl p-4 shadow-sm flex-shrink-0">
-            <div className="flex items-center space-x-3 text-red-600">
-              <div className="flex-shrink-0">
-                <AlertCircle className="w-5 h-5" />
-              </div>
-              <span className="font-thai text-sm">เกิดข้อผิดพลาด: {error}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Modern Search and Filters */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm flex-shrink-0">
-          <div className="flex items-center space-x-3">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
-                <input
-                  type="text"
-                  placeholder="ค้นหาผู้ใช้งาน ชื่อ หรืออีเมล..."
-                  className="
-                    w-full pl-10 pr-4 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                    focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                    text-sm font-thai transition-all duration-300 backdrop-blur-sm
-                    placeholder:text-thai-gray-400
-                  "
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-            </div>
-            
-            <div className="flex space-x-2">
-              <select
-                className="
-                  px-3 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                  text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-32
-                "
-                value={selectedRole}
-                onChange={(e) => setSelectedRole(e.target.value)}
-              >
-                <option value="">ทุกบทบาท</option>
-                {roles.map((role) => (
-                  <option key={role.role_id} value={role.role_id}>
-                    {role.role_name}
-                  </option>
-                ))}
-              </select>
-
-              <select
-                className="
-                  px-3 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                  text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-24
-                "
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-              >
-                <option value="">ทุกสถานะ</option>
-                <option value="true">ใช้งาน</option>
-                <option value="false">ไม่ใช้งาน</option>
-              </select>
-            </div>
-          </div>
+      {/* Users Table */}
+      <div className="flex-1 min-h-0 bg-white border rounded-lg shadow-sm flex flex-col overflow-hidden">
+        <div className="flex-1 overflow-auto thin-scrollbar">
+          {renderTable(users, <UsersTable data={users.slice((currentPage - 1) * pageSize, currentPage * pageSize)} onEdit={handleEditUser} />)}
         </div>
-
-        {/* Users Table */}
-        <div className="flex-1 min-h-0">
-          <div className="w-full h-[74vh] bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col">
-            <div className="flex-1 overflow-x-auto overflow-y-auto">
-              {renderTable(users, <UsersTable data={users} onEdit={handleEditUser} />)}
-            </div>
-          </div>
-        </div>
+        <PaginationBar
+          currentPage={currentPage}
+          totalItems={users.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+        />
       </div>
 
       {/* Add User Form Modal */}
@@ -460,7 +427,7 @@ const UsersPage = () => {
           setEditingUser(null);
         }}
       />
-    </div>
+    </PageContainer>
   );
 };
 

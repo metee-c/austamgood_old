@@ -10,7 +10,10 @@ import {
   Eye,
   Loader2,
   ChevronDown,
-  ChevronRight
+  ChevronRight,
+  ChevronLeft,
+  ChevronsLeft,
+  ChevronsRight
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
@@ -66,11 +69,22 @@ const InventoryBalancesPage = () => {
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [preparationAreaCodes, setPreparationAreaCodes] = useState<string[]>([]);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const pageSize = 100;
+
   useEffect(() => {
     fetchWarehouses();
     fetchPreparationAreas();
-    fetchBalanceData();
   }, []);
+
+  // Fetch balance data after preparation areas are loaded
+  useEffect(() => {
+    if (preparationAreaCodes.length > 0) {
+      fetchBalanceData();
+    }
+  }, [preparationAreaCodes]);
 
   const fetchPreparationAreas = async () => {
     try {
@@ -102,12 +116,43 @@ const InventoryBalancesPage = () => {
     }
   };
 
-  const fetchBalanceData = async () => {
+  const fetchBalanceData = async (page: number = 1) => {
     try {
       setLoading(true);
       const supabase = createClient();
 
-      const { data, error } = await supabase
+      // Locations to exclude (preparation areas, dispatch, delivery-in-progress)
+      const excludeLocations = [
+        ...preparationAreaCodes,
+        'Dispatch',
+        'Delivery-In-Progress',
+        'RCV',
+        'SHIP',
+      ];
+
+      // Build base query with filters
+      let countQuery = supabase
+        .from('wms_inventory_balances')
+        .select('*', { count: 'exact', head: true });
+
+      // Exclude preparation areas at database level
+      if (excludeLocations.length > 0) {
+        countQuery = countQuery.not('location_id', 'in', `(${excludeLocations.join(',')})`);
+      }
+
+      const { count, error: countError } = await countQuery;
+
+      if (countError) {
+        console.error('Error fetching count:', countError);
+      } else {
+        setTotalCount(count || 0);
+      }
+
+      // Fetch paginated data
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
+
+      let dataQuery = supabase
         .from('wms_inventory_balances')
         .select(`
           *,
@@ -122,14 +167,22 @@ const InventoryBalancesPage = () => {
             weight_per_piece_kg
           )
         `)
-        .order('updated_at', { ascending: false })
-        .limit(1000);
+        .order('updated_at', { ascending: false });
+
+      // Exclude preparation areas at database level
+      if (excludeLocations.length > 0) {
+        dataQuery = dataQuery.not('location_id', 'in', `(${excludeLocations.join(',')})`);
+      }
+
+      const { data, error } = await dataQuery.range(from, to);
 
       if (error) {
         setError(error.message);
         console.error('Error fetching balance data:', error);
       } else {
+        console.log('Fetched balance data:', data?.length, 'records, page:', page);
         setBalanceData(data || []);
+        setCurrentPage(page);
       }
     } catch (err: any) {
       setError('เกิดข้อผิดพลาดในการโหลดข้อมูล');
@@ -171,6 +224,15 @@ const InventoryBalancesPage = () => {
     return new Date(expiryDate) < new Date();
   };
 
+  // Debug: log filter inputs
+  console.log('Filter inputs:', { 
+    balanceDataLength: balanceData.length, 
+    preparationAreaCodesLength: preparationAreaCodes.length,
+    searchTerm,
+    selectedWarehouse,
+    showZeroBalance
+  });
+
   const filteredData = balanceData.filter(item => {
     const searchLower = searchTerm.toLowerCase();
     const matchesSearch = !searchTerm || (
@@ -207,18 +269,9 @@ const InventoryBalancesPage = () => {
 
     const matchesZeroBalance = showZeroBalance || item.total_piece_qty > 0; // ถ้า showZeroBalance = true แสดงทุกอัน, ถ้า false กรองเฉพาะที่มากกว่า 0
 
-    // กรองโลเคชั่นบ้านหยิบออก (ตรวจสอบจาก preparation_area)
-    const isPreparationArea = item.location_id ? preparationAreaCodes.includes(item.location_id) : false;
+    // Note: preparation_area, Dispatch, Delivery-In-Progress are now filtered at database level
 
-    // กรองโลเคชั่น Dispatch ออก (ย้ายไปแสดงในหน้า preparation-area-inventory แทน)
-    const isDispatchLocation = item.location_id === 'Dispatch' || item.location_name === 'Dispatch';
-
-    // กรองโลเคชั่น Delivery-In-Progress ออก (ย้ายไปแสดงในหน้า preparation-area-inventory แทน)
-    const isDeliveryInProgress =
-      item.location_id === 'Delivery-In-Progress' ||
-      item.location_name === 'Delivery-In-Progress';
-
-    return matchesSearch && matchesWarehouse && matchesLowStock && matchesExpiring && matchesZeroBalance && !isTemporaryZeroBalance && !isPreparationArea && !isDispatchLocation && !isDeliveryInProgress;
+    return matchesSearch && matchesWarehouse && matchesLowStock && matchesExpiring && matchesZeroBalance && !isTemporaryZeroBalance;
   });
 
   // จัดกลุ่มตาม location (warehouse_id + location_id) เท่านั้น
@@ -274,85 +327,73 @@ const InventoryBalancesPage = () => {
   const expiringSoonItems = filteredData.filter(item => isExpiringSoon(item.expiry_date)).length;
 
   return (
-    <div className="h-screen bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
-      <div className="h-full flex flex-col space-y-2 pt-0 px-2 pb-2">
-        {/* Page Header */}
-        <div className="flex items-center justify-between gap-2 pt-1 flex-shrink-0">
-          <h1 className="text-xl font-bold text-thai-gray-900 font-thai m-0 p-0 leading-tight">ยอดสต็อกคงเหลือ</h1>
-          <div className="flex gap-2">
-            <Button variant="outline" icon={Download}>
-              ส่งออก Excel
+    <div className="h-[calc(100vh-3.25rem)] bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
+      <div className="h-full flex flex-col space-y-1 pt-0 px-2 pb-1">
+        {/* Header + Filters Combined */}
+        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-lg px-2 py-1.5 shadow-sm flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <h1 className="text-base font-bold text-thai-gray-900 font-thai whitespace-nowrap">ยอดสต็อกคงเหลือ</h1>
+            <div className="flex-1 relative">
+              <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3.5 h-3.5 text-thai-gray-400" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="ค้นหา..."
+                className="w-full pl-7 pr-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50"
+              />
+            </div>
+            <select
+              value={selectedWarehouse}
+              onChange={(e) => setSelectedWarehouse(e.target.value)}
+              className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50"
+            >
+              <option value="all">ทุกคลัง</option>
+              {warehouses.map(warehouse => (
+                <option key={warehouse.warehouse_id} value={warehouse.warehouse_id}>
+                  {warehouse.warehouse_name}
+                </option>
+              ))}
+            </select>
+            <label className="flex items-center cursor-pointer text-xs font-thai px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded hover:bg-white/80">
+              <input
+                type="checkbox"
+                className="mr-1 w-3 h-3"
+                checked={showLowStock}
+                onChange={(e) => setShowLowStock(e.target.checked)}
+              />
+              สต็อกต่ำ
+            </label>
+            <label className="flex items-center cursor-pointer text-xs font-thai px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded hover:bg-white/80">
+              <input
+                type="checkbox"
+                className="mr-1 w-3 h-3"
+                checked={showExpiringSoon}
+                onChange={(e) => setShowExpiringSoon(e.target.checked)}
+              />
+              ใกล้หมดอายุ
+            </label>
+            <label className="flex items-center cursor-pointer text-xs font-thai px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded hover:bg-white/80">
+              <input
+                type="checkbox"
+                className="mr-1 w-3 h-3"
+                checked={showZeroBalance}
+                onChange={(e) => setShowZeroBalance(e.target.checked)}
+              />
+              ยอด 0
+            </label>
+            <Button variant="outline" size="sm" icon={Download} className="text-xs py-1 px-2">
+              Excel
             </Button>
-            <Button variant="primary" icon={RefreshCw} onClick={fetchBalanceData} disabled={loading}>
+            <Button variant="primary" size="sm" icon={RefreshCw} onClick={() => fetchBalanceData(1)} disabled={loading} className="text-xs py-1 px-2">
               รีเฟรช
             </Button>
           </div>
         </div>
 
-        {/* Filters */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm flex-shrink-0">
-          <div className="flex items-center space-x-3">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="ค้นหาจากทุกคอลัมน์: SKU, Lot, Pallet, Location, คลัง, ปริมาณ, วันที่..."
-                  className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm placeholder:text-thai-gray-400"
-                />
-              </div>
-            </div>
-            <div className="flex space-x-2">
-              <select
-                value={selectedWarehouse}
-                onChange={(e) => setSelectedWarehouse(e.target.value)}
-                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-24"
-              >
-                <option value="all">ทุกคลัง</option>
-                {warehouses.map(warehouse => (
-                  <option key={warehouse.warehouse_id} value={warehouse.warehouse_id}>
-                    {warehouse.warehouse_name}
-                  </option>
-                ))}
-              </select>
-              <label className="flex items-center cursor-pointer text-sm font-thai px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg hover:bg-white/80 transition-all">
-                <input
-                  type="checkbox"
-                  className="mr-2"
-                  checked={showLowStock}
-                  onChange={(e) => setShowLowStock(e.target.checked)}
-                />
-                สต็อกต่ำ
-              </label>
-              <label className="flex items-center cursor-pointer text-sm font-thai px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg hover:bg-white/80 transition-all">
-                <input
-                  type="checkbox"
-                  className="mr-2"
-                  checked={showExpiringSoon}
-                  onChange={(e) => setShowExpiringSoon(e.target.checked)}
-                />
-                ใกล้หมดอายุ
-              </label>
-              <label className="flex items-center cursor-pointer text-sm font-thai px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg hover:bg-white/80 transition-all">
-                <input
-                  type="checkbox"
-                  className="mr-2"
-                  checked={showZeroBalance}
-                  onChange={(e) => setShowZeroBalance(e.target.checked)}
-                />
-                แสดงยอดคงเหลือ 0
-              </label>
-            </div>
-          </div>
-        </div>
-
-
-
         {/* Data Table */}
-        <div className="flex-1 min-h-0">
-          <div className="w-full h-[74vh] bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col">
+        <div className="flex-1 min-h-0 flex flex-col">
+          <div className="w-full flex-1 bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col overflow-hidden">
             {loading ? (
               <div className="h-full flex flex-col items-center justify-center text-thai-gray-500 gap-2">
                 <Loader2 className="w-6 h-6 animate-spin" />
@@ -796,6 +837,52 @@ const InventoryBalancesPage = () => {
                     })}
                   </tbody>
                 </table>
+              </div>
+            )}
+            
+            {/* Pagination - sticky bottom */}
+            {!loading && !error && totalCount > 0 && (
+              <div className="flex-shrink-0 flex items-center justify-between px-3 py-1 border-t border-gray-200 bg-gray-50 rounded-b-lg text-xs">
+                <div className="text-sm text-thai-gray-600 font-thai">
+                  แสดง {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, totalCount)} จาก {totalCount.toLocaleString()} รายการ
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => fetchBalanceData(1)}
+                    disabled={currentPage === 1}
+                    className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="หน้าแรก"
+                  >
+                    <ChevronsLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => fetchBalanceData(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="หน้าก่อนหน้า"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span className="px-3 py-1 text-sm font-thai">
+                    หน้า {currentPage} / {Math.ceil(totalCount / pageSize)}
+                  </span>
+                  <button
+                    onClick={() => fetchBalanceData(currentPage + 1)}
+                    disabled={currentPage >= Math.ceil(totalCount / pageSize)}
+                    className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="หน้าถัดไป"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => fetchBalanceData(Math.ceil(totalCount / pageSize))}
+                    disabled={currentPage >= Math.ceil(totalCount / pageSize)}
+                    className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="หน้าสุดท้าย"
+                  >
+                    <ChevronsRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             )}
           </div>

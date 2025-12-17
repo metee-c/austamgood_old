@@ -2,32 +2,31 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  Search, 
   Plus, 
   Edit, 
   Trash2, 
   Eye,
   Users,
-  Phone,
-  Mail,
-  MapPin,
-  AlertCircle,
   ChevronUp,
   ChevronDown,
   ChevronsUpDown,
   Star,
-  Building,
-  Globe,
   AlertTriangle
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Table from '@/components/ui/Table';
 import Button from '@/components/ui/Button';
-import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
 import AddSupplierForm from '@/components/forms/AddSupplierForm';
 import ImportSupplierForm from '@/components/forms/ImportSupplierForm';
 import { Supplier } from '@/types/supplier';
+import {
+  PageContainer,
+  PageHeaderWithFilters,
+  SearchInput,
+  FilterSelect,
+  PaginationBar
+} from '@/components/ui/page-components';
 
 
 
@@ -45,6 +44,8 @@ const SuppliersPage = () => {
   const [selectedSupplier, setSelectedSupplier] = useState<Supplier | null>(null);
   const [sortField, setSortField] = useState<keyof Supplier | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 100;
 
   // Fetch data on component mount
   useEffect(() => {
@@ -208,100 +209,68 @@ const SuppliersPage = () => {
     );
   };
 
+  // Build options for FilterSelect
+  const typeFilterOptions = [
+    { value: '', label: 'ทุกประเภท' },
+    { value: 'vendor', label: 'ผู้จำหน่าย' },
+    { value: 'service_provider', label: 'ผู้ให้บริการ' },
+    { value: 'both', label: 'ทั้งสองอย่าง' }
+  ];
+
+  const statusFilterOptions = [
+    { value: '', label: 'ทุกสถานะ' },
+    { value: 'active', label: 'ใช้งาน' },
+    { value: 'inactive', label: 'ไม่ใช้งาน' }
+  ];
+
   return (
-    <div className="h-screen overflow-hidden flex flex-col bg-gradient-to-br from-thai-gray-25 to-white">
-      {/* Header */}
-      <div className="pt-0 px-2 pb-2 space-y-2">
-        {/* Title */}
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-500 flex items-center justify-center shadow-lg">
-              <Users className="w-6 h-6 text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-bold text-thai-gray-900 font-thai">
-                ข้อมูลซัพพลายเออร์ (Suppliers)
-              </h1>
-              <p className="text-xs text-thai-gray-600 font-thai">
-                จัดการข้อมูลผู้จำหน่ายและคู่ค้าทางธุรกิจ
-              </p>
-            </div>
-          </div>
-          <div className="flex gap-2">
-            <Button 
-              variant="outline" 
-              size="md"
-              icon={Users}
-              onClick={() => setShowImportModal(true)}
-              className="bg-white/50 hover:bg-white/80 border-white/30 backdrop-blur-sm shadow-sm"
-            >
-              นำเข้าข้อมูล
-            </Button>
-            <Button 
-              variant="primary" 
-              size="md"
-              icon={Plus}
-              onClick={() => setShowAddModal(true)}
-              className="bg-blue-500 hover:bg-blue-600 shadow-lg"
-            >
-              เพิ่มผู้จำหน่าย
-            </Button>
-          </div>
-        </div>
+    <PageContainer>
+      <PageHeaderWithFilters title="ข้อมูลซัพพลายเออร์ (Suppliers)">
+        <SearchInput
+          value={searchTerm}
+          onChange={setSearchTerm}
+          placeholder="ค้นหาผู้จำหน่าย รหัส หรือ ผู้ติดต่อ..."
+        />
+        <FilterSelect
+          value={selectedType}
+          onChange={setSelectedType}
+          options={typeFilterOptions}
+        />
+        <FilterSelect
+          value={selectedStatus}
+          onChange={setSelectedStatus}
+          options={statusFilterOptions}
+        />
+        <Button 
+          variant="outline" 
+          icon={Users}
+          onClick={() => setShowImportModal(true)}
+        >
+          นำเข้าข้อมูล
+        </Button>
+        <Button 
+          variant="primary" 
+          icon={Plus}
+          onClick={() => setShowAddModal(true)}
+        >
+          เพิ่มผู้จำหน่าย
+        </Button>
+      </PageHeaderWithFilters>
 
-        {/* Filters */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm">
-          <div className="flex items-center space-x-3">
-            {/* Search */}
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
-              <input
-                type="text"
-                placeholder="ค้นหาผู้จำหน่าย รหัส หรือ ผู้ติดต่อ..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai
-                         focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                         transition-all duration-300"
-              />
-            </div>
-
-            {/* Type Filter */}
-            <select
-              value={selectedType}
-              onChange={(e) => setSelectedType(e.target.value)}
-              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-24
-                       focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50"
-            >
-              <option value="">ทุกประเภท</option>
-              <option value="vendor">ผู้จำหน่าย</option>
-              <option value="service_provider">ผู้ให้บริการ</option>
-              <option value="both">ทั้งสองอย่าง</option>
-            </select>
-
-            {/* Status Filter */}
-            <select
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value)}
-              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-24
-                       focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50"
-            >
-              <option value="">ทุกสถานะ</option>
-              <option value="active">ใช้งาน</option>
-              <option value="inactive">ไม่ใช้งาน</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Table Container - Styled like inbound */}
-      <div className="h-[74vh] bg-white border border-gray-200 rounded-lg shadow-sm overflow-auto">
+      {/* Suppliers Table */}
+      <div className="flex-1 min-h-0 bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col overflow-hidden">
         {loading ? (
           <div className="flex flex-col items-center justify-center h-full text-thai-gray-400">
-            <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
-            <p className="text-sm font-thai">กำลังโหลดข้อมูล...</p>
+            <div className="loading-spinner w-10 h-10 mx-auto mb-4"></div>
+            <p className="text-thai-gray-500 font-thai text-lg">กำลังโหลดข้อมูล...</p>
+          </div>
+        ) : sortedSuppliers.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-thai-gray-500">
+            <Users className="w-12 h-12 mb-2" />
+            <p className="font-thai">ไม่พบผู้จำหน่ายที่ตรงกับการค้นหา</p>
           </div>
         ) : (
+          <div className="flex-1 overflow-auto thin-scrollbar">
           <Table>
             <Table.Header>
               <tr>
@@ -329,19 +298,7 @@ const SuppliersPage = () => {
               </tr>
             </Table.Header>
             <Table.Body>
-              {sortedSuppliers.length === 0 ? (
-                <tr>
-                  <Table.Cell colSpan={21} className="px-4 py-8 text-center">
-                    <div className="flex flex-col items-center justify-center text-thai-gray-400">
-                      <Users className="w-12 h-12 mb-2" />
-                      <p className="text-sm font-thai">
-                        {error ? 'เกิดข้อผิดพลาดในการโหลดข้อมูล' : 'ไม่พบผู้จำหน่ายที่ตรงกับการค้นหา'}
-                      </p>
-                    </div>
-                  </Table.Cell>
-                </tr>
-              ) : (
-                sortedSuppliers.map((supplier) => (
+              {sortedSuppliers.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((supplier) => (
                   <Table.Row key={supplier.supplier_id}>
                     <Table.Cell>
                       <span className="font-mono text-xs text-blue-600 whitespace-nowrap">{supplier.supplier_code}</span>
@@ -436,11 +393,17 @@ const SuppliersPage = () => {
                       </div>
                     </Table.Cell>
                   </Table.Row>
-                ))
-              )}
+                ))}
             </Table.Body>
           </Table>
+          </div>
         )}
+        <PaginationBar
+          currentPage={currentPage}
+          totalItems={sortedSuppliers.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+        />
       </div>
 
       {/* Add Supplier Modal */}
@@ -508,7 +471,7 @@ const SuppliersPage = () => {
           onCancel={() => setShowImportModal(false)}
         />
       </Modal>
-    </div>
+    </PageContainer>
   );
 };
 

@@ -1,18 +1,20 @@
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { Upload, FileText, Loader2, RefreshCw, Plus, Search, ChevronDown, ChevronRight, ChevronUp as ChevronUpIcon, ChevronsUpDown, Download, AlertTriangle } from 'lucide-react';
-import { PermissionGuard } from '@/components/auth/PermissionGuard';
-import MainLayout from '@/components/layout/MainLayout';
+import { Upload, FileText, Loader2, Plus, ChevronDown, ChevronRight, ChevronUp as ChevronUpIcon, ChevronsUpDown, Download } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
-import { createClient } from '@/lib/supabase/client';
+import {
+  PageContainer,
+  PageHeaderWithFilters,
+  SearchInput,
+  FilterSelect,
+  PaginationBar
+} from '@/components/ui/page-components';
 import type {
   StockImportBatch,
   StockImportBatchStatus,
-  ValidationSummary,
-  ProcessingSummary
 } from '@/types/stock-import';
 
 function StockImportPage() {
@@ -20,13 +22,6 @@ function StockImportPage() {
   const [warehouseId, setWarehouseId] = useState<string>('');
   const [batchName, setBatchName] = useState<string>('');
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [showPickingAreaModal, setShowPickingAreaModal] = useState(false);
-  const [pickingLocationId, setPickingLocationId] = useState<string>('');
-  const [pickingFile, setPickingFile] = useState<File | null>(null);
-  const [pickingBatchName, setPickingBatchName] = useState<string>('');
-  const [pickingWarehouseId, setPickingWarehouseId] = useState<string>('');
-  const [isUploadingPicking, setIsUploadingPicking] = useState(false);
-  const [locations, setLocations] = useState<Array<{ location_id: string; location_code: string; location_name: string }>>([]);
   const [batches, setBatches] = useState<StockImportBatch[]>([]);
   const [loading, setLoading] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -35,6 +30,8 @@ function StockImportPage() {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [expandedRows, setExpandedRows] = useState<Record<string, boolean>>({});
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 100;
   const [sortField, setSortField] = useState<string>('');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [isDragging, setIsDragging] = useState(false);
@@ -51,12 +48,7 @@ function StockImportPage() {
     fetchWarehouses();
   }, []);
 
-  // Fetch locations when warehouse is selected
-  useEffect(() => {
-    if (pickingWarehouseId) {
-      fetchLocations(pickingWarehouseId);
-    }
-  }, [pickingWarehouseId]);
+
 
   const fetchBatches = async () => {
     setLoading(true);
@@ -86,21 +78,6 @@ function StockImportPage() {
     } catch (error) {
       console.error('Error fetching warehouses:', error);
       setWarehouses([]);
-    }
-  };
-
-  const fetchLocations = async (whId: string) => {
-    try {
-      const response = await fetch(`/api/master-location?warehouse_id=${whId}&limit=500`);
-      if (!response.ok) {
-        throw new Error('Failed to fetch locations');
-      }
-      const result = await response.json();
-      // API returns { data: [...], error: null } structure
-      setLocations(result.data || []);
-    } catch (error) {
-      console.error('Error fetching locations:', error);
-      setLocations([]);
     }
   };
 
@@ -169,71 +146,6 @@ function StockImportPage() {
     if (file) {
       processFile(file);
     }
-  };
-
-  const handleDownloadPickingAreaTemplate = () => {
-    // Define CSV headers for Picking Area
-    const headers = [
-      'SKU',
-      'Product_Name',
-      'Type',
-      'Barcode',
-      'Unit',
-      'จำนวนน้ำหนัก (ปกติ)',
-      'จำนวนถุง (ปกติ)',
-      'Remark'
-    ];
-
-    // Create sample data rows
-    const sampleRows = [
-      [
-        'B-NET-D|SAL-L|008',
-        'Buzz Netura สุนัขโต แซลมอน เม็ดใหญ่ | 800 กรัม',
-        'สินค้าสำเร็จรูป',
-        '5424052630087',
-        'ถุง',
-        '64.80',
-        '81.00',
-        ''
-      ],
-      [
-        'DOG-FOOD-001',
-        'อาหารสุนัข รสไก่ 1 กก.',
-        'สินค้าสำเร็จรูป',
-        '8851234567890',
-        'ถุง',
-        '50.00',
-        '120.00',
-        'สต็อกดี'
-      ]
-    ];
-
-    // Combine headers and sample rows
-    const csvContent = [
-      headers.join(','),
-      ...sampleRows.map(row => row.map(cell => {
-        // Escape cells that contain commas, quotes, or newlines
-        if (cell.includes(',') || cell.includes('"') || cell.includes('\n')) {
-          return `"${cell.replace(/"/g, '""')}"`;
-        }
-        return cell;
-      }).join(','))
-    ].join('\n');
-
-    // Create Blob with UTF-8 BOM for Thai language support
-    const BOM = '\uFEFF';
-    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
-
-    // Create download link
-    const link = document.createElement('a');
-    const url = URL.createObjectURL(blob);
-    link.setAttribute('href', url);
-    link.setAttribute('download', `picking_area_template_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
   };
 
   const handleDownloadTemplate = () => {
@@ -530,50 +442,6 @@ function StockImportPage() {
     }
   };
 
-  const handleUploadPickingArea = async () => {
-    if (!pickingFile || !pickingWarehouseId || !pickingLocationId) {
-      alert('กรุณาเลือกไฟล์, คลังสินค้า และโลเคชั่น');
-      return;
-    }
-
-    setIsUploadingPicking(true);
-
-    try {
-      const formData = new FormData();
-      formData.append('file', pickingFile);
-      formData.append('warehouse_id', pickingWarehouseId);
-      formData.append('location_id', pickingLocationId);
-      formData.append('user_id', '1'); // Use default user ID
-      if (pickingBatchName) {
-        formData.append('batch_name', pickingBatchName);
-      }
-
-      const response = await fetch('/api/stock-import/picking-area', {
-        method: 'POST',
-        body: formData,
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Upload failed');
-      }
-
-      setShowPickingAreaModal(false);
-      setPickingFile(null);
-      setPickingWarehouseId('');
-      setPickingLocationId('');
-      setPickingBatchName('');
-      fetchBatches();
-      alert(`อัพโหลดสำเร็จ: ${data.total_rows} แถว`);
-    } catch (error: any) {
-      console.error('Picking area upload error:', error);
-      alert(error.message || 'อัพโหลดล้มเหลว');
-    } finally {
-      setIsUploadingPicking(false);
-    }
-  };
-
   // Toggle row expansion
   const toggleRow = (batchId: string) => {
     setExpandedRows((prev) => ({
@@ -676,81 +544,53 @@ function StockImportPage() {
   };
 
   return (
-    <>
-      <div className="h-screen overflow-hidden flex flex-col bg-gradient-to-br from-thai-gray-25 to-white">
-      <div className="pt-0 px-2 pb-2 space-y-2">
-        <div className="flex items-center justify-between gap-2">
-          <h1 className="text-xl font-bold text-thai-gray-900 font-thai">นำเข้าสต็อก (Stock Import)</h1>
-          <div className="flex gap-2">
-            <Button
-              variant="secondary"
-              icon={Plus}
-              className="bg-green-500 hover:bg-green-600 text-white shadow-lg"
-              onClick={() => setShowPickingAreaModal(true)}
-            >
-              นำเข้าพื้นที่หยิบ
-            </Button>
-            <Button
-              variant="primary"
-              icon={Plus}
-              className="bg-blue-500 hover:bg-blue-600 shadow-lg"
-              onClick={() => setShowUploadModal(true)}
-            >
-              อัพโหลดไฟล์
-            </Button>
-          </div>
-        </div>
+    <PageContainer>
+        <PageHeaderWithFilters title="นำเข้าสต็อก (Stock Import)">
+          <SearchInput
+            value={searchTerm}
+            onChange={setSearchTerm}
+            placeholder="ค้นหาด้วย Batch ID, ชื่อไฟล์, คลังสินค้า..."
+          />
+          <FilterSelect
+            value={statusFilter}
+            onChange={setStatusFilter}
+            options={[
+              { value: 'all', label: 'ทุกสถานะ' },
+              { value: 'uploading', label: 'กำลังอัพโหลด' },
+              { value: 'validating', label: 'กำลังตรวจสอบ' },
+              { value: 'validated', label: 'ตรวจสอบแล้ว' },
+              { value: 'processing', label: 'กำลังนำเข้า' },
+              { value: 'completed', label: 'เสร็จสมบูรณ์' },
+              { value: 'failed', label: 'ล้มเหลว' }
+            ]}
+          />
+          <Button
+            variant="primary"
+            size="sm"
+            icon={Plus}
+            className="text-xs py-1 px-2 bg-blue-500 hover:bg-blue-600"
+            onClick={() => setShowUploadModal(true)}
+          >
+            อัพโหลดไฟล์
+          </Button>
+        </PageHeaderWithFilters>
 
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm">
-          <div className="flex items-center space-x-3">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
-                <input
-                  type="text"
-                  placeholder="ค้นหาด้วย Batch ID, ชื่อไฟล์, คลังสินค้า..."
-                  className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm placeholder:text-thai-gray-400"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
+        <div className="flex-1 min-h-0 bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col overflow-hidden">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center h-full text-thai-gray-400">
+              <Loader2 className="w-8 h-8 animate-spin mb-2" />
+              <p className="text-sm font-thai">กำลังโหลดข้อมูล...</p>
+            </div>
+          ) : sortedBatches.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full text-thai-gray-500">
+              <FileText className="w-12 h-12 mb-2" />
+              <div className="text-center">
+                <p className="text-sm font-medium font-thai">ไม่พบข้อมูลการนำเข้า</p>
+                <p className="text-xs text-thai-gray-400 mt-1 font-thai">คลิก 'อัพโหลดไฟล์' เพื่อเริ่มต้น</p>
               </div>
             </div>
-            <div className="flex space-x-2">
-              <select
-                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-32"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
-              >
-                <option value="all">ทุกสถานะ</option>
-                <option value="uploading">กำลังอัพโหลด</option>
-                <option value="validating">กำลังตรวจสอบ</option>
-                <option value="validated">ตรวจสอบแล้ว</option>
-                <option value="processing">กำลังนำเข้า</option>
-                <option value="completed">เสร็จสมบูรณ์</option>
-                <option value="failed">ล้มเหลว</option>
-              </select>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="flex-1 min-h-0 px-2 pb-2">
-        <div className="h-full bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col">
-          <div className="flex-1 overflow-auto thin-scrollbar">
-            {loading ? (
-              <div className="flex flex-col items-center justify-center text-thai-gray-500 gap-4 py-20">
-                <Loader2 className="w-10 h-10 animate-spin" />
-                <p className="font-thai">กำลังโหลด...</p>
-              </div>
-            ) : sortedBatches.length === 0 ? (
-              <div className="flex flex-col items-center justify-center text-thai-gray-500 gap-4 py-20">
-                <FileText className="w-16 h-16" />
-                <div className="text-center">
-                  <p className="font-medium font-thai">ไม่พบข้อมูลการนำเข้า</p>
-                  <p className="text-sm text-thai-gray-400 mt-1 font-thai">คลิก 'อัพโหลดไฟล์' เพื่อเริ่มต้น</p>
-                </div>
-              </div>
-            ) : (
+          ) : (
+            <div className="flex-1 overflow-auto thin-scrollbar">
               <table className="w-full border-collapse text-sm">
                 <thead className="sticky top-0 z-10 bg-gray-100">
                   <tr>
@@ -779,7 +619,7 @@ function StockImportPage() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
-                  {sortedBatches.map((batch) => {
+                  {sortedBatches.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((batch) => {
                         const isExpanded = !!expandedRows[batch.batch_id];
                         return (
                           <React.Fragment key={batch.batch_id}>
@@ -925,13 +765,17 @@ function StockImportPage() {
                       })}
                 </tbody>
               </table>
-            )}
-          </div>
+            </div>
+          )}
+          <PaginationBar
+            currentPage={currentPage}
+            totalItems={sortedBatches.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+          />
         </div>
-      </div>
-    </div>
 
-    {/* Modals */}
+      {/* Modals */}
     <Modal
         isOpen={showUploadModal}
         onClose={() => {
@@ -1152,234 +996,6 @@ function StockImportPage() {
         </div>
       </Modal>
 
-      {/* Picking Area Import Modal */}
-      <Modal
-        isOpen={showPickingAreaModal}
-        onClose={() => {
-          setShowPickingAreaModal(false);
-          setPickingFile(null);
-          setPickingWarehouseId('');
-          setPickingLocationId('');
-          setPickingBatchName('');
-        }}
-        title="นำเข้าสต็อกพื้นที่หยิบ (Picking Area)"
-        size="lg"
-      >
-        <div className="space-y-5">
-          {/* Template Download Section */}
-          <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-lg p-4">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex-1">
-                <h4 className="text-sm font-semibold text-green-900 font-thai mb-1 flex items-center gap-2">
-                  <FileText className="w-4 h-4" />
-                  ดาวน์โหลดเทมเพลต CSV สำหรับพื้นที่หยิบ
-                </h4>
-                <p className="text-xs text-green-700 font-thai">
-                  ดาวน์โหลดไฟล์ตัวอย่างสำหรับนำเข้าข้อมูลสต็อกหลาย SKU ในโลเคชั่นเดียว (เช่น PK001)
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={handleDownloadPickingAreaTemplate}
-                className="flex items-center gap-2 px-4 py-2.5 bg-green-600 hover:bg-green-700 text-white rounded-lg font-thai text-sm font-semibold shadow-md hover:shadow-lg transition-all duration-200 flex-shrink-0"
-              >
-                <Download className="w-4 h-4" />
-                ดาวน์โหลดเทมเพลต
-              </button>
-            </div>
-          </div>
-
-          {/* Warehouse Selection */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-800 mb-2 font-thai">
-              คลังสินค้า <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={pickingWarehouseId}
-              onChange={(e) => setPickingWarehouseId(e.target.value)}
-              className={`
-                w-full px-4 py-2.5 border rounded-lg font-thai bg-white transition-all
-                ${warehouses.length === 0
-                  ? 'border-gray-200 bg-gray-50 cursor-not-allowed'
-                  : 'border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500'
-                }
-              `}
-              disabled={isUploadingPicking || warehouses.length === 0}
-            >
-              <option value="">
-                {warehouses.length === 0 ? 'ไม่มีคลังสินค้า' : 'เลือกคลังสินค้า'}
-              </option>
-              {warehouses.map((wh) => (
-                <option key={wh.warehouse_id} value={wh.warehouse_id}>
-                  {wh.warehouse_id} - {wh.warehouse_name}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Location Selection */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-800 mb-2 font-thai">
-              โลเคชั่นพื้นที่หยิบ <span className="text-red-500">*</span>
-            </label>
-            <select
-              value={pickingLocationId}
-              onChange={(e) => setPickingLocationId(e.target.value)}
-              className={`
-                w-full px-4 py-2.5 border rounded-lg font-thai bg-white transition-all
-                ${!pickingWarehouseId || locations.length === 0
-                  ? 'border-gray-200 bg-gray-50 cursor-not-allowed'
-                  : 'border-gray-300 focus:ring-2 focus:ring-green-500 focus:border-green-500'
-                }
-              `}
-              disabled={isUploadingPicking || !pickingWarehouseId || locations.length === 0}
-            >
-              <option value="">
-                {!pickingWarehouseId
-                  ? 'เลือกคลังสินค้าก่อน'
-                  : locations.length === 0
-                  ? 'ไม่มีโลเคชั่น'
-                  : 'เลือกโลเคชั่น'}
-              </option>
-              {locations.map((loc) => (
-                <option key={loc.location_id} value={loc.location_id}>
-                  {loc.location_code} - {loc.location_name}
-                </option>
-              ))}
-            </select>
-            {pickingWarehouseId && locations.length > 0 && (
-              <p className="text-xs text-gray-500 mt-1 font-thai">
-                เลือกโลเคชั่นที่ต้องการนำเข้าสต็อกหลาย SKU ({locations.length} โลเคชั่น)
-              </p>
-            )}
-          </div>
-
-          {/* Batch Name */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-800 mb-2 font-thai">
-              ชื่อ Batch
-            </label>
-            <input
-              type="text"
-              value={pickingBatchName}
-              onChange={(e) => setPickingBatchName(e.target.value)}
-              placeholder="ระบุชื่อ batch หรือจะสร้างอัตโนมัติ"
-              className="w-full px-4 py-2.5 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-green-500 font-thai transition-all"
-              disabled={isUploadingPicking}
-            />
-          </div>
-
-          {/* File Upload */}
-          <div>
-            <label className="block text-sm font-semibold text-gray-800 mb-2 font-thai">
-              ไฟล์ CSV <span className="text-red-500">*</span>
-            </label>
-
-            <div className="relative border-2 border-dashed border-gray-300 rounded-lg p-8 text-center transition-all cursor-pointer hover:border-green-400 hover:bg-green-50/50">
-              <input
-                type="file"
-                accept=".csv"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file && file.name.endsWith('.csv')) {
-                    setPickingFile(file);
-                  } else {
-                    alert('กรุณาเลือกไฟล์ CSV เท่านั้น');
-                  }
-                }}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                disabled={isUploadingPicking}
-              />
-
-              {!pickingFile ? (
-                <div className="space-y-3">
-                  <Upload className="w-12 h-12 mx-auto text-gray-400" />
-                  <div>
-                    <p className="text-base font-semibold text-gray-700 font-thai">
-                      คลิกเพื่อเลือกไฟล์
-                    </p>
-                    <p className="text-sm text-gray-500 font-thai mt-1">
-                      รองรับไฟล์ .csv เท่านั้น
-                    </p>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <FileText className="w-12 h-12 mx-auto text-green-600" />
-                  <div>
-                    <p className="text-base font-semibold text-green-700 font-thai">
-                      {pickingFile.name}
-                    </p>
-                    <p className="text-sm text-gray-600 font-thai mt-1">
-                      {(pickingFile.size / 1024).toFixed(2)} KB
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setPickingFile(null);
-                    }}
-                    className="text-sm text-red-600 hover:text-red-700 font-thai underline"
-                    disabled={isUploadingPicking}
-                  >
-                    ลบไฟล์
-                  </button>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Info */}
-          {pickingFile && pickingLocationId && (
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-              <div className="flex items-start gap-3">
-                <FileText className="w-5 h-5 text-green-600 mt-0.5 flex-shrink-0" />
-                <div className="flex-1">
-                  <h4 className="text-sm font-semibold text-green-900 font-thai mb-1">
-                    ข้อมูลการนำเข้า
-                  </h4>
-                  <div className="text-sm text-green-800 font-thai space-y-1">
-                    <p>• ไฟล์: <span className="font-semibold">{pickingFile.name}</span></p>
-                    <p>• โลเคชั่น: <span className="font-semibold">{locations.find(l => l.location_id === pickingLocationId)?.location_code}</span></p>
-                    {pickingBatchName && <p>• ชื่อ Batch: <span className="font-semibold">{pickingBatchName}</span></p>}
-                    <p className="text-xs text-green-700 mt-2">⚠️ ข้อมูลทั้งหมดจะถูกนำเข้าในโลเคชั่นเดียวกัน</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          <div className="flex gap-2 justify-end pt-4">
-            <Button
-              variant="outline"
-              onClick={() => setShowPickingAreaModal(false)}
-              disabled={isUploadingPicking}
-            >
-              ยกเลิก
-            </Button>
-            <Button
-              variant="primary"
-              onClick={handleUploadPickingArea}
-              disabled={!pickingFile || !pickingWarehouseId || !pickingLocationId || isUploadingPicking}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              {isUploadingPicking ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  กำลังอัพโหลด...
-                </>
-              ) : (
-                <>
-                  <Upload className="w-4 h-4 mr-2" />
-                  อัพโหลด
-                </>
-              )}
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
       {/* Loading Modal */}
       <Modal
         isOpen={showLoadingModal}
@@ -1408,7 +1024,7 @@ function StockImportPage() {
           <p className="text-sm text-gray-500 font-thai mt-3">กรุณารอสักครู่...</p>
         </div>
       </Modal>
-    </>
+    </PageContainer>
   );
 }
 

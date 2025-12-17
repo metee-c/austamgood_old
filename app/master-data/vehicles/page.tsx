@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  Search,
   Plus,
   Upload,
   Edit,
@@ -10,13 +9,8 @@ import {
   ChevronsUpDown,
   ChevronUp,
   ChevronDown,
-  Box,
   AlertCircle,
   Truck,
-  Calendar,
-  Fuel,
-  Weight,
-  Package2,
   AlertTriangle
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
@@ -28,6 +22,12 @@ import AddVehicleForm from '@/components/forms/AddVehicleForm';
 import EditVehicleForm from '@/components/forms/EditVehicleForm';
 import ImportVehicleForm from '@/components/forms/ImportVehicleForm';
 import { VehicleFormValues } from '@/types/vehicle-schema';
+import {
+  PageContainer,
+  PageHeaderWithFilters,
+  SearchInput,
+  PaginationBar,
+} from '@/components/ui/page-components';
 
 const SortableHeader = ({ 
   field, 
@@ -77,6 +77,8 @@ const VehiclesPage = () => {
   const [selectedVehicle, setSelectedVehicle] = useState<VehicleFormValues | null>(null);
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 100;
 
   const fetchVehicles = async () => {
     setLoading(true);
@@ -162,62 +164,58 @@ const VehiclesPage = () => {
 
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-thai-gray-25 to-white">
-      <div className="space-y-3">
-        {/* Modern Page Header */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-0 shadow-sm">
-            <div className="flex items-center justify-between">
-                <div>
-                    <h1 className="text-2xl font-bold text-thai-gray-900 font-thai">ข้อมูลยานพาหนะ</h1>
-                </div>
-                <div className="flex gap-2">
-                    <Button variant="outline" icon={Upload} onClick={() => setIsImportModalOpen(true)} className="bg-white/50 hover:bg-white/80 border-white/30 backdrop-blur-sm shadow-sm">
-                        นำเข้าข้อมูล
-                    </Button>
-                    <Button variant="primary" icon={Plus} onClick={() => setIsAddModalOpen(true)} className="bg-blue-500 hover:bg-blue-600 shadow-lg">
-                        เพิ่มยานพาหนะ
-                    </Button>
-                </div>
-            </div>
-        </div>
+    <PageContainer>
+      <PageHeaderWithFilters title="ข้อมูลยานพาหนะ">
+        <SearchInput
+          value={searchTerm}
+          onChange={setSearchTerm}
+          placeholder="ค้นหายานพาหนะ ทะเบียน บริษัทขนส่ง ชื่อพนักงานขับ..."
+        />
+        <Button
+          variant="outline"
+          icon={Upload}
+          onClick={() => setIsImportModalOpen(true)}
+        >
+          นำเข้าข้อมูล
+        </Button>
+        <Button
+          variant="primary"
+          icon={Plus}
+          onClick={() => setIsAddModalOpen(true)}
+        >
+          เพิ่มยานพาหนะ
+        </Button>
+      </PageHeaderWithFilters>
 
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-50/80 backdrop-blur-sm border border-red-200/50 rounded-2xl p-4 shadow-sm">
-            <div className="flex items-center space-x-3 text-red-600">
-              <div className="flex-shrink-0">
-                <AlertCircle className="w-5 h-5" />
-              </div>
-              <span className="font-thai text-sm">เกิดข้อผิดพลาด: {error}</span>
+      {/* Error Message */}
+      {error && (
+        <div className="bg-red-50/80 backdrop-blur-sm border border-red-200/50 rounded-2xl p-4 shadow-sm">
+          <div className="flex items-center space-x-3 text-red-600">
+            <div className="flex-shrink-0">
+              <AlertCircle className="w-5 h-5" />
             </div>
-          </div>
-        )}
-
-        {/* Modern Search */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
-            <input
-              type="text"
-              placeholder="ค้นหายานพาหนะ ทะเบียน บริษัทขนส่ง ชื่อพนักงานขับ..."
-              className="w-full pl-10 pr-4 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm placeholder:text-thai-gray-400"
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-            />
+            <span className="font-thai text-sm">เกิดข้อผิดพลาด: {error}</span>
           </div>
         </div>
+      )}
 
-        {/* Modern Vehicles Table */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-2xl overflow-hidden shadow-sm h-[74vh] flex flex-col">
-          {loading ? (
-            <div className="text-center py-12">
-              <div className="loading-spinner w-10 h-10 mx-auto mb-4"></div>
-              <p className="text-thai-gray-500 font-thai text-lg">กำลังโหลดข้อมูล...</p>
-            </div>
-          ) : (
-            <>
-              <div className="overflow-x-auto flex-1">
-                <Table>
+      {/* Vehicles Table */}
+      <div className="flex-1 min-h-0 bg-white border rounded-lg shadow-sm flex flex-col overflow-hidden">
+        {loading ? (
+          <div className="text-center py-12">
+            <div className="loading-spinner w-10 h-10 mx-auto mb-4"></div>
+            <p className="text-thai-gray-500 font-thai text-lg">กำลังโหลดข้อมูล...</p>
+          </div>
+        ) : sortedVehicles.length === 0 ? (
+          <div className="text-center py-8">
+            <Truck className="w-12 h-12 text-thai-gray-400 mx-auto mb-4" />
+            <p className="text-thai-gray-500 font-thai">
+              {error ? 'เกิดข้อผิดพลาดในการโหลดข้อมูล' : 'ไม่พบข้อมูลยานพาหนะที่ตรงกับการค้นหา'}
+            </p>
+          </div>
+        ) : (
+          <div className="flex-1 overflow-auto thin-scrollbar">
+            <Table>
               <Table.Header>
                 <Table.Row>
                   <SortableHeader field="vehicle_id" className="w-20" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ID</SortableHeader>
@@ -247,7 +245,7 @@ const VehiclesPage = () => {
                 </Table.Row>
               </Table.Header>
               <Table.Body>
-                {sortedVehicles.map((vehicle) => (
+                {sortedVehicles.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((vehicle) => (
                   <Table.Row key={vehicle.vehicle_id} className="hover:bg-thai-gray-25">
                     {/* 1. ID */}
                     <Table.Cell>
@@ -462,21 +460,17 @@ const VehiclesPage = () => {
                 ))}
               </Table.Body>
                 </Table>
-              </div>
-            </>
-          )}
-          {!loading && sortedVehicles.length === 0 && (
-            <div className="text-center py-8">
-              <Truck className="w-12 h-12 text-thai-gray-400 mx-auto mb-4" />
-              <p className="text-thai-gray-500 font-thai">
-                {error ? 'เกิดข้อผิดพลาดในการโหลดข้อมูล' : 'ไม่พบข้อมูลยานพาหนะที่ตรงกับการค้นหา'}
-              </p>
-            </div>
-          )}
-        </div>
+          </div>
+        )}
+        <PaginationBar
+          currentPage={currentPage}
+          totalItems={sortedVehicles.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+        />
       </div>
 
-        {/* Add Vehicle Modal */}
+      {/* Add Vehicle Modal */}
         <Modal
           isOpen={isAddModalOpen}
           onClose={() => setIsAddModalOpen(false)}
@@ -512,22 +506,22 @@ const VehiclesPage = () => {
           )}
         </Modal>
 
-        {/* Import Vehicle Modal */}
-        <Modal
-          isOpen={isImportModalOpen}
-          onClose={() => setIsImportModalOpen(false)}
-          title="นำเข้าข้อมูลยานพาหนะ"
-          size="lg"
-        >
-          <ImportVehicleForm
-            onSuccess={() => {
-              setIsImportModalOpen(false);
-              fetchVehicles();
-            }}
-            onCancel={() => setIsImportModalOpen(false)}
-          />
-        </Modal>
-    </div>
+      {/* Import Vehicle Modal */}
+      <Modal
+        isOpen={isImportModalOpen}
+        onClose={() => setIsImportModalOpen(false)}
+        title="นำเข้าข้อมูลยานพาหนะ"
+        size="lg"
+      >
+        <ImportVehicleForm
+          onSuccess={() => {
+            setIsImportModalOpen(false);
+            fetchVehicles();
+          }}
+          onCancel={() => setIsImportModalOpen(false)}
+        />
+      </Modal>
+    </PageContainer>
   );
 };
 

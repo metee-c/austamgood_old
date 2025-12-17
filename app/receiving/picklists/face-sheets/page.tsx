@@ -2,15 +2,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   PackageSearch,
-  Search,
   Calendar,
-  Filter,
-  Download,
   Eye,
   CheckCircle,
-  Clock,
   XCircle,
-  FileText,
   Printer,
   AlertCircle,
   Loader2,
@@ -18,6 +13,7 @@ import {
   AlertTriangle
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
+import { PageContainer, PageHeaderWithFilters, SearchInput, FilterSelect } from '@/components/ui/page-components';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
@@ -690,200 +686,177 @@ const FaceSheetsPage = () => {
   const isCreateDisabled = loading || !creationDate || previewLoading || previewOrders.length === 0 || selectedOrderIds.length === 0;
 
   return (
-    <div className="h-screen bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
-      <div className="h-full flex flex-col space-y-2 pt-0 px-2 pb-2">
-        {/* Header */}
-        <div className="flex items-center justify-between gap-2 pt-1 flex-shrink-0">
-          <h1 className="text-xl font-bold text-thai-gray-900 font-thai m-0 p-0 leading-tight">
-            สร้างใบปะหน้าสินค้า (Face Sheets)
-          </h1>
-          <div className="flex gap-2">
-            <Button
-              variant="primary"
-              className="bg-blue-500 hover:bg-blue-600 shadow-lg"
-              onClick={handleOpenCreateModal}
-              disabled={loading}
-            >
-              {loading && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-              สร้างใบปะหน้าสินค้า
-            </Button>
+    <PageContainer>
+      {/* Alerts - Show only when modal is closed */}
+      {error && !showCreateModal && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start space-x-2 flex-shrink-0">
+          <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+          <div className="flex-1">
+            <span className="text-sm text-red-700 font-thai">{error}</span>
           </div>
+          <button onClick={() => setError(null)} className="text-red-600 hover:text-red-800 flex-shrink-0">
+            <XCircle className="w-4 h-4" />
+          </button>
         </div>
-
-        {/* Alerts - Show only when modal is closed */}
-        {error && !showCreateModal && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start space-x-2 flex-shrink-0">
-            <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
-            <div className="flex-1">
-              <span className="text-sm text-red-700 font-thai">{error}</span>
-            </div>
-            <button onClick={() => setError(null)} className="text-red-600 hover:text-red-800 flex-shrink-0">
-              <XCircle className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-        {success && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center space-x-2 flex-shrink-0">
-            <CheckCircle className="w-5 h-5 text-green-600" />
-            <span className="text-sm text-green-700">{success}</span>
-            <button onClick={() => setSuccess(null)} className="ml-auto text-green-600 hover:text-green-800">
-              <XCircle className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-
-        {/* Filters */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm flex-shrink-0">
-          <div className="flex items-center space-x-3">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
-                <input
-                  type="text"
-                  placeholder="ค้นหาเลขที่ใบปะหน้าสินค้า..."
-                  className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm placeholder:text-thai-gray-400"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="flex space-x-2">
-              <input
-                type="date"
-                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-28"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-              />
-              <select
-                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-32"
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-              >
-                {statuses.map((status) => (
-                  <option key={status.value} value={status.value}>{status.label}</option>
-                ))}
-              </select>
-            </div>
-          </div>
+      )}
+      {success && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center space-x-2 flex-shrink-0">
+          <CheckCircle className="w-5 h-5 text-green-600" />
+          <span className="text-sm text-green-700">{success}</span>
+          <button onClick={() => setSuccess(null)} className="ml-auto text-green-600 hover:text-green-800">
+            <XCircle className="w-4 h-4" />
+          </button>
         </div>
+      )}
 
-        {/* Table */}
-        <div className="flex-1 min-h-0">
-          <div className="w-full h-[74vh] overflow-auto bg-white border border-gray-200 rounded-lg shadow-sm">
-            <table className="min-w-full border-collapse text-sm">
-              <thead className="sticky top-0 z-10 bg-gray-100">
+      {/* Header + Filters */}
+      <PageHeaderWithFilters title="สร้างใบปะหน้าสินค้า (Face Sheets)">
+        <SearchInput
+          value={searchTerm}
+          onChange={setSearchTerm}
+          placeholder="ค้นหาเลขที่ใบปะหน้าสินค้า..."
+        />
+        <input
+          type="date"
+          className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50 min-w-28"
+          value={selectedDate}
+          onChange={(e) => setSelectedDate(e.target.value)}
+        />
+        <FilterSelect
+          value={selectedStatus}
+          onChange={setSelectedStatus}
+          options={statuses}
+        />
+        <Button
+          variant="primary"
+          size="sm"
+          className="text-xs py-1 px-3 bg-blue-500 hover:bg-blue-600 shadow-lg"
+          onClick={handleOpenCreateModal}
+          disabled={loading}
+        >
+          {loading && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
+          สร้างใบปะหน้าสินค้า
+        </Button>
+      </PageHeaderWithFilters>
+
+      {/* Table with Pagination Structure */}
+      <div className="flex-1 min-h-0 bg-white border rounded-lg shadow-sm flex flex-col overflow-hidden">
+        {/* Table Content */}
+        <div className="flex-1 overflow-auto">
+          <table className="min-w-full border-collapse text-sm">
+            <thead className="sticky top-0 z-10 bg-gray-100">
+              <tr>
+                <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">เลขที่ใบปะหน้า</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">คลังสินค้า</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">สถานะ</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">วันที่สร้าง</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">แพ็คทั้งหมด</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">ขนาดเล็ก</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">ขนาดใหญ่</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">รายการสินค้า</th>
+                <th className="px-4 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">จำนวนออเดอร์</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">ผู้เช็ค</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">ผู้จัดสินค้า</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">จัดการ</th>
+              </tr>
+            </thead>
+            <tbody className="bg-white divide-y divide-gray-100">
+              {loading ? (
                 <tr>
-                  <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">เลขที่ใบปะหน้า</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">คลังสินค้า</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">สถานะ</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">วันที่สร้าง</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">แพ็คทั้งหมด</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">ขนาดเล็ก</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">ขนาดใหญ่</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">รายการสินค้า</th>
-                  <th className="px-4 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">จำนวนออเดอร์</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">ผู้เช็ค</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">ผู้จัดสินค้า</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">จัดการ</th>
+                  <td colSpan={12} className="px-4 py-8 text-center text-sm text-gray-500">
+                    <div className="flex items-center justify-center space-x-2"><Loader2 className="w-4 h-4 animate-spin" /><span>กำลังโหลดข้อมูล...</span></div>
+                  </td>
                 </tr>
-              </thead>
-              <tbody className="bg-white divide-y divide-gray-100">
-                {loading ? (
-                  <tr>
-                    <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-500">
-                      <div className="flex items-center justify-center space-x-2"><Loader2 className="w-4 h-4 animate-spin" /><span>กำลังโหลดข้อมูล...</span></div>
+              ) : filteredFaceSheets.length === 0 ? (
+                <tr>
+                  <td colSpan={12} className="px-4 py-8 text-center text-sm text-gray-500">ไม่พบข้อมูลใบปะหน้าสินค้า</td>
+                </tr>
+              ) : (
+                filteredFaceSheets.map((sheet) => (
+                  <tr key={sheet.id} className="hover:bg-gray-50/80 transition-colors duration-200">
+                    <td className="px-4 py-3 text-xs whitespace-nowrap"><div className="font-semibold text-blue-600 font-mono">{sheet.face_sheet_no}</div></td>
+                    <td className="px-4 py-3 text-xs whitespace-nowrap"><Badge variant="secondary" size="sm">{sheet.warehouse_id}</Badge></td>
+                    <td className="px-4 py-3 text-xs whitespace-nowrap">
+                      <select
+                        className="w-full px-2 py-1 border border-gray-300 rounded text-xs font-thai text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+                        value={sheet.status}
+                        disabled={editingStatusId === sheet.id}
+                        onChange={(e) => handleStatusChange(sheet.id, e.target.value)}
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {statusOptions.map((status) => (
+                          <option key={status.value} value={status.value}>
+                            {status.label}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td className="px-4 py-3 text-xs whitespace-nowrap">{new Date(sheet.created_date).toLocaleDateString('th-TH', { year: '2-digit', month: '2-digit', day: '2-digit' })}</td>
+                    <td className="px-4 py-3 text-xs text-center whitespace-nowrap"><div className="font-bold text-purple-600">{sheet.total_packages}</div></td>
+                    <td className="px-4 py-3 text-xs text-center whitespace-nowrap"><div className="font-bold text-green-600">{sheet.small_size_count}</div></td>
+                    <td className="px-4 py-3 text-xs text-center whitespace-nowrap"><div className="font-bold text-orange-600">{sheet.large_size_count}</div></td>
+                    <td className="px-4 py-3 text-xs text-center whitespace-nowrap"><div className="font-bold text-blue-600">{sheet.total_items}</div></td>
+                    <td className="px-4 py-3 text-xs text-center whitespace-nowrap"><div className="font-bold text-gray-700">{sheet.total_orders}</div></td>
+                    <td className="px-4 py-3 text-xs whitespace-nowrap">
+                      {(sheet as any).checker_employees && (sheet as any).checker_employees.length > 0 ? (
+                        <div className="text-xs">
+                          {(sheet as any).checker_employees.map((emp: any, idx: number) => (
+                            <div key={idx} className="text-gray-700">
+                              {emp.nickname || `${emp.first_name} ${emp.last_name}`}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-xs">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-xs whitespace-nowrap">
+                      {(sheet as any).picker_employees && (sheet as any).picker_employees.length > 0 ? (
+                        <div className="text-xs">
+                          {(sheet as any).picker_employees.map((emp: any, idx: number) => (
+                            <div key={idx} className="text-gray-700">
+                              {emp.nickname || `${emp.first_name} ${emp.last_name}`}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-gray-400 text-xs">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-xs whitespace-nowrap">
+                      <div className="flex items-center space-x-1">
+                        <button className="p-1 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors" title="ดูรายละเอียด" onClick={() => handleViewDetails(sheet.id)}><Eye className="w-4 h-4" /></button>
+                        <button
+                          className="p-1 rounded hover:bg-green-50 hover:text-green-600 transition-colors disabled:opacity-60"
+                          title="พิมพ์ใบปะหน้า"
+                          onClick={() => handlePrintFaceSheet(sheet.id)}
+                          disabled={printingId === sheet.id}
+                        >
+                          {printingId === sheet.id ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <Printer className="w-4 h-4" />
+                          )}
+                        </button>
+                        <button
+                          className="p-1 rounded hover:bg-orange-50 hover:text-orange-600 transition-colors disabled:opacity-60"
+                          title="ใบเช็คสินค้า"
+                          onClick={() => handleGenerateChecklist(sheet.id)}
+                          disabled={checklistingId === sheet.id}
+                        >
+                          {checklistingId === sheet.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardCheck className="w-4 h-4" />}
+                        </button>
+                      </div>
                     </td>
                   </tr>
-                ) : filteredFaceSheets.length === 0 ? (
-                  <tr>
-                    <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-500">ไม่พบข้อมูลใบปะหน้าสินค้า</td>
-                  </tr>
-                ) : (
-                  filteredFaceSheets.map((sheet) => (
-                    <tr key={sheet.id} className="hover:bg-gray-50/80 transition-colors duration-200">
-                      <td className="px-4 py-3 text-xs whitespace-nowrap"><div className="font-semibold text-blue-600 font-mono">{sheet.face_sheet_no}</div></td>
-                      <td className="px-4 py-3 text-xs whitespace-nowrap"><Badge variant="secondary" size="sm">{sheet.warehouse_id}</Badge></td>
-                      <td className="px-4 py-3 text-xs whitespace-nowrap">
-                        <select
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-xs font-thai text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
-                          value={sheet.status}
-                          disabled={editingStatusId === sheet.id}
-                          onChange={(e) => handleStatusChange(sheet.id, e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {statusOptions.map((status) => (
-                            <option key={status.value} value={status.value}>
-                              {status.label}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                      <td className="px-4 py-3 text-xs whitespace-nowrap">{new Date(sheet.created_date).toLocaleDateString('th-TH', { year: '2-digit', month: '2-digit', day: '2-digit' })}</td>
-                      <td className="px-4 py-3 text-xs text-center whitespace-nowrap"><div className="font-bold text-purple-600">{sheet.total_packages}</div></td>
-                      <td className="px-4 py-3 text-xs text-center whitespace-nowrap"><div className="font-bold text-green-600">{sheet.small_size_count}</div></td>
-                      <td className="px-4 py-3 text-xs text-center whitespace-nowrap"><div className="font-bold text-orange-600">{sheet.large_size_count}</div></td>
-                      <td className="px-4 py-3 text-xs text-center whitespace-nowrap"><div className="font-bold text-blue-600">{sheet.total_items}</div></td>
-                      <td className="px-4 py-3 text-xs text-center whitespace-nowrap"><div className="font-bold text-gray-700">{sheet.total_orders}</div></td>
-                      <td className="px-4 py-3 text-xs whitespace-nowrap">
-                        {(sheet as any).checker_employees && (sheet as any).checker_employees.length > 0 ? (
-                          <div className="text-xs">
-                            {(sheet as any).checker_employees.map((emp: any, idx: number) => (
-                              <div key={idx} className="text-gray-700">
-                                {emp.nickname || `${emp.first_name} ${emp.last_name}`}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-gray-400 text-xs">-</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-xs whitespace-nowrap">
-                        {(sheet as any).picker_employees && (sheet as any).picker_employees.length > 0 ? (
-                          <div className="text-xs">
-                            {(sheet as any).picker_employees.map((emp: any, idx: number) => (
-                              <div key={idx} className="text-gray-700">
-                                {emp.nickname || `${emp.first_name} ${emp.last_name}`}
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <span className="text-gray-400 text-xs">-</span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-xs whitespace-nowrap">
-                        <div className="flex items-center space-x-1">
-                          <button className="p-1 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors" title="ดูรายละเอียด" onClick={() => handleViewDetails(sheet.id)}><Eye className="w-4 h-4" /></button>
-                          <button
-                            className="p-1 rounded hover:bg-green-50 hover:text-green-600 transition-colors disabled:opacity-60"
-                            title="พิมพ์ใบปะหน้า"
-                            onClick={() => handlePrintFaceSheet(sheet.id)}
-                            disabled={printingId === sheet.id}
-                          >
-                            {printingId === sheet.id ? (
-                              <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                              <Printer className="w-4 h-4" />
-                            )}
-                          </button>
-                          <button 
-                            className="p-1 rounded hover:bg-orange-50 hover:text-orange-600 transition-colors disabled:opacity-60" 
-                            title="ใบเช็คสินค้า" 
-                            onClick={() => handleGenerateChecklist(sheet.id)} 
-                            disabled={checklistingId === sheet.id}
-                          >
-                            {checklistingId === sheet.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardCheck className="w-4 h-4" />}
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
+      {/* Modals */}
       <Modal
         isOpen={showCreateModal}
         onClose={handleCloseCreateModal}
@@ -917,7 +890,7 @@ const FaceSheetsPage = () => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">คลังสินค้า</label>
-              <select 
+              <select
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                 value={selectedWarehouse}
                 onChange={(e) => setSelectedWarehouse(e.target.value)}
@@ -1056,13 +1029,13 @@ const FaceSheetsPage = () => {
         </div>
       </Modal>
 
-      <FaceSheetDetailModal 
+      <FaceSheetDetailModal
         isOpen={isDetailModalOpen}
         onClose={() => setIsDetailModalOpen(false)}
         details={selectedSheetDetails}
         loading={detailLoading}
       />
-    </div>
+    </PageContainer>
   );
 };
 

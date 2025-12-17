@@ -424,39 +424,38 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle, isHovered, onH
       onMouseEnter={() => onHoverChange(true)}
       onMouseLeave={() => onHoverChange(false)}
     >
-      {/* Header */}
-      <div 
-        className="flex-shrink-0 flex items-center justify-between px-4 pt-2 border-b border-thai-gray-200" 
-        style={{ paddingBottom: '0.7rem' }}
-      >
-          <div className={`flex items-center ${!isCollapsed || isHovered ? 'space-x-2' : ''}`}>
-            <div className="w-8 h-8 bg-primary-500 rounded-lg flex items-center justify-center flex-shrink-0">
-              <Warehouse className="w-5 h-5 text-white" />
-            </div>
-            <div className={`overflow-hidden transition-all duration-700 ${isCollapsed && !isHovered ? 'max-w-0 opacity-0' : 'max-w-xs opacity-100'}`}>
-              <h1 className="text-lg font-bold text-thai-gray-800 font-thai truncate">
-                WMS
-              </h1>
-              <p className="text-xs text-thai-gray-500 font-thai truncate">
-                Austam Good Corp., Ltd
-              </p>
-            </div>
+      {/* Header - h-10 to match main Header */}
+      <div className="flex-shrink-0 h-10 flex items-center justify-between px-3 border-b border-thai-gray-200">
+        <div className={`flex items-center ${!isCollapsed || isHovered ? 'gap-2' : ''}`}>
+          <div className="w-7 h-7 bg-primary-500 rounded-lg flex items-center justify-center flex-shrink-0">
+            <Warehouse className="w-4 h-4 text-white" />
           </div>
+          <h1 className={`text-xl font-bold text-thai-gray-800 font-thai truncate overflow-hidden transition-all duration-700 ${isCollapsed && !isHovered ? 'max-w-0 opacity-0' : 'max-w-xs opacity-100'}`}>
+            WMS
+          </h1>
+        </div>
         <button
           onClick={onToggle}
-          className="p-2 rounded-lg hover:bg-thai-gray-100 transition-colors"
+          className={`p-1.5 rounded-lg hover:bg-thai-gray-100 transition-colors ${isCollapsed && !isHovered ? 'mx-auto' : ''}`}
         >
-          {isCollapsed ? (
-            <ChevronRight className="w-5 h-5 text-thai-gray-600 ml-1" />
+          {isCollapsed && !isHovered ? (
+            <ChevronRight className="w-4 h-4 text-thai-gray-500" />
           ) : (
-            <ChevronLeft className="w-5 h-5 text-thai-gray-600" />
+            <ChevronLeft className="w-4 h-4 text-thai-gray-500" />
           )}
         </button>
       </div>
 
+      {/* Company Name - below header, aligned with WMS text */}
+      <div className={`flex-shrink-0 px-3 py-1.5 bg-thai-gray-50/50 overflow-hidden transition-all duration-700 ${isCollapsed && !isHovered ? 'h-0 py-0 opacity-0 border-0' : 'opacity-100 border-b border-thai-gray-100'}`}>
+        <p className="text-[11px] text-thai-gray-500 font-thai ml-9">
+          Austam Good Corp., Ltd
+        </p>
+      </div>
+
       {/* Navigation Menu */}
       <div className="flex-1 overflow-y-auto hide-scrollbar">
-        <nav className="mt-4 px-2 pb-20">
+        <nav className="mt-2 px-2 pb-20">
           <ul className="space-y-1">
             {menuItems.map((item) => {
               const Icon = item.icon;

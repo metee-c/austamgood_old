@@ -27,6 +27,7 @@ import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
 import OptimizationSidebar, { OptimizationSettings } from '@/components/vrp/OptimizationSidebar';
+import { PageContainer, PageHeaderWithFilters, SearchInput, FilterSelect } from '@/components/ui/page-components';
 import RouteMap from '@/components/maps/RouteMap';
 import PrintRoutePlanModal from '@/components/receiving/PrintRoutePlanModal';
 import EditShippingCostModal from '@/components/receiving/EditShippingCostModal';
@@ -2051,76 +2052,51 @@ const RoutesPage = () => {
     });
 
     return (
-        <div className="h-screen bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
-            <div className="h-full flex flex-col space-y-2 pt-0 px-2 pb-2">
-                <div className="flex items-center justify-between gap-2 flex-shrink-0">
-                    <div>
-                        <h1 className="text-xl font-bold text-thai-gray-900 font-thai m-0 p-0 leading-tight">
-                            จัดเส้นทางส่งสินค้า
-                        </h1>
-                    </div>
-                    <Button
-                        variant="primary"
-                        icon={Plus}
-                        onClick={handleCreatePlan}
-                        className="bg-blue-500 hover:bg-blue-600 shadow-lg"
-                    >
-                        สร้างแผนใหม่
-                    </Button>
-                </div>
+        <PageContainer>
+            <PageHeaderWithFilters title="จัดเส้นทางส่งสินค้า">
+                <SearchInput
+                    value={searchTerm}
+                    onChange={setSearchTerm}
+                    placeholder="ค้นหาเลขเส้นทาง, ชื่อเส้นทาง, ทะเบียนรถ..."
+                />
+                <input
+                    type="date"
+                    className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50 min-w-28"
+                    value={startDate}
+                    onChange={event => setStartDate(event.target.value)}
+                />
+                <span className="text-xs text-thai-gray-500">ถึง</span>
+                <input
+                    type="date"
+                    className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50 min-w-28"
+                    value={endDate}
+                    onChange={event => setEndDate(event.target.value)}
+                />
+                <FilterSelect
+                    value={selectedStatus}
+                    onChange={setSelectedStatus}
+                    options={statuses}
+                />
+                <Button
+                    variant="primary"
+                    icon={Plus}
+                    onClick={handleCreatePlan}
+                    className="text-xs py-1 px-2"
+                >
+                    สร้างแผนใหม่
+                </Button>
+            </PageHeaderWithFilters>
 
-                <div className="flex flex-1 gap-4 overflow-hidden">
-                    <div className="flex-1 flex flex-col space-y-2 overflow-hidden">
-                        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm flex-shrink-0">
-                            <div className="flex items-center space-x-3">
-                                <div className="flex-1">
-                                    <div className="relative">
-                                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
-                                        <input
-                                            type="text"
-                                            placeholder="ค้นหาเลขเส้นทาง, ชื่อเส้นทาง, ทะเบียนรถ..."
-                                            className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm placeholder:text-thai-gray-400"
-                                            value={searchTerm}
-                                            onChange={event => setSearchTerm(event.target.value)}
-                                        />
-                                    </div>
-                                </div>
-                                <div className="flex space-x-2">
-                                    <input
-                                        type="date"
-                                        className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-28"
-                                        value={startDate}
-                                        onChange={event => setStartDate(event.target.value)}
-                                    />
-                                    <input
-                                        type="date"
-                                        className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-28"
-                                        value={endDate}
-                                        onChange={event => setEndDate(event.target.value)}
-                                    />
-                                    <select
-                                        className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-32"
-                                        value={selectedStatus}
-                                        onChange={event => setSelectedStatus(event.target.value)}
-                                    >
-                                        {statuses.map(status => (
-                                            <option key={status.value} value={status.value}>
-                                                {status.label}
-                                            </option>
-                                        ))}
-                                    </select>
-                                </div>
-                            </div>
-                        </div>
-
-                        <div className="flex-1 min-h-0">
-                            <div className="w-full h-[74vh] overflow-x-auto overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-sm">
-                                {loading ? (
-                                    <div className="p-12 text-center text-gray-500">กำลังโหลด...</div>
-                                ) : filteredPlans.length === 0 ? (
-                                    <div className="p-12 text-center text-gray-500">ยังไม่มีแผนเส้นทาง</div>
-                                ) : (
-                                    <table className="min-w-max w-full border-collapse text-sm">
+            <div className="flex flex-1 gap-4 overflow-hidden">
+                <div className="flex-1 flex flex-col overflow-hidden">
+                    <div className="flex-1 min-h-0 bg-white border rounded-lg shadow-sm flex flex-col overflow-hidden">
+                        <div className="flex-1 overflow-auto">
+                            {loading ? (
+                                <div className="p-12 text-center text-gray-500">กำลังโหลด...</div>
+                            ) : filteredPlans.length === 0 ? (
+                                <div className="p-12 text-center text-gray-500">ยังไม่มีแผนเส้นทาง</div>
+                            ) : (
+                                <table className="min-w-max w-full border-collapse text-sm">
                                         <thead className="sticky top-0 z-10 bg-gray-100">
                                             <tr className="bg-gray-100">
                                                 <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200 w-8">
@@ -2554,20 +2530,19 @@ const RoutesPage = () => {
                                             })}
                                         </tbody>
                                     </table>
-                                )}
-                            </div>
+                            )}
                         </div>
                     </div>
-
-                    <OptimizationSidebar
-                        settings={vrpSettings}
-                        onChange={changes => setVrpSettings(prev => ({ ...prev, ...changes }))}
-                        onSave={handleSaveSettings}
-                        disabled={isOptimizing}
-                        isSaving={isSavingSettings}
-                        statusMessage={statusMessage}
-                    />
                 </div>
+
+                <OptimizationSidebar
+                    settings={vrpSettings}
+                    onChange={changes => setVrpSettings(prev => ({ ...prev, ...changes }))}
+                    onSave={handleSaveSettings}
+                    disabled={isOptimizing}
+                    isSaving={isSavingSettings}
+                    statusMessage={statusMessage}
+                />
             </div>
 
             <Modal
@@ -3450,7 +3425,7 @@ const RoutesPage = () => {
                 isOpen={showTransportContractModal}
                 onClose={() => setShowTransportContractModal(false)}
             />
-        </div>
+        </PageContainer>
     );
 };
 

@@ -3,7 +3,6 @@
 import { useState, useMemo } from 'react';
 import {
   RefreshCw,
-  Search,
   Package,
   MapPin,
   ArrowRight,
@@ -21,6 +20,7 @@ import Badge from '@/components/ui/Badge';
 import Table from '@/components/ui/Table';
 import Modal from '@/components/ui/Modal';
 import useSWR from 'swr';
+import { PageContainer, PageHeaderWithFilters, SearchInput, FilterSelect, PaginationBar } from '@/components/ui/page-components';
 
 type ReplenishmentStatus = 'pending' | 'assigned' | 'in_progress' | 'completed' | 'cancelled';
 
@@ -58,6 +58,8 @@ const AutoReplenishmentPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<ReplenishmentStatus | 'all'>('all');
   const [selectedTask, setSelectedTask] = useState<ReplenishmentTask | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 100;
   const [showAssignModal, setShowAssignModal] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
 
@@ -174,97 +176,76 @@ const AutoReplenishmentPage = () => {
     return { pending, assigned, inProgress, completed, total: tasks.length };
   }, [tasks]);
 
+  const statusOptions = [
+    { value: 'all', label: 'ทุกสถานะ' },
+    { value: 'pending', label: 'รอดำเนินการ' },
+    { value: 'assigned', label: 'มอบหมายแล้ว' },
+    { value: 'in_progress', label: 'กำลังดำเนินการ' },
+    { value: 'completed', label: 'เสร็จสิ้น' },
+    { value: 'cancelled', label: 'ยกเลิก' }
+  ];
+
   return (
-    <div className="h-screen overflow-hidden flex flex-col bg-gradient-to-br from-thai-gray-25 to-white">
-      {/* Header */}
-      <div className="pt-0 px-2 pb-2 space-y-2">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-thai-gray-900 font-thai flex items-center gap-2">
-              <RefreshCw className="w-6 h-6 text-green-600" />
-              เบิกเติมสินค้าอัตโนมัติ (Auto Replenishment)
-            </h1>
-            <p className="text-sm text-gray-500 font-thai">รายการเบิกเติมสินค้าจากบ้านเก็บไปบ้านหยิบ</p>
-          </div>
-          <Button onClick={() => mutate()} variant="outline" className="flex items-center gap-2">
-            <RefreshCw className="w-4 h-4" />
-            รีเฟรช
-          </Button>
-        </div>
+    <PageContainer>
+      <PageHeaderWithFilters title="เบิกเติมสินค้าอัตโนมัติ (Auto Replenishment)">
+        <SearchInput
+          value={searchTerm}
+          onChange={setSearchTerm}
+          placeholder="ค้นหา SKU, โลเคชั่น, เลขที่ใบหยิบ..."
+        />
+        <FilterSelect
+          value={selectedStatus}
+          onChange={(value) => setSelectedStatus(value as ReplenishmentStatus | 'all')}
+          options={statusOptions}
+        />
+        <Button onClick={() => mutate()} variant="outline" className="text-xs py-1 px-2">
+          <RefreshCw className="w-3 h-3 mr-1" />
+          รีเฟรช
+        </Button>
+      </PageHeaderWithFilters>
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-5 gap-3">
-          <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-yellow-700 font-thai text-sm">รอดำเนินการ</span>
-              <Clock className="w-5 h-5 text-yellow-600" />
-            </div>
-            <p className="text-2xl font-bold text-yellow-800">{stats.pending}</p>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-5 gap-2 flex-shrink-0">
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2">
+          <div className="flex items-center justify-between">
+            <span className="text-yellow-700 font-thai text-xs">รอดำเนินการ</span>
+            <Clock className="w-4 h-4 text-yellow-600" />
           </div>
-          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-blue-700 font-thai text-sm">มอบหมายแล้ว</span>
-              <User className="w-5 h-5 text-blue-600" />
-            </div>
-            <p className="text-2xl font-bold text-blue-800">{stats.assigned}</p>
-          </div>
-          <div className="bg-purple-50 border border-purple-200 rounded-lg p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-purple-700 font-thai text-sm">กำลังดำเนินการ</span>
-              <Play className="w-5 h-5 text-purple-600" />
-            </div>
-            <p className="text-2xl font-bold text-purple-800">{stats.inProgress}</p>
-          </div>
-          <div className="bg-green-50 border border-green-200 rounded-lg p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-green-700 font-thai text-sm">เสร็จสิ้น</span>
-              <CheckCircle className="w-5 h-5 text-green-600" />
-            </div>
-            <p className="text-2xl font-bold text-green-800">{stats.completed}</p>
-          </div>
-          <div className="bg-gray-50 border border-gray-200 rounded-lg p-3">
-            <div className="flex items-center justify-between">
-              <span className="text-gray-700 font-thai text-sm">ทั้งหมด</span>
-              <Package className="w-5 h-5 text-gray-600" />
-            </div>
-            <p className="text-2xl font-bold text-gray-800">{stats.total}</p>
-          </div>
+          <p className="text-xl font-bold text-yellow-800">{stats.pending}</p>
         </div>
-
-        {/* Filters */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm">
-          <div className="flex items-center space-x-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
-              <input
-                type="text"
-                placeholder="ค้นหา SKU, โลเคชั่น, เลขที่ใบหยิบ..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai
-                         focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80"
-              />
-            </div>
-            <select
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value as ReplenishmentStatus | 'all')}
-              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-40
-                       focus:outline-none focus:ring-2 focus:ring-primary-500/50"
-            >
-              <option value="all">ทุกสถานะ</option>
-              <option value="pending">รอดำเนินการ</option>
-              <option value="assigned">มอบหมายแล้ว</option>
-              <option value="in_progress">กำลังดำเนินการ</option>
-              <option value="completed">เสร็จสิ้น</option>
-              <option value="cancelled">ยกเลิก</option>
-            </select>
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
+          <div className="flex items-center justify-between">
+            <span className="text-blue-700 font-thai text-xs">มอบหมายแล้ว</span>
+            <User className="w-4 h-4 text-blue-600" />
           </div>
+          <p className="text-xl font-bold text-blue-800">{stats.assigned}</p>
+        </div>
+        <div className="bg-purple-50 border border-purple-200 rounded-lg p-2">
+          <div className="flex items-center justify-between">
+            <span className="text-purple-700 font-thai text-xs">กำลังดำเนินการ</span>
+            <Play className="w-4 h-4 text-purple-600" />
+          </div>
+          <p className="text-xl font-bold text-purple-800">{stats.inProgress}</p>
+        </div>
+        <div className="bg-green-50 border border-green-200 rounded-lg p-2">
+          <div className="flex items-center justify-between">
+            <span className="text-green-700 font-thai text-xs">เสร็จสิ้น</span>
+            <CheckCircle className="w-4 h-4 text-green-600" />
+          </div>
+          <p className="text-xl font-bold text-green-800">{stats.completed}</p>
+        </div>
+        <div className="bg-gray-50 border border-gray-200 rounded-lg p-2">
+          <div className="flex items-center justify-between">
+            <span className="text-gray-700 font-thai text-xs">ทั้งหมด</span>
+            <Package className="w-4 h-4 text-gray-600" />
+          </div>
+          <p className="text-xl font-bold text-gray-800">{stats.total}</p>
         </div>
       </div>
 
-
       {/* Table */}
-      <div className="flex-1 bg-white border border-gray-200 rounded-lg shadow-sm overflow-auto mx-2 mb-2">
+      <div className="flex-1 min-h-0 bg-white border rounded-lg shadow-sm flex flex-col overflow-hidden">
+        <div className="flex-1 overflow-auto">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center h-full text-thai-gray-400">
             <Loader2 className="w-8 h-8 animate-spin mb-2 text-green-500" />
@@ -299,9 +280,9 @@ const AutoReplenishmentPage = () => {
               </tr>
             </Table.Header>
             <Table.Body>
-              {filteredTasks.map((task: ReplenishmentTask, index: number) => (
+              {filteredTasks.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((task: ReplenishmentTask, index: number) => (
                 <Table.Row key={task.queue_id} className="hover:bg-gray-50">
-                  <Table.Cell className="text-center font-mono text-gray-500">{index + 1}</Table.Cell>
+                  <Table.Cell className="text-center font-mono text-gray-500">{(currentPage - 1) * pageSize + index + 1}</Table.Cell>
                   <Table.Cell>
                     <div>
                       <div className="font-semibold text-gray-900 text-sm">{task.master_sku?.sku_name || task.sku_id}</div>
@@ -418,8 +399,14 @@ const AutoReplenishmentPage = () => {
             </Table.Body>
           </Table>
         )}
+        <PaginationBar
+          currentPage={currentPage}
+          totalItems={filteredTasks.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+        />
+        </div>
       </div>
-
 
       {/* Assign Employee Modal */}
       {showAssignModal && selectedTask && (
@@ -484,7 +471,7 @@ const AutoReplenishmentPage = () => {
           </div>
         </Modal>
       )}
-    </div>
+    </PageContainer>
   );
 };
 

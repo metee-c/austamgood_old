@@ -7,7 +7,11 @@ import {
   Download,
   Loader2,
   FileText,
-  AlertTriangle
+  AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
@@ -52,6 +56,11 @@ const InventoryLedgerPage = () => {
   // Warehouses for filter
   const [warehouses, setWarehouses] = useState<any[]>([]);
 
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const pageSize = 100;
+
   useEffect(() => {
     fetchWarehouses();
     fetchLedgerData();
@@ -72,10 +81,25 @@ const InventoryLedgerPage = () => {
     }
   };
 
-  const fetchLedgerData = async () => {
+  const fetchLedgerData = async (page: number = 1) => {
     try {
       setLoading(true);
       const supabase = createClient();
+
+      // Get total count first
+      const { count, error: countError } = await supabase
+        .from('wms_inventory_ledger')
+        .select('*', { count: 'exact', head: true });
+
+      if (countError) {
+        console.error('Error fetching count:', countError);
+      } else {
+        setTotalCount(count || 0);
+      }
+
+      // Fetch paginated data
+      const from = (page - 1) * pageSize;
+      const to = from + pageSize - 1;
 
       const { data, error } = await supabase
         .from('wms_inventory_ledger')
@@ -97,14 +121,15 @@ const InventoryLedgerPage = () => {
             full_name
           )
         `)
-        .order('movement_at', { ascending: false })
-        .limit(1000);
+        .order('ledger_id', { ascending: false })
+        .range(from, to);
 
       if (error) {
         setError(error.message);
         console.error('Error fetching ledger data:', error);
       } else {
         setLedgerData(data || []);
+        setCurrentPage(page);
       }
     } catch (err: any) {
       setError('เกิดข้อผิดพลาดในการโหลดข้อมูล');
@@ -212,90 +237,80 @@ const InventoryLedgerPage = () => {
   const groupedData = consolidatedData;
 
   return (
-    <div className="h-screen bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
-      <div className="h-full flex flex-col space-y-2 pt-0 px-2 pb-2">
-        {/* Page Header */}
-        <div className="flex items-center justify-between gap-2 pt-1 flex-shrink-0">
-          <h1 className="text-xl font-bold text-thai-gray-900 font-thai m-0 p-0 leading-tight">บันทึกธุรกรรมสต็อก</h1>
-          <div className="flex gap-2">
-            <Button variant="outline" icon={Download}>
-              ส่งออก Excel
+    <div className="h-[calc(100vh-3.25rem)] bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
+      <div className="h-full flex flex-col space-y-1 pt-0 px-2 pb-1">
+        {/* Header + Filters Combined */}
+        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-lg px-2 py-1.5 shadow-sm flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <h1 className="text-base font-bold text-thai-gray-900 font-thai whitespace-nowrap">บันทึกธุรกรรมสต็อก</h1>
+            <div className="flex-1 relative">
+              <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3.5 h-3.5 text-thai-gray-400" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="ค้นหา..."
+                className="w-full pl-7 pr-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50"
+              />
+            </div>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50 w-28"
+            />
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50 w-28"
+            />
+            <select
+              value={selectedWarehouse}
+              onChange={(e) => setSelectedWarehouse(e.target.value)}
+              className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50"
+            >
+              <option value="all">ทุกคลัง</option>
+              {warehouses.map(warehouse => (
+                <option key={warehouse.warehouse_id} value={warehouse.warehouse_id}>
+                  {warehouse.warehouse_name}
+                </option>
+              ))}
+            </select>
+            <select
+              value={selectedTransactionType}
+              onChange={(e) => setSelectedTransactionType(e.target.value)}
+              className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50"
+            >
+              <option value="all">ทุกประเภท</option>
+              <option value="receive">รับเข้า</option>
+              <option value="issue">เบิกออก</option>
+              <option value="move">ย้าย</option>
+              <option value="adjust">ปรับปรุง</option>
+              <option value="pick">เบิก</option>
+              <option value="return">คืน</option>
+            </select>
+            <select
+              value={selectedDirection}
+              onChange={(e) => setSelectedDirection(e.target.value)}
+              className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50"
+            >
+              <option value="all">ทุกทิศทาง</option>
+              <option value="in">เข้า</option>
+              <option value="out">ออก</option>
+            </select>
+            <Button variant="outline" size="sm" icon={Download} className="text-xs py-1 px-2">
+              Excel
             </Button>
-            <Button variant="primary" icon={RefreshCw} onClick={fetchLedgerData} disabled={loading}>
+            <Button variant="primary" size="sm" icon={RefreshCw} onClick={() => fetchLedgerData(1)} disabled={loading} className="text-xs py-1 px-2">
               รีเฟรช
             </Button>
           </div>
         </div>
 
-        {/* Filters */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm flex-shrink-0">
-          <div className="flex items-center space-x-3">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="ค้นหาด้วย Reference No, SKU, Pallet ID..."
-                  className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm placeholder:text-thai-gray-400"
-                />
-              </div>
-            </div>
-            <div className="flex space-x-2">
-              <input
-                type="date"
-                value={dateFrom}
-                onChange={(e) => setDateFrom(e.target.value)}
-                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-28"
-              />
-              <input
-                type="date"
-                value={dateTo}
-                onChange={(e) => setDateTo(e.target.value)}
-                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-28"
-              />
-              <select
-                value={selectedWarehouse}
-                onChange={(e) => setSelectedWarehouse(e.target.value)}
-                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-24"
-              >
-                <option value="all">ทุกคลัง</option>
-                {warehouses.map(warehouse => (
-                  <option key={warehouse.warehouse_id} value={warehouse.warehouse_id}>
-                    {warehouse.warehouse_name}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={selectedTransactionType}
-                onChange={(e) => setSelectedTransactionType(e.target.value)}
-                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-24"
-              >
-                <option value="all">ทุกประเภท</option>
-                <option value="receive">รับเข้า</option>
-                <option value="issue">เบิกออก</option>
-                <option value="move">ย้าย</option>
-                <option value="adjust">ปรับปรุง</option>
-                <option value="pick">เบิก</option>
-                <option value="return">คืน</option>
-              </select>
-              <select
-                value={selectedDirection}
-                onChange={(e) => setSelectedDirection(e.target.value)}
-                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-24"
-              >
-                <option value="all">ทุกทิศทาง</option>
-                <option value="in">เข้า</option>
-                <option value="out">ออก</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
         {/* Data Table */}
-        <div className="flex-1 min-h-0">
-          <div className="w-full h-[74vh] bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col">
+        <div className="flex-1 min-h-0 flex flex-col">
+          <div className="w-full flex-1 bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col overflow-hidden">
             {loading ? (
               <div className="h-full flex flex-col items-center justify-center text-thai-gray-500 gap-2">
                 <Loader2 className="w-6 h-6 animate-spin" />
@@ -559,6 +574,52 @@ const InventoryLedgerPage = () => {
                     })}
                   </tbody>
                 </table>
+              </div>
+            )}
+            
+            {/* Pagination - sticky bottom */}
+            {!loading && !error && totalCount > 0 && (
+              <div className="flex-shrink-0 flex items-center justify-between px-3 py-1 border-t border-gray-200 bg-white text-xs">
+                <span className="text-thai-gray-600 font-thai">
+                  แสดง {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, totalCount)} จาก {totalCount.toLocaleString()} รายการ
+                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => fetchLedgerData(1)}
+                    disabled={currentPage === 1}
+                    className="p-1 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="หน้าแรก"
+                  >
+                    <ChevronsLeft className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => fetchLedgerData(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="p-1 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="หน้าก่อนหน้า"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
+                  <span className="px-2 text-xs font-thai">
+                    หน้า {currentPage} / {Math.ceil(totalCount / pageSize)}
+                  </span>
+                  <button
+                    onClick={() => fetchLedgerData(currentPage + 1)}
+                    disabled={currentPage >= Math.ceil(totalCount / pageSize)}
+                    className="p-1 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="หน้าถัดไป"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => fetchLedgerData(Math.ceil(totalCount / pageSize))}
+                    disabled={currentPage >= Math.ceil(totalCount / pageSize)}
+                    className="p-1 rounded hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="หน้าสุดท้าย"
+                  >
+                    <ChevronsRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             )}
           </div>

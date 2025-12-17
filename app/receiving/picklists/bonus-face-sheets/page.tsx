@@ -4,15 +4,10 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Gift,
-  Search,
   Calendar,
-  Filter,
-  Download,
   Eye,
   CheckCircle,
-  Clock,
   XCircle,
-  FileText,
   Printer,
   AlertCircle,
   Loader2,
@@ -26,6 +21,7 @@ import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
 import BonusFaceSheetLabelDocument from '@/components/receiving/BonusFaceSheetLabelDocument';
 import BonusFaceSheetChecklistDocument from '@/components/receiving/BonusFaceSheetChecklistDocument';
+import { PageContainer, PageHeaderWithFilters, SearchInput, FilterSelect } from '@/components/ui/page-components';
 
 interface BonusFaceSheet {
   id: number;
@@ -549,86 +545,60 @@ const BonusFaceSheetsPage = () => {
   };
 
   return (
-    <div className="h-screen bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
-      <div className="h-full flex flex-col space-y-2 pt-0 px-2 pb-2">
-        {/* Header */}
-        <div className="flex items-center justify-between gap-2 pt-1 flex-shrink-0">
-          <h1 className="text-xl font-bold text-thai-gray-900 font-thai m-0 p-0 leading-tight">
-            สร้างใบปะหน้าของแถม (Bonus Face Sheets)
-          </h1>
-          <div className="flex gap-2">
-            <Button
-              variant="primary"
-              className="bg-purple-500 hover:bg-purple-600 shadow-lg"
-              onClick={handleOpenCreateModal}
-              disabled={loading}
-            >
-              {loading && <Loader2 className="w-4 h-4 animate-spin mr-2" />}
-              สร้างใบปะหน้าของแถม
-            </Button>
+    <PageContainer>
+      <PageHeaderWithFilters title="สร้างใบปะหน้าของแถม (Bonus Face Sheets)">
+        <SearchInput
+          value={searchTerm}
+          onChange={setSearchTerm}
+          placeholder="ค้นหาเลขที่ใบปะหน้าของแถม..."
+        />
+        <input
+          type="date"
+          className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-purple-500/50 min-w-28"
+          value={selectedDate}
+          onChange={(e) => setSelectedDate(e.target.value)}
+        />
+        <FilterSelect
+          value={selectedStatus}
+          onChange={setSelectedStatus}
+          options={statuses}
+        />
+        <Button
+          variant="primary"
+          className="text-xs py-1 px-2 bg-purple-500 hover:bg-purple-600"
+          onClick={handleOpenCreateModal}
+          disabled={loading}
+        >
+          {loading && <Loader2 className="w-3 h-3 animate-spin mr-1" />}
+          สร้างใบปะหน้าของแถม
+        </Button>
+      </PageHeaderWithFilters>
+
+      {/* Alerts */}
+      {error && !showCreateModal && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-2 flex items-start space-x-2 flex-shrink-0">
+          <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+          <div className="flex-1">
+            <span className="text-xs text-red-700 font-thai">{error}</span>
           </div>
+          <button onClick={() => setError(null)} className="text-red-600 hover:text-red-800 flex-shrink-0">
+            <XCircle className="w-3 h-3" />
+          </button>
         </div>
-
-        {/* Alerts */}
-        {error && !showCreateModal && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start space-x-2 flex-shrink-0">
-            <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
-            <div className="flex-1">
-              <span className="text-sm text-red-700 font-thai">{error}</span>
-            </div>
-            <button onClick={() => setError(null)} className="text-red-600 hover:text-red-800 flex-shrink-0">
-              <XCircle className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-        {success && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-center space-x-2 flex-shrink-0">
-            <CheckCircle className="w-5 h-5 text-green-600" />
-            <span className="text-sm text-green-700">{success}</span>
-            <button onClick={() => setSuccess(null)} className="ml-auto text-green-600 hover:text-green-800">
-              <XCircle className="w-4 h-4" />
-            </button>
-          </div>
-        )}
-
-        {/* Filters */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm flex-shrink-0">
-          <div className="flex items-center space-x-3">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
-                <input
-                  type="text"
-                  placeholder="ค้นหาเลขที่ใบปะหน้าของแถม..."
-                  className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm placeholder:text-thai-gray-400"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-            </div>
-            <div className="flex space-x-2">
-              <input
-                type="date"
-                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-28"
-                value={selectedDate}
-                onChange={(e) => setSelectedDate(e.target.value)}
-              />
-              <select
-                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:border-purple-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-32"
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-              >
-                {statuses.map((status) => (
-                  <option key={status.value} value={status.value}>{status.label}</option>
-                ))}
-              </select>
-            </div>
-          </div>
+      )}
+      {success && (
+        <div className="bg-green-50 border border-green-200 rounded-lg p-2 flex items-center space-x-2 flex-shrink-0">
+          <CheckCircle className="w-4 h-4 text-green-600" />
+          <span className="text-xs text-green-700">{success}</span>
+          <button onClick={() => setSuccess(null)} className="ml-auto text-green-600 hover:text-green-800">
+            <XCircle className="w-3 h-3" />
+          </button>
         </div>
+      )}
 
-        {/* Table */}
-        <div className="flex-1 min-h-0">
-          <div className="w-full h-[74vh] overflow-auto bg-white border border-gray-200 rounded-lg shadow-sm">
+      {/* Table */}
+      <div className="flex-1 min-h-0 bg-white border rounded-lg shadow-sm flex flex-col overflow-hidden">
+        <div className="flex-1 overflow-auto">
             <table className="min-w-full border-collapse text-sm">
               <thead className="sticky top-0 z-10 bg-gray-100">
                 <tr>
@@ -740,7 +710,6 @@ const BonusFaceSheetsPage = () => {
                 )}
               </tbody>
             </table>
-          </div>
         </div>
       </div>
 
@@ -1066,7 +1035,7 @@ const BonusFaceSheetsPage = () => {
           </div>
         </div>
       </Modal>
-    </div>
+    </PageContainer>
   );
 };
 

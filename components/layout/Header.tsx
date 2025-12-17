@@ -27,16 +27,16 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick, showMenuButton }) => {
   };
 
   return (
-    <header className="w-full h-16">
-      <div className="flex items-center justify-between h-16 px-6">
+    <header className="w-full h-10">
+      <div className="flex items-center justify-between h-10 px-4">
         {/* Left Side */}
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-3">
           {showMenuButton && (
             <button
               onClick={onMenuClick}
-              className="p-2 rounded-lg hover:bg-thai-gray-100 transition-colors"
+              className="p-1 rounded hover:bg-thai-gray-100 transition-colors"
             >
-              <Menu className="w-5 h-5 text-thai-gray-600" />
+              <Menu className="w-4 h-4 text-thai-gray-600" />
             </button>
           )}
           
@@ -47,36 +47,36 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick, showMenuButton }) => {
 
 
         {/* Right Side */}
-        <div className="flex items-center space-x-4">
+        <div className="flex items-center space-x-2">
           {/* Notifications */}
-          <button className="relative p-2 rounded-lg hover:bg-thai-gray-100 transition-colors">
-            <Bell className="w-5 h-5 text-thai-gray-600" />
-            <span className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
+          <button className="relative p-1 rounded hover:bg-thai-gray-100 transition-colors">
+            <Bell className="w-4 h-4 text-thai-gray-600" />
+            <span className="absolute -top-0.5 -right-0.5 w-3.5 h-3.5 bg-red-500 text-white text-[10px] rounded-full flex items-center justify-center">
               3
             </span>
           </button>
 
           {/* User Menu */}
           <div className="relative group">
-            <button className="flex items-center space-x-3 p-2 rounded-lg hover:bg-thai-gray-100 transition-colors">
-              <div className="w-8 h-8 bg-primary-500 rounded-full flex items-center justify-center">
+            <button className="flex items-center space-x-2 p-1 rounded hover:bg-thai-gray-100 transition-colors">
+              <div className="w-6 h-6 bg-primary-500 rounded-full flex items-center justify-center">
                 {user?.full_name ? (
-                  <span className="text-white text-sm font-semibold">
+                  <span className="text-white text-xs font-semibold">
                     {user.full_name.charAt(0).toUpperCase()}
                   </span>
                 ) : (
-                  <User className="w-4 h-4 text-white" />
+                  <User className="w-3 h-3 text-white" />
                 )}
               </div>
               <div className="hidden md:block text-left">
-                <p className="text-sm font-medium text-thai-gray-700 font-thai">
+                <p className="text-xs font-medium text-thai-gray-700 font-thai leading-tight">
                   {user?.full_name || 'ผู้ใช้งาน'}
                 </p>
-                <p className="text-xs text-thai-gray-500 font-thai">
+                <p className="text-[10px] text-thai-gray-500 font-thai leading-tight">
                   {user?.email || ''}
                 </p>
               </div>
-              <ChevronDown className="w-4 h-4 text-thai-gray-500" />
+              <ChevronDown className="w-3 h-3 text-thai-gray-500" />
             </button>
 
             {/* Dropdown Menu */}

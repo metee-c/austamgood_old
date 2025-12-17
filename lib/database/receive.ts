@@ -54,6 +54,7 @@ export interface ReceiveItem {
   piece_quantity: number;
   weight_kg?: number;
   pallet_id?: string;
+  pallet_color?: string;
   pallet_scan_status: PalletScanStatus;
   location_id?: string;
   pallet_id_external?: string;

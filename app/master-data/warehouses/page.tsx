@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import { 
-  Search, 
   Plus, 
   Edit, 
   Trash2, 
@@ -11,7 +10,6 @@ import {
   ChevronUp,
   ChevronDown,
   ChevronsUpDown,
-  Package,
   MapPin,
   Phone,
   Mail,
@@ -25,6 +23,13 @@ import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
 import AddWarehouseForm from '@/components/forms/AddWarehouseForm';
 import { Warehouse } from '@/types/warehouse';
+import {
+  PageContainer,
+  PageHeaderWithFilters,
+  SearchInput,
+  FilterSelect,
+  PaginationBar
+} from '@/components/ui/page-components';
 
 const SortableHeader = ({ 
   field, 
@@ -75,6 +80,8 @@ const WarehousesPage = () => {
   const [selectedWarehouse, setSelectedWarehouse] = useState<Warehouse | null>(null);
   const [sortField, setSortField] = useState<keyof Warehouse | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 100;
 
   // Fetch data on component mount
   useEffect(() => {
@@ -203,105 +210,72 @@ const WarehousesPage = () => {
     }
   };
 
+  // Build options for FilterSelect
+  const typeOptions = [
+    { value: '', label: 'ทุกประเภท' },
+    { value: 'central', label: 'คลังหลัก' },
+    { value: 'branch', label: 'คลังสาขา' },
+    { value: 'crossdock', label: 'คลังขนส่ง' },
+    { value: 'other', label: 'อื่นๆ' }
+  ];
+
+  const statusOptions = [
+    { value: '', label: 'ทุกสถานะ' },
+    { value: 'active', label: 'ใช้งาน' },
+    { value: 'inactive', label: 'ไม่ใช้งาน' }
+  ];
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-thai-gray-25 to-white">
-      <div className="space-y-3">
-        {/* Modern Page Header */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-0 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-thai-gray-900 font-thai">ข้อมูลคลังสินค้า</h1>
-              <p className="text-thai-gray-600 font-thai mt-1">จัดการข้อมูลคลังสินค้าและสาขา</p>
-            </div>
-            <div className="flex gap-2">
-              <Button 
-                variant="primary" 
-                icon={Plus}
-                onClick={() => setShowAddModal(true)}
-                className="bg-blue-500 hover:bg-blue-600 shadow-lg"
-              >
-                เพิ่มคลังสินค้า
-              </Button>
-            </div>
+    <PageContainer>
+      <PageHeaderWithFilters title="ข้อมูลคลังสินค้า">
+        <SearchInput
+          value={searchTerm}
+          onChange={setSearchTerm}
+          placeholder="ค้นหาคลังสินค้า รหัส หรือชื่อ..."
+        />
+        <FilterSelect
+          value={selectedType}
+          onChange={setSelectedType}
+          options={typeOptions}
+        />
+        <FilterSelect
+          value={selectedStatus}
+          onChange={setSelectedStatus}
+          options={statusOptions}
+        />
+        <Button 
+          variant="primary" 
+          icon={Plus}
+          onClick={() => setShowAddModal(true)}
+        >
+          เพิ่มคลังสินค้า
+        </Button>
+      </PageHeaderWithFilters>
+
+      {/* Error Message */}
+      {error && (
+        <div className="bg-red-50 border border-red-200 rounded-lg p-3 mb-3">
+          <div className="flex items-center space-x-3 text-red-600">
+            <AlertCircle className="w-5 h-5 flex-shrink-0" />
+            <span className="font-thai text-sm">เกิดข้อผิดพลาด: {error}</span>
           </div>
         </div>
+      )}
 
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-50/80 backdrop-blur-sm border border-red-200/50 rounded-2xl p-4 shadow-sm">
-            <div className="flex items-center space-x-3 text-red-600">
-              <div className="flex-shrink-0">
-                <AlertCircle className="w-5 h-5" />
-              </div>
-              <span className="font-thai text-sm">เกิดข้อผิดพลาด: {error}</span>
-            </div>
+      {/* Warehouses Table */}
+      <div className="flex-1 min-h-0 bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col overflow-hidden">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center h-full text-thai-gray-400">
+            <div className="loading-spinner w-10 h-10 mx-auto mb-4"></div>
+            <p className="text-thai-gray-500 font-thai text-lg">กำลังโหลดข้อมูล...</p>
           </div>
-        )}
-
-        {/* Modern Search and Filters */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-4 shadow-sm">
-          <div className="flex items-center space-x-4">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
-                <input
-                  type="text"
-                  placeholder="ค้นหาคลังสินค้า รหัส หรือชื่อ..."
-                  className="
-                    w-full pl-10 pr-4 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                    focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                    text-sm font-thai transition-all duration-300 backdrop-blur-sm
-                    placeholder:text-thai-gray-400
-                  "
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-            </div>
-            
-            <div className="flex space-x-2">
-              <select
-                className="
-                  px-3 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                  text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-32
-                "
-                value={selectedType}
-                onChange={(e) => setSelectedType(e.target.value)}
-              >
-                <option value="">ทุกประเภท</option>
-                <option value="central">คลังหลัก</option>
-                <option value="branch">คลังสาขา</option>
-                <option value="crossdock">คลังขนส่ง</option>
-                <option value="other">อื่นๆ</option>
-              </select>
-
-              <select
-                className="
-                  px-3 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                  text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-28
-                "
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-              >
-                <option value="">ทุกสถานะ</option>
-                <option value="active">ใช้งาน</option>
-                <option value="inactive">ไม่ใช้งาน</option>
-              </select>
-            </div>
+        ) : sortedWarehouses.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full text-thai-gray-500">
+            <Building className="w-12 h-12 mb-2" />
+            <p className="font-thai">ไม่พบข้อมูลคลังสินค้าที่ตรงกับการค้นหา</p>
           </div>
-        </div>
-
-        {/* Modern Warehouses Table */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-2xl overflow-hidden shadow-sm">
-          {loading ? (
-            <div className="text-center py-12">
-              <div className="loading-spinner w-10 h-10 mx-auto mb-4"></div>
-              <p className="text-thai-gray-500 font-thai text-lg">กำลังโหลดข้อมูล...</p>
-            </div>
-          ) : (
-            <>
+        ) : (
+          <div className="flex-1 overflow-auto thin-scrollbar">
               <div className="overflow-x-auto">
                 <Table>
                   <Table.Header>
@@ -317,7 +291,7 @@ const WarehousesPage = () => {
                     </Table.Row>
                   </Table.Header>
                   <Table.Body>
-                    {sortedWarehouses.map((warehouse) => (
+                    {sortedWarehouses.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((warehouse) => (
                       <Table.Row key={warehouse.warehouse_id} className="hover:bg-thai-gray-25">
                         <Table.Cell>
                           <div className="font-mono text-sm font-medium text-primary-600">
@@ -411,21 +385,18 @@ const WarehousesPage = () => {
                   </Table.Body>
                 </Table>
               </div>
+          </div>
+        )}
+        <PaginationBar
+          currentPage={currentPage}
+          totalItems={sortedWarehouses.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+        />
+      </div>
 
-              {!loading && sortedWarehouses.length === 0 && (
-                <div className="text-center py-8">
-                  <Building className="w-12 h-12 text-thai-gray-400 mx-auto mb-4" />
-                  <p className="text-thai-gray-500 font-thai">
-                    {error ? 'เกิดข้อผิดพลาดในการโหลดข้อมูล' : 'ไม่พบข้อมูลคลังสินค้าที่ตรงกับการค้นหา'}
-                  </p>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Add Warehouse Modal */}
-        <Modal
+      {/* Add Warehouse Modal */}
+      <Modal
           isOpen={showAddModal}
           onClose={() => setShowAddModal(false)}
           title="เพิ่มคลังสินค้าใหม่"
@@ -462,8 +433,7 @@ const WarehousesPage = () => {
             </div>
           </Modal>
         )}
-      </div>
-    </div>
+    </PageContainer>
   );
 };
 

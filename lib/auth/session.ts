@@ -12,6 +12,7 @@ export interface SessionData {
   full_name: string;
   role_id: number;
   role_name: string;
+  employee_id: number | null;
   is_valid: boolean;
   expires_in_seconds: number;
   last_activity_minutes_ago: number;
@@ -126,11 +127,12 @@ export async function validateSession(token: string): Promise<{
       };
     }
 
-    // Get user role information
-    const { data: userRole, error: roleError } = await supabase
+    // Get user role and employee_id information
+    const { data: userInfo, error: userInfoError } = await supabase
       .from('master_system_user')
       .select(`
         role_id,
+        employee_id,
         master_system_role!fk_master_system_user_role(
           role_name
         )
@@ -138,12 +140,12 @@ export async function validateSession(token: string): Promise<{
       .eq('user_id', sessionData.user_id)
       .single();
 
-    if (roleError) {
-      console.error('Error getting user role:', roleError);
+    if (userInfoError) {
+      console.error('Error getting user info:', userInfoError);
     }
 
     // Extract role name from master_system_role relation
-    const masterRole = userRole?.master_system_role as any;
+    const masterRole = userInfo?.master_system_role as any;
     const roleName = Array.isArray(masterRole)
       ? masterRole[0]?.role_name
       : masterRole?.role_name || 'Unknown';
@@ -156,8 +158,9 @@ export async function validateSession(token: string): Promise<{
         username: sessionData.username,
         email: sessionData.email,
         full_name: sessionData.full_name,
-        role_id: userRole?.role_id || 0,
+        role_id: userInfo?.role_id || 0,
         role_name: roleName,
+        employee_id: userInfo?.employee_id || null,
         is_valid: sessionData.is_valid,
         expires_in_seconds: sessionData.expires_in_seconds,
         last_activity_minutes_ago: sessionData.last_activity_minutes_ago

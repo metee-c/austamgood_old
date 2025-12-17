@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  Search,
   Plus,
   Upload,
   Edit,
@@ -13,10 +12,8 @@ import {
   AlertCircle,
   Settings,
   Calendar,
-  MapPin,
-  User,
-  Wrench,
-  Package
+  Package,
+  Search,
 } from 'lucide-react';
 import Table from '@/components/ui/Table';
 import Button from '@/components/ui/Button';
@@ -25,6 +22,13 @@ import Modal from '@/components/ui/Modal';
 import AddAssetForm from '@/components/forms/AddAssetForm';
 import EditAssetForm from '@/components/forms/EditAssetForm';
 import ImportAssetForm from '@/components/forms/ImportAssetForm';
+import {
+  PageContainer,
+  PageHeaderWithFilters,
+  SearchInput,
+  FilterSelect,
+  PaginationBar,
+} from '@/components/ui/page-components';
 
 interface Asset {
   asset_id: number;
@@ -104,6 +108,8 @@ const AssetsPage = () => {
   const [selectedAsset, setSelectedAsset] = useState<Asset | null>(null);
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 100;
 
   // Fetch assets on component mount
   useEffect(() => {
@@ -351,246 +357,210 @@ const AssetsPage = () => {
     }
   };
 
+  const assetTypeOptions = [
+    { value: '', label: 'ประเภททั้งหมด' },
+    { value: 'Forklift', label: 'รถยก' },
+    { value: 'Rack', label: 'ชั้นวาง' },
+    { value: 'Hand Pallet', label: 'รถเข็นมือ' },
+    { value: 'Barcode Scanner', label: 'เครื่องสแกน' },
+    { value: 'Weighing Scale', label: 'เครื่องชั่ง' },
+    { value: 'Conveyor', label: 'สายพาน' },
+    { value: 'Other', label: 'อื่นๆ' },
+  ];
+
+  const statusOptions = [
+    { value: '', label: 'สถานะทั้งหมด' },
+    { value: 'Active', label: 'ใช้งาน' },
+    { value: 'Under Maintenance', label: 'ซ่อมบำรุง' },
+    { value: 'Out of Service', label: 'เสื่อมสภาพ' },
+    { value: 'Retired', label: 'เลิกใช้งาน' },
+  ];
+
   return (
-    <div className="min-h-screen bg-gradient-to-br from-thai-gray-25 to-white">
-      <div className="space-y-3">
-        {/* Modern Page Header */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-0 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-thai-gray-900 font-thai">ข้อมูลทรัพย์สินคลัง</h1>
-              <p className="text-thai-gray-600 font-thai mt-1">จัดการทรัพย์สินและอุปกรณ์ในคลังสินค้า</p>
+    <PageContainer>
+      <PageHeaderWithFilters title="ข้อมูลทรัพย์สินคลัง">
+        <SearchInput
+          value={searchTerm}
+          onChange={setSearchTerm}
+          placeholder="ค้นหาทรัพย์สิน รหัส ชื่อ ยี่ห้อ รุ่น..."
+        />
+        <FilterSelect
+          value={selectedAssetType}
+          onChange={setSelectedAssetType}
+          options={assetTypeOptions}
+        />
+        <FilterSelect
+          value={selectedStatus}
+          onChange={setSelectedStatus}
+          options={statusOptions}
+        />
+        <Button
+          variant="outline"
+          icon={Upload}
+          onClick={() => setShowImportModal(true)}
+        >
+          นำเข้าข้อมูล
+        </Button>
+        <Button
+          variant="primary"
+          icon={Plus}
+          onClick={() => setShowAddModal(true)}
+        >
+          เพิ่มทรัพย์สิน
+        </Button>
+      </PageHeaderWithFilters>
+
+      {/* Error Message */}
+      {error && (
+        <div className="bg-red-50/80 backdrop-blur-sm border border-red-200/50 rounded-2xl p-4 shadow-sm">
+          <div className="flex items-center space-x-3 text-red-600">
+            <div className="flex-shrink-0">
+              <AlertCircle className="w-5 h-5" />
             </div>
-            <div className="flex gap-2">
-              <Button 
-                variant="outline" 
-                icon={Upload}
-                onClick={() => setShowImportModal(true)}
-                className="bg-white/50 hover:bg-white/80 border-white/30 backdrop-blur-sm shadow-sm"
-              >
-                นำเข้าข้อมูล
-              </Button>
-              <Button 
-                variant="primary" 
-                icon={Plus}
-                onClick={() => setShowAddModal(true)}
-                className="bg-blue-500 hover:bg-blue-600 shadow-lg"
-              >
-                เพิ่มทรัพย์สิน
-              </Button>
-            </div>
+            <span className="font-thai text-sm">เกิดข้อผิดพลาด: {error}</span>
           </div>
         </div>
+      )}
 
-        {/* Error Message */}
-        {error && (
-          <div className="bg-red-50/80 backdrop-blur-sm border border-red-200/50 rounded-2xl p-4 shadow-sm">
-            <div className="flex items-center space-x-3 text-red-600">
-              <div className="flex-shrink-0">
-                <AlertCircle className="w-5 h-5" />
-              </div>
-              <span className="font-thai text-sm">เกิดข้อผิดพลาด: {error}</span>
-            </div>
-          </div>
-        )}
-
-        {/* Modern Search and Filters */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm">
-          <div className="flex items-center space-x-3">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
-                <input
-                  type="text"
-                  placeholder="ค้นหาทรัพย์สิน รหัส ชื่อ ยี่ห้อ รุ่น..."
-                  className="
-                    w-full pl-10 pr-4 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                    focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                    text-sm font-thai transition-all duration-300 backdrop-blur-sm
-                    placeholder:text-thai-gray-400
-                  "
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
-              </div>
-            </div>
-            
-            <div className="flex space-x-2">
-              <select
-                className="
-                  px-3 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                  text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-32
-                "
-                value={selectedAssetType}
-                onChange={(e) => setSelectedAssetType(e.target.value)}
-              >
-                <option value="">ประเภททั้งหมด</option>
-                <option value="Forklift">รถยก</option>
-                <option value="Rack">ชั้นวาง</option>
-                <option value="Hand Pallet">รถเข็นมือ</option>
-                <option value="Barcode Scanner">เครื่องสแกน</option>
-                <option value="Weighing Scale">เครื่องชั่ง</option>
-                <option value="Conveyor">สายพาน</option>
-                <option value="Other">อื่นๆ</option>
-              </select>
-
-              <select
-                className="
-                  px-3 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                  text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-24
-                "
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-              >
-                <option value="">สถานะทั้งหมด</option>
-                <option value="Active">ใช้งาน</option>
-                <option value="Under Maintenance">ซ่อมบำรุง</option>
-                <option value="Out of Service">เสื่อมสภาพ</option>
-                <option value="Retired">เลิกใช้งาน</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        {/* Modern Assets Table */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-2xl overflow-hidden shadow-sm">
+      {/* Assets Table */}
+      <div className="flex-1 min-h-0 bg-white border rounded-lg shadow-sm flex flex-col overflow-hidden">
+        <div className="flex-1 overflow-auto thin-scrollbar">
           {loading ? (
             <div className="text-center py-12">
               <div className="loading-spinner w-10 h-10 mx-auto mb-4"></div>
               <p className="text-thai-gray-500 font-thai text-lg">กำลังโหลดข้อมูล...</p>
             </div>
+          ) : sortedAssets.length === 0 ? (
+            <div className="text-center py-8">
+              <Settings className="w-12 h-12 text-thai-gray-400 mx-auto mb-4" />
+              <p className="text-thai-gray-500 font-thai">
+                {error ? 'เกิดข้อผิดพลาดในการโหลดข้อมูล' : 'ไม่พบข้อมูลทรัพย์สินที่ตรงกับการค้นหา'}
+              </p>
+            </div>
           ) : (
-            <>
-              <div className="overflow-x-auto">
-                <Table>
-                  <Table.Header>
-                    <Table.Row>
-                      <SortableHeader field="asset_code" className="w-32" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>รหัสทรัพย์สิน</SortableHeader>
-                      <SortableHeader field="asset_name" className="min-w-48" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ชื่อทรัพย์สิน</SortableHeader>
-                      <SortableHeader field="asset_type" className="w-32" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ประเภท</SortableHeader>
-                      <SortableHeader field="brand" className="min-w-32" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ยี่ห้อ/รุ่น</SortableHeader>
-                      <SortableHeader field="capacity_spec" className="w-28" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ความจุ</SortableHeader>
-                      <SortableHeader field="purchase_date" className="w-28" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>วันที่ซื้อ</SortableHeader>
-                      <SortableHeader field="status" className="w-24" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>สถานะ</SortableHeader>
-                      <Table.Head className="w-28">การดำเนินการ</Table.Head>
-                    </Table.Row>
-                  </Table.Header>
-                  <Table.Body>
-                    {sortedAssets.map((asset) => (
-                      <Table.Row key={asset.asset_id} className="hover:bg-thai-gray-25">
-                        <Table.Cell>
-                          <div className="font-mono text-sm font-medium text-primary-600">
-                            {asset.asset_code}
-                          </div>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <div className="space-y-1">
-                            <div className="font-medium font-thai text-sm flex items-center space-x-2">
-                              {getAssetTypeIcon(asset.asset_type)}
-                              <span>{asset.asset_name}</span>
-                            </div>
-                            <div className="text-xs text-thai-gray-500 font-mono">
-                              ID: {asset.asset_id}
-                            </div>
-                          </div>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <Badge variant="default" className="bg-blue-100/50 text-blue-700 border-blue-200/50">
-                            {asset.asset_type === 'Forklift' ? 'รถยก' :
-                             asset.asset_type === 'Rack' ? 'ชั้นวาง' :
-                             asset.asset_type === 'Hand Pallet' ? 'รถเข็นมือ' :
-                             asset.asset_type === 'Barcode Scanner' ? 'เครื่องสแกน' :
-                             asset.asset_type === 'Weighing Scale' ? 'เครื่องชั่ง' :
-                             asset.asset_type === 'Conveyor' ? 'สายพาน' :
-                             asset.asset_type}
-                          </Badge>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <div className="space-y-1">
-                            <div className="font-medium font-thai text-sm">
-                              {asset.brand || '-'}
-                            </div>
-                            <div className="text-xs text-thai-gray-500">
-                              {asset.model || '-'}
-                            </div>
-                          </div>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <div className="text-center">
-                            <span className="text-sm font-medium text-green-600">
-                              {asset.capacity_spec || '-'}
+            <Table>
+              <Table.Header>
+                <Table.Row>
+                  <SortableHeader field="asset_code" className="w-32" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>รหัสทรัพย์สิน</SortableHeader>
+                  <SortableHeader field="asset_name" className="min-w-48" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ชื่อทรัพย์สิน</SortableHeader>
+                  <SortableHeader field="asset_type" className="w-32" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ประเภท</SortableHeader>
+                  <SortableHeader field="brand" className="min-w-32" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ยี่ห้อ/รุ่น</SortableHeader>
+                  <SortableHeader field="capacity_spec" className="w-28" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ความจุ</SortableHeader>
+                  <SortableHeader field="purchase_date" className="w-28" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>วันที่ซื้อ</SortableHeader>
+                  <SortableHeader field="status" className="w-24" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>สถานะ</SortableHeader>
+                  <Table.Head className="w-28">การดำเนินการ</Table.Head>
+                </Table.Row>
+              </Table.Header>
+              <Table.Body>
+                {sortedAssets.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((asset) => (
+                  <Table.Row key={asset.asset_id} className="hover:bg-thai-gray-25">
+                    <Table.Cell>
+                      <div className="font-mono text-sm font-medium text-primary-600">
+                        {asset.asset_code}
+                      </div>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <div className="space-y-1">
+                        <div className="font-medium font-thai text-sm flex items-center space-x-2">
+                          {getAssetTypeIcon(asset.asset_type)}
+                          <span>{asset.asset_name}</span>
+                        </div>
+                        <div className="text-xs text-thai-gray-500 font-mono">
+                          ID: {asset.asset_id}
+                        </div>
+                      </div>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <Badge variant="default" className="bg-blue-100/50 text-blue-700 border-blue-200/50">
+                        {asset.asset_type === 'Forklift' ? 'รถยก' :
+                         asset.asset_type === 'Rack' ? 'ชั้นวาง' :
+                         asset.asset_type === 'Hand Pallet' ? 'รถเข็นมือ' :
+                         asset.asset_type === 'Barcode Scanner' ? 'เครื่องสแกน' :
+                         asset.asset_type === 'Weighing Scale' ? 'เครื่องชั่ง' :
+                         asset.asset_type === 'Conveyor' ? 'สายพาน' :
+                         asset.asset_type}
+                      </Badge>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <div className="space-y-1">
+                        <div className="font-medium font-thai text-sm">
+                          {asset.brand || '-'}
+                        </div>
+                        <div className="text-xs text-thai-gray-500">
+                          {asset.model || '-'}
+                        </div>
+                      </div>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <div className="text-center">
+                        <span className="text-sm font-medium text-green-600">
+                          {asset.capacity_spec || '-'}
+                        </span>
+                      </div>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <div className="text-center">
+                        {asset.purchase_date ? (
+                          <div className="flex items-center justify-center space-x-1">
+                            <Calendar className="w-3 h-3 text-thai-gray-400" />
+                            <span className="text-xs font-medium">
+                              {new Date(asset.purchase_date).toLocaleDateString('th-TH')}
                             </span>
                           </div>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <div className="text-center">
-                            {asset.purchase_date ? (
-                              <div className="flex items-center justify-center space-x-1">
-                                <Calendar className="w-3 h-3 text-thai-gray-400" />
-                                <span className="text-xs font-medium">
-                                  {new Date(asset.purchase_date).toLocaleDateString('th-TH')}
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="text-xs text-thai-gray-400">-</span>
-                            )}
-                          </div>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <Badge variant={
-                            asset.status === 'Active' ? 'success' : 
-                            asset.status === 'Under Maintenance' ? 'warning' :
-                            asset.status === 'Out of Service' ? 'danger' :
-                            'default'
-                          }>
-                            {asset.status === 'Active' ? 'ใช้งาน' : 
-                             asset.status === 'Under Maintenance' ? 'ซ่อมบำรุง' :
-                             asset.status === 'Out of Service' ? 'เสื่อมสภาพ' :
-                             asset.status === 'Retired' ? 'เลิกใช้งาน' :
-                             asset.status}
-                          </Badge>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <div className="flex space-x-1">
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              icon={Edit} 
-                              onClick={() => handleEdit(asset)}
-                              title="แก้ไข"
-                              className="hover:bg-blue-50/50 hover:text-blue-600"
-                            />
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              icon={Trash2} 
-                              onClick={() => handleDelete(asset)}
-                              title="ลบ"
-                              className="hover:bg-red-50/50 hover:text-red-600"
-                            />
-                          </div>
-                        </Table.Cell>
-                      </Table.Row>
-                    ))}
-                  </Table.Body>
-                </Table>
-              </div>
-
-              {!loading && sortedAssets.length === 0 && (
-                <div className="text-center py-8">
-                  <Settings className="w-12 h-12 text-thai-gray-400 mx-auto mb-4" />
-                  <p className="text-thai-gray-500 font-thai">
-                    {error ? 'เกิดข้อผิดพลาดในการโหลดข้อมูล' : 'ไม่พบข้อมูลทรัพย์สินที่ตรงกับการค้นหา'}
-                  </p>
-                </div>
-              )}
-            </>
+                        ) : (
+                          <span className="text-xs text-thai-gray-400">-</span>
+                        )}
+                      </div>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <Badge variant={
+                        asset.status === 'Active' ? 'success' : 
+                        asset.status === 'Under Maintenance' ? 'warning' :
+                        asset.status === 'Out of Service' ? 'danger' :
+                        'default'
+                      }>
+                        {asset.status === 'Active' ? 'ใช้งาน' : 
+                         asset.status === 'Under Maintenance' ? 'ซ่อมบำรุง' :
+                         asset.status === 'Out of Service' ? 'เสื่อมสภาพ' :
+                         asset.status === 'Retired' ? 'เลิกใช้งาน' :
+                         asset.status}
+                      </Badge>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <div className="flex space-x-1">
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          icon={Edit} 
+                          onClick={() => handleEdit(asset)}
+                          title="แก้ไข"
+                          className="hover:bg-blue-50/50 hover:text-blue-600"
+                        />
+                        <Button 
+                          variant="ghost" 
+                          size="sm" 
+                          icon={Trash2} 
+                          onClick={() => handleDelete(asset)}
+                          title="ลบ"
+                          className="hover:bg-red-50/50 hover:text-red-600"
+                        />
+                      </div>
+                    </Table.Cell>
+                  </Table.Row>
+                ))}
+              </Table.Body>
+            </Table>
           )}
         </div>
+        <PaginationBar
+          currentPage={currentPage}
+          totalItems={sortedAssets.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+        />
+      </div>
 
-        {/* Add Asset Modal */}
+      {/* Add Asset Modal */}
         <Modal
           isOpen={showAddModal}
           onClose={() => setShowAddModal(false)}
@@ -631,8 +601,7 @@ const AssetsPage = () => {
             onCancel={() => setShowImportModal(false)}
           />
         </Modal>
-      </div>
-    </div>
+    </PageContainer>
   );
 };
 

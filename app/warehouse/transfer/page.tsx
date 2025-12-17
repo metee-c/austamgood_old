@@ -12,7 +12,7 @@ import ZoneLocationSelect from '@/components/warehouse/ZoneLocationSelect';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
-import { Loader2, Plus, RefreshCw, Search, Package, ArrowRight, MapPin, Truck, ChevronDown, ChevronRight, ArrowUpDown, ArrowUp, ArrowDown, Edit, Eye, UserPlus, AlertTriangle } from 'lucide-react';
+import { Loader2, Plus, RefreshCw, Search, Package, ArrowRight, MapPin, Truck, ChevronDown, ChevronRight, ChevronLeft, ChevronsLeft, ChevronsRight, ArrowUpDown, ArrowUp, ArrowDown, Edit, Eye, UserPlus, AlertTriangle } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 
 const MOVE_STATUS_LABELS: Record<MoveStatus, string> = {
@@ -152,6 +152,15 @@ const TransferPage: React.FC = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [expandedMoves, setExpandedMoves] = useState<Set<number>>(new Set());
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 100;
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, typeFilter, startDate, endDate]);
   const [sortField, setSortField] = useState<string>('');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [columnWidths, setColumnWidths] = useState({
@@ -1466,76 +1475,65 @@ const TransferPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-thai-gray-25 to-white">
-      <div className="flex flex-col space-y-2 pt-0 px-2 pb-2">
-        <div className="flex items-center justify-between gap-2 pt-1 flex-shrink-0">
-          <h1 className="text-xl font-bold text-thai-gray-900 font-thai">ย้ายสินค้าในคลัง (Transfer)</h1>
-          <div className="flex gap-2">
-            <Button variant="outline" icon={RefreshCw} onClick={refetch} disabled={loading || updatingStatus}>
+    <div className="h-[calc(100vh-3.25rem)] bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
+      <div className="h-full flex flex-col space-y-1 pt-0 px-2 pb-1">
+        {/* Header + Filters Combined */}
+        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-lg px-2 py-1.5 shadow-sm flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <h1 className="text-base font-bold text-thai-gray-900 font-thai whitespace-nowrap">ย้ายสินค้าในคลัง</h1>
+            <div className="flex-1 relative">
+              <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3.5 h-3.5 text-thai-gray-400" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="ค้นหา..."
+                className="w-full pl-7 pr-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50"
+              />
+            </div>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as MoveStatus | 'all')}
+              className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50"
+            >
+              {STATUS_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+            <select
+              value={typeFilter}
+              onChange={(e) => setTypeFilter(e.target.value as MoveType | 'all')}
+              className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50"
+            >
+              {TYPE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50"
+            />
+            <span className="text-thai-gray-400 text-[10px]">ถึง</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50"
+            />
+            <Button variant="outline" size="sm" icon={RefreshCw} onClick={refetch} disabled={loading || updatingStatus} className="text-xs py-1 px-2">
               รีเฟรช
             </Button>
-            <Button variant="primary" icon={Plus} className="bg-blue-500 hover:bg-blue-600 shadow-lg" onClick={() => setIsCreateModalOpen(true)}>
-              สร้างใบย้ายใหม่
+            <Button variant="primary" size="sm" icon={Plus} onClick={() => setIsCreateModalOpen(true)} className="text-xs py-1 px-2">
+              สร้างใบย้าย
             </Button>
           </div>
         </div>
 
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm flex-shrink-0">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex-1 min-w-[220px]">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="ค้นหาเลขใบย้ายหรือหมายเลขอ้างอิง"
-                  className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 text-sm font-thai transition-all duration-300"
-                />
-              </div>
-            </div>
-            <div>
-              <select
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as MoveStatus | 'all')}
-                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm"
-              >
-                {STATUS_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <select
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value as MoveType | 'all')}
-                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm"
-              >
-                {TYPE_OPTIONS.map((option) => (
-                  <option key={option.value} value={option.value}>{option.label}</option>
-                ))}
-              </select>
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm"
-              />
-              <span className="text-thai-gray-400 text-xs">ถึง</span>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
-                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm"
-              />
-            </div>
-          </div>
-        </div>
-
-        <div className="flex-1 min-h-0">
-          <div className="w-full h-[74vh] overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-sm">
+        {/* Data Table */}
+        <div className="flex-1 min-h-0 flex flex-col">
+          <div className="w-full flex-1 bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col overflow-hidden">
             {loading ? (
               <div className="h-full flex flex-col items-center justify-center text-thai-gray-500 gap-2">
                 <Loader2 className="w-6 h-6 animate-spin" />
@@ -1554,6 +1552,8 @@ const TransferPage: React.FC = () => {
                 </div>
               </div>
             ) : (
+              <>
+              <div className="flex-1 overflow-auto thin-scrollbar">
               <table className="w-full table-fixed text-sm" style={{ tableLayout: 'fixed' }}>
                 <thead className="sticky top-0 bg-gradient-to-r from-gray-50 to-gray-100 z-10 border-b border-gray-200">
                   <tr>
@@ -1668,7 +1668,7 @@ const TransferPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {sortedMoves.map((move) => {
+                  {sortedMoves.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((move) => {
                     const itemCount = move.wms_move_items ? move.wms_move_items.length : 0;
                     const isExpanded = expandedMoves.has(move.move_id);
                     return (
@@ -1779,6 +1779,51 @@ const TransferPage: React.FC = () => {
                   })}
                 </tbody>
               </table>
+              </div>
+            {/* Pagination Bar */}
+              <div className="flex-shrink-0 flex items-center justify-between px-3 py-1 border-t border-gray-200 bg-gray-50 rounded-b-lg text-xs">
+                <div className="text-sm text-thai-gray-600 font-thai">
+                  แสดง {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, sortedMoves.length)} จาก {sortedMoves.length.toLocaleString()} รายการ
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage(1)}
+                    disabled={currentPage === 1}
+                    className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="หน้าแรก"
+                  >
+                    <ChevronsLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="หน้าก่อนหน้า"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span className="px-3 py-1 text-sm font-thai">
+                    หน้า {currentPage} / {Math.ceil(sortedMoves.length / pageSize)}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(currentPage + 1)}
+                    disabled={currentPage >= Math.ceil(sortedMoves.length / pageSize)}
+                    className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="หน้าถัดไป"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(Math.ceil(sortedMoves.length / pageSize))}
+                    disabled={currentPage >= Math.ceil(sortedMoves.length / pageSize)}
+                    className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="หน้าสุดท้าย"
+                  >
+                    <ChevronsRight className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+              </>
             )}
           </div>
         </div>

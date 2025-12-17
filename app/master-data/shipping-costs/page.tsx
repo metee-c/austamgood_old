@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  Search,
   Plus,
   Upload,
   Edit,
@@ -10,21 +9,22 @@ import {
   ChevronsUpDown,
   ChevronUp,
   ChevronDown,
-  AlertCircle,
   DollarSign,
-  Calendar,
-  MapPin,
-  Truck,
-  Route
 } from 'lucide-react';
 import Table from '@/components/ui/Table';
 import Button from '@/components/ui/Button';
-import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
 import AddFreightRateForm from '@/components/forms/AddFreightRateForm';
 import EditFreightRateForm from '@/components/forms/EditFreightRateForm';
 import ImportFreightRateForm from '@/components/forms/ImportFreightRateForm';
-import { FreightRateFormValues, PRICE_UNITS, formatPrice, formatPriceNumber, formatDistance, getPriceUnitLabel } from '@/types/freight-rate-schema';
+import { PRICE_UNITS, formatPriceNumber, getPriceUnitLabel } from '@/types/freight-rate-schema';
+import {
+  PageContainer,
+  PageHeaderWithFilters,
+  SearchInput,
+  FilterSelect,
+  PaginationBar,
+} from '@/components/ui/page-components';
 
 // Helper function to format dates
 const formatDate = (dateString: string) => {
@@ -89,6 +89,8 @@ const ShippingCostsPage = () => {
   const [selectedFreightRate, setSelectedFreightRate] = useState<FreightRate | null>(null);
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 100;
 
   // Fetch freight rates on component mount
   useEffect(() => {
@@ -257,102 +259,62 @@ const ShippingCostsPage = () => {
     );
   };
 
+  const priceUnitOptions = [
+    { value: '', label: 'ทุกหน่วย' },
+    ...PRICE_UNITS.map((unit) => ({ value: unit.value, label: unit.label }))
+  ];
+
+  const provinceOptions = [
+    { value: '', label: 'ทุกจังหวัด' },
+    ...getUniqueProvinces().map((province) => ({ value: province, label: province }))
+  ];
+
   return (
-    <div className="h-screen overflow-hidden flex flex-col bg-gradient-to-br from-thai-gray-25 to-white">
-      {/* Header */}
-      <div className="pt-0 px-2 pb-2 space-y-2">
-        {/* Title */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-thai-gray-900 font-thai">
-              ข้อมูลค่าขนส่ง (Freight Rates)
-            </h1>
-          </div>
-          <div className="flex gap-2">
-            <Button 
-              variant="outline" 
-              size="md"
-              icon={Upload}
-              onClick={() => setShowImportModal(true)}
-              className="bg-white/50 hover:bg-white/80 border-white/30 backdrop-blur-sm shadow-sm"
-            >
-              นำเข้าข้อมูล
-            </Button>
-            <Button 
-              variant="primary" 
-              size="md"
-              icon={Plus}
-              onClick={() => setShowAddModal(true)}
-              className="bg-blue-500 hover:bg-blue-600 shadow-lg"
-            >
-              เพิ่มค่าขนส่ง
-            </Button>
-          </div>
-        </div>
+    <PageContainer>
+      <PageHeaderWithFilters title="ข้อมูลค่าขนส่ง (Freight Rates)">
+        <SearchInput
+          value={searchTerm}
+          onChange={setSearchTerm}
+          placeholder="ค้นหาเส้นทาง จังหวัด หรือผู้ให้บริการ..."
+        />
+        <FilterSelect
+          value={selectedPriceUnit}
+          onChange={setSelectedPriceUnit}
+          options={priceUnitOptions}
+        />
+        <FilterSelect
+          value={selectedProvince}
+          onChange={setSelectedProvince}
+          options={provinceOptions}
+        />
+        <label className="flex items-center space-x-2 text-sm font-thai text-thai-gray-700">
+          <input
+            type="checkbox"
+            checked={showActiveOnly}
+            onChange={(e) => setShowActiveOnly(e.target.checked)}
+            className="rounded border-thai-gray-300"
+          />
+          <span>เฉพาะที่ใช้งาน</span>
+        </label>
+        <Button
+          variant="outline"
+          icon={Upload}
+          onClick={() => setShowImportModal(true)}
+        >
+          นำเข้าข้อมูล
+        </Button>
+        <Button
+          variant="primary"
+          icon={Plus}
+          onClick={() => setShowAddModal(true)}
+        >
+          เพิ่มค่าขนส่ง
+        </Button>
+      </PageHeaderWithFilters>
 
-        {/* Filters */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm">
-          <div className="flex items-center space-x-3">
-            {/* Search */}
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
-              <input
-                type="text"
-                placeholder="ค้นหาเส้นทาง จังหวัด หรือผู้ให้บริการ..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai
-                         focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                         transition-all duration-300"
-              />
-            </div>
-
-            {/* Price Unit Filter */}
-            <select
-              value={selectedPriceUnit}
-              onChange={(e) => setSelectedPriceUnit(e.target.value)}
-              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-24
-                       focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50"
-            >
-              <option value="">ทุกหน่วย</option>
-              {PRICE_UNITS.map((unit) => (
-                <option key={unit.value} value={unit.value}>
-                  {unit.label}
-                </option>
-              ))}
-            </select>
-
-            {/* Province Filter */}
-            <select
-              value={selectedProvince}
-              onChange={(e) => setSelectedProvince(e.target.value)}
-              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-24
-                       focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50"
-            >
-              <option value="">ทุกจังหวัด</option>
-              {getUniqueProvinces().map((province) => (
-                <option key={province} value={province}>
-                  {province}
-                </option>
-              ))}
-            </select>
-
-            <label className="flex items-center space-x-2 text-sm font-thai text-thai-gray-700">
-              <input
-                type="checkbox"
-                checked={showActiveOnly}
-                onChange={(e) => setShowActiveOnly(e.target.checked)}
-                className="rounded border-thai-gray-300"
-              />
-              <span>เฉพาะที่ใช้งาน</span>
-            </label>
-          </div>
-        </div>
-      </div>
-
-
-      {/* Table Container - Styled like receiving/orders */}
-      <div className="h-[74vh] bg-white border border-gray-200 rounded-lg shadow-sm overflow-auto">
+      {/* Table Container */}
+      <div className="flex-1 min-h-0 bg-white border rounded-lg shadow-sm flex flex-col overflow-hidden">
+        <div className="flex-1 overflow-auto thin-scrollbar">
         {loading ? (
           <div className="flex flex-col items-center justify-center h-full text-thai-gray-400">
             <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
@@ -398,7 +360,7 @@ const ShippingCostsPage = () => {
                   </Table.Cell>
                 </tr>
               ) : (
-                sortedFreightRates.map((rate) => (
+                sortedFreightRates.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((rate) => (
                   <Table.Row key={rate.freight_rate_id}>
                     <Table.Cell className="text-center">
                       <span className="font-mono text-xs text-gray-600">{rate.freight_rate_id}</span>
@@ -498,6 +460,13 @@ const ShippingCostsPage = () => {
             </Table.Body>
           </Table>
         )}
+        </div>
+        <PaginationBar
+          currentPage={currentPage}
+          totalItems={sortedFreightRates.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+        />
       </div>
 
       {/* Add Freight Rate Modal */}
@@ -565,7 +534,7 @@ const ShippingCostsPage = () => {
           onCancel={() => setShowImportModal(false)}
         />
       </Modal>
-    </div>
+    </PageContainer>
   );
 };
 

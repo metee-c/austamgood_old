@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Package,
   Search,
@@ -14,7 +14,11 @@ import {
   Truck,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
@@ -115,6 +119,15 @@ const InventoryBalancesPage = () => {
   const [warehouses, setWarehouses] = useState<any[]>([]);
 
   const [preparationAreaCodes, setPreparationAreaCodes] = useState<string[]>([]);
+
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 100;
+
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, selectedWarehouse, showLowStock, showExpiringSoon, showZeroBalance, activeTab]);
 
   useEffect(() => {
     console.log('🔴 [INIT] useEffect called - fetching all data');
@@ -398,17 +411,67 @@ const InventoryBalancesPage = () => {
     : deliveryData.reduce((sum, item) => sum + item.total_piece_qty, 0);
 
   return (
-    <div className="h-screen bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
-      <div className="h-full flex flex-col space-y-2 pt-0 px-2 pb-2">
-        {/* Page Header */}
-        <div className="flex items-center justify-between gap-2 pt-1 flex-shrink-0">
-          <h1 className="text-xl font-bold text-thai-gray-900 font-thai m-0 p-0 leading-tight">สินค้าบ้านหยิบ</h1>
-          <div className="flex gap-2">
-            <Button variant="outline" icon={Download}>
-              ส่งออก Excel
+    <div className="h-[calc(100vh-3.25rem)] bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
+      <div className="h-full flex flex-col space-y-1 pt-0 px-2 pb-1">
+        {/* Header + Filters Combined */}
+        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-lg px-2 py-1.5 shadow-sm flex-shrink-0">
+          <div className="flex items-center gap-2">
+            <h1 className="text-base font-bold text-thai-gray-900 font-thai whitespace-nowrap">สินค้าบ้านหยิบ</h1>
+            <div className="flex-1 relative">
+              <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3.5 h-3.5 text-thai-gray-400" />
+              <input
+                type="text"
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                placeholder="ค้นหา..."
+                className="w-full pl-7 pr-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50"
+              />
+            </div>
+            <select
+              value={selectedWarehouse}
+              onChange={(e) => setSelectedWarehouse(e.target.value)}
+              className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50"
+            >
+              <option value="all">ทุกคลัง</option>
+              {warehouses.map(warehouse => (
+                <option key={warehouse.warehouse_id} value={warehouse.warehouse_id}>
+                  {warehouse.warehouse_name}
+                </option>
+              ))}
+            </select>
+            <label className="flex items-center cursor-pointer text-xs font-thai px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded hover:bg-white/80">
+              <input
+                type="checkbox"
+                className="mr-1 w-3 h-3"
+                checked={showLowStock}
+                onChange={(e) => setShowLowStock(e.target.checked)}
+              />
+              สต็อกต่ำ
+            </label>
+            <label className="flex items-center cursor-pointer text-xs font-thai px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded hover:bg-white/80">
+              <input
+                type="checkbox"
+                className="mr-1 w-3 h-3"
+                checked={showExpiringSoon}
+                onChange={(e) => setShowExpiringSoon(e.target.checked)}
+              />
+              ใกล้หมดอายุ
+            </label>
+            <label className="flex items-center cursor-pointer text-xs font-thai px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded hover:bg-white/80">
+              <input
+                type="checkbox"
+                className="mr-1 w-3 h-3"
+                checked={showZeroBalance}
+                onChange={(e) => setShowZeroBalance(e.target.checked)}
+              />
+              ยอด 0
+            </label>
+            <Button variant="outline" size="sm" icon={Download} className="text-xs py-1 px-2">
+              Excel
             </Button>
             <Button 
               variant="primary" 
+              size="sm" 
               icon={RefreshCw} 
               onClick={() => {
                 fetchBalanceData();
@@ -416,6 +479,7 @@ const InventoryBalancesPage = () => {
                 fetchDeliveryData();
               }} 
               disabled={loading}
+              className="text-xs py-1 px-2"
             >
               รีเฟรช
             </Button>
@@ -423,118 +487,59 @@ const InventoryBalancesPage = () => {
         </div>
 
         {/* Flow Tabs */}
-        <div className="flex gap-1.5 flex-shrink-0">
+        <div className="flex gap-1 flex-shrink-0">
           <button
             onClick={() => setActiveTab('preparation')}
-            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-thai font-medium transition-all text-sm ${
+            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded font-thai font-medium transition-all text-xs ${
               activeTab === 'preparation'
-                ? 'bg-blue-500 text-white shadow-md'
+                ? 'bg-blue-500 text-white shadow-sm'
                 : 'bg-white text-thai-gray-600 hover:bg-blue-50 border border-thai-gray-200'
             }`}
           >
-            <PackageSearch className="w-4 h-4" />
+            <PackageSearch className="w-3.5 h-3.5" />
             <span>บ้านหยิบ</span>
-            <span className={`text-xs font-semibold ${activeTab === 'preparation' ? 'text-blue-100' : 'text-thai-gray-500'}`}>
+            <span className={`text-[10px] font-semibold ${activeTab === 'preparation' ? 'text-blue-100' : 'text-thai-gray-500'}`}>
               {preparationCount.toLocaleString()}
             </span>
           </button>
           <button
             onClick={() => setActiveTab('dispatch')}
-            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-thai font-medium transition-all text-sm ${
+            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded font-thai font-medium transition-all text-xs ${
               activeTab === 'dispatch'
-                ? 'bg-green-500 text-white shadow-md'
+                ? 'bg-green-500 text-white shadow-sm'
                 : 'bg-white text-thai-gray-600 hover:bg-green-50 border border-thai-gray-200'
             }`}
           >
-            <CheckCircle2 className="w-4 h-4" />
+            <CheckCircle2 className="w-3.5 h-3.5" />
             <span>จัดสินค้าเสร็จ</span>
-            <span className={`text-xs font-semibold ${activeTab === 'dispatch' ? 'text-green-100' : 'text-thai-gray-500'}`}>
+            <span className={`text-[10px] font-semibold ${activeTab === 'dispatch' ? 'text-green-100' : 'text-thai-gray-500'}`}>
               {dispatchCount.toLocaleString()}
             </span>
           </button>
           <button
             onClick={() => setActiveTab('delivery')}
-            className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-thai font-medium transition-all text-sm ${
+            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded font-thai font-medium transition-all text-xs ${
               activeTab === 'delivery'
-                ? 'bg-purple-500 text-white shadow-md'
+                ? 'bg-purple-500 text-white shadow-sm'
                 : 'bg-white text-thai-gray-600 hover:bg-purple-50 border border-thai-gray-200'
             }`}
           >
-            <Truck className="w-4 h-4" />
+            <Truck className="w-3.5 h-3.5" />
             <span>โหลดสินค้าเสร็จ</span>
-            <span className={`text-xs font-semibold ${activeTab === 'delivery' ? 'text-purple-100' : 'text-thai-gray-500'}`}>
+            <span className={`text-[10px] font-semibold ${activeTab === 'delivery' ? 'text-purple-100' : 'text-thai-gray-500'}`}>
               {deliveryCount.toLocaleString()}
             </span>
           </button>
         </div>
 
-        {/* Filters */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm flex-shrink-0">
-          <div className="flex items-center space-x-3">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
-                <input
-                  type="text"
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  placeholder="ค้นหาจากทุกคอลัมน์: SKU, Lot, Pallet, Location, คลัง, ปริมาณ, วันที่..."
-                  className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm placeholder:text-thai-gray-400"
-                />
-              </div>
-            </div>
-            <div className="flex space-x-2">
-              <select
-                value={selectedWarehouse}
-                onChange={(e) => setSelectedWarehouse(e.target.value)}
-                className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-24"
-              >
-                <option value="all">ทุกคลัง</option>
-                {warehouses.map(warehouse => (
-                  <option key={warehouse.warehouse_id} value={warehouse.warehouse_id}>
-                    {warehouse.warehouse_name}
-                  </option>
-                ))}
-              </select>
-              <label className="flex items-center cursor-pointer text-sm font-thai px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg hover:bg-white/80 transition-all">
-                <input
-                  type="checkbox"
-                  className="mr-2"
-                  checked={showLowStock}
-                  onChange={(e) => setShowLowStock(e.target.checked)}
-                />
-                สต็อกต่ำ
-              </label>
-              <label className="flex items-center cursor-pointer text-sm font-thai px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg hover:bg-white/80 transition-all">
-                <input
-                  type="checkbox"
-                  className="mr-2"
-                  checked={showExpiringSoon}
-                  onChange={(e) => setShowExpiringSoon(e.target.checked)}
-                />
-                ใกล้หมดอายุ
-              </label>
-              <label className="flex items-center cursor-pointer text-sm font-thai px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg hover:bg-white/80 transition-all">
-                <input
-                  type="checkbox"
-                  className="mr-2"
-                  checked={showZeroBalance}
-                  onChange={(e) => setShowZeroBalance(e.target.checked)}
-                />
-                แสดงยอดคงเหลือ 0
-              </label>
-            </div>
-          </div>
-        </div>
-
 
 
         {/* Data Table */}
-        <div className="flex-1 min-h-0">
+        <div className="flex-1 min-h-0 flex flex-col">
           {activeTab === 'dispatch' ? (
             <PreparedDocumentsTable warehouseId={selectedWarehouse === 'all' ? 'WH001' : selectedWarehouse} />
           ) : (
-          <div className="w-full h-[74vh] bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col">
+          <div className="w-full flex-1 bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col overflow-hidden">
             {loading ? (
               <div className="h-full flex flex-col items-center justify-center text-thai-gray-500 gap-2">
                 <Loader2 className="w-6 h-6 animate-spin" />
@@ -630,7 +635,7 @@ const InventoryBalancesPage = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
-                    {filteredData.map((balance, idx) => (
+                    {filteredData.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((balance, idx) => (
                         <tr
                           key={`${balance.balance_id}-${idx}`}
                           className={`hover:bg-blue-50/30 transition-colors duration-150 ${
@@ -912,6 +917,51 @@ const InventoryBalancesPage = () => {
                       ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+            {/* Pagination Bar */}
+            {!loading && !error && filteredData.length > 0 && (
+              <div className="flex-shrink-0 flex items-center justify-between px-3 py-1 border-t border-gray-200 bg-gray-50 rounded-b-lg text-xs">
+                <div className="text-sm text-thai-gray-600 font-thai">
+                  แสดง {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, filteredData.length)} จาก {filteredData.length.toLocaleString()} รายการ
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => setCurrentPage(1)}
+                    disabled={currentPage === 1}
+                    className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="หน้าแรก"
+                  >
+                    <ChevronsLeft className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(currentPage - 1)}
+                    disabled={currentPage === 1}
+                    className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="หน้าก่อนหน้า"
+                  >
+                    <ChevronLeft className="w-4 h-4" />
+                  </button>
+                  <span className="px-3 py-1 text-sm font-thai">
+                    หน้า {currentPage} / {Math.ceil(filteredData.length / pageSize)}
+                  </span>
+                  <button
+                    onClick={() => setCurrentPage(currentPage + 1)}
+                    disabled={currentPage >= Math.ceil(filteredData.length / pageSize)}
+                    className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="หน้าถัดไป"
+                  >
+                    <ChevronRight className="w-4 h-4" />
+                  </button>
+                  <button
+                    onClick={() => setCurrentPage(Math.ceil(filteredData.length / pageSize))}
+                    disabled={currentPage >= Math.ceil(filteredData.length / pageSize)}
+                    className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="หน้าสุดท้าย"
+                  >
+                    <ChevronsRight className="w-4 h-4" />
+                  </button>
+                </div>
               </div>
             )}
           </div>

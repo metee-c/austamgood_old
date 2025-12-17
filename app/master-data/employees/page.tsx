@@ -2,7 +2,6 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  Search,
   Plus,
   Upload,
   Edit,
@@ -12,10 +11,6 @@ import {
   ChevronDown,
   Users,
   AlertCircle,
-  Phone,
-  Mail,
-  Briefcase,
-  Building,
   Loader2,
   AlertTriangle
 } from 'lucide-react';
@@ -28,6 +23,13 @@ import { Employee } from '@/types/employee-schema';
 import AddEmployeeForm from '@/components/forms/AddEmployeeForm';
 import EditEmployeeForm from '@/components/forms/EditEmployeeForm';
 import ImportEmployeeForm from '@/components/forms/ImportEmployeeForm';
+import {
+  PageContainer,
+  PageHeaderWithFilters,
+  SearchInput,
+  FilterSelect,
+  PaginationBar,
+} from '@/components/ui/page-components';
 
 
 const SortableHeader = ({ 
@@ -81,6 +83,8 @@ const EmployeesPage = () => {
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [sortField, setSortField] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 100;
 
   const fetchEmployees = async () => {
     setLoading(true);
@@ -169,123 +173,88 @@ const EmployeesPage = () => {
     { header: 'บทบาท WMS', accessor: 'wms_role', className: 'w-32' },
   ];
 
+  const departmentOptions = [
+    { value: '', label: 'แผนกทั้งหมด' },
+    { value: 'บัญชี', label: 'บัญชี' },
+    { value: 'คลังสินค้า', label: 'คลังสินค้า' },
+    { value: 'ขนส่ง', label: 'ขนส่ง' },
+    { value: 'บริหาร', label: 'บริหาร' },
+    { value: 'IT', label: 'IT' },
+  ];
+
+  const employmentTypeOptions = [
+    { value: '', label: 'ประเภททั้งหมด' },
+    { value: 'permanent', label: 'พนักงานประจำ' },
+    { value: 'contract', label: 'พนักงานสัญญา' },
+    { value: 'temporary', label: 'พนักงานชั่วคราว' },
+  ];
+
+  const wmsRoleOptions = [
+    { value: '', label: 'บทบาททั้งหมด' },
+    { value: 'supervisor', label: 'หัวหน้า' },
+    { value: 'operator', label: 'ผู้ปฏิบัติงาน' },
+    { value: 'picker', label: 'คัดแยกสินค้า' },
+    { value: 'driver', label: 'คนขับ' },
+    { value: 'forklift', label: 'รถยก' },
+    { value: 'other', label: 'อื่นๆ' },
+  ];
+
   return (
-    <div className="h-screen bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
-      <div className="h-full flex flex-col space-y-2 pt-0 px-2 pb-2">
-        {/* Page Header */}
-        <div className="flex items-center justify-between gap-2 pt-1 flex-shrink-0">
-          <h1 className="text-xl font-bold text-thai-gray-900 font-thai m-0 p-0 leading-tight">ข้อมูลพนักงาน</h1>
-          <div className="flex gap-2">
-            <Button variant="outline" icon={Upload} onClick={() => setIsImportModalOpen(true)}>
-              นำเข้าข้อมูล
-            </Button>
-            <Button variant="primary" icon={Plus} onClick={() => setIsAddModalOpen(true)}>
-              เพิ่มพนักงาน
-            </Button>
-          </div>
-        </div>
+    <PageContainer>
+      <PageHeaderWithFilters title="ข้อมูลพนักงาน">
+        <SearchInput
+          value={searchTerm}
+          onChange={setSearchTerm}
+          placeholder="ค้นหาพนักงาน รหัส ชื่อ นามสกุล..."
+        />
+        <FilterSelect
+          value={selectedDepartment}
+          onChange={setSelectedDepartment}
+          options={departmentOptions}
+        />
+        <FilterSelect
+          value={selectedEmploymentType}
+          onChange={setSelectedEmploymentType}
+          options={employmentTypeOptions}
+        />
+        <FilterSelect
+          value={selectedWmsRole}
+          onChange={setSelectedWmsRole}
+          options={wmsRoleOptions}
+        />
+        <Button variant="outline" icon={Upload} onClick={() => setIsImportModalOpen(true)}>
+          นำเข้าข้อมูล
+        </Button>
+        <Button variant="primary" icon={Plus} onClick={() => setIsAddModalOpen(true)}>
+          เพิ่มพนักงาน
+        </Button>
+      </PageHeaderWithFilters>
 
-        {/* Filters */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm flex-shrink-0">
-          <div className="flex items-center space-x-3">
-            <div className="flex-1">
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
-                <input
-                  type="text"
-                  placeholder="ค้นหาพนักงาน รหัส ชื่อ นามสกุล..."
-                  className="
-                    w-full pl-10 pr-4 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                    focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                    text-sm font-thai transition-all duration-300 backdrop-blur-sm
-                    placeholder:text-thai-gray-400
-                  "
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                />
+      {/* Data Table */}
+      <div className="flex-1 min-h-0 bg-white border rounded-lg shadow-sm flex flex-col overflow-hidden">
+        <div className="flex-1 overflow-x-auto overflow-y-auto" style={{ 
+          scrollbarWidth: 'thin',
+          scrollbarColor: '#cbd5e1 #f1f5f9'
+        }}>
+          {loading ? (
+            <div className="h-full flex flex-col items-center justify-center text-thai-gray-500 gap-2 py-12">
+              <Loader2 className="w-6 h-6 animate-spin" />
+              <p className="text-sm font-thai">กำลังโหลดข้อมูล...</p>
+            </div>
+          ) : error ? (
+            <div className="h-full flex flex-col items-center justify-center text-red-500 gap-2 py-12">
+              <AlertCircle className="w-6 h-6" />
+              <p className="text-sm font-thai">{error}</p>
+            </div>
+          ) : sortedEmployees.length === 0 ? (
+            <div className="h-full flex flex-col items-center justify-center text-thai-gray-500 gap-4 py-12">
+              <Users className="w-12 h-12" />
+              <div className="text-center">
+                <p className="text-sm font-medium font-thai">ไม่พบข้อมูลพนักงาน</p>
+                <p className="text-xs text-thai-gray-400 mt-1 font-thai">ลองปรับเปลี่ยนตัวกรองหรือค้นหาใหม่</p>
               </div>
             </div>
-            
-            <div className="flex space-x-2">
-              <select
-                className="
-                  px-3 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                  text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-28
-                "
-                value={selectedDepartment}
-                onChange={(e) => setSelectedDepartment(e.target.value)}
-              >
-                <option value="">แผนกทั้งหมด</option>
-                <option value="บัญชี">บัญชี</option>
-                <option value="คลังสินค้า">คลังสินค้า</option>
-                <option value="ขนส่ง">ขนส่ง</option>
-                <option value="บริหาร">บริหาร</option>
-                <option value="IT">IT</option>
-              </select>
-
-              <select
-                className="
-                  px-3 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                  text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-24
-                "
-                value={selectedEmploymentType}
-                onChange={(e) => setSelectedEmploymentType(e.target.value)}
-              >
-                <option value="">ประเภททั้งหมด</option>
-                <option value="permanent">พนักงานประจำ</option>
-                <option value="contract">พนักงานสัญญา</option>
-                <option value="temporary">พนักงานชั่วคราว</option>
-              </select>
-
-              <select
-                className="
-                  px-3 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                  text-sm font-thai transition-all duration-300 backdrop-blur-sm min-w-20
-                "
-                value={selectedWmsRole}
-                onChange={(e) => setSelectedWmsRole(e.target.value)}
-              >
-                <option value="">บทบาททั้งหมด</option>
-                <option value="supervisor">หัวหน้า</option>
-                <option value="operator">ผู้ปฏิบัติงาน</option>
-                <option value="picker">คัดแยกสินค้า</option>
-                <option value="driver">คนขับ</option>
-                <option value="forklift">รถยก</option>
-                <option value="other">อื่นๆ</option>
-              </select>
-            </div>
-          </div>
-        </div>
-
-        {/* Data Table */}
-        <div className="flex-1 min-h-0">
-          <div className="w-full h-[74vh] bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col">
-            {loading ? (
-              <div className="h-full flex flex-col items-center justify-center text-thai-gray-500 gap-2">
-                <Loader2 className="w-6 h-6 animate-spin" />
-                <p className="text-sm font-thai">กำลังโหลดข้อมูล...</p>
-              </div>
-            ) : error ? (
-              <div className="h-full flex flex-col items-center justify-center text-red-500 gap-2">
-                <AlertCircle className="w-6 h-6" />
-                <p className="text-sm font-thai">{error}</p>
-              </div>
-            ) : sortedEmployees.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-thai-gray-500 gap-4">
-                <Users className="w-12 h-12" />
-                <div className="text-center">
-                  <p className="text-sm font-medium font-thai">ไม่พบข้อมูลพนักงาน</p>
-                  <p className="text-xs text-thai-gray-400 mt-1 font-thai">ลองปรับเปลี่ยนตัวกรองหรือค้นหาใหม่</p>
-                </div>
-              </div>
-            ) : (
-              <div className="flex-1 overflow-x-auto overflow-y-auto" style={{ 
-                scrollbarWidth: 'thin',
-                scrollbarColor: '#cbd5e1 #f1f5f9'
-              }}>
+          ) : (
                 <table className="min-w-full border-collapse text-sm">
                   <thead className="sticky top-0 z-10 bg-gray-100">
                     <tr>
@@ -316,7 +285,7 @@ const EmployeesPage = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
-                    {sortedEmployees.map((employee) => (
+                    {sortedEmployees.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((employee) => (
                       <tr key={employee.employee_id?.toString()} className="hover:bg-blue-50/30 border-b border-gray-100">
                         <td className="px-2 py-1 border-r border-gray-100">
                           <span className="font-mono text-primary-600 font-semibold">{employee.employee_code}</span>
@@ -409,36 +378,40 @@ const EmployeesPage = () => {
                     ))}
                   </tbody>
                 </table>
-              </div>
-            )}
-          </div>
+          )}
         </div>
-
-        <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="เพิ่มพนักงานใหม่" size="2xl">
-          <AddEmployeeForm 
-            onCancel={() => setIsAddModalOpen(false)} 
-            onSuccess={() => { setIsAddModalOpen(false); fetchEmployees(); }} 
-          />
-        </Modal>
-
-        {selectedEmployee && (
-          <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="แก้ไขข้อมูลพนักงาน" size="2xl">
-            <EditEmployeeForm 
-              employee={selectedEmployee} 
-              onCancel={() => setIsEditModalOpen(false)} 
-              onSuccess={() => { setIsEditModalOpen(false); fetchEmployees(); }} 
-            />
-          </Modal>
-        )}
-
-        <Modal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} title="นำเข้าข้อมูลพนักงาน" size="lg">
-          <ImportEmployeeForm 
-            onCancel={() => setIsImportModalOpen(false)} 
-            onSuccess={() => { setIsImportModalOpen(false); fetchEmployees(); }} 
-          />
-        </Modal>
+        <PaginationBar
+          currentPage={currentPage}
+          totalItems={sortedEmployees.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+        />
       </div>
-    </div>
+
+      <Modal isOpen={isAddModalOpen} onClose={() => setIsAddModalOpen(false)} title="เพิ่มพนักงานใหม่" size="2xl">
+        <AddEmployeeForm 
+          onCancel={() => setIsAddModalOpen(false)} 
+          onSuccess={() => { setIsAddModalOpen(false); fetchEmployees(); }} 
+        />
+      </Modal>
+
+      {selectedEmployee && (
+        <Modal isOpen={isEditModalOpen} onClose={() => setIsEditModalOpen(false)} title="แก้ไขข้อมูลพนักงาน" size="2xl">
+          <EditEmployeeForm 
+            employee={selectedEmployee} 
+            onCancel={() => setIsEditModalOpen(false)} 
+            onSuccess={() => { setIsEditModalOpen(false); fetchEmployees(); }} 
+          />
+        </Modal>
+      )}
+
+      <Modal isOpen={isImportModalOpen} onClose={() => setIsImportModalOpen(false)} title="นำเข้าข้อมูลพนักงาน" size="lg">
+        <ImportEmployeeForm 
+          onCancel={() => setIsImportModalOpen(false)} 
+          onSuccess={() => { setIsImportModalOpen(false); fetchEmployees(); }} 
+        />
+      </Modal>
+    </PageContainer>
   );
 };
 

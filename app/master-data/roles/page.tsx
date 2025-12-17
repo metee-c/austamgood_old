@@ -27,6 +27,7 @@ import Badge from '@/components/ui/Badge';
 import { SystemRoleWithPermissions, PermissionModule } from '@/types/user-management-schema';
 import EditRoleModal from '@/components/roles/EditRoleModal';
 import ViewPermissionsModal from '@/components/roles/ViewPermissionsModal';
+import { PaginationBar } from '@/components/ui/page-components';
 
 // Types for sorting
 interface SortConfig {
@@ -203,6 +204,8 @@ const RolesPage = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPermissionsModal, setShowPermissionsModal] = useState(false);
   const [isModulesExpanded, setIsModulesExpanded] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 100;
 
   useEffect(() => {
     fetchData();
@@ -382,8 +385,14 @@ const RolesPage = () => {
             </h2>
           </div>
           <div className="overflow-x-auto">
-            {renderTable(roles, <RolesTable data={roles} onView={handleViewPermissions} onEdit={handleEditRole} onDelete={handleDeleteRole} />)}
+            {renderTable(roles, <RolesTable data={roles.slice((currentPage - 1) * pageSize, currentPage * pageSize)} onView={handleViewPermissions} onEdit={handleEditRole} onDelete={handleDeleteRole} />)}
           </div>
+          <PaginationBar
+            currentPage={currentPage}
+            totalItems={roles.length}
+            pageSize={pageSize}
+            onPageChange={setCurrentPage}
+          />
         </div>
 
         {/* Permission Modules Overview */}

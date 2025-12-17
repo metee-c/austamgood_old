@@ -9,6 +9,7 @@ export interface User {
   full_name: string;
   role_id: number;
   role_name: string;
+  employee_id?: number | null;
   permissions?: string[]; // Array of permission keys (module_key)
 }
 

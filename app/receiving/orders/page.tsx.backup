@@ -4,30 +4,37 @@ import {
   ShoppingCart,
   Plus,
   Search,
+  Filter,
+  Package,
+  User,
+  Calendar,
   Edit,
+  Eye,
+  Truck,
+  CheckCircle,
+  Clock,
   AlertTriangle,
+  XCircle,
   FileText,
   MapPin,
   MapPinOff,
   ChevronUp,
   ChevronDown,
   ChevronsUpDown,
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
   RotateCcw,
   Trash2
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
+import Badge from '@/components/ui/Badge';
+import Card from '@/components/ui/Card';
+import StatsCard from '@/components/ui/StatsCard';
 import Table from '@/components/ui/Table';
-import { PageContainer, PageHeaderWithFilters, SearchInput, FilterSelect } from '@/components/ui/page-components';
 import ImportOrderModal from '@/components/orders/ImportOrderModal';
 import EditOrderModal from '@/components/orders/EditOrderModal';
 import OrderLocationModal from '@/components/orders/OrderLocationModal';
 import AddCoordinatesModal from '@/components/orders/AddCoordinatesModal';
-import { OrderType, OrderStatus, OrderPriority } from '@/hooks/useOrders';
+import { useOrders, useOrderDashboard, OrderType, OrderStatus, OrderPriority, OrderFilters } from '@/hooks/useOrders';
 import useSWR from 'swr';
 
 // Re-export types for local use
@@ -71,15 +78,6 @@ const OrdersPage = () => {
   const [showAddCoordinatesModal, setShowAddCoordinatesModal] = useState(false);
   const [selectedOrderForAddCoords, setSelectedOrderForAddCoords] = useState<any>(null);
   const [warehouse, setWarehouse] = useState<any>(null);
-
-  // Pagination state
-  const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 100;
-
-  // Reset page when filters change
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [searchTerm, selectedType, selectedLocationFilter, selectedStatus, startDate, endDate]);
 
   // Fetcher function for SWR
   const fetcher = async (url: string) => {
@@ -574,89 +572,116 @@ const OrdersPage = () => {
     refetch(); // Refresh the list
   };
 
-  // Filter options
-  const typeOptions = [
-    { value: 'all', label: 'ประเภททั้งหมด' },
-    { value: 'route_planning', label: 'จัดเส้นทาง' },
-    { value: 'express', label: 'ด่วนพิเศษ' },
-    { value: 'special', label: 'ออเดอร์พิเศษ (สินค้าของแถม)' },
-  ];
-
-  const locationOptions = [
-    { value: 'all', label: 'โลเคชั่นทั้งหมด' },
-    { value: 'has_location', label: 'มีโลเคชั่น' },
-    { value: 'no_location', label: 'ไม่มีโลเคชั่น' },
-  ];
-
-  const statusOptions = [
-    { value: 'all', label: 'ทุกสถานะ' },
-    { value: 'draft', label: 'ร่าง' },
-    { value: 'confirmed', label: 'ยืนยันแล้ว' },
-    { value: 'in_picking', label: 'กำลังหยิบ' },
-    { value: 'picked', label: 'หยิบเสร็จแล้ว' },
-    { value: 'loaded', label: 'ขึ้นรถแล้ว' },
-    { value: 'in_transit', label: 'กำลังจัดส่ง' },
-    { value: 'delivered', label: 'ส่งถึงแล้ว' },
-    { value: 'cancelled', label: 'ยกเลิก' },
-  ];
-
   return (
-    <PageContainer>
-      {/* Header with Filters */}
-      <PageHeaderWithFilters title="คำสั่งซื้อ / ใบสั่งจ่าย (Orders)">
-        <SearchInput
-          value={searchTerm}
-          onChange={setSearchTerm}
-          placeholder="ค้นหาเลขที่คำสั่งซื้อ, ลูกค้า..."
-        />
-        <FilterSelect
-          value={selectedType}
-          onChange={(v) => setSelectedType(v as OrderType | 'all')}
-          options={typeOptions}
-        />
-        <FilterSelect
-          value={selectedLocationFilter}
-          onChange={(v) => setSelectedLocationFilter(v as 'all' | 'has_location' | 'no_location')}
-          options={locationOptions}
-        />
-        <FilterSelect
-          value={selectedStatus}
-          onChange={(v) => setSelectedStatus(v as OrderStatus | 'all')}
-          options={statusOptions}
-        />
-        <input
-          type="date"
-          value={startDate}
-          onChange={(e) => setStartDate(e.target.value)}
-          className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50"
-        />
-        <span className="text-thai-gray-400 text-xs">-</span>
-        <input
-          type="date"
-          value={endDate}
-          onChange={(e) => setEndDate(e.target.value)}
-          className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50"
-        />
-        <Button
-          variant="primary"
-          size="sm"
-          icon={Plus}
-          onClick={() => setShowImportModal(true)}
-          className="text-xs py-1 px-2"
-        >
-          สร้างคำสั่งซื้อใหม่
-        </Button>
-      </PageHeaderWithFilters>
+    <div className="h-screen overflow-hidden flex flex-col bg-gradient-to-br from-thai-gray-25 to-white">
+      {/* Header */}
+      <div className="pt-0 px-2 pb-2 space-y-2">
+        {/* Title */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="text-xl font-bold text-thai-gray-900 font-thai">
+              คำสั่งซื้อ / ใบสั่งจ่าย (Orders)
+            </h1>
+          </div>
+          <Button
+            variant="primary"
+            size="md"
+            icon={Plus}
+            onClick={() => setShowImportModal(true)}
+            className="bg-blue-500 hover:bg-blue-600 shadow-lg"
+          >
+            สร้างคำสั่งซื้อใหม่
+          </Button>
+        </div>
+
+        {/* Filters */}
+        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm">
+          <div className="flex items-center space-x-3">
+            {/* Search */}
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
+              <input
+                type="text"
+                placeholder="ค้นหาเลขที่คำสั่งซื้อ, ลูกค้า..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai
+                         focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
+                         transition-all duration-300"
+              />
+            </div>
+
+            {/* Order Type Filter */}
+            <select
+              value={selectedType}
+              onChange={(e) => setSelectedType(e.target.value as OrderType | 'all')}
+              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-32
+                       focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50"
+            >
+              <option value="all">ประเภททั้งหมด</option>
+              <option value="route_planning" className="text-gray-900">จัดเส้นทาง</option>
+              <option value="express" className="text-gray-900">ด่วนพิเศษ</option>
+              <option value="special" className="text-gray-900">ออเดอร์พิเศษ (สินค้าของแถม)</option>
+            </select>
+
+            {/* Location Filter */}
+            <select
+              value={selectedLocationFilter}
+              onChange={(e) => setSelectedLocationFilter(e.target.value as 'all' | 'has_location' | 'no_location')}
+              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-32
+                       focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50"
+            >
+              <option value="all">การดำเนินการทั้งหมด</option>
+              <option value="has_location" className="text-gray-900">มีโลเคชั่น</option>
+              <option value="no_location" className="text-gray-900">ไม่มีโลเคชั่น</option>
+            </select>
+
+            {/* Status Filter */}
+            <select
+              value={selectedStatus}
+              onChange={(e) => setSelectedStatus(e.target.value as OrderStatus | 'all')}
+              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-24
+                       focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50"
+            >
+              <option value="all">ทุกสถานะ</option>
+              <option value="draft" className="text-gray-900">ร่าง</option>
+              <option value="confirmed" className="text-gray-900">ยืนยันแล้ว</option>
+              <option value="in_picking" className="text-gray-900">กำลังหยิบ</option>
+              <option value="picked" className="text-gray-900">หยิบเสร็จแล้ว</option>
+              <option value="loaded" className="text-gray-900">ขึ้นรถแล้ว</option>
+              <option value="in_transit" className="text-gray-900">กำลังจัดส่ง</option>
+              <option value="delivered" className="text-gray-900">ส่งถึงแล้ว</option>
+              <option value="cancelled" className="text-gray-900">ยกเลิก</option>
+            </select>
+
+            {/* Date Range */}
+            <input
+              type="date"
+              value={startDate}
+              onChange={(e) => setStartDate(e.target.value)}
+              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-28
+                       focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+            />
+            <span className="text-thai-gray-400 text-sm">-</span>
+            <input
+              type="date"
+              value={endDate}
+              onChange={(e) => setEndDate(e.target.value)}
+              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-28
+                       focus:outline-none focus:ring-2 focus:ring-primary-500/50"
+            />
+          </div>
+        </div>
+      </div>
 
       {/* Table Container */}
-      <div className="flex-1 min-h-0 bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col overflow-hidden">
+      <div className="h-[74vh] bg-white border border-gray-200 rounded-lg shadow-sm overflow-auto">
         {ordersLoading ? (
           <div className="flex flex-col items-center justify-center h-full text-thai-gray-400">
             <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
             <p className="text-sm font-thai">กำลังโหลดข้อมูล...</p>
           </div>
         ) : (
-          <div className="flex-1 overflow-auto">
           <Table>
             <Table.Header>
               <tr>
@@ -719,7 +744,7 @@ const OrdersPage = () => {
                   </Table.Cell>
                 </tr>
               ) : (
-                  sortedOrders.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((order: any) => (
+                  sortedOrders.map((order: any) => (
                     <React.Fragment key={order.order_id}>
                       {/* Main Row */}
                       <Table.Row className={
@@ -1060,55 +1085,9 @@ const OrdersPage = () => {
                 )}
             </Table.Body>
           </Table>
-          </div>
         )}
 
-        {/* Pagination Bar - Always at bottom */}
-        <div className="flex-shrink-0 flex items-center justify-between px-3 py-1 border-t border-gray-200 bg-gray-50 rounded-b-lg text-xs">
-          <div className="text-sm text-thai-gray-600 font-thai">
-            {ordersLoading ? 'กำลังโหลด...' : 
-             ordersError ? 'เกิดข้อผิดพลาด' :
-             sortedOrders.length === 0 ? 'ไม่พบข้อมูล' :
-             `แสดง ${((currentPage - 1) * pageSize) + 1} - ${Math.min(currentPage * pageSize, sortedOrders.length)} จาก ${sortedOrders.length.toLocaleString()} รายการ`}
-          </div>
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setCurrentPage(1)}
-              disabled={currentPage === 1 || sortedOrders.length === 0}
-              className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-              title="หน้าแรก"
-            >
-              <ChevronsLeft className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setCurrentPage(currentPage - 1)}
-              disabled={currentPage === 1 || sortedOrders.length === 0}
-              className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-              title="หน้าก่อนหน้า"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="px-3 py-1 text-sm font-thai">
-              หน้า {sortedOrders.length === 0 ? 0 : currentPage} / {Math.max(1, Math.ceil(sortedOrders.length / pageSize))}
-            </span>
-            <button
-              onClick={() => setCurrentPage(currentPage + 1)}
-              disabled={currentPage >= Math.ceil(sortedOrders.length / pageSize) || sortedOrders.length === 0}
-              className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-              title="หน้าถัดไป"
-            >
-              <ChevronRight className="w-4 h-4" />
-            </button>
-            <button
-              onClick={() => setCurrentPage(Math.ceil(sortedOrders.length / pageSize))}
-              disabled={currentPage >= Math.ceil(sortedOrders.length / pageSize) || sortedOrders.length === 0}
-              className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-              title="หน้าสุดท้าย"
-            >
-              <ChevronsRight className="w-4 h-4" />
-            </button>
-          </div>
-        </div>
+
       </div>
 
       {/* Import Modal */}
@@ -1224,7 +1203,7 @@ const OrdersPage = () => {
           </div>
         </div>
       )}
-    </PageContainer>
+    </div>
   );
 };
 

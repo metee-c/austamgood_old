@@ -2,7 +2,6 @@
 import React, { useState, useMemo } from 'react';
 import {
   ClipboardList,
-  Search,
   Calendar,
   Truck,
   Package,
@@ -21,6 +20,13 @@ import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Table from '@/components/ui/Table';
 import Modal from '@/components/ui/Modal';
+import {
+  PageContainer,
+  PageHeaderWithFilters,
+  SearchInput,
+  FilterSelect,
+  PaginationBar
+} from '@/components/ui/page-components';
 import useSWR from 'swr';
 import Link from 'next/link';
 
@@ -61,6 +67,8 @@ const PicklistsPage = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [editingStatusPicklistId, setEditingStatusPicklistId] = useState<number | null>(null);
   const [selectedPicklists, setSelectedPicklists] = useState<number[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 100;
 
   // Fetcher function
   const fetcher = async (url: string) => {
@@ -209,79 +217,49 @@ const PicklistsPage = () => {
   };
 
   return (
-    <div className="h-screen overflow-hidden flex flex-col bg-gradient-to-br from-thai-gray-25 to-white">
-      {/* Header */}
-      <div className="pt-0 px-2 pb-2 space-y-2">
-        {/* Title */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-thai-gray-900 font-thai">
-              รายการหยิบสินค้า (Picklists)
-            </h1>
-          </div>
-          <Button
-            onClick={() => setShowCreateModal(true)}
-            variant="primary"
-            className="flex items-center space-x-2"
-          >
-            <Plus className="w-4 h-4" />
-            <span>สร้าง Picklist จากแผนรถ</span>
-          </Button>
-        </div>
+    <PageContainer>
+      <PageHeaderWithFilters title="รายการหยิบสินค้า (Picklists)">
+        <SearchInput
+          value={searchTerm}
+          onChange={setSearchTerm}
+          placeholder="ค้นหาเลขที่รายการหยิบ..."
+        />
+        <FilterSelect
+          value={selectedStatus}
+          onChange={(v) => setSelectedStatus(v as PicklistStatus | 'all')}
+          options={[
+            { value: 'all', label: 'ทุกสถานะ' },
+            { value: 'pending', label: 'รอดำเนินการ' },
+            { value: 'assigned', label: 'มอบหมายแล้ว' },
+            { value: 'completed', label: 'เสร็จสิ้น' },
+            { value: 'cancelled', label: 'ยกเลิก' }
+          ]}
+        />
+        <input
+          type="date"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs"
+        />
+        <span className="text-thai-gray-400 text-xs">-</span>
+        <input
+          type="date"
+          value={endDate}
+          onChange={(e) => setEndDate(e.target.value)}
+          className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs"
+        />
+        <Button
+          onClick={() => setShowCreateModal(true)}
+          variant="primary"
+          size="sm"
+          className="text-xs py-1 px-2"
+        >
+          <Plus className="w-4 h-4" />
+          สร้าง Picklist จากแผนรถ
+        </Button>
+      </PageHeaderWithFilters>
 
-        {/* Filters */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm">
-          <div className="flex items-center space-x-3">
-            {/* Search */}
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
-              <input
-                type="text"
-                placeholder="ค้นหาเลขที่รายการหยิบ..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai
-                         focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                         transition-all duration-300"
-              />
-            </div>
-
-            {/* Status Filter */}
-            <select
-              value={selectedStatus}
-              onChange={(e) => setSelectedStatus(e.target.value as PicklistStatus | 'all')}
-              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-32
-                       focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50"
-            >
-              <option value="all">ทุกสถานะ</option>
-              <option value="pending" className="text-gray-900">รอดำเนินการ</option>
-              <option value="assigned" className="text-gray-900">มอบหมายแล้ว</option>
-              <option value="completed" className="text-gray-900">เสร็จสิ้น</option>
-              <option value="cancelled" className="text-gray-900">ยกเลิก</option>
-            </select>
-
-            {/* Date Range */}
-            <input
-              type="date"
-              value={startDate}
-              onChange={(e) => setStartDate(e.target.value)}
-              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-28
-                       focus:outline-none focus:ring-2 focus:ring-primary-500/50"
-            />
-            <span className="text-thai-gray-400 text-sm">-</span>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(e) => setEndDate(e.target.value)}
-              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-28
-                       focus:outline-none focus:ring-2 focus:ring-primary-500/50"
-            />
-          </div>
-        </div>
-      </div>
-
-      {/* Table Container */}
-      <div className="h-[74vh] bg-white border border-gray-200 rounded-lg shadow-sm overflow-auto">
+      <div className="flex-1 min-h-0 bg-white border border-gray-200 rounded-lg shadow-sm overflow-auto thin-scrollbar">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center h-full text-thai-gray-400">
             <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin mb-2"></div>
@@ -339,7 +317,7 @@ const PicklistsPage = () => {
                   </Table.Cell>
                 </tr>
               ) : (
-                sortedPicklists.map((picklist: Picklist) => (
+                sortedPicklists.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((picklist: Picklist) => (
                   <Table.Row key={picklist.id}>
                     <Table.Cell>
                       <span className="font-mono text-blue-600 font-semibold">{picklist.picklist_code}</span>
@@ -470,16 +448,12 @@ const PicklistsPage = () => {
             </Table.Body>
           </Table>
         )}
-
-        {!isLoading && !error && sortedPicklists.length > 0 && (
-          <div className="border-t border-gray-200 px-4 py-2 bg-gray-50">
-            <div className="flex items-center justify-between text-xs text-thai-gray-600 font-thai">
-              <div>
-                แสดงทั้งหมด {sortedPicklists.length} รายการ
-              </div>
-            </div>
-          </div>
-        )}
+        <PaginationBar
+          currentPage={currentPage}
+          totalItems={sortedPicklists.length}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+        />
       </div>
 
       {/* Create Picklist Modal */}
@@ -733,7 +707,7 @@ const PicklistsPage = () => {
           </div>
         </Modal>
       )}
-    </div>
+    </PageContainer>
   );
 };
 

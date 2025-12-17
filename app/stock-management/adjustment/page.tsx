@@ -3,17 +3,13 @@
 import React, { useState } from 'react';
 import {
   Plus,
-  Search,
   FileText,
-  CheckCircle,
-  Clock,
   Eye,
   Edit,
   AlertCircle,
 } from 'lucide-react';
-import { PermissionGuard } from '@/components/auth/PermissionGuard';
+import { PageContainer, PageHeaderWithFilters, SearchInput, FilterSelect, PaginationBar } from '@/components/ui/page-components';
 import Button from '@/components/ui/Button';
-import Badge from '@/components/ui/Badge';
 import Table from '@/components/ui/Table';
 import { useStockAdjustment } from '@/hooks/useStockAdjustment';
 import {
@@ -35,6 +31,8 @@ export default function StockAdjustmentPage() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingAdjustment, setEditingAdjustment] = useState<AdjustmentRecord | null>(null);
   const [viewingAdjustment, setViewingAdjustment] = useState<AdjustmentRecord | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const pageSize = 100;
 
   // Build filters
   const filters = {
@@ -58,135 +56,118 @@ export default function StockAdjustmentPage() {
     setViewingAdjustment(null);
   };
 
+  // Status options for FilterSelect
+  const statusOptions = [
+    { value: 'all', label: 'ทุกสถานะ' },
+    { value: 'draft', label: 'แบบร่าง' },
+    { value: 'pending_approval', label: 'รออนุมัติ' },
+    { value: 'approved', label: 'อนุมัติแล้ว' },
+    { value: 'rejected', label: 'ไม่อนุมัติ' },
+    { value: 'completed', label: 'เสร็จสิ้น' },
+    { value: 'cancelled', label: 'ยกเลิก' },
+  ];
+
+  // Type options for FilterSelect
+  const typeOptions = [
+    { value: 'all', label: 'ทุกประเภท' },
+    { value: 'increase', label: 'เพิ่มสต็อก' },
+    { value: 'decrease', label: 'ลดสต็อก' },
+  ];
+
   return (
-    <div className="h-screen overflow-hidden flex flex-col bg-gradient-to-br from-thai-gray-25 to-white">
-      {/* Header */}
-      <div className="pt-0 px-2 pb-2 space-y-2">
-        {/* Title */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-xl font-bold text-thai-gray-900 font-thai">
-              ปรับสต็อก (Stock Adjustment)
-            </h1>
-            <p className="text-xs text-thai-gray-600 font-thai mt-0.5">
-              จัดการการปรับสต็อกเพิ่ม/ลด ระดับ Location และ Pallet
-            </p>
-          </div>
-          <Button
-            variant="primary"
-            size="md"
-            icon={Plus}
-            onClick={() => setShowCreateModal(true)}
-            className="bg-blue-500 hover:bg-blue-600 shadow-lg"
-          >
-            สร้างใบปรับสต็อก
-          </Button>
-        </div>
-
-        {/* Filters */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm">
-          <div className="flex items-center space-x-3">
-            {/* Search */}
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-thai-gray-400" />
-              <input
-                type="text"
-                placeholder="ค้นหาเลขที่เอกสาร, Reference No..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai
-                         focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80
-                         transition-all duration-300"
-              />
-            </div>
-
-            {/* Status Filter */}
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value as AdjustmentStatus | 'all')}
-              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-32
-                       focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50"
-            >
-              <option value="all">ทุกสถานะ</option>
-              <option value="draft" className="text-gray-900">แบบร่าง</option>
-              <option value="pending_approval" className="text-gray-900">รออนุมัติ</option>
-              <option value="approved" className="text-gray-900">อนุมัติแล้ว</option>
-              <option value="rejected" className="text-gray-900">ไม่อนุมัติ</option>
-              <option value="completed" className="text-gray-900">เสร็จสิ้น</option>
-              <option value="cancelled" className="text-gray-900">ยกเลิก</option>
-            </select>
-
-            {/* Type Filter */}
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value as AdjustmentType | 'all')}
-              className="px-3 py-1.5 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg text-sm font-thai min-w-32
-                       focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50"
-            >
-              <option value="all">ทุกประเภท</option>
-              <option value="increase" className="text-gray-900">เพิ่มสต็อก</option>
-              <option value="decrease" className="text-gray-900">ลดสต็อก</option>
-            </select>
-          </div>
-        </div>
-      </div>
+    <PageContainer>
+      {/* Header + Filters */}
+      <PageHeaderWithFilters title="ปรับสต็อก (Stock Adjustment)">
+        <SearchInput
+          value={searchTerm}
+          onChange={setSearchTerm}
+          placeholder="ค้นหาเลขที่เอกสาร, Reference No..."
+        />
+        <FilterSelect
+          value={statusFilter}
+          onChange={(value) => setStatusFilter(value as AdjustmentStatus | 'all')}
+          options={statusOptions}
+        />
+        <FilterSelect
+          value={typeFilter}
+          onChange={(value) => setTypeFilter(value as AdjustmentType | 'all')}
+          options={typeOptions}
+        />
+        <Button
+          variant="primary"
+          size="sm"
+          icon={Plus}
+          onClick={() => setShowCreateModal(true)}
+          className="text-xs py-1 px-3 bg-blue-500 hover:bg-blue-600 shadow-lg"
+        >
+          สร้างใบปรับสต็อก
+        </Button>
+      </PageHeaderWithFilters>
 
       {/* Table Container */}
-      <div className="h-[74vh] bg-white border border-gray-200 rounded-lg shadow-sm overflow-auto">
+      <div className="flex-1 min-h-0 bg-white border rounded-lg shadow-sm flex flex-col overflow-hidden">
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center h-full text-thai-gray-400">
+          <div className="flex flex-col items-center justify-center flex-1 text-thai-gray-400">
             <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
             <p className="text-sm font-thai">กำลังโหลดข้อมูล...</p>
           </div>
         ) : error ? (
-          <div className="flex flex-col items-center justify-center h-full text-red-500">
+          <div className="flex flex-col items-center justify-center flex-1 text-red-500">
             <AlertCircle className="w-12 h-12 mb-2" />
             <p className="text-sm font-thai">เกิดข้อผิดพลาด: {error}</p>
           </div>
         ) : (
-          <Table>
-            <Table.Header>
-              <tr>
-                <Table.Head>เลขที่เอกสาร</Table.Head>
-                <Table.Head width="100px">ประเภท</Table.Head>
-                <Table.Head>คลัง</Table.Head>
-                <Table.Head>เหตุผล</Table.Head>
-                <Table.Head>หมายเหตุ</Table.Head>
-                <Table.Head>วันที่สร้าง</Table.Head>
-                <Table.Head>เวลา</Table.Head>
-                <Table.Head>ผู้สร้าง</Table.Head>
-                <Table.Head>ผู้อนุมัติ</Table.Head>
-                <Table.Head>วันที่อนุมัติ</Table.Head>
-                <Table.Head width="100px">สถานะ</Table.Head>
-                <Table.Head width="80px">จัดการ</Table.Head>
-              </tr>
-            </Table.Header>
-            <Table.Body>
-              {adjustments && adjustments.length > 0 ? (
-                adjustments.map((adjustment) => (
-                  <AdjustmentRow
-                    key={adjustment.adjustment_id}
-                    adjustment={adjustment}
-                    onView={handleView}
-                    onEdit={handleEdit}
-                  />
-                ))
-              ) : (
+          <div className="flex-1 overflow-auto">
+            <Table>
+              <Table.Header>
                 <tr>
-                  <Table.Cell colSpan={12} className="px-4 py-8 text-center">
-                    <div className="flex flex-col items-center justify-center text-thai-gray-400">
-                      <FileText className="w-12 h-12 mb-2" />
-                      <p className="text-sm font-thai">ไม่พบข้อมูลการปรับสต็อก</p>
-                      <p className="text-xs text-thai-gray-400 mt-1 font-thai">
-                        คลิก "สร้างใบปรับสต็อก" เพื่อเริ่มต้น
-                      </p>
-                    </div>
-                  </Table.Cell>
+                  <Table.Head>เลขที่เอกสาร</Table.Head>
+                  <Table.Head width="100px">ประเภท</Table.Head>
+                  <Table.Head>คลัง</Table.Head>
+                  <Table.Head>เหตุผล</Table.Head>
+                  <Table.Head>หมายเหตุ</Table.Head>
+                  <Table.Head>วันที่สร้าง</Table.Head>
+                  <Table.Head>เวลา</Table.Head>
+                  <Table.Head>ผู้สร้าง</Table.Head>
+                  <Table.Head>ผู้อนุมัติ</Table.Head>
+                  <Table.Head>วันที่อนุมัติ</Table.Head>
+                  <Table.Head width="100px">สถานะ</Table.Head>
+                  <Table.Head width="80px">จัดการ</Table.Head>
                 </tr>
-              )}
-            </Table.Body>
-          </Table>
+              </Table.Header>
+              <Table.Body>
+                {adjustments && adjustments.length > 0 ? (
+                  adjustments.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((adjustment) => (
+                    <AdjustmentRow
+                      key={adjustment.adjustment_id}
+                      adjustment={adjustment}
+                      onView={handleView}
+                      onEdit={handleEdit}
+                    />
+                  ))
+                ) : (
+                  <tr>
+                    <Table.Cell colSpan={12} className="px-4 py-8 text-center">
+                      <div className="flex flex-col items-center justify-center text-thai-gray-400">
+                        <FileText className="w-12 h-12 mb-2" />
+                        <p className="text-sm font-thai">ไม่พบข้อมูลการปรับสต็อก</p>
+                        <p className="text-xs text-thai-gray-400 mt-1 font-thai">
+                          คลิก "สร้างใบปรับสต็อก" เพื่อเริ่มต้น
+                        </p>
+                      </div>
+                    </Table.Cell>
+                  </tr>
+                )}
+              </Table.Body>
+            </Table>
+          </div>
         )}
+        <PaginationBar
+          currentPage={currentPage}
+          totalItems={adjustments?.length || 0}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+        />
       </div>
 
       {/* Create/Edit Modal */}
@@ -210,7 +191,7 @@ export default function StockAdjustmentPage() {
           onRefresh={handleSuccess}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }
 
@@ -422,40 +403,4 @@ function AdjustmentRow({
   );
 }
 
-// Stats Card Component
-function StatCard({
-  label,
-  value,
-  color,
-  icon,
-}: {
-  label: string;
-  value: number;
-  color: string;
-  icon: React.ReactNode;
-}) {
-  const colorClasses = {
-    gray: 'bg-gray-100 text-gray-600',
-    yellow: 'bg-yellow-100 text-yellow-600',
-    green: 'bg-green-100 text-green-600',
-    blue: 'bg-blue-100 text-blue-600',
-  };
 
-  return (
-    <div className="bg-white rounded-xl shadow-md p-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <p className="text-thai-gray-600 font-thai text-sm mb-1">{label}</p>
-          <p className="text-3xl font-bold text-thai-gray-900 font-thai">{value}</p>
-        </div>
-        <div
-          className={`w-12 h-12 rounded-full flex items-center justify-center ${
-            colorClasses[color as keyof typeof colorClasses]
-          }`}
-        >
-          {React.cloneElement(icon as React.ReactElement<any>, { className: 'w-6 h-6' })}
-        </div>
-      </div>
-    </div>
-  );
-}
