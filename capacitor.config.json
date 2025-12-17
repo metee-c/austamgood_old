@@ -1,0 +1,9 @@
+{
+  "appId": "com.austamgood.wms",
+  "appName": "AustamGood WMS",
+  "webDir": "out",
+  "server": {
+    "url": "https://your-app.vercel.app",
+    "cleartext": true
+  }
+}

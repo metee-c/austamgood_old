@@ -2,10 +2,25 @@
   "name": "AustamGood WMS",
   "short_name": "WMS",
   "description": "ระบบจัดการคลังสินค้าสำหรับธุรกิจขนาดกลางและขนาดใหญ่",
-  "start_url": "/",
+  "start_url": "/mobile",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#ffffff",
   "theme_color": "#0099FF",
   "orientation": "portrait",
-  "icons": []
+  "categories": ["business", "productivity"],
+  "icons": [
+    {
+      "src": "/images/austam-logo.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/images/austam-logo.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
 }
