@@ -6,7 +6,7 @@ const config: CapacitorConfig = {
   webDir: 'out',
   server: {
     // ใส่ URL Vercel ของคุณที่นี่
-    url: 'https://your-app.vercel.app',
+    url: 'https://austamgood-wms.vercel.app',
     cleartext: true
   }
 };
