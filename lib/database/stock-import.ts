@@ -23,6 +23,49 @@ import type {
 
 export class StockImportService {
   /**
+   * Helper: ดึงข้อมูลทั้งหมดจาก table โดยใช้ pagination (เพื่อหลีกเลี่ยง 1000 row limit)
+   */
+  private async fetchAllRecords<T>(
+    supabase: any,
+    tableName: string,
+    filters: { column: string; value: any }[],
+    selectColumns: string = '*'
+  ): Promise<T[]> {
+    const pageSize = 1000;
+    let allRecords: T[] = [];
+    let offset = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      let query = supabase
+        .from(tableName)
+        .select(selectColumns)
+        .range(offset, offset + pageSize - 1);
+
+      // Apply filters
+      for (const filter of filters) {
+        query = query.eq(filter.column, filter.value);
+      }
+
+      const { data, error } = await query;
+
+      if (error) {
+        throw new Error(`ไม่สามารถดึงข้อมูลจาก ${tableName} ได้: ${error.message}`);
+      }
+
+      if (data && data.length > 0) {
+        allRecords = allRecords.concat(data);
+        offset += pageSize;
+        hasMore = data.length === pageSize;
+      } else {
+        hasMore = false;
+      }
+    }
+
+    return allRecords;
+  }
+
+  /**
    * สร้าง Batch ID ใหม่
    */
   async generateBatchId(): Promise<string> {
@@ -182,16 +225,8 @@ export class StockImportService {
   async validateStagingData(batchId: string): Promise<ValidationSummary> {
     const supabase = await createClient();
 
-    // ดึงข้อมูล staging ทั้งหมด
-    const { data: stagingRecords, error: fetchError } = await supabase
-      .from('wms_stock_import_staging')
-      .select('*')
-      .eq('import_batch_id', batchId)
-      .eq('processing_status', 'pending');
-
-    if (fetchError) {
-      throw new Error('ไม่สามารถดึงข้อมูล staging ได้');
-    }
+    // ดึงข้อมูล staging ทั้งหมด (ใช้ pagination เพื่อหลีกเลี่ยง 1000 row limit)
+    const stagingRecords = await this.fetchAllStagingRecords(supabase, batchId, 'pending');
 
     const validationStart = Date.now();
     let validCount = 0;
@@ -208,24 +243,29 @@ export class StockImportService {
       .eq('warehouse_id', stagingRecords[0]?.warehouse_id || '')
       .single();
 
-    const skuIds = [...new Set(stagingRecords.map(r => r.sku_id).filter(Boolean))];
-    const { data: existingSkus } = await supabase
-      .from('master_sku')
-      .select('sku_id')
-      .in('sku_id', skuIds);
+    // ดึง SKUs โดยใช้ pagination (หลีกเลี่ยง 1000 row limit ของ .in())
+    const skuIds = [...new Set(stagingRecords.map((r) => r.sku_id).filter(Boolean))];
+    const existingSkuSet = await this.fetchExistingSkus(supabase, skuIds);
 
-    const existingSkuSet = new Set(existingSkus?.map(s => s.sku_id) || []);
+    // ดึง Locations โดยใช้ pagination (หลีกเลี่ยง 1000 row limit ของ .in())
+    const locationCodes = [...new Set(stagingRecords.map((r) => r.location_id).filter(Boolean))];
+    const existingLocationSet = await this.fetchExistingLocations(supabase, locationCodes);
 
-    const locationIds = [...new Set(stagingRecords.map(r => r.location_id).filter(Boolean))];
-    const { data: existingLocations } = await supabase
-      .from('master_location')
-      .select('location_id')
-      .in('location_id', locationIds);
+    // Validate แต่ละแถว และเก็บผลไว้ใน batch เพื่ออัพเดทพร้อมกัน
+    const updateBatch: Array<{
+      staging_id: number;
+      processing_status: StockImportStagingStatus;
+      validation_errors: string[] | null;
+      validation_warnings: string[] | null;
+      parsed_received_date: string | null;
+      parsed_expiration_date: string | null;
+      parsed_last_updated: string | null;
+    }> = [];
 
-    const existingLocationSet = new Set(existingLocations?.map(l => l.location_id) || []);
+    const BATCH_SIZE = 50; // อัพเดททุก 50 records เพื่อให้ progress bar วิ่ง
 
-    // Validate แต่ละแถว
-    for (const record of stagingRecords) {
+    for (let i = 0; i < stagingRecords.length; i++) {
+      const record = stagingRecords[i];
       const errors: string[] = [];
       const warnings: string[] = [];
 
@@ -235,14 +275,15 @@ export class StockImportService {
         this.incrementErrorType(errorsByType, 'warehouse_not_found');
       }
 
-      // 2. ตรวจสอบ location_id
+      // 2. ตรวจสอบ location_id - ต้องมีอยู่ในระบบเท่านั้น ไม่สร้างใหม่
       if (!record.location_id || record.location_id.trim() === '') {
         errors.push('ไม่มีรหัสตำแหน่ง (Location_ID)');
         this.incrementErrorType(errorsByType, 'missing_location_id');
       } else {
         if (!existingLocationSet.has(record.location_id)) {
-          newLocations.add(record.location_id);
-          warnings.push(`ตำแหน่ง ${record.location_id} จะถูกสร้างใหม่`);
+          errors.push(`ไม่พบโลเคชั่น: ${record.location_id} ในระบบ`);
+          this.incrementErrorType(errorsByType, 'location_not_found');
+          newLocations.add(record.location_id); // เก็บไว้แสดงรายการ location ที่ไม่พบ
         }
       }
 
@@ -292,18 +333,37 @@ export class StockImportService {
         warningCount++;
       }
 
-      // อัพเดท staging record
-      await supabase
-        .from('wms_stock_import_staging')
-        .update({
-          processing_status: isValid ? ('validated' as StockImportStagingStatus) : ('error' as StockImportStagingStatus),
-          validation_errors: errors.length > 0 ? errors : null,
-          validation_warnings: warnings.length > 0 ? warnings : null,
-          parsed_received_date: parsedReceivedDate?.toISOString() || null,
-          parsed_expiration_date: parsedExpiryDate?.toISOString() || null,
-          parsed_last_updated: this.parseDateString(record.last_updated)?.toISOString() || null,
-        })
-        .eq('staging_id', record.staging_id);
+      // เก็บไว้ใน batch
+      updateBatch.push({
+        staging_id: record.staging_id,
+        processing_status: isValid ? 'validated' : 'error',
+        validation_errors: errors.length > 0 ? errors : null,
+        validation_warnings: warnings.length > 0 ? warnings : null,
+        parsed_received_date: parsedReceivedDate?.toISOString() || null,
+        parsed_expiration_date: parsedExpiryDate?.toISOString() || null,
+        parsed_last_updated: this.parseDateString(record.last_updated)?.toISOString() || null,
+      });
+
+      // อัพเดททุก BATCH_SIZE records หรือเมื่อถึง record สุดท้าย
+      if (updateBatch.length >= BATCH_SIZE || i === stagingRecords.length - 1) {
+        // อัพเดททีละ record (Supabase ไม่รองรับ bulk update with different values)
+        await Promise.all(
+          updateBatch.map((item) =>
+            supabase
+              .from('wms_stock_import_staging')
+              .update({
+                processing_status: item.processing_status,
+                validation_errors: item.validation_errors,
+                validation_warnings: item.validation_warnings,
+                parsed_received_date: item.parsed_received_date,
+                parsed_expiration_date: item.parsed_expiration_date,
+                parsed_last_updated: item.parsed_last_updated,
+              })
+              .eq('staging_id', item.staging_id)
+          )
+        );
+        updateBatch.length = 0; // Clear batch
+      }
     }
 
     const validationTime = (Date.now() - validationStart) / 1000;
@@ -330,6 +390,78 @@ export class StockImportService {
   }
 
   /**
+   * Helper: ดึง staging records ทั้งหมดโดยใช้ pagination
+   */
+  private async fetchAllStagingRecords(
+    supabase: any,
+    batchId: string,
+    status: StockImportStagingStatus
+  ): Promise<StockImportStaging[]> {
+    const pageSize = 1000;
+    let allRecords: StockImportStaging[] = [];
+    let offset = 0;
+    let hasMore = true;
+
+    while (hasMore) {
+      const { data, error } = await supabase
+        .from('wms_stock_import_staging')
+        .select('*')
+        .eq('import_batch_id', batchId)
+        .eq('processing_status', status)
+        .order('row_number', { ascending: true })
+        .range(offset, offset + pageSize - 1);
+
+      if (error) {
+        throw new Error(`ไม่สามารถดึงข้อมูล staging ได้: ${error.message}`);
+      }
+
+      if (data && data.length > 0) {
+        allRecords = allRecords.concat(data);
+        offset += pageSize;
+        hasMore = data.length === pageSize;
+      } else {
+        hasMore = false;
+      }
+    }
+
+    return allRecords;
+  }
+
+  /**
+   * Helper: ดึง SKUs ที่มีอยู่ในระบบ (ใช้ pagination เพื่อหลีกเลี่ยง .in() limit)
+   */
+  private async fetchExistingSkus(supabase: any, skuIds: string[]): Promise<Set<string>> {
+    const existingSkuSet = new Set<string>();
+    const batchSize = 500; // .in() รองรับประมาณ 500-1000 items
+
+    for (let i = 0; i < skuIds.length; i += batchSize) {
+      const batch = skuIds.slice(i, i + batchSize);
+      const { data } = await supabase.from('master_sku').select('sku_id').in('sku_id', batch);
+
+      data?.forEach((s: { sku_id: string }) => existingSkuSet.add(s.sku_id));
+    }
+
+    return existingSkuSet;
+  }
+
+  /**
+   * Helper: ดึง Locations ที่มีอยู่ในระบบ (ใช้ pagination เพื่อหลีกเลี่ยง .in() limit)
+   */
+  private async fetchExistingLocations(supabase: any, locationCodes: string[]): Promise<Set<string>> {
+    const existingLocationSet = new Set<string>();
+    const batchSize = 500; // .in() รองรับประมาณ 500-1000 items
+
+    for (let i = 0; i < locationCodes.length; i += batchSize) {
+      const batch = locationCodes.slice(i, i + batchSize);
+      const { data } = await supabase.from('master_location').select('location_code').in('location_code', batch);
+
+      data?.forEach((l: { location_code: string }) => existingLocationSet.add(l.location_code));
+    }
+
+    return existingLocationSet;
+  }
+
+  /**
    * ประมวลผลการนำเข้า (Import จริง)
    */
   async processImport(batchId: string, userId: number, skipErrors: boolean = false): Promise<ProcessingSummary> {
@@ -337,21 +469,11 @@ export class StockImportService {
 
     const processStart = Date.now();
 
-    // ดึงข้อมูล staging ที่ validated แล้ว
-    const { data: stagingRecords, error: fetchError } = await supabase
-      .from('wms_stock_import_staging')
-      .select('*')
-      .eq('import_batch_id', batchId)
-      .eq('processing_status', 'validated');
-
-    if (fetchError) {
-      throw new Error('ไม่สามารถดึงข้อมูล staging ได้');
-    }
+    // ดึงข้อมูล staging ที่ validated แล้ว (ใช้ pagination เพื่อหลีกเลี่ยง 1000 row limit)
+    const stagingRecords = await this.fetchAllStagingRecords(supabase, batchId, 'validated');
 
     let successCount = 0;
     let errorCount = 0;
-    let locationsCreated = 0;
-    let locationsUpdated = 0;
     let balancesCreated = 0;
     let balancesUpdated = 0;
     let ledgerEntriesCreated = 0;
@@ -371,30 +493,28 @@ export class StockImportService {
           continue;
         }
 
-        // 1. ตรวจสอบ default_location จาก master_sku ก่อน
-        const { data: skuData } = await supabase
-          .from('master_sku')
-          .select('default_location')
-          .eq('sku_id', record.sku_id)
-          .single();
-
-        // ใช้ default_location ถ้ามี, ไม่งั้นใช้จาก CSV
-        const targetLocationCode = skuData?.default_location || record.location_id;
+        // ใช้ location จาก CSV โดยตรง (สำหรับนำเข้าสต็อกบ้านเก็บ)
+        // ไม่ใช้ default_location เพราะนั่นคือบ้านหยิบ (preparation area)
+        const targetLocationCode = record.location_id;
         
-        console.log(`SKU ${record.sku_id}: Using location ${targetLocationCode} (default: ${skuData?.default_location}, CSV: ${record.location_id})`);
+        console.log(`SKU ${record.sku_id}: Using location from CSV: ${targetLocationCode}`);
 
-        // 2. สร้าง/อัพเดท Location (ส่ง supabase client ไปด้วย)
-        const locationResult = await this.upsertLocation(record, supabase, targetLocationCode);
-        if (locationResult.created) {
-          locationsCreated++;
-          console.log(`Created location: ${targetLocationCode}`);
-        } else {
-          locationsUpdated++;
+        // 2. ค้นหา Location ที่มีอยู่แล้ว (ไม่สร้างใหม่)
+        const { data: existingLocation } = await supabase
+          .from('master_location')
+          .select('location_id')
+          .eq('location_code', targetLocationCode)
+          .maybeSingle();
+
+        if (!existingLocation) {
+          throw new Error(`ไม่พบโลเคชั่น: ${targetLocationCode} ในระบบ`);
         }
+
+        const locationId = existingLocation.location_id;
 
         // 3. สร้าง Inventory Ledger (ส่ง supabase client และ location_id ที่ถูกต้อง)
         // Trigger จะสร้าง/อัพเดท Balance อัตโนมัติ
-        const ledgerId = await this.insertInventoryLedger(record, batchId, userId, supabase, locationResult.location_id);
+        const ledgerId = await this.insertInventoryLedger(record, batchId, userId, supabase, locationId);
         ledgerEntriesCreated++;
 
         // อัพเดท staging
@@ -437,8 +557,8 @@ export class StockImportService {
       total_processed: stagingRecords.length,
       success_count: successCount,
       error_count: errorCount,
-      locations_created: locationsCreated,
-      locations_updated: locationsUpdated,
+      locations_created: 0, // ไม่สร้าง location ใหม่แล้ว
+      locations_updated: 0, // ไม่อัพเดท location แล้ว
       balances_created: balancesCreated,
       balances_updated: balancesUpdated,
       ledger_entries_created: ledgerEntriesCreated,
@@ -708,16 +828,8 @@ export class StockImportService {
   async validatePickingAreaData(batchId: string, locationId: string): Promise<ValidationSummary> {
     const supabase = await createClient();
 
-    // ดึงข้อมูล staging ทั้งหมด
-    const { data: stagingRecords, error: fetchError } = await supabase
-      .from('wms_stock_import_staging')
-      .select('*')
-      .eq('import_batch_id', batchId)
-      .eq('processing_status', 'pending');
-
-    if (fetchError) {
-      throw new Error('ไม่สามารถดึงข้อมูล staging ได้');
-    }
+    // ดึงข้อมูล staging ทั้งหมด (ใช้ pagination เพื่อหลีกเลี่ยง 1000 row limit)
+    const stagingRecords = await this.fetchAllStagingRecords(supabase, batchId, 'pending');
 
     const validationStart = Date.now();
     let validCount = 0;
@@ -825,16 +937,8 @@ export class StockImportService {
 
     const processStart = Date.now();
 
-    // ดึงข้อมูล staging ที่ validated แล้ว
-    const { data: stagingRecords, error: fetchError } = await supabase
-      .from('wms_stock_import_staging')
-      .select('*')
-      .eq('import_batch_id', batchId)
-      .eq('processing_status', 'validated');
-
-    if (fetchError) {
-      throw new Error('ไม่สามารถดึงข้อมูล staging ได้');
-    }
+    // ดึงข้อมูล staging ที่ validated แล้ว (ใช้ pagination เพื่อหลีกเลี่ยง 1000 row limit)
+    const stagingRecords = await this.fetchAllStagingRecords(supabase, batchId, 'validated');
 
     // ดึงข้อมูล SKU ทั้งหมดเพื่อเอา pieces_per_pack มาคำนวณ pack_qty
     const skuIds = [...new Set(stagingRecords.map(r => r.sku_id).filter(Boolean))];

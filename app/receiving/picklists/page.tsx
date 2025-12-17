@@ -593,9 +593,21 @@ const PicklistsPage = () => {
                                 </td>
                                 <td className="px-3 py-2 border-gray-100">
                                   <select
-                                    className="w-24 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                                    className={`w-24 px-2 py-1 border rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500 ${
+                                      isSelected ? 'border-red-400 bg-red-50' : 'border-gray-300'
+                                    }`}
                                     defaultValue=""
                                     data-trip-id={trip.trip_id}
+                                    onChange={(e) => {
+                                      // Remove red border when value is selected
+                                      if (e.target.value) {
+                                        e.target.className = 'w-24 px-2 py-1 border border-green-500 bg-green-50 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500';
+                                      } else if (isSelected) {
+                                        e.target.className = 'w-24 px-2 py-1 border border-red-400 bg-red-50 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500';
+                                      } else {
+                                        e.target.className = 'w-24 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500';
+                                      }
+                                    }}
                                   >
                                     <option value="">-- เลือก --</option>
                                     <option value="D01">D01</option>
@@ -605,6 +617,9 @@ const PicklistsPage = () => {
                                     <option value="D05">D05</option>
                                     <option value="D06">D06</option>
                                   </select>
+                                  {isSelected && (
+                                    <span className="text-red-500 text-xs ml-1">*</span>
+                                  )}
                                 </td>
                               </tr>
                             );
@@ -630,36 +645,78 @@ const PicklistsPage = () => {
                     return;
                   }
 
+                  // Validate loading door for all selected trips
+                  const missingLoadingDoors: number[] = [];
+                  for (const tripId of selectedPicklists) {
+                    const selectElement = document.querySelector(`select[data-trip-id="${tripId}"]`) as HTMLSelectElement;
+                    if (!selectElement?.value) {
+                      missingLoadingDoors.push(tripId);
+                    }
+                  }
+
+                  if (missingLoadingDoors.length > 0) {
+                    // Find trip sequences for better error message
+                    const tripSequences = missingLoadingDoors.map(tripId => {
+                      const row = document.querySelector(`select[data-trip-id="${tripId}"]`)?.closest('tr');
+                      const tripText = row?.querySelector('td:nth-child(2)')?.textContent || `Trip ID: ${tripId}`;
+                      return tripText.trim();
+                    });
+                    alert(`กรุณาเลือกประตูโหลดสำหรับ:\n${tripSequences.join('\n')}`);
+                    return;
+                  }
+
                   setIsCreating(true);
                   try {
-                    const results = [];
-                    for (const tripId of selectedPicklists) {
-                      // Get loading door from select element
-                      const selectElement = document.querySelector(`select[data-trip-id="${tripId}"]`) as HTMLSelectElement;
-                      const loadingDoor = selectElement?.value || null;
+                    // Build trips array with loading doors
+                    const tripsData = selectedPicklists.map((tripId) => {
+                      const selectElement = document.querySelector(
+                        `select[data-trip-id="${tripId}"]`
+                      ) as HTMLSelectElement;
+                      return {
+                        trip_id: tripId,
+                        loading_door_number: selectElement?.value || null,
+                      };
+                    });
 
-                      const response = await fetch('/api/picklists/create-from-trip', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ 
-                          trip_id: tripId,
-                          loading_door_number: loadingDoor
-                        })
-                      });
+                    // Use batch API for better performance
+                    const response = await fetch('/api/picklists/create-from-trips-batch', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ trips: tripsData }),
+                    });
 
-                      if (!response.ok) {
-                        const error = await response.json();
-                        throw new Error(error.message || 'Failed to create picklist');
-                      }
+                    const result = await response.json();
 
-                      const result = await response.json();
-                      results.push(result.picklist_no);
+                    if (!response.ok) {
+                      throw new Error(result.error || 'Failed to create picklists');
                     }
 
                     await mutate();
                     setShowCreateModal(false);
                     setSelectedPicklists([]);
-                    alert(`สร้าง Picklist สำเร็จ ${results.length} รายการ:\n${results.join('\n')}`);
+
+                    // Show results
+                    const successResults = result.results.filter((r: any) => r.success);
+                    const failResults = result.results.filter((r: any) => !r.success);
+
+                    let message = `สร้าง Picklist สำเร็จ ${successResults.length} รายการ`;
+                    if (successResults.length > 0) {
+                      message += `:\n${successResults.map((r: any) => r.picklist_code).join('\n')}`;
+                    }
+                    if (failResults.length > 0) {
+                      message += `\n\nล้มเหลว ${failResults.length} รายการ:\n${failResults.map((r: any) => `Trip ${r.trip_id}: ${r.error}`).join('\n')}`;
+                    }
+
+                    // Show replenishment alerts if any
+                    if (result.replenishment_count > 0) {
+                      const replenDetails = result.replenishments.map((r: any) => 
+                        `• ${r.sku_name}: ${r.shortage_qty} ชิ้น (${r.from_location_id || 'ค้นหา'} → ${r.to_location_id})`
+                      ).join('\n');
+                      message += `\n\n⚠️ ต้องเบิกเติมสินค้า ${result.replenishment_count} รายการ:\n${replenDetails}`;
+                      message += `\n\nดูรายละเอียดที่หน้า "เบิกเติมสินค้าอัตโนมัติ"`;
+                    }
+
+                    alert(message);
                   } catch (error: any) {
                     alert(`เกิดข้อผิดพลาด: ${error.message}`);
                   } finally {

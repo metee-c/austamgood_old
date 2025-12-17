@@ -42,6 +42,9 @@ function StockImportPage() {
   const [filePreview, setFilePreview] = useState<{ rows: number; size: string } | null>(null);
   const [showLoadingModal, setShowLoadingModal] = useState(false);
   const [loadingMessage, setLoadingMessage] = useState('');
+  const [loadingProgress, setLoadingProgress] = useState(0);
+  const [loadingTotal, setLoadingTotal] = useState(0);
+  const [loadingProcessed, setLoadingProcessed] = useState(0);
 
   useEffect(() => {
     fetchBatches();
@@ -399,7 +402,30 @@ function StockImportPage() {
   const handleValidate = async (batchId: string, batch: StockImportBatch) => {
     setIsValidating(true);
     setLoadingMessage('กำลังตรวจสอบข้อมูล...');
+    setLoadingProgress(0);
+    setLoadingTotal(batch.total_rows || 0);
+    setLoadingProcessed(0);
     setShowLoadingModal(true);
+
+    // Start polling for progress (ใช้ progress API ที่นับจาก staging records แบบ real-time)
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/stock-import/batches/${batchId}/progress`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success) {
+            const validated = data.validated_count || 0;
+            const total = data.total || 1;
+            setLoadingProcessed(validated);
+            setLoadingTotal(total);
+            setLoadingProgress(Math.round((validated / total) * 100));
+          }
+        }
+      } catch (e) {
+        // Ignore polling errors
+      }
+    }, 500);
+
     try {
       // Check if it's a picking area batch
       const isPickingArea = batch.validation_summary && (batch.validation_summary as any).import_type === 'picking_area';
@@ -421,10 +447,13 @@ function StockImportPage() {
         throw new Error(data.error || 'Validation failed');
       }
 
+      clearInterval(pollInterval);
+      setLoadingProgress(100);
       fetchBatches();
       setShowLoadingModal(false);
       alert('Validation completed');
     } catch (error: any) {
+      clearInterval(pollInterval);
       console.error('Validation error:', error);
       setShowLoadingModal(false);
       alert(error.message || 'Validation failed');
@@ -438,7 +467,33 @@ function StockImportPage() {
 
     setIsProcessing(true);
     setLoadingMessage('กำลังนำเข้าข้อมูล...');
+    setLoadingProgress(0);
+    setLoadingTotal(batch.validated_rows || batch.total_rows || 0);
+    setLoadingProcessed(0);
     setShowLoadingModal(true);
+
+    // ใช้ validated_rows จาก batch เป็น total (ค่าคงที่ตั้งแต่แรก)
+    const fixedTotal = batch.validated_rows || batch.total_rows || 1;
+
+    // Start polling for progress
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/stock-import/batches/${batchId}/progress`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success) {
+            const processed = data.processed_count || 0;
+            setLoadingProcessed(processed);
+            setLoadingTotal(fixedTotal);
+            // Cap progress ที่ 100%
+            setLoadingProgress(Math.min(100, Math.round((processed / fixedTotal) * 100)));
+          }
+        }
+      } catch (e) {
+        // Ignore polling errors
+      }
+    }, 500);
+
     try {
       // Check if it's a picking area batch
       const isPickingArea = batch.validation_summary && (batch.validation_summary as any).import_type === 'picking_area';
@@ -460,10 +515,13 @@ function StockImportPage() {
         throw new Error(data.error || 'Process failed');
       }
 
+      clearInterval(pollInterval);
+      setLoadingProgress(100);
       fetchBatches();
       setShowLoadingModal(false);
       alert(data.message || 'Import success');
     } catch (error: any) {
+      clearInterval(pollInterval);
       console.error('Processing error:', error);
       setShowLoadingModal(false);
       alert(error.message || 'Process failed');
@@ -1332,7 +1390,22 @@ function StockImportPage() {
         <div className="flex flex-col items-center justify-center py-8">
           <Loader2 className="w-16 h-16 animate-spin text-blue-500 mb-4" />
           <p className="text-lg font-semibold text-gray-700 font-thai">{loadingMessage}</p>
-          <p className="text-sm text-gray-500 font-thai mt-2">กรุณารอสักครู่...</p>
+          
+          {/* Progress Bar */}
+          <div className="w-full mt-4 px-4">
+            <div className="flex justify-between text-sm text-gray-600 mb-1">
+              <span className="font-thai">{loadingProcessed.toLocaleString()} / {loadingTotal.toLocaleString()} แถว</span>
+              <span className="font-bold text-blue-600">{loadingProgress}%</span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+              <div 
+                className="bg-gradient-to-r from-blue-500 to-blue-600 h-3 rounded-full transition-all duration-300 ease-out"
+                style={{ width: `${loadingProgress}%` }}
+              />
+            </div>
+          </div>
+          
+          <p className="text-sm text-gray-500 font-thai mt-3">กรุณารอสักครู่...</p>
         </div>
       </Modal>
     </>

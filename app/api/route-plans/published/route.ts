@@ -35,6 +35,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // Fetch all trip_ids that already have picklists
+    const { data: existingPicklists } = await supabase
+      .from('picklists')
+      .select('trip_id')
+      .not('trip_id', 'is', null);
+
+    const tripIdsWithPicklist = new Set(
+      (existingPicklists || []).map(p => p.trip_id)
+    );
+
     // For each plan, fetch trips with their stops and orders
     const plansWithTrips = await Promise.all(
       (plans || []).map(async (plan) => {
@@ -50,9 +60,14 @@ export async function GET(request: NextRequest) {
           return { ...plan, trips: [] };
         }
 
+        // Filter out trips that already have picklists
+        const availableTrips = (trips || []).filter(
+          trip => !tripIdsWithPicklist.has(trip.trip_id)
+        );
+
         // For each trip, fetch stops with orders
         const tripsWithStops = await Promise.all(
-          (trips || []).map(async (trip) => {
+          availableTrips.map(async (trip) => {
             const { data: stops, error: stopsError } = await supabase
               .from('receiving_route_stops')
               .select(`
@@ -151,7 +166,12 @@ export async function GET(request: NextRequest) {
       })
     );
 
-    return NextResponse.json({ data: plansWithTrips || [], error: null });
+    // Filter out plans that have no available trips (all trips already have picklists)
+    const plansWithAvailableTrips = plansWithTrips.filter(
+      plan => plan.trips && plan.trips.length > 0
+    );
+
+    return NextResponse.json({ data: plansWithAvailableTrips || [], error: null });
   } catch (error: any) {
     console.error('Error fetching published plans:', error);
     return NextResponse.json(
