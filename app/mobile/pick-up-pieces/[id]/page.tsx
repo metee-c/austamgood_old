@@ -108,6 +108,47 @@ export default function MobilePickUpPiecesDetailPage() {
     }
   };
 
+  // Play siren sound (alternating frequencies) for 2 seconds
+  const playSiren = (duration: number = 2.0, volume: number = 0.7) => {
+    try {
+      const ctx = audioContextRef.current;
+      if (!ctx) return;
+      
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      
+      oscillator.type = 'sawtooth'; // Harsh siren-like sound
+      
+      // Create siren effect by oscillating frequency
+      const startTime = ctx.currentTime;
+      const endTime = startTime + duration;
+      const cycleTime = 0.5; // Time for one up-down cycle
+      
+      // Schedule frequency changes for siren effect
+      for (let t = 0; t < duration; t += cycleTime) {
+        oscillator.frequency.setValueAtTime(400, startTime + t);
+        oscillator.frequency.linearRampToValueAtTime(800, startTime + t + cycleTime / 2);
+        oscillator.frequency.linearRampToValueAtTime(400, startTime + t + cycleTime);
+      }
+      
+      gainNode.gain.setValueAtTime(volume, startTime);
+      gainNode.gain.setValueAtTime(volume, endTime - 0.1);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, endTime);
+      
+      oscillator.start(startTime);
+      oscillator.stop(endTime);
+    } catch (e) {
+      console.error('Siren error:', e);
+    }
+  };
+
   const fetchPicklist = async () => {
     try {
       setLoading(true);
@@ -123,16 +164,16 @@ export default function MobilePickUpPiecesDetailPage() {
 
   const playSound = (type: 'success' | 'error' | 'overscan') => {
     if (type === 'success') {
-      // High pitch short beep for success
-      playBeep(880, 0.15, 0.4);
+      // High pitch short beep for success (quick confirmation)
+      playBeep(1200, 0.1, 0.3);
     } else if (type === 'error') {
-      // Low pitch beep for error (wrong barcode)
-      playBeep(300, 0.3, 0.5);
+      // Siren sound for error - 2 seconds (very noticeable!)
+      playSiren(2.0, 0.7);
     } else if (type === 'overscan') {
-      // Multiple beeps for over-scan warning
-      playBeep(400, 0.2, 0.6);
-      setTimeout(() => playBeep(400, 0.2, 0.6), 250);
-      setTimeout(() => playBeep(400, 0.2, 0.6), 500);
+      // Multiple rapid beeps for over-scan warning
+      playBeep(400, 0.3, 0.6);
+      setTimeout(() => playBeep(400, 0.3, 0.6), 400);
+      setTimeout(() => playBeep(400, 0.3, 0.6), 800);
     }
   };
 
