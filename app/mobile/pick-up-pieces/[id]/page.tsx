@@ -426,25 +426,20 @@ export default function MobilePickUpPiecesDetailPage() {
             )}
           </div>
 
-          {/* Hidden Scan Input - Always focused */}
-          <input
-            ref={scanInputRef}
-            type="text"
-            onKeyDown={handleScanInput}
-            onBlur={() => setTimeout(() => scanInputRef.current?.focus(), 100)}
-            className="opacity-0 absolute -z-10 w-0 h-0"
-            autoFocus
-            autoComplete="off"
-          />
-
-          {/* Tap to Focus Button */}
-          <button
-            onClick={() => scanInputRef.current?.focus()}
-            className="w-full py-5 bg-orange-600 hover:bg-orange-700 rounded-xl font-thai text-lg font-bold transition-colors flex items-center justify-center space-x-2"
-          >
-            <Volume2 className="w-5 h-5" />
-            <span>📷 พร้อมสแกน</span>
-          </button>
+          {/* Scan Input - Visible for barcode scanner */}
+          <div className="bg-gray-800 rounded-xl p-4">
+            <label className="block text-orange-400 text-sm font-thai mb-2">สแกนบาร์โค้ด</label>
+            <input
+              ref={scanInputRef}
+              type="text"
+              onKeyDown={handleScanInput}
+              placeholder="สแกนหรือพิมพ์บาร์โค้ด..."
+              className="w-full px-4 py-3 bg-gray-700 border-2 border-gray-600 rounded-lg text-white text-lg font-mono focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/50 placeholder-gray-500"
+              autoFocus
+              autoComplete="off"
+            />
+            <p className="text-gray-500 text-xs font-thai mt-2">กด Enter หลังสแกน</p>
+          </div>
 
           {/* Progress Bar */}
           <div className="bg-gray-700 rounded-full h-3 overflow-hidden">

@@ -20,9 +20,9 @@ export async function GET(
       .select(`
         *,
         master_sku:sku_id (sku_id, sku_name, uom_base, qty_per_pack),
-        from_location:from_location_id (location_id, zone, location_type),
-        to_location:to_location_id (location_id, zone, location_type),
-        assigned_employee:assigned_to (employee_id, first_name, last_name, nickname)
+        from_location:from_location_id (location_id, location_code, location_name, zone, location_type),
+        to_location:to_location_id (location_id, location_code, location_name, zone, location_type),
+        assigned_user:assigned_to (user_id, username, full_name)
       `)
       .eq('queue_id', id)
       .single();

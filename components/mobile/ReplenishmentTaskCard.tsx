@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { ReplenishmentTask, ReplenishmentStatus } from '@/hooks/useReplenishmentTasks';
 import { PriorityBadge } from '@/components/ui/PriorityBadge';
-import { Package, MapPin, ArrowRight, Clock, ChevronDown, ChevronUp, User, Calendar, Tag } from 'lucide-react';
+import { Package, MapPin, ArrowRight, Clock, ChevronDown, ChevronUp, User, Calendar, Tag, ScanLine } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
 import { th } from 'date-fns/locale';
 
@@ -13,9 +14,15 @@ interface ReplenishmentTaskCardProps {
 }
 
 export function ReplenishmentTaskCard({ task, onStatusUpdate }: ReplenishmentTaskCardProps) {
+  const router = useRouter();
   const [isExpanded, setIsExpanded] = useState(false);
   const [isUpdating, setIsUpdating] = useState(false);
   const [notes, setNotes] = useState('');
+
+  // Navigate to replenishment execution page
+  const handleStartReplenishment = () => {
+    router.push(`/mobile/transfer/replenishment/${task.queue_id}`);
+  };
 
   const handleStatusChange = async (newStatus: ReplenishmentStatus, confirmedQty?: number) => {
     setIsUpdating(true);
@@ -204,33 +211,13 @@ export function ReplenishmentTaskCard({ task, onStatusUpdate }: ReplenishmentTas
 
           {/* Action Buttons */}
           <div className="flex gap-3">
-            {task.status === 'assigned' && (
+            {(task.status === 'assigned' || task.status === 'in_progress') && (
               <button
-                onClick={() => handleStatusChange('in_progress')}
-                disabled={isUpdating}
-                className="flex-1 bg-blue-600 text-white font-thai font-medium py-3 px-4 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+                onClick={handleStartReplenishment}
+                className="w-full bg-sky-600 text-white font-thai font-medium py-3 px-4 rounded-lg hover:bg-sky-700 transition-colors flex items-center justify-center gap-2"
               >
-                {isUpdating ? 'กำลังอัปเดต...' : '🚀 เริ่มดำเนินการ'}
-              </button>
-            )}
-
-            {task.status === 'in_progress' && (
-              <button
-                onClick={() => handleStatusChange('completed', task.requested_qty)}
-                disabled={isUpdating}
-                className="w-full bg-green-600 text-white font-thai font-medium py-3 px-4 rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-              >
-                {isUpdating ? 'กำลังอัปเดต...' : '✅ เสร็จสิ้น'}
-              </button>
-            )}
-
-            {task.status === 'assigned' && (
-              <button
-                onClick={() => handleStatusChange('completed', task.requested_qty)}
-                disabled={isUpdating}
-                className="flex-1 bg-green-600 text-white font-thai font-medium py-3 px-4 rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
-              >
-                {isUpdating ? 'กำลังอัปเดต...' : '✅ เสร็จสิ้น'}
+                <ScanLine className="w-5 h-5" />
+                เริ่มสแกนเติมสินค้า
               </button>
             )}
           </div>
