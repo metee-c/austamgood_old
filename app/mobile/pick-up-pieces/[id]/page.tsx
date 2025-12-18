@@ -64,20 +64,49 @@ export default function MobilePickUpPiecesDetailPage() {
   const isProcessingRef = useRef(false);
   const pendingSaveRef = useRef<{ item: PicklistItem; qty: number } | null>(null);
 
-  // Sound feedback refs
-  const successSoundRef = useRef<HTMLAudioElement | null>(null);
-  const errorSoundRef = useRef<HTMLAudioElement | null>(null);
-  const overScanSoundRef = useRef<HTMLAudioElement | null>(null);
+  // Audio context for beep sounds
+  const audioContextRef = useRef<AudioContext | null>(null);
 
   useEffect(() => {
     if (id) fetchPicklist();
-    // Initialize sounds
+    // Initialize audio context
     if (typeof window !== 'undefined') {
-      successSoundRef.current = new Audio('/audio/beep-success.mp3');
-      errorSoundRef.current = new Audio('/audio/beep-error.mp3');
-      overScanSoundRef.current = new Audio('/audio/beep-error.mp3'); // Use error sound for over-scan
+      audioContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)();
     }
+    return () => {
+      audioContextRef.current?.close();
+    };
   }, [id]);
+
+  // Generate beep sound using Web Audio API
+  const playBeep = (frequency: number, duration: number, volume: number = 0.5) => {
+    try {
+      const ctx = audioContextRef.current;
+      if (!ctx) return;
+      
+      // Resume context if suspended (required for mobile browsers)
+      if (ctx.state === 'suspended') {
+        ctx.resume();
+      }
+
+      const oscillator = ctx.createOscillator();
+      const gainNode = ctx.createGain();
+      
+      oscillator.connect(gainNode);
+      gainNode.connect(ctx.destination);
+      
+      oscillator.frequency.value = frequency;
+      oscillator.type = 'sine';
+      
+      gainNode.gain.setValueAtTime(volume, ctx.currentTime);
+      gainNode.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + duration);
+      
+      oscillator.start(ctx.currentTime);
+      oscillator.stop(ctx.currentTime + duration);
+    } catch (e) {
+      console.error('Audio error:', e);
+    }
+  };
 
   const fetchPicklist = async () => {
     try {
@@ -93,19 +122,18 @@ export default function MobilePickUpPiecesDetailPage() {
   };
 
   const playSound = (type: 'success' | 'error' | 'overscan') => {
-    try {
-      if (type === 'success' && successSoundRef.current) {
-        successSoundRef.current.currentTime = 0;
-        successSoundRef.current.play().catch(() => {});
-      } else if (type === 'error' && errorSoundRef.current) {
-        errorSoundRef.current.currentTime = 0;
-        errorSoundRef.current.play().catch(() => {});
-      } else if (type === 'overscan' && overScanSoundRef.current) {
-        // Play multiple times for over-scan warning
-        overScanSoundRef.current.currentTime = 0;
-        overScanSoundRef.current.play().catch(() => {});
-      }
-    } catch {}
+    if (type === 'success') {
+      // High pitch short beep for success
+      playBeep(880, 0.15, 0.4);
+    } else if (type === 'error') {
+      // Low pitch beep for error (wrong barcode)
+      playBeep(300, 0.3, 0.5);
+    } else if (type === 'overscan') {
+      // Multiple beeps for over-scan warning
+      playBeep(400, 0.2, 0.6);
+      setTimeout(() => playBeep(400, 0.2, 0.6), 250);
+      setTimeout(() => playBeep(400, 0.2, 0.6), 500);
+    }
   };
 
   const showFeedback = (type: 'success' | 'error') => {
