@@ -45,11 +45,14 @@ export async function GET(request: NextRequest) {
 
     // Apply filters
     if (search) {
-      query = query.or(`
-        location_code.ilike.%${search}%,
-        location_name.ilike.%${search}%,
-        zone.ilike.%${search}%
-      `);
+      const hasSpecialChars = /[|,()\\]/.test(search);
+      if (!hasSpecialChars) {
+        query = query.or(`
+          location_code.ilike.%${search}%,
+          location_name.ilike.%${search}%,
+          zone.ilike.%${search}%
+        `);
+      }
     }
 
     if (warehouse_id) {

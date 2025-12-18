@@ -26,7 +26,10 @@ export class WmsReceiveService {
         .order('receive_date', { ascending: false });
 
       if (options?.search) {
-        query = query.or(`receive_no.ilike.%${options.search}%,reference_doc.ilike.%${options.search}%`);
+        const hasSpecialChars = /[|,()\\]/.test(options.search);
+        if (!hasSpecialChars) {
+          query = query.or(`receive_no.ilike.%${options.search}%,reference_doc.ilike.%${options.search}%`);
+        }
       }
 
       if (options?.limit) {

@@ -116,7 +116,10 @@ export class LocationService {
 
       // Apply filters
       if (filters.search) {
-        query = query.or(`location_code.ilike.%${filters.search}%,location_name.ilike.%${filters.search}%`)
+        const hasSpecialChars = /[|,()\\]/.test(filters.search);
+        if (!hasSpecialChars) {
+          query = query.or(`location_code.ilike.%${filters.search}%,location_name.ilike.%${filters.search}%`)
+        }
       }
 
       if (filters.warehouse_id) {

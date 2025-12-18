@@ -13,7 +13,8 @@ import {
   CheckCircle2,
   AlertCircle,
   AlertTriangle,
-  ChevronRight
+  ChevronRight,
+  Hand
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import { format } from 'date-fns';
@@ -255,7 +256,8 @@ function MobileDashboardPage() {
               { path: '/mobile/receive', icon: Package, label: 'รับสินค้า', color: 'purple' },
               { path: '/mobile/transfer', icon: Move, label: 'ย้ายสินค้า', color: 'green' },
               { path: '/mobile/loading', icon: Truck, label: 'โหลดสินค้า', color: 'blue' },
-              { path: '/mobile/pick', icon: QrCode, label: 'หยิบสินค้า', color: 'orange' }
+              { path: '/mobile/pick', icon: QrCode, label: 'หยิบสินค้า', color: 'orange' },
+              { path: '/mobile/pick-up-pieces', icon: Hand, label: 'หยิบรายชิ้น', color: 'amber' }
             ].map((item) => {
               const Icon = item.icon;
               return (

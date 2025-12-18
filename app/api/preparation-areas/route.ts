@@ -50,7 +50,10 @@ export async function GET(request: NextRequest) {
       .select(PREPARATION_AREA_FIELDS, { count: 'exact' });
 
     if (search) {
-      query = query.or(`area_code.ilike.%${search}%,area_name.ilike.%${search}%,description.ilike.%${search}%`);
+      const hasSpecialChars = /[|,()\\]/.test(search);
+      if (!hasSpecialChars) {
+        query = query.or(`area_code.ilike.%${search}%,area_name.ilike.%${search}%,description.ilike.%${search}%`);
+      }
     }
 
     if (warehouse_id) {

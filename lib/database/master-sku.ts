@@ -33,7 +33,10 @@ export class MasterSkuService {
 
       // Apply filters
       if (filters.search) {
-        query = query.or(`sku_name.ilike.%${filters.search}%,sku_id.ilike.%${filters.search}%,barcode.ilike.%${filters.search}%`)
+        const hasSpecialChars = /[|,()\\]/.test(filters.search);
+        if (!hasSpecialChars) {
+          query = query.or(`sku_name.ilike.%${filters.search}%,sku_id.ilike.%${filters.search}%,barcode.ilike.%${filters.search}%`)
+        }
       }
 
       if (filters.category) {

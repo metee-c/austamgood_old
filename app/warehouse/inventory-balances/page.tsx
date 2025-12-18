@@ -56,6 +56,7 @@ const InventoryBalancesPage = () => {
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [selectedWarehouse, setSelectedWarehouse] = useState('all');
 
   const [showLowStock, setShowLowStock] = useState(false);
@@ -79,12 +80,29 @@ const InventoryBalancesPage = () => {
     fetchPreparationAreas();
   }, []);
 
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 500); // Wait 500ms after user stops typing
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
   // Fetch balance data after preparation areas are loaded
   useEffect(() => {
     if (preparationAreaCodes.length > 0) {
       fetchBalanceData();
     }
   }, [preparationAreaCodes]);
+
+  // Refetch when debounced search term or filters change
+  useEffect(() => {
+    if (preparationAreaCodes.length > 0) {
+      // Reset to page 1 when filters change
+      fetchBalanceData(1);
+    }
+  }, [debouncedSearchTerm, selectedWarehouse, showZeroBalance]);
 
   const fetchPreparationAreas = async () => {
     try {
@@ -130,6 +148,18 @@ const InventoryBalancesPage = () => {
         'SHIP',
       ];
 
+      // If searching, first find matching SKU IDs from master_sku by name or sku_id
+      let matchingSkuIds: string[] = [];
+      if (debouncedSearchTerm) {
+        // Search by sku_name OR sku_id
+        const { data: matchingSkus } = await supabase
+          .from('master_sku')
+          .select('sku_id, sku_name')
+          .or(`sku_name.ilike.%${debouncedSearchTerm}%,sku_id.ilike.%${debouncedSearchTerm}%`);
+        
+        matchingSkuIds = matchingSkus?.map((s) => s.sku_id) || [];
+      }
+
       // Build base query with filters
       let countQuery = supabase
         .from('wms_inventory_balances')
@@ -139,6 +169,9 @@ const InventoryBalancesPage = () => {
       if (excludeLocations.length > 0) {
         countQuery = countQuery.not('location_id', 'in', `(${excludeLocations.join(',')})`);
       }
+
+      // Apply server-side filters for count
+      countQuery = applyFiltersToQuery(countQuery, matchingSkuIds);
 
       const { count, error: countError } = await countQuery;
 
@@ -174,15 +207,17 @@ const InventoryBalancesPage = () => {
         dataQuery = dataQuery.not('location_id', 'in', `(${excludeLocations.join(',')})`);
       }
 
+      // Apply server-side filters for data
+      dataQuery = applyFiltersToQuery(dataQuery, matchingSkuIds);
+
       const { data, error } = await dataQuery.range(from, to);
 
-      if (error) {
+      if (error && error.message) {
         setError(error.message);
-        console.error('Error fetching balance data:', error);
       } else {
-        console.log('Fetched balance data:', data?.length, 'records, page:', page);
         setBalanceData(data || []);
         setCurrentPage(page);
+        setError(null);
       }
     } catch (err: any) {
       setError('เกิดข้อผิดพลาดในการโหลดข้อมูล');
@@ -190,6 +225,70 @@ const InventoryBalancesPage = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Helper function to apply filters to query (server-side)
+  const applyFiltersToQuery = (query: any, matchingSkuIds: string[] = []) => {
+    // Search filter - if we have matching SKU IDs from name search, use filter
+    if (matchingSkuIds.length > 0) {
+      // Use .filter() with in operator - properly encode the array with quotes for special chars
+      const encodedIds = matchingSkuIds.map(id => `"${id}"`).join(',');
+      query = query.filter('sku_id', 'in', `(${encodedIds})`);
+    } else if (debouncedSearchTerm) {
+      // No matching SKUs by name, try searching by other fields
+      // Check if search term contains special characters that break PostgREST
+      const hasSpecialChars = /[|,()\\]/.test(debouncedSearchTerm);
+
+      if (!hasSpecialChars) {
+        const searchNum = Number(debouncedSearchTerm);
+        const isNumber = !isNaN(searchNum);
+
+        // Build OR conditions for searchable fields (only if no special chars)
+        const conditions = [
+          `sku_id.ilike.%${debouncedSearchTerm}%`,
+          `lot_no.ilike.%${debouncedSearchTerm}%`,
+          `pallet_id.ilike.%${debouncedSearchTerm}%`,
+          `location_id.ilike.%${debouncedSearchTerm}%`,
+          `warehouse_id.ilike.%${debouncedSearchTerm}%`,
+        ];
+
+        // Date fields - only search if input looks like a date (YYYY-MM-DD format)
+        const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+        if (datePattern.test(debouncedSearchTerm)) {
+          conditions.push(
+            `production_date.eq.${debouncedSearchTerm}`,
+            `expiry_date.eq.${debouncedSearchTerm}`
+          );
+        }
+
+        // Add numeric conditions only if input is a number
+        if (isNumber) {
+          conditions.push(
+            `balance_id.eq.${searchNum}`,
+            `total_pack_qty.eq.${searchNum}`,
+            `total_piece_qty.eq.${searchNum}`,
+            `reserved_pack_qty.eq.${searchNum}`,
+            `reserved_piece_qty.eq.${searchNum}`,
+            `last_move_id.eq.${searchNum}`
+          );
+        }
+
+        query = query.or(conditions.join(','));
+      }
+      // If has special chars but no matching SKUs, query will return empty (no filter applied)
+    }
+
+    // Warehouse filter
+    if (selectedWarehouse !== 'all') {
+      query = query.eq('warehouse_id', selectedWarehouse);
+    }
+
+    // Zero balance filter
+    if (!showZeroBalance) {
+      query = query.gt('total_piece_qty', 0);
+    }
+
+    return query;
   };
 
   const handleViewBalance = (balance: InventoryBalance) => {
@@ -224,38 +323,13 @@ const InventoryBalancesPage = () => {
     return new Date(expiryDate) < new Date();
   };
 
-  // Debug: log filter inputs
-  console.log('Filter inputs:', { 
-    balanceDataLength: balanceData.length, 
-    preparationAreaCodesLength: preparationAreaCodes.length,
-    searchTerm,
-    selectedWarehouse,
-    showZeroBalance
-  });
-
+  // Client-side filters (for features not supported by database query)
+  // NOTE: Search filter is now handled server-side via SKU ID matching, so we skip client-side search filter
   const filteredData = balanceData.filter(item => {
-    const searchLower = searchTerm.toLowerCase();
-    const matchesSearch = !searchTerm || (
-      (item.sku_id?.toLowerCase().includes(searchLower)) ||
-      (item.sku_name?.toLowerCase().includes(searchLower)) ||
-      (item.lot_no?.toLowerCase().includes(searchLower)) ||
-      (item.pallet_id?.toLowerCase().includes(searchLower)) ||
-      (item.pallet_id_external?.toLowerCase().includes(searchLower)) ||
-      (item.location_id?.toLowerCase().includes(searchLower)) ||
-      (item.location_name?.toLowerCase().includes(searchLower)) ||
-      (item.warehouse_id?.toLowerCase().includes(searchLower)) ||
-      (item.warehouse_name?.toLowerCase().includes(searchLower)) ||
-      (item.production_date?.includes(searchTerm)) ||
-      (item.expiry_date?.includes(searchTerm)) ||
-      (item.balance_id?.toString().includes(searchTerm)) ||
-      (item.total_pack_qty?.toString().includes(searchTerm)) ||
-      (item.total_piece_qty?.toString().includes(searchTerm)) ||
-      (item.reserved_pack_qty?.toString().includes(searchTerm)) ||
-      (item.reserved_piece_qty?.toString().includes(searchTerm))
-    );
-
-    const matchesWarehouse = selectedWarehouse === 'all' || item.warehouse_id === selectedWarehouse;
+    // Low stock filter (client-side only)
     const matchesLowStock = !showLowStock || (item.total_piece_qty - item.reserved_piece_qty) <= 10;
+
+    // Expiring soon filter (client-side only - requires date calculation)
     const matchesExpiring = !showExpiringSoon || isExpiringSoon(item.expiry_date);
 
     // กรอง Receiving/Shipping location ที่เป็น 0 ออกเสมอ (เพราะเป็น temporary zone)
@@ -267,11 +341,7 @@ const InventoryBalancesPage = () => {
        item.location_id === 'SHIP') &&
       item.total_piece_qty === 0;
 
-    const matchesZeroBalance = showZeroBalance || item.total_piece_qty > 0; // ถ้า showZeroBalance = true แสดงทุกอัน, ถ้า false กรองเฉพาะที่มากกว่า 0
-
-    // Note: preparation_area, Dispatch, Delivery-In-Progress are now filtered at database level
-
-    return matchesSearch && matchesWarehouse && matchesLowStock && matchesExpiring && matchesZeroBalance && !isTemporaryZeroBalance;
+    return matchesLowStock && matchesExpiring && !isTemporaryZeroBalance;
   });
 
   // จัดกลุ่มตาม location (warehouse_id + location_id) เท่านั้น
@@ -323,8 +393,6 @@ const InventoryBalancesPage = () => {
     }
   });
 
-  // Calculate statistics
-  const expiringSoonItems = filteredData.filter(item => isExpiringSoon(item.expiry_date)).length;
 
   return (
     <div className="h-[calc(100vh-3.25rem)] bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
@@ -442,8 +510,7 @@ const InventoryBalancesPage = () => {
                     {groupedBalances.map((balance: any) => {
                       if (balance._isGrouped && balance._groupItems) {
                         const isExpanded = expandedRows.has(balance._groupKey);
-                        const hasMultipleDates = balance._uniqueProductionDates?.length > 1 || balance._uniqueExpiryDates?.length > 1;
-                        
+
                         return (
                           <React.Fragment key={balance._groupKey}>
                             {/* แถวหลัก - แสดงยอดรวม */}

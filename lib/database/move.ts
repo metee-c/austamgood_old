@@ -210,7 +210,9 @@ class MoveService {
       }
       if (filters?.searchTerm) {
         const term = filters.searchTerm.trim();
-        if (term.length > 0) {
+        // Check if search term contains special characters that break PostgREST
+        const hasSpecialChars = /[|,()\\]/.test(term);
+        if (term.length > 0 && !hasSpecialChars) {
           const search = 'move_no.ilike.%' + term + '%,source_document.ilike.%' + term + '%';
           query = query.or(search);
         }

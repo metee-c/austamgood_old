@@ -367,8 +367,43 @@ export class ReceiveService {
       if (filters?.warehouse_id) query = query.eq('warehouse_id', filters.warehouse_id);
       if (filters?.startDate) query = query.gte('receive_date', filters.startDate);
       if (filters?.endDate) query = query.lte('receive_date', filters.endDate);
+
+      // Comprehensive search across all columns
       if (filters?.searchTerm) {
-        query = query.or(`receive_no.ilike.%${filters.searchTerm}%,reference_doc.ilike.%${filters.searchTerm}%`);
+        // Check if search term contains special characters that break PostgREST
+        const hasSpecialChars = /[|,()\\]/.test(filters.searchTerm);
+        if (!hasSpecialChars) {
+          const searchNum = Number(filters.searchTerm);
+          const isNumber = !isNaN(searchNum);
+
+          const conditions = [
+            // Text fields
+            `receive_no.ilike.%${filters.searchTerm}%`,
+            `reference_doc.ilike.%${filters.searchTerm}%`,
+            `warehouse_id.ilike.%${filters.searchTerm}%`,
+            `receive_type.ilike.%${filters.searchTerm}%`,
+            `status.ilike.%${filters.searchTerm}%`,
+            `remarks.ilike.%${filters.searchTerm}%`,
+            `supplier_id.ilike.%${filters.searchTerm}%`,
+            `customer_id.ilike.%${filters.searchTerm}%`,
+          ];
+
+          // Date fields - only search if input looks like a date
+          const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+          if (datePattern.test(filters.searchTerm)) {
+            conditions.push(`receive_date.eq.${filters.searchTerm}`);
+          }
+
+          if (isNumber) {
+            conditions.push(
+              `receive_id.eq.${searchNum}`,
+              `created_by.eq.${searchNum}`,
+              `received_by.eq.${searchNum}`
+            );
+          }
+
+          query = query.or(conditions.join(','));
+        }
       }
 
       const { data, error } = await query;

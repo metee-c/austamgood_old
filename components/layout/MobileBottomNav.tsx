@@ -12,7 +12,8 @@ import {
   MoreHorizontal,
   User,
   LogOut,
-  X
+  X,
+  Hand
 } from 'lucide-react';
 import { useAuthContext } from '@/contexts/AuthContext';
 import { usePermission } from '@/hooks/usePermission';
@@ -48,6 +49,12 @@ const navItems: NavItem[] = [
     icon: QrCode,
     label: 'หยิบสินค้า',
     permission: 'mobile.pick'
+  },
+  {
+    path: '/mobile/pick-up-pieces',
+    icon: Hand,
+    label: 'หยิบรายชิ้น',
+    permission: 'mobile.pick_up_pieces'
   },
   {
     path: '/mobile/loading',
@@ -144,9 +151,11 @@ export default function MobileBottomNav() {
           <ul className="flex items-center justify-around">
             {visibleNavItems.map((item) => {
               const Icon = item.icon;
+              // ใช้ exact match สำหรับ /mobile และ check แบบ exact หรือ subpath สำหรับอื่นๆ
+              // เพื่อป้องกัน /mobile/pick match กับ /mobile/pick-up-pieces
               const isActive = item.path === '/mobile'
                 ? pathname === '/mobile'
-                : pathname?.startsWith(item.path);
+                : pathname === item.path || pathname?.startsWith(item.path + '/');
 
               return (
                 <li key={item.path} className="flex-1">

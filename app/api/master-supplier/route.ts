@@ -17,7 +17,10 @@ export async function GET(request: NextRequest) {
 
     // Apply search filter
     if (search) {
-      query = query.or(`supplier_id.ilike.%${search}%,supplier_code.ilike.%${search}%,supplier_name.ilike.%${search}%,contact_person.ilike.%${search}%`);
+      const hasSpecialChars = /[|,()\\]/.test(search);
+      if (!hasSpecialChars) {
+        query = query.or(`supplier_id.ilike.%${search}%,supplier_code.ilike.%${search}%,supplier_name.ilike.%${search}%,contact_person.ilike.%${search}%`);
+      }
     }
 
     // Apply type filter

@@ -36,11 +36,10 @@ export async function GET(request: NextRequest) {
           zone,
           location_type
         ),
-        assigned_employee:assigned_to (
-          employee_id,
-          first_name,
-          last_name,
-          nickname
+        assigned_user:assigned_to (
+          user_id,
+          username,
+          full_name
         )
       `)
       .order('priority', { ascending: true })

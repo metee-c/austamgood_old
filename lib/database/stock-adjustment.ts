@@ -106,7 +106,9 @@ class StockAdjustmentService {
       }
       if (filters?.searchTerm) {
         const term = filters.searchTerm.trim();
-        if (term.length > 0) {
+        // Check if search term contains special characters that break PostgREST
+        const hasSpecialChars = /[|,()\\]/.test(term);
+        if (term.length > 0 && !hasSpecialChars) {
           query = query.or(`adjustment_no.ilike.%${term}%,reference_no.ilike.%${term}%`);
         }
       }

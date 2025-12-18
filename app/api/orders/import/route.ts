@@ -150,11 +150,11 @@ export async function POST(request: NextRequest) {
 
     // ตรวจสอบโครงสร้างไฟล์ว่าตรงกับประเภทที่เลือกหรือไม่
     const validateFileStructure = () => {
-      // ตรวจสอบว่ามีข้อมูลอย่างน้อย 2 แถวของข้อมูล
-      if (dataRows.length < 2) {
+      // ตรวจสอบว่ามีข้อมูลอย่างน้อย 1 แถวของข้อมูล
+      if (dataRows.length < 1) {
         return {
           valid: false,
-          message: 'ไฟล์มีข้อมูลน้อยเกินไป ต้องมีอย่างน้อย 2 แถวของข้อมูล'
+          message: 'ไฟล์ไม่มีข้อมูล ต้องมีอย่างน้อย 1 แถวของข้อมูล'
         };
       }
 

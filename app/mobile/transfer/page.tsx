@@ -25,8 +25,8 @@ import {
 } from 'lucide-react';
 import { useMoves } from '@/hooks/useMoves';
 import { MoveRecord, MoveStatus, MoveType } from '@/lib/database/move';
-import { useStockAlerts } from '@/hooks/useStockAlerts';
-import { AlertCard } from '@/components/mobile/AlertCard';
+import { useReplenishmentTasks, ReplenishmentStatus } from '@/hooks/useReplenishmentTasks';
+import { ReplenishmentTaskCard } from '@/components/mobile/ReplenishmentTaskCard';
 
 // Type labels
 const MOVE_TYPE_LABELS: Record<MoveType, string> = {
@@ -67,8 +67,8 @@ function MobileTransferListPage() {
 
   // Data fetching
   const { data: allMoves, loading, error, refetch } = useMoves();
-  const { alerts, isLoading: alertsLoading, updateAlertStatus, mutate: mutateAlerts } = useStockAlerts({
-    status: 'pending',
+  const { tasks: replenishmentTasks, isLoading: tasksLoading, updateTaskStatus, mutate: mutateTasks } = useReplenishmentTasks({
+    status: 'all',
     refreshInterval: 30000 // Auto-refresh every 30 seconds
   });
 
@@ -441,21 +441,27 @@ function MobileTransferListPage() {
     setRefreshing(true);
     playTapSound();
     if (activeTab === 'alerts') {
-      await mutateAlerts();
+      await mutateTasks();
     } else {
       await refetch();
     }
     setTimeout(() => setRefreshing(false), 500);
   };
 
-  // Handle alert status update
-  const handleAlertStatusUpdate = async (alertId: string, status: 'in_progress' | 'completed', notes?: string) => {
+  // Handle replenishment task status update
+  const handleTaskStatusUpdate = async (queueId: string, status: ReplenishmentStatus, data?: { confirmed_qty?: number; notes?: string }) => {
     try {
-      await updateAlertStatus(alertId, status, notes);
-      playSuccessSound();
+      const result = await updateTaskStatus(queueId, status, data);
+      if (result.success) {
+        playSuccessSound();
+      } else {
+        playErrorSound();
+      }
+      return result;
     } catch (err) {
       playErrorSound();
-      console.error('Error updating alert status:', err);
+      console.error('Error updating task status:', err);
+      return { success: false, error: 'Unknown error' };
     }
   };
 
@@ -577,10 +583,10 @@ function MobileTransferListPage() {
               >
                 <div className="flex items-center justify-center gap-1.5">
                   <AlertTriangle className="w-4 h-4" />
-                  <span>แจ้งเตือนเติมสต็อก</span>
-                  {alerts.length > 0 && (
+                  <span>งานเติมสต็อก</span>
+                  {replenishmentTasks.length > 0 && (
                     <span className="bg-red-500 text-white rounded-full px-1.5 py-0.5 text-[10px] font-bold min-w-[18px] text-center">
-                      {alerts.length}
+                      {replenishmentTasks.length}
                     </span>
                   )}
                 </div>
@@ -725,32 +731,32 @@ function MobileTransferListPage() {
               </>
             )}
 
-            {/* Alerts Summary - Show only for Alerts tab */}
+            {/* Tasks Summary - Show only for Alerts tab */}
             {activeTab === 'alerts' && (
               <div className="bg-white/15 backdrop-blur-sm rounded-lg p-3">
                 <div className="text-center">
-                  <div className="text-3xl font-bold mb-1">{alerts.length}</div>
-                  <div className="text-sm text-sky-100 font-thai">รายการแจ้งเตือน</div>
+                  <div className="text-3xl font-bold mb-1">{replenishmentTasks.length}</div>
+                  <div className="text-sm text-sky-100 font-thai">งานเติมสต็อก</div>
                 </div>
-                {alerts.length > 0 && (
+                {replenishmentTasks.length > 0 && (
                   <div className="mt-3 pt-3 border-t border-white/20 grid grid-cols-3 gap-2 text-center text-xs">
                     <div>
-                      <div className="text-lg font-bold text-red-300">
-                        {alerts.filter(a => a.priority >= 9).length}
-                      </div>
-                      <div className="text-sky-100 font-thai">ด่วนมาก</div>
-                    </div>
-                    <div>
-                      <div className="text-lg font-bold text-orange-300">
-                        {alerts.filter(a => a.priority >= 7 && a.priority < 9).length}
-                      </div>
-                      <div className="text-sky-100 font-thai">ด่วน</div>
-                    </div>
-                    <div>
                       <div className="text-lg font-bold text-yellow-300">
-                        {alerts.filter(a => a.priority < 7).length}
+                        {replenishmentTasks.filter(t => t.status === 'pending').length}
                       </div>
-                      <div className="text-sky-100 font-thai">ปกติ</div>
+                      <div className="text-sky-100 font-thai">รอดำเนินการ</div>
+                    </div>
+                    <div>
+                      <div className="text-lg font-bold text-blue-300">
+                        {replenishmentTasks.filter(t => t.status === 'assigned').length}
+                      </div>
+                      <div className="text-sky-100 font-thai">มอบหมายแล้ว</div>
+                    </div>
+                    <div>
+                      <div className="text-lg font-bold text-purple-300">
+                        {replenishmentTasks.filter(t => t.status === 'in_progress').length}
+                      </div>
+                      <div className="text-sky-100 font-thai">กำลังดำเนินการ</div>
                     </div>
                   </div>
                 )}
@@ -761,27 +767,27 @@ function MobileTransferListPage() {
 
         {/* Content Area */}
         <div className="p-3 space-y-3">
-          {/* Alerts Tab Content */}
+          {/* Replenishment Tasks Tab Content */}
           {activeTab === 'alerts' && (
             <>
-              {alertsLoading ? (
+              {tasksLoading ? (
                 <div className="flex flex-col items-center justify-center h-64 text-gray-500">
                   <Loader2 className="w-8 h-8 animate-spin mb-3" />
-                  <p className="text-sm font-thai">กำลังโหลดการแจ้งเตือน...</p>
+                  <p className="text-sm font-thai">กำลังโหลดงานเติมสต็อก...</p>
                 </div>
-              ) : alerts.length === 0 ? (
+              ) : replenishmentTasks.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-64 text-gray-400">
                   <CheckCircle2 className="w-16 h-16 mb-3 text-green-400" />
-                  <p className="text-lg font-bold text-green-600 mb-2 font-thai">ไม่มีการแจ้งเตือน</p>
-                  <p className="text-sm text-gray-500 font-thai">สต็อกในพื้นที่หยิบทุกตำแหน่งเพียงพอ</p>
+                  <p className="text-lg font-bold text-green-600 mb-2 font-thai">ไม่มีงานเติมสต็อก</p>
+                  <p className="text-sm text-gray-500 font-thai">ยังไม่มีงานเติมสต็อกที่ต้องดำเนินการ</p>
                 </div>
               ) : (
                 <>
-                  {alerts.map((alert) => (
-                    <AlertCard
-                      key={alert.alert_id}
-                      alert={alert}
-                      onStatusUpdate={handleAlertStatusUpdate}
+                  {replenishmentTasks.map((task) => (
+                    <ReplenishmentTaskCard
+                      key={task.queue_id}
+                      task={task}
+                      onStatusUpdate={handleTaskStatusUpdate}
                     />
                   ))}
                 </>
@@ -909,10 +915,10 @@ function MobileTransferListPage() {
         {/* Results Count */}
         {!loading && (
           <>
-            {activeTab === 'alerts' && alerts.length > 0 && (
+            {activeTab === 'alerts' && replenishmentTasks.length > 0 && (
               <div className="px-4 py-3 bg-white border-t border-gray-200">
                 <p className="text-sm text-center text-gray-600 font-thai">
-                  แสดง <span className="font-semibold text-gray-900">{alerts.length}</span> รายการแจ้งเตือน
+                  แสดง <span className="font-semibold text-gray-900">{replenishmentTasks.length}</span> งานเติมสต็อก
                 </p>
               </div>
             )}

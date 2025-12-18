@@ -15,6 +15,8 @@ interface ReplenishmentInfo {
   shortage_qty: number;
   from_location_id: string | null;
   to_location_id: string;
+  pallet_id: string | null;
+  expiry_date: string | null;
   queue_id?: string;
 }
 
@@ -234,38 +236,61 @@ export async function POST(request: NextRequest) {
           const shortage = item.quantity_to_pick - totalAvailable;
           
           // Search bulk storage for replenishment source using FEFO
+          // ดึงข้อมูลพาเลททั้งหมดที่มี SKU นี้ในบ้านเก็บ เรียงตาม FEFO
           const { data: bulkBalances } = await supabase
             .from('wms_inventory_balances')
-            .select('balance_id, location_id, total_piece_qty, reserved_piece_qty, expiry_date')
+            .select('balance_id, location_id, pallet_id, total_piece_qty, reserved_piece_qty, expiry_date')
             .eq('warehouse_id', warehouseId)
             .eq('sku_id', item.sku_id)
             .in('location_id', (bulkLocations || []).map(l => l.location_id))
             .gt('total_piece_qty', 0)
             .order('expiry_date', { ascending: true, nullsFirst: false })
-            .order('created_at', { ascending: true })
-            .limit(1);
+            .order('created_at', { ascending: true });
 
-          const bulkSource = bulkBalances?.[0];
-          const bulkAvailable = bulkSource 
-            ? (bulkSource.total_piece_qty || 0) - (bulkSource.reserved_piece_qty || 0) 
-            : 0;
+          // คำนวณจำนวนพาเลทที่ต้องเติม โดยเติมทั้งพาเลท (ไม่ใช่แค่จำนวนที่ขาด)
+          let remainingShortage = shortage;
+          let totalBulkAvailable = 0;
+          const palletsToReplenish: { location_id: string; pallet_id: string | null; qty: number; expiry_date: string | null }[] = [];
 
-          if (bulkAvailable >= shortage) {
-            // Can replenish from bulk storage
-            replenishmentNeeded.push({
-              sku_id: item.sku_id,
-              sku_name: item.sku_name,
-              shortage_qty: shortage,
-              from_location_id: bulkSource?.location_id || null,
-              to_location_id: item.source_location_id
+          for (const bulk of bulkBalances || []) {
+            if (remainingShortage <= 0) break;
+            
+            const palletAvailable = (bulk.total_piece_qty || 0) - (bulk.reserved_piece_qty || 0);
+            if (palletAvailable <= 0) continue;
+
+            totalBulkAvailable += palletAvailable;
+            
+            // เติมทั้งพาเลท ไม่ใช่แค่จำนวนที่ขาด
+            palletsToReplenish.push({
+              location_id: bulk.location_id,
+              pallet_id: bulk.pallet_id,
+              qty: palletAvailable, // จำนวนทั้งพาเลท
+              expiry_date: bulk.expiry_date
             });
+            
+            remainingShortage -= palletAvailable;
+          }
+
+          if (totalBulkAvailable >= shortage) {
+            // Can replenish from bulk storage - เติมทั้งพาเลท พร้อม pallet_id และ expiry_date สำหรับ FEFO
+            for (const pallet of palletsToReplenish) {
+              replenishmentNeeded.push({
+                sku_id: item.sku_id,
+                sku_name: item.sku_name,
+                shortage_qty: pallet.qty, // จำนวนทั้งพาเลท ไม่ใช่แค่ shortage
+                from_location_id: pallet.location_id,
+                to_location_id: item.source_location_id,
+                pallet_id: pallet.pallet_id || null,
+                expiry_date: pallet.expiry_date || null
+              });
+            }
           } else {
             // Not enough stock even in bulk storage
             insufficientStockItems.push({
               sku_name: item.sku_name,
               required: item.quantity_to_pick,
               available: totalAvailable,
-              bulk_available: bulkAvailable
+              bulk_available: totalBulkAvailable
             });
           }
         }
@@ -415,7 +440,7 @@ export async function POST(request: NextRequest) {
       }
 
 
-      // Create replenishment tasks if needed
+      // Create replenishment tasks if needed - รวม pallet_id และ expiry_date สำหรับ FEFO
       const createdReplenishments: ReplenishmentInfo[] = [];
       if (replenishmentNeeded.length > 0) {
         for (const replen of replenishmentNeeded) {
@@ -427,6 +452,8 @@ export async function POST(request: NextRequest) {
               from_location_id: replen.from_location_id,
               to_location_id: replen.to_location_id,
               requested_qty: replen.shortage_qty,
+              pallet_id: replen.pallet_id, // FEFO: ระบุพาเลทที่ต้องหยิบ
+              expiry_date: replen.expiry_date, // FEFO: วันหมดอายุของพาเลท
               priority: 3, // High priority for picklist-triggered replenishment
               status: 'pending',
               trigger_source: 'picklist',

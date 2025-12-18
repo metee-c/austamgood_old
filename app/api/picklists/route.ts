@@ -46,7 +46,11 @@ export async function GET(request: NextRequest) {
     }
 
     if (searchTerm) {
-      query = query.or(`picklist_code.ilike.%${searchTerm}%`);
+      // Check if search term contains special characters that break PostgREST
+      const hasSpecialChars = /[|,()\\]/.test(searchTerm);
+      if (!hasSpecialChars) {
+        query = query.or(`picklist_code.ilike.%${searchTerm}%`);
+      }
     }
 
     const { data: picklists, error } = await query;

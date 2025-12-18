@@ -44,7 +44,12 @@ export async function GET(request: NextRequest) {
     }
 
     if (searchTerm) {
-      query = query.or(`order_no.ilike.%${searchTerm}%,shop_name.ilike.%${searchTerm}%,customer_id.ilike.%${searchTerm}%,province.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%,notes.ilike.%${searchTerm}%,notes_additional.ilike.%${searchTerm}%,text_field_long_1.ilike.%${searchTerm}%,text_field_additional_1.ilike.%${searchTerm}%,text_field_additional_4.ilike.%${searchTerm}%,sales_territory.ilike.%${searchTerm}%`);
+      // Check if search term contains special characters that break PostgREST
+      const hasSpecialChars = /[|,()\\]/.test(searchTerm);
+      if (!hasSpecialChars) {
+        query = query.or(`order_no.ilike.%${searchTerm}%,shop_name.ilike.%${searchTerm}%,customer_id.ilike.%${searchTerm}%,province.ilike.%${searchTerm}%,phone.ilike.%${searchTerm}%,notes.ilike.%${searchTerm}%,notes_additional.ilike.%${searchTerm}%,text_field_long_1.ilike.%${searchTerm}%,text_field_additional_1.ilike.%${searchTerm}%,text_field_additional_4.ilike.%${searchTerm}%,sales_territory.ilike.%${searchTerm}%`);
+      }
+      // If has special chars, skip the filter (will return all results)
     }
 
     if (startDate) {

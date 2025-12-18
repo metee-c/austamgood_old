@@ -669,11 +669,11 @@ export class StockImportService {
       .eq('location_id', locationId)
       .eq('sku_id', record.sku_id!);
 
-    // Handle pallet_id_external - null vs value
+    // Handle pallet_id - null vs value
     if (record.pallet_id_external === null || record.pallet_id_external === undefined || record.pallet_id_external === '') {
-      query = query.is('pallet_id_external', null);
+      query = query.is('pallet_id', null);
     } else {
-      query = query.eq('pallet_id_external', record.pallet_id_external);
+      query = query.eq('pallet_id', record.pallet_id_external);
     }
 
     const { data: existing } = await query.maybeSingle();
@@ -699,7 +699,7 @@ export class StockImportService {
           warehouse_id: record.warehouse_id!,
           location_id: locationId,
           sku_id: record.sku_id!,
-          pallet_id_external: record.pallet_id_external,
+          pallet_id: record.pallet_id_external,
           lot_no: record.lot_no,
           production_date: record.parsed_received_date,
           expiry_date: record.parsed_expiration_date,
@@ -731,7 +731,7 @@ export class StockImportService {
         warehouse_id: record.warehouse_id!,
         location_id: locationId,
         sku_id: record.sku_id!,
-        pallet_id_external: record.pallet_id_external,
+        pallet_id: record.pallet_id_external, // ใช้ค่าจาก CSV เป็น pallet_id
         production_date: record.parsed_received_date,
         expiry_date: record.parsed_expiration_date,
         pack_qty: Number(record.pack_qty || 0),

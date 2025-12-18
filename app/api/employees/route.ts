@@ -19,7 +19,10 @@ export async function GET(request: NextRequest) {
 
     // Apply search filter if provided
     if (search) {
-      query = query.or(`employee_code.ilike.%${search}%,first_name.ilike.%${search}%,last_name.ilike.%${search}%,nickname.ilike.%${search}%`);
+      const hasSpecialChars = /[|,()\\]/.test(search);
+      if (!hasSpecialChars) {
+        query = query.or(`employee_code.ilike.%${search}%,first_name.ilike.%${search}%,last_name.ilike.%${search}%,nickname.ilike.%${search}%`);
+      }
     }
 
     query = query.order('first_name', { ascending: true });

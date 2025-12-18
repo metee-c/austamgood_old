@@ -30,7 +30,6 @@ interface InventoryLedger {
   location_id: string | null;
   sku_id: string;
   pallet_id: string | null;
-  pallet_id_external: string | null;
   production_date: string | null;
   expiry_date: string | null;
   pack_qty: number;
@@ -47,6 +46,7 @@ const InventoryLedgerPage = () => {
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [selectedWarehouse, setSelectedWarehouse] = useState('all');
   const [selectedTransactionType, setSelectedTransactionType] = useState('all');
   const [selectedDirection, setSelectedDirection] = useState('all');
@@ -61,9 +61,21 @@ const InventoryLedgerPage = () => {
   const [totalCount, setTotalCount] = useState(0);
   const pageSize = 100;
 
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Fetch data when debounced search or filters change
+  useEffect(() => {
+    fetchLedgerData(1);
+  }, [debouncedSearchTerm, selectedWarehouse, selectedTransactionType, selectedDirection, dateFrom, dateTo]);
+
   useEffect(() => {
     fetchWarehouses();
-    fetchLedgerData();
   }, []);
 
   const fetchWarehouses = async () => {
@@ -81,15 +93,106 @@ const InventoryLedgerPage = () => {
     }
   };
 
+  const applyFiltersToQuery = (query: any, matchingSkuIds: string[] = []) => {
+    // Apply server-side search - handle special characters in SKU IDs
+    if (matchingSkuIds.length > 0) {
+      // Use .filter() with in operator for SKU IDs with special chars like |
+      const encodedIds = matchingSkuIds.map(id => `"${id}"`).join(',');
+      query = query.filter('sku_id', 'in', `(${encodedIds})`);
+    } else if (debouncedSearchTerm) {
+      // Check if search term contains special characters that break PostgREST
+      const hasSpecialChars = /[|,()\\]/.test(debouncedSearchTerm);
+      
+      if (!hasSpecialChars) {
+        const searchNum = Number(debouncedSearchTerm);
+        const isNumber = !isNaN(searchNum);
+
+        const conditions = [
+          // Text fields - case insensitive search
+          `sku_id.ilike.%${debouncedSearchTerm}%`,
+          `pallet_id.ilike.%${debouncedSearchTerm}%`,
+          `location_id.ilike.%${debouncedSearchTerm}%`,
+          `warehouse_id.ilike.%${debouncedSearchTerm}%`,
+          `reference_no.ilike.%${debouncedSearchTerm}%`,
+          `remarks.ilike.%${debouncedSearchTerm}%`,
+          `transaction_type.ilike.%${debouncedSearchTerm}%`,
+          `direction.ilike.%${debouncedSearchTerm}%`,
+        ];
+
+        // Date fields - only search if input looks like a date
+        const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+        if (datePattern.test(debouncedSearchTerm)) {
+          conditions.push(
+            `production_date.eq.${debouncedSearchTerm}`,
+            `expiry_date.eq.${debouncedSearchTerm}`,
+            `movement_at.eq.${debouncedSearchTerm}`
+          );
+        }
+
+        if (isNumber) {
+          conditions.push(
+            `ledger_id.eq.${searchNum}`,
+            `move_item_id.eq.${searchNum}`,
+            `receive_item_id.eq.${searchNum}`,
+            `pack_qty.eq.${searchNum}`,
+            `piece_qty.eq.${searchNum}`,
+            `created_by.eq.${searchNum}`
+          );
+        }
+
+        query = query.or(conditions.join(','));
+      }
+      // If has special chars but no matching SKUs, query will return empty
+    }
+
+    // Apply other filters
+    if (selectedWarehouse !== 'all') {
+      query = query.eq('warehouse_id', selectedWarehouse);
+    }
+
+    if (selectedTransactionType !== 'all') {
+      query = query.eq('transaction_type', selectedTransactionType);
+    }
+
+    if (selectedDirection !== 'all') {
+      query = query.eq('direction', selectedDirection);
+    }
+
+    if (dateFrom) {
+      query = query.gte('movement_at', dateFrom);
+    }
+
+    if (dateTo) {
+      query = query.lte('movement_at', dateTo + 'T23:59:59');
+    }
+
+    return query;
+  };
+
   const fetchLedgerData = async (page: number = 1) => {
     try {
       setLoading(true);
       const supabase = createClient();
 
-      // Get total count first
-      const { count, error: countError } = await supabase
+      // If searching, first find matching SKU IDs from master_sku by name or sku_id
+      let matchingSkuIds: string[] = [];
+      if (debouncedSearchTerm) {
+        const { data: matchingSkus } = await supabase
+          .from('master_sku')
+          .select('sku_id, sku_name')
+          .or(`sku_name.ilike.%${debouncedSearchTerm}%,sku_id.ilike.%${debouncedSearchTerm}%`);
+        
+        matchingSkuIds = matchingSkus?.map((s) => s.sku_id) || [];
+      }
+
+      // Build count query with filters
+      let countQuery = supabase
         .from('wms_inventory_ledger')
         .select('*', { count: 'exact', head: true });
+
+      countQuery = applyFiltersToQuery(countQuery, matchingSkuIds);
+
+      const { count, error: countError } = await countQuery;
 
       if (countError) {
         console.error('Error fetching count:', countError);
@@ -97,11 +200,11 @@ const InventoryLedgerPage = () => {
         setTotalCount(count || 0);
       }
 
-      // Fetch paginated data
+      // Fetch paginated data with filters
       const from = (page - 1) * pageSize;
       const to = from + pageSize - 1;
 
-      const { data, error } = await supabase
+      let dataQuery = supabase
         .from('wms_inventory_ledger')
         .select(`
           *,
@@ -123,6 +226,10 @@ const InventoryLedgerPage = () => {
         `)
         .order('ledger_id', { ascending: false })
         .range(from, to);
+
+      dataQuery = applyFiltersToQuery(dataQuery, matchingSkuIds);
+
+      const { data, error } = await dataQuery;
 
       if (error) {
         setError(error.message);
@@ -171,22 +278,8 @@ const InventoryLedgerPage = () => {
     return <Badge variant="default" size="sm" className="whitespace-nowrap"><span className="text-[10px]">{direction}</span></Badge>;
   };
 
-  const filteredData = ledgerData.filter(item => {
-    const matchesSearch =
-      (item.reference_no?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (item.sku_id?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (item.pallet_id_external?.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (item.pallet_id?.toLowerCase().includes(searchTerm.toLowerCase()));
-
-    const matchesWarehouse = selectedWarehouse === 'all' || item.warehouse_id === selectedWarehouse;
-    const matchesTransactionType = selectedTransactionType === 'all' || item.transaction_type === selectedTransactionType;
-    const matchesDirection = selectedDirection === 'all' || item.direction === selectedDirection;
-
-    const matchesDateFrom = !dateFrom || new Date(item.movement_at) >= new Date(dateFrom);
-    const matchesDateTo = !dateTo || new Date(item.movement_at) <= new Date(dateTo + 'T23:59:59');
-
-    return matchesSearch && matchesWarehouse && matchesTransactionType && matchesDirection && matchesDateFrom && matchesDateTo;
-  });
+  // NOTE: Search filter is now handled server-side via SKU ID matching
+  const filteredData = ledgerData;
 
   // รวม in/out entries ที่มี move_item_id เดียวกันให้เป็นแถวเดียว
   const consolidatedData = [];
@@ -489,13 +582,9 @@ const InventoryLedgerPage = () => {
                             </details>
                           ) : (
                             <div>
-                              {ledger.pallet_id_external && (
-                                <div className="font-mono text-thai-gray-700">{ledger.pallet_id_external}</div>
-                              )}
-                              {ledger.pallet_id && (
-                                <div className="font-mono text-[10px] text-gray-500">{ledger.pallet_id}</div>
-                              )}
-                              {!ledger.pallet_id && !ledger.pallet_id_external && (
+                              {ledger.pallet_id ? (
+                                <div className="font-mono text-thai-gray-700">{ledger.pallet_id}</div>
+                              ) : (
                                 <span className="text-gray-400">-</span>
                               )}
                             </div>

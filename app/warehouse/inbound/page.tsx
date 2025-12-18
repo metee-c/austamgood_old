@@ -43,6 +43,7 @@ type ReceiveWithItems = ReceiveHeader & {
 };
 const InboundPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState<ReceiveType | 'all'>('all');
   const [selectedStatus, setSelectedStatus] = useState<ReceiveStatus | 'all'>('all');
   const [currentPage, setCurrentPage] = useState(1);
@@ -58,15 +59,23 @@ const InboundPage = () => {
   const [sortField, setSortField] = useState<string>('');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [changingStatus, setChangingStatus] = useState<Record<number, boolean>>({});
-  
-  // Build filters object
+
+  // Debounce search term
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Build filters object with debounced search
   const filters: ReceiveFilters = useMemo(() => ({
     ...(selectedType !== 'all' && { receive_type: selectedType as ReceiveType }),
     ...(selectedStatus !== 'all' && { status: selectedStatus as ReceiveStatus }),
-    ...(searchTerm && { searchTerm }),
+    ...(debouncedSearchTerm && { searchTerm: debouncedSearchTerm }),
     ...(startDate && { startDate }),
     ...(endDate && { endDate }),
-  }), [selectedType, selectedStatus, searchTerm, startDate, endDate]);
+  }), [selectedType, selectedStatus, debouncedSearchTerm, startDate, endDate]);
   // Fetch data using hooks
   const { data: receives, loading: receivesLoading, error: receivesError, refetch } = useReceives(filters);
   const { data: dashboardData, loading: dashboardLoading } = useReceiveDashboard();

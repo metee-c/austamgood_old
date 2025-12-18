@@ -66,9 +66,12 @@ export async function GET(request: NextRequest) {
     }
 
     if (search) {
-      baseQuery = baseQuery.or(
-        `location_code.ilike.%${search}%,location_name.ilike.%${search}%,zone.ilike.%${search}%`
-      );
+      const hasSpecialChars = /[|,()\\]/.test(search);
+      if (!hasSpecialChars) {
+        baseQuery = baseQuery.or(
+          `location_code.ilike.%${search}%,location_name.ilike.%${search}%,zone.ilike.%${search}%`
+        );
+      }
     }
 
     // Fetch all data using pagination (Supabase max is 1000 per request)

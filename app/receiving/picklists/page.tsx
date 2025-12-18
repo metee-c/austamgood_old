@@ -65,6 +65,8 @@ const PicklistsPage = () => {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [creatingProgress, setCreatingProgress] = useState(0);
+  const [creatingTotal, setCreatingTotal] = useState(0);
   const [editingStatusPicklistId, setEditingStatusPicklistId] = useState<number | null>(null);
   const [selectedPicklists, setSelectedPicklists] = useState<number[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
@@ -259,14 +261,16 @@ const PicklistsPage = () => {
         </Button>
       </PageHeaderWithFilters>
 
-      <div className="flex-1 min-h-0 bg-white border border-gray-200 rounded-lg shadow-sm overflow-auto thin-scrollbar">
+      <div className="flex-1 min-h-0 flex flex-col bg-white border border-gray-200 rounded-lg shadow-sm overflow-hidden">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center h-full text-thai-gray-400">
             <div className="w-8 h-8 border-4 border-green-500 border-t-transparent rounded-full animate-spin mb-2"></div>
             <p className="text-sm font-thai">กำลังโหลดข้อมูล...</p>
           </div>
         ) : (
-          <Table>
+          <>
+            <div className="flex-1 overflow-auto thin-scrollbar">
+              <Table>
             <Table.Header>
               <tr>
                 <Table.Head onClick={() => handleSort('picklist_code')}>เลขที่รายการหยิบ{getSortIcon('picklist_code')}</Table.Head>
@@ -446,14 +450,16 @@ const PicklistsPage = () => {
                 ))
               )}
             </Table.Body>
-          </Table>
+              </Table>
+            </div>
+            <PaginationBar
+              currentPage={currentPage}
+              totalItems={sortedPicklists.length}
+              pageSize={pageSize}
+              onPageChange={setCurrentPage}
+            />
+          </>
         )}
-        <PaginationBar
-          currentPage={currentPage}
-          totalItems={sortedPicklists.length}
-          pageSize={pageSize}
-          onPageChange={setCurrentPage}
-        />
       </div>
 
       {/* Create Picklist Modal */}
@@ -640,6 +646,9 @@ const PicklistsPage = () => {
                   }
 
                   setIsCreating(true);
+                  setCreatingProgress(0);
+                  setCreatingTotal(selectedPicklists.length);
+
                   try {
                     // Build trips array with loading doors
                     const tripsData = selectedPicklists.map((tripId) => {
@@ -659,7 +668,21 @@ const PicklistsPage = () => {
                       body: JSON.stringify({ trips: tripsData }),
                     });
 
+                    // Simulate progress for better UX (batch API doesn't provide real-time progress)
+                    const progressInterval = setInterval(() => {
+                      setCreatingProgress(prev => {
+                        if (prev >= selectedPicklists.length - 1) {
+                          clearInterval(progressInterval);
+                          return prev;
+                        }
+                        return prev + 1;
+                      });
+                    }, 300);
+
                     const result = await response.json();
+
+                    clearInterval(progressInterval);
+                    setCreatingProgress(selectedPicklists.length); // Complete progress
 
                     if (!response.ok) {
                       throw new Error(result.error || 'Failed to create picklists');
@@ -703,6 +726,57 @@ const PicklistsPage = () => {
                 {isCreating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
                 {isCreating ? 'กำลังสร้าง...' : `สร้าง Picklist (${selectedPicklists.length} รายการ)`}
               </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Progress Modal */}
+      {isCreating && (
+        <Modal
+          isOpen={isCreating}
+          onClose={() => {}} // ไม่ให้ปิดได้ระหว่างสร้าง
+          title="กำลังสร้าง Picklist"
+          size="md"
+        >
+          <div className="space-y-6">
+            {/* Loading Spinner */}
+            <div className="flex justify-center">
+              <div className="relative w-24 h-24">
+                <div className="absolute inset-0 border-8 border-gray-200 rounded-full"></div>
+                <div className="absolute inset-0 border-8 border-green-500 border-t-transparent rounded-full animate-spin"></div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <span className="text-2xl font-bold text-green-600 font-thai">
+                    {creatingTotal > 0 ? Math.round((creatingProgress / creatingTotal) * 100) : 0}%
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Progress Info */}
+            <div className="text-center space-y-2">
+              <p className="text-lg font-semibold text-gray-900 font-thai">
+                กำลังสร้าง Picklist...
+              </p>
+              <p className="text-sm text-gray-600 font-thai">
+                {creatingProgress} / {creatingTotal} รายการ
+              </p>
+            </div>
+
+            {/* Progress Bar */}
+            <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+              <div
+                className="bg-gradient-to-r from-green-500 to-green-600 h-full rounded-full transition-all duration-300 ease-out"
+                style={{
+                  width: `${creatingTotal > 0 ? (creatingProgress / creatingTotal) * 100 : 0}%`
+                }}
+              ></div>
+            </div>
+
+            {/* Status Message */}
+            <div className="text-center text-xs text-gray-500 font-thai">
+              <p>กรุณารอสักครู่... ระบบกำลังดำเนินการ</p>
+              <p className="mt-1">โปรดอย่าปิดหน้าต่างนี้</p>
             </div>
           </div>
         </Modal>

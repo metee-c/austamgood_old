@@ -39,7 +39,10 @@ export async function GET(request: NextRequest) {
     }
 
     if (searchTerm) {
-      query = query.or(`order_no.ilike.%${searchTerm}%`);
+      const hasSpecialChars = /[|,()\\]/.test(searchTerm);
+      if (!hasSpecialChars) {
+        query = query.or(`order_no.ilike.%${searchTerm}%`);
+      }
     }
 
     if (startDate) {

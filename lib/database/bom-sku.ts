@@ -19,7 +19,10 @@ export class BomSkuService {
 
       // Apply filters
       if (filters.search) {
-        query = query.or(`bom_id.ilike.%${filters.search}%,step_name.ilike.%${filters.search}%`);
+        const hasSpecialChars = /[|,()\\]/.test(filters.search);
+        if (!hasSpecialChars) {
+          query = query.or(`bom_id.ilike.%${filters.search}%,step_name.ilike.%${filters.search}%`);
+        }
       }
 
       if (filters.bom_id) {

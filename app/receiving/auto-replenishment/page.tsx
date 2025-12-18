@@ -3,11 +3,9 @@
 import { useState, useMemo } from 'react';
 import {
   RefreshCw,
-  Package,
   MapPin,
   ArrowRight,
   User,
-  Clock,
   CheckCircle,
   AlertTriangle,
   Play,
@@ -42,10 +40,13 @@ interface ReplenishmentTask {
   completed_at: string | null;
   notes: string | null;
   created_at: string;
+  // FEFO fields
+  pallet_id: string | null;
+  expiry_date: string | null;
   master_sku?: { sku_id: string; sku_name: string; uom_base: string; qty_per_pack: number };
   from_location?: { location_id: string; zone: string; location_type: string };
   to_location?: { location_id: string; zone: string; location_type: string };
-  assigned_employee?: { employee_id: number; first_name: string; last_name: string; nickname: string };
+  assigned_user?: { user_id: number; username: string; full_name: string };
 }
 
 const fetcher = async (url: string) => {
@@ -70,11 +71,12 @@ const AutoReplenishmentPage = () => {
     { refreshInterval: 30000 }
   );
 
-  // Fetch employees for assignment
-  const { data: employeesData } = useSWR('/api/employees?status=active', fetcher);
+  // Fetch users for assignment (from master_system_user)
+  const { data: usersData } = useSWR('/api/users/list', fetcher);
 
   const tasks = tasksData?.data || [];
-  const employees = employeesData?.data || [];
+  // API /api/users/list returns array directly
+  const users = Array.isArray(usersData) ? usersData : [];
   const isLoading = !tasksData && !error;
 
   // Filter tasks by search term
@@ -161,20 +163,11 @@ const AutoReplenishmentPage = () => {
     }
   };
 
-  // Assign employee
-  const handleAssign = async (employeeId: number) => {
+  // Assign user
+  const handleAssign = async (userId: number) => {
     if (!selectedTask) return;
-    await handleUpdateStatus(selectedTask.queue_id, 'assigned', { assigned_to: employeeId });
+    await handleUpdateStatus(selectedTask.queue_id, 'assigned', { assigned_to: userId });
   };
-
-  // Summary stats
-  const stats = useMemo(() => {
-    const pending = tasks.filter((t: ReplenishmentTask) => t.status === 'pending').length;
-    const assigned = tasks.filter((t: ReplenishmentTask) => t.status === 'assigned').length;
-    const inProgress = tasks.filter((t: ReplenishmentTask) => t.status === 'in_progress').length;
-    const completed = tasks.filter((t: ReplenishmentTask) => t.status === 'completed').length;
-    return { pending, assigned, inProgress, completed, total: tasks.length };
-  }, [tasks]);
 
   const statusOptions = [
     { value: 'all', label: 'ทุกสถานะ' },
@@ -204,48 +197,9 @@ const AutoReplenishmentPage = () => {
         </Button>
       </PageHeaderWithFilters>
 
-      {/* Stats Cards */}
-      <div className="grid grid-cols-5 gap-2 flex-shrink-0">
-        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-2">
-          <div className="flex items-center justify-between">
-            <span className="text-yellow-700 font-thai text-xs">รอดำเนินการ</span>
-            <Clock className="w-4 h-4 text-yellow-600" />
-          </div>
-          <p className="text-xl font-bold text-yellow-800">{stats.pending}</p>
-        </div>
-        <div className="bg-blue-50 border border-blue-200 rounded-lg p-2">
-          <div className="flex items-center justify-between">
-            <span className="text-blue-700 font-thai text-xs">มอบหมายแล้ว</span>
-            <User className="w-4 h-4 text-blue-600" />
-          </div>
-          <p className="text-xl font-bold text-blue-800">{stats.assigned}</p>
-        </div>
-        <div className="bg-purple-50 border border-purple-200 rounded-lg p-2">
-          <div className="flex items-center justify-between">
-            <span className="text-purple-700 font-thai text-xs">กำลังดำเนินการ</span>
-            <Play className="w-4 h-4 text-purple-600" />
-          </div>
-          <p className="text-xl font-bold text-purple-800">{stats.inProgress}</p>
-        </div>
-        <div className="bg-green-50 border border-green-200 rounded-lg p-2">
-          <div className="flex items-center justify-between">
-            <span className="text-green-700 font-thai text-xs">เสร็จสิ้น</span>
-            <CheckCircle className="w-4 h-4 text-green-600" />
-          </div>
-          <p className="text-xl font-bold text-green-800">{stats.completed}</p>
-        </div>
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-2">
-          <div className="flex items-center justify-between">
-            <span className="text-gray-700 font-thai text-xs">ทั้งหมด</span>
-            <Package className="w-4 h-4 text-gray-600" />
-          </div>
-          <p className="text-xl font-bold text-gray-800">{stats.total}</p>
-        </div>
-      </div>
-
       {/* Table */}
       <div className="flex-1 min-h-0 bg-white border rounded-lg shadow-sm flex flex-col overflow-hidden">
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto min-h-0">
         {isLoading ? (
           <div className="flex flex-col items-center justify-center h-full text-thai-gray-400">
             <Loader2 className="w-8 h-8 animate-spin mb-2 text-green-500" />
@@ -266,94 +220,112 @@ const AutoReplenishmentPage = () => {
           <Table>
             <Table.Header>
               <tr>
-                <Table.Head width="60px">ลำดับ</Table.Head>
-                <Table.Head>SKU</Table.Head>
-                <Table.Head width="120px">จำนวน</Table.Head>
-                <Table.Head>จากโลเคชั่น</Table.Head>
-                <Table.Head>ไปโลเคชั่น</Table.Head>
-                <Table.Head width="100px">ความสำคัญ</Table.Head>
-                <Table.Head width="120px">สถานะ</Table.Head>
-                <Table.Head>ผู้รับผิดชอบ</Table.Head>
-                <Table.Head>อ้างอิง</Table.Head>
-                <Table.Head width="100px">สร้างเมื่อ</Table.Head>
-                <Table.Head width="150px">การดำเนินการ</Table.Head>
+                <Table.Head width="50px" className="text-xs px-2 py-1.5">ลำดับ</Table.Head>
+                <Table.Head className="text-xs px-2 py-1.5">SKU</Table.Head>
+                <Table.Head width="90px" className="text-xs px-2 py-1.5">จำนวน</Table.Head>
+                <Table.Head className="text-xs px-2 py-1.5">จาก</Table.Head>
+                <Table.Head className="text-xs px-2 py-1.5">พาเลท ID</Table.Head>
+                <Table.Head className="text-xs px-2 py-1.5">วันหมดอายุ</Table.Head>
+                <Table.Head className="text-xs px-2 py-1.5">ไป</Table.Head>
+                <Table.Head width="80px" className="text-xs px-2 py-1.5">ความสำคัญ</Table.Head>
+                <Table.Head width="90px" className="text-xs px-2 py-1.5">สถานะ</Table.Head>
+                <Table.Head className="text-xs px-2 py-1.5">ผู้รับผิดชอบ</Table.Head>
+                <Table.Head className="text-xs px-2 py-1.5">อ้างอิง</Table.Head>
+                <Table.Head width="90px" className="text-xs px-2 py-1.5">สร้างเมื่อ</Table.Head>
+                <Table.Head width="120px" className="text-xs px-2 py-1.5">จัดการ</Table.Head>
               </tr>
             </Table.Header>
             <Table.Body>
               {filteredTasks.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((task: ReplenishmentTask, index: number) => (
                 <Table.Row key={task.queue_id} className="hover:bg-gray-50">
-                  <Table.Cell className="text-center font-mono text-gray-500">{(currentPage - 1) * pageSize + index + 1}</Table.Cell>
-                  <Table.Cell>
+                  <Table.Cell className="text-center font-mono text-gray-500 text-xs px-2 py-1">{(currentPage - 1) * pageSize + index + 1}</Table.Cell>
+                  <Table.Cell className="px-2 py-1">
                     <div>
                       <div className="font-semibold text-gray-900 text-sm">{task.master_sku?.sku_name || task.sku_id}</div>
                       <div className="text-xs text-gray-500 font-mono">{task.sku_id}</div>
                     </div>
                   </Table.Cell>
-                  <Table.Cell>
+                  <Table.Cell className="px-2 py-1">
                     <div className="text-center">
-                      <span className="font-bold text-lg text-blue-600">{task.requested_qty}</span>
+                      <span className="font-bold text-sm text-blue-600">{task.requested_qty}</span>
                       <span className="text-xs text-gray-500 ml-1">{task.master_sku?.uom_base || 'ชิ้น'}</span>
                       {task.confirmed_qty > 0 && (
-                        <div className="text-xs text-green-600">เบิกแล้ว: {task.confirmed_qty}</div>
+                        <div className="text-xs text-green-600">เบิก: {task.confirmed_qty}</div>
                       )}
                     </div>
                   </Table.Cell>
-                  <Table.Cell>
+                  <Table.Cell className="px-2 py-1">
                     <div className="flex items-center gap-1">
-                      <MapPin className="w-4 h-4 text-red-500" />
+                      <MapPin className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
                       <div>
-                        <div className="font-mono text-sm font-semibold text-gray-900">{task.from_location_id || '-'}</div>
+                        <div className="font-mono text-xs font-semibold text-gray-900">{task.from_location_id || '-'}</div>
                         <div className="text-xs text-gray-500">{task.from_location?.zone || 'บ้านเก็บ'}</div>
                       </div>
                     </div>
                   </Table.Cell>
-                  <Table.Cell>
+                  <Table.Cell className="px-2 py-1">
+                    {task.pallet_id ? (
+                      <span className="font-mono text-xs font-semibold text-purple-700 bg-purple-50 px-1.5 py-0.5 rounded">{task.pallet_id}</span>
+                    ) : (
+                      <span className="text-gray-400 text-xs">-</span>
+                    )}
+                  </Table.Cell>
+                  <Table.Cell className="px-2 py-1">
+                    {task.expiry_date ? (
+                      <span className="text-xs font-semibold text-orange-700 bg-orange-50 px-1.5 py-0.5 rounded">
+                        {new Date(task.expiry_date).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: '2-digit' })}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400 text-xs">-</span>
+                    )}
+                  </Table.Cell>
+                  <Table.Cell className="px-2 py-1">
                     <div className="flex items-center gap-1">
-                      <ArrowRight className="w-4 h-4 text-green-500" />
+                      <ArrowRight className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
                       <div>
-                        <div className="font-mono text-sm font-semibold text-gray-900">{task.to_location_id || '-'}</div>
+                        <div className="font-mono text-xs font-semibold text-gray-900">{task.to_location_id || '-'}</div>
                         <div className="text-xs text-gray-500">{task.to_location?.zone || 'บ้านหยิบ'}</div>
                       </div>
                     </div>
                   </Table.Cell>
-                  <Table.Cell>
-                    <span className={`px-2 py-1 rounded text-xs font-semibold ${getPriorityColor(task.priority)}`}>
+                  <Table.Cell className="px-2 py-1">
+                    <span className={`px-1.5 py-0.5 rounded text-xs font-semibold ${getPriorityColor(task.priority)}`}>
                       {getPriorityText(task.priority)}
                     </span>
                   </Table.Cell>
-                  <Table.Cell>
-                    <Badge variant={getStatusVariant(task.status)}>{getStatusText(task.status)}</Badge>
+                  <Table.Cell className="px-2 py-1">
+                    <Badge variant={getStatusVariant(task.status)} size="sm" className="text-xs">{getStatusText(task.status)}</Badge>
                   </Table.Cell>
-                  <Table.Cell>
-                    {task.assigned_employee ? (
+                  <Table.Cell className="px-2 py-1">
+                    {task.assigned_user ? (
                       <div className="flex items-center gap-1">
-                        <User className="w-4 h-4 text-gray-400" />
-                        <span className="text-sm">{task.assigned_employee.nickname || `${task.assigned_employee.first_name}`}</span>
+                        <User className="w-3.5 h-3.5 text-gray-400 flex-shrink-0" />
+                        <span className="text-xs">{task.assigned_user.full_name}</span>
                       </div>
                     ) : (
-                      <span className="text-gray-400 text-sm">-</span>
+                      <span className="text-gray-400 text-xs">-</span>
                     )}
                   </Table.Cell>
-                  <Table.Cell>
+                  <Table.Cell className="px-2 py-1">
                     {task.trigger_reference ? (
                       <span className="font-mono text-xs text-blue-600">{task.trigger_reference}</span>
                     ) : (
-                      <span className="text-gray-400 text-sm">-</span>
+                      <span className="text-gray-400 text-xs">-</span>
                     )}
                   </Table.Cell>
-                  <Table.Cell>
+                  <Table.Cell className="px-2 py-1">
                     <span className="text-xs text-gray-500">{formatDate(task.created_at)}</span>
                   </Table.Cell>
-                  <Table.Cell>
+                  <Table.Cell className="px-2 py-1">
                     <div className="flex items-center gap-1">
                       {task.status === 'pending' && (
                         <Button
                           size="sm"
                           variant="outline"
                           onClick={() => { setSelectedTask(task); setShowAssignModal(true); }}
-                          className="text-xs"
+                          className="text-[10px] px-1.5 py-1 h-6 min-h-0"
                         >
-                          <User className="w-3 h-3 mr-1" />
+                          <User className="w-3 h-3 mr-0.5" />
                           มอบหมาย
                         </Button>
                       )}
@@ -363,9 +335,9 @@ const AutoReplenishmentPage = () => {
                           variant="primary"
                           onClick={() => handleUpdateStatus(task.queue_id, 'in_progress')}
                           disabled={isUpdating}
-                          className="text-xs"
+                          className="text-[10px] px-1.5 py-1 h-6 min-h-0"
                         >
-                          <Play className="w-3 h-3 mr-1" />
+                          <Play className="w-3 h-3 mr-0.5" />
                           เริ่ม
                         </Button>
                       )}
@@ -375,9 +347,9 @@ const AutoReplenishmentPage = () => {
                           variant="success"
                           onClick={() => handleUpdateStatus(task.queue_id, 'completed', { confirmed_qty: task.requested_qty })}
                           disabled={isUpdating}
-                          className="text-xs bg-green-500 hover:bg-green-600"
+                          className="text-[10px] px-1.5 py-1 h-6 min-h-0 bg-green-500 hover:bg-green-600"
                         >
-                          <CheckCircle className="w-3 h-3 mr-1" />
+                          <CheckCircle className="w-3 h-3 mr-0.5" />
                           เสร็จ
                         </Button>
                       )}
@@ -387,7 +359,7 @@ const AutoReplenishmentPage = () => {
                           variant="danger"
                           onClick={() => handleUpdateStatus(task.queue_id, 'cancelled')}
                           disabled={isUpdating}
-                          className="text-xs"
+                          className="text-[10px] px-1 py-1 h-6 min-h-0 w-6"
                         >
                           <XCircle className="w-3 h-3" />
                         </Button>
@@ -399,13 +371,13 @@ const AutoReplenishmentPage = () => {
             </Table.Body>
           </Table>
         )}
+        </div>
         <PaginationBar
           currentPage={currentPage}
           totalItems={filteredTasks.length}
           pageSize={pageSize}
           onPageChange={setCurrentPage}
         />
-        </div>
       </div>
 
       {/* Assign Employee Modal */}
@@ -439,27 +411,33 @@ const AutoReplenishmentPage = () => {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2 font-thai">เลือกพนักงาน</label>
+              <label className="block text-sm font-medium text-gray-700 mb-2 font-thai">เลือกผู้รับผิดชอบ</label>
               <div className="max-h-60 overflow-y-auto border rounded-lg divide-y">
-                {employees.map((emp: any) => (
-                  <button
-                    key={emp.employee_id}
-                    onClick={() => handleAssign(emp.employee_id)}
-                    disabled={isUpdating}
-                    className="w-full px-4 py-3 text-left hover:bg-green-50 flex items-center justify-between transition-colors"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
-                        <User className="w-4 h-4 text-green-600" />
+                {users.length === 0 ? (
+                  <div className="px-4 py-3 text-center text-gray-500 font-thai text-sm">
+                    ไม่พบข้อมูลผู้ใช้งาน
+                  </div>
+                ) : (
+                  users.map((user: any) => (
+                    <button
+                      key={user.user_id}
+                      onClick={() => handleAssign(user.user_id)}
+                      disabled={isUpdating}
+                      className="w-full px-4 py-3 text-left hover:bg-green-50 flex items-center justify-between transition-colors"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center">
+                          <User className="w-4 h-4 text-green-600" />
+                        </div>
+                        <div>
+                          <div className="font-semibold text-gray-900">{user.full_name}</div>
+                          <div className="text-xs text-gray-500">@{user.username}</div>
+                        </div>
                       </div>
-                      <div>
-                        <div className="font-semibold text-gray-900">{emp.nickname || `${emp.first_name} ${emp.last_name}`}</div>
-                        <div className="text-xs text-gray-500">{emp.department || 'คลังสินค้า'}</div>
-                      </div>
-                    </div>
-                    {isUpdating && <Loader2 className="w-4 h-4 animate-spin text-green-500" />}
-                  </button>
-                ))}
+                      {isUpdating && <Loader2 className="w-4 h-4 animate-spin text-green-500" />}
+                    </button>
+                  ))
+                )}
               </div>
             </div>
 

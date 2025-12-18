@@ -10,7 +10,10 @@ export async function GET(request: Request) {
   let query = supabase.from('master_employee').select('*');
 
   if (search) {
-    query = query.or(`employee_code.ilike.%${search}%,first_name.ilike.%${search}%,last_name.ilike.%${search}%`);
+    const hasSpecialChars = /[|,()\\]/.test(search);
+    if (!hasSpecialChars) {
+      query = query.or(`employee_code.ilike.%${search}%,first_name.ilike.%${search}%,last_name.ilike.%${search}%`);
+    }
   }
 
   const { data: employees, error } = await query;

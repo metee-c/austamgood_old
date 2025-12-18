@@ -47,7 +47,10 @@ export async function GET(request: NextRequest) {
 
     // Add search filter if provided
     if (search) {
-      query = query.or(`sku_id.ilike.%${search}%,sku_name.ilike.%${search}%,barcode.ilike.%${search}%`);
+      const hasSpecialChars = /[|,()\\]/.test(search);
+      if (!hasSpecialChars) {
+        query = query.or(`sku_id.ilike.%${search}%,sku_name.ilike.%${search}%,barcode.ilike.%${search}%`);
+      }
     }
 
     // Add category filter if provided

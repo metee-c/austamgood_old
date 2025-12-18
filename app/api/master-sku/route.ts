@@ -19,7 +19,10 @@ export async function GET(request: NextRequest) {
 
     // Apply filters
     if (search) {
-      query = query.or(`sku_name.ilike.%${search}%,sku_id.ilike.%${search}%,barcode.ilike.%${search}%`)
+      const hasSpecialChars = /[|,()\\]/.test(search);
+      if (!hasSpecialChars) {
+        query = query.or(`sku_name.ilike.%${search}%,sku_id.ilike.%${search}%,barcode.ilike.%${search}%`)
+      }
     }
 
     if (category && category !== 'ทั้งหมด') {

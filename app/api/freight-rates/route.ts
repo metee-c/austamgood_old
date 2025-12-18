@@ -23,7 +23,10 @@ export async function GET(request: NextRequest) {
 
     // Apply filters
     if (search) {
-      query = query.or(`route_name.ilike.%${search}%,origin_province.ilike.%${search}%,destination_province.ilike.%${search}%`);
+      const hasSpecialChars = /[|,()\\]/.test(search);
+      if (!hasSpecialChars) {
+        query = query.or(`route_name.ilike.%${search}%,origin_province.ilike.%${search}%,destination_province.ilike.%${search}%`);
+      }
     }
 
     if (pricing_mode) {

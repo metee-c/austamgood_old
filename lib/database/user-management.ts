@@ -39,7 +39,10 @@ export class UserManagementService {
 
     // Apply filters
     if (filters.search) {
-      query = query.or(`username.ilike.%${filters.search}%,email.ilike.%${filters.search}%,full_name.ilike.%${filters.search}%`);
+      const hasSpecialChars = /[|,()\\]/.test(filters.search);
+      if (!hasSpecialChars) {
+        query = query.or(`username.ilike.%${filters.search}%,email.ilike.%${filters.search}%,full_name.ilike.%${filters.search}%`);
+      }
     }
 
     if (filters.is_active !== undefined) {
