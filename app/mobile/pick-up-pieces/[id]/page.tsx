@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
-import { ArrowLeft, CheckCircle, Loader2, Store, AlertTriangle, Volume2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle, Loader2, Store, AlertTriangle, Save } from 'lucide-react';
 import Badge from '@/components/ui/Badge';
 
 interface PicklistItem {
@@ -58,6 +58,7 @@ export default function MobilePickUpPiecesDetailPage() {
   const [saving, setSaving] = useState(false);
   const [lastScanTime, setLastScanTime] = useState(0);
   const [scanFeedback, setScanFeedback] = useState<'success' | 'error' | null>(null);
+  const [overScanWarning, setOverScanWarning] = useState(false);
 
   const scanInputRef = useRef<HTMLInputElement>(null);
   const isProcessingRef = useRef(false);
@@ -66,6 +67,7 @@ export default function MobilePickUpPiecesDetailPage() {
   // Sound feedback refs
   const successSoundRef = useRef<HTMLAudioElement | null>(null);
   const errorSoundRef = useRef<HTMLAudioElement | null>(null);
+  const overScanSoundRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     if (id) fetchPicklist();
@@ -73,6 +75,7 @@ export default function MobilePickUpPiecesDetailPage() {
     if (typeof window !== 'undefined') {
       successSoundRef.current = new Audio('/audio/beep-success.mp3');
       errorSoundRef.current = new Audio('/audio/beep-error.mp3');
+      overScanSoundRef.current = new Audio('/audio/beep-error.mp3'); // Use error sound for over-scan
     }
   }, [id]);
 
@@ -89,7 +92,7 @@ export default function MobilePickUpPiecesDetailPage() {
     }
   };
 
-  const playSound = (type: 'success' | 'error') => {
+  const playSound = (type: 'success' | 'error' | 'overscan') => {
     try {
       if (type === 'success' && successSoundRef.current) {
         successSoundRef.current.currentTime = 0;
@@ -97,6 +100,10 @@ export default function MobilePickUpPiecesDetailPage() {
       } else if (type === 'error' && errorSoundRef.current) {
         errorSoundRef.current.currentTime = 0;
         errorSoundRef.current.play().catch(() => {});
+      } else if (type === 'overscan' && overScanSoundRef.current) {
+        // Play multiple times for over-scan warning
+        overScanSoundRef.current.currentTime = 0;
+        overScanSoundRef.current.play().catch(() => {});
       }
     } catch {}
   };
@@ -181,18 +188,32 @@ export default function MobilePickUpPiecesDetailPage() {
       const piecesToAdd = req.isInRemainderPhase ? 1 : req.piecesPerPack;
       const newCount = scannedCount + piecesToAdd;
 
+      // Check for over-scan (scanning beyond required quantity)
+      if (newCount > req.totalPieces) {
+        playSound('overscan');
+        showFeedback('error');
+        setOverScanWarning(true);
+        // Clear warning after 3 seconds
+        setTimeout(() => setOverScanWarning(false), 3000);
+        return; // Don't add more pieces
+      }
+
       // Update UI immediately (optimistic update)
       setScannedCount(newCount);
       playSound('success');
       showFeedback('success');
+      setOverScanWarning(false);
 
-      // Check if complete - save to server
-      if (newCount >= req.totalPieces) {
-        saveItemPicked(currentItem, req.totalPieces);
-      }
+      // NO auto-save - user must click save button manually
     },
     [currentItem, req, scannedCount, lastScanTime]
   );
+
+  // Manual save handler - called when user clicks save button
+  const handleManualSave = () => {
+    if (!currentItem || !req || scannedCount < req.totalPieces) return;
+    saveItemPicked(currentItem, scannedCount);
+  };
 
   // Save item - runs in background, doesn't block scanning
   const saveItemPicked = async (item: PicklistItem, quantityPicked: number) => {
@@ -445,9 +466,43 @@ export default function MobilePickUpPiecesDetailPage() {
           <div className="bg-gray-700 rounded-full h-3 overflow-hidden">
             <div
               className="bg-gradient-to-r from-orange-500 to-green-500 h-full transition-all duration-150"
-              style={{ width: `${(scannedCount / req.totalPieces) * 100}%` }}
+              style={{ width: `${Math.min((scannedCount / req.totalPieces) * 100, 100)}%` }}
             />
           </div>
+
+          {/* Over-scan Warning */}
+          {overScanWarning && (
+            <div className="bg-red-600 rounded-xl p-4 border-2 border-red-400 animate-pulse">
+              <div className="flex items-center space-x-3">
+                <AlertTriangle className="w-8 h-8 text-white flex-shrink-0" />
+                <div>
+                  <p className="text-white font-bold font-thai text-lg">⚠️ สแกนเกินจำนวน!</p>
+                  <p className="text-red-200 font-thai text-sm">จำนวนครบแล้ว กรุณากดบันทึก</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Manual Save Button - Show when complete */}
+          {req.isComplete && (
+            <button
+              onClick={handleManualSave}
+              disabled={saving}
+              className="w-full py-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl font-bold font-thai text-xl flex items-center justify-center space-x-3 shadow-lg hover:from-green-600 hover:to-green-700 active:scale-98 transition-all disabled:opacity-50"
+            >
+              {saving ? (
+                <>
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                  <span>กำลังบันทึก...</span>
+                </>
+              ) : (
+                <>
+                  <Save className="w-6 h-6" />
+                  <span>บันทึก ({scannedCount} ชิ้น)</span>
+                </>
+              )}
+            </button>
+          )}
 
           {/* Scan Feedback Indicator */}
           {scanFeedback && (
