@@ -2,14 +2,14 @@
    - Environments: .env.local
 
    Creating an optimized production build ...
- ✓ Compiled successfully in 12.5s
+ ✓ Compiled successfully in 11.2s
    Running TypeScript ...
    Collecting page data using 13 workers ...
    Generating static pages using 13 workers (0/155) ...
    Generating static pages using 13 workers (38/155) 
    Generating static pages using 13 workers (77/155) 
    Generating static pages using 13 workers (116/155) 
- ✓ Generating static pages using 13 workers (155/155) in 1405.8ms
+ ✓ Generating static pages using 13 workers (155/155) in 1518.5ms
    Finalizing page optimization ...
 
 Route (app)

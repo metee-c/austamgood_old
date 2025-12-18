@@ -59,6 +59,8 @@ export default function MobilePickUpPiecesDetailPage() {
   const [lastScanTime, setLastScanTime] = useState(0);
   const [scanFeedback, setScanFeedback] = useState<'success' | 'error' | null>(null);
   const [overScanWarning, setOverScanWarning] = useState(false);
+  const [showConfirmPopup, setShowConfirmPopup] = useState(false);
+  const [showRemainderPopup, setShowRemainderPopup] = useState(false);
 
   const scanInputRef = useRef<HTMLInputElement>(null);
   const isProcessingRef = useRef(false);
@@ -170,10 +172,8 @@ export default function MobilePickUpPiecesDetailPage() {
       // Siren sound for error - 2 seconds (very noticeable!)
       playSiren(2.0, 0.7);
     } else if (type === 'overscan') {
-      // Multiple rapid beeps for over-scan warning
-      playBeep(400, 0.3, 0.6);
-      setTimeout(() => playBeep(400, 0.3, 0.6), 400);
-      setTimeout(() => playBeep(400, 0.3, 0.6), 800);
+      // Siren sound for over-scan warning - 2 seconds
+      playSiren(2.0, 0.7);
     }
   };
 
@@ -273,15 +273,38 @@ export default function MobilePickUpPiecesDetailPage() {
       showFeedback('success');
       setOverScanWarning(false);
 
-      // NO auto-save - user must click save button manually
+      // Check if full packs are complete and there's remainder
+      const newFullPacksScanned = Math.floor(newCount / req.piecesPerPack);
+      if (newFullPacksScanned >= req.fullPacks && req.remainderPieces > 0 && !req.isInRemainderPhase) {
+        // Just finished full packs, show remainder popup
+        setShowRemainderPopup(true);
+      }
+
+      // Show confirm popup when scan is complete
+      if (newCount >= req.totalPieces) {
+        setShowConfirmPopup(true);
+      }
     },
     [currentItem, req, scannedCount, lastScanTime]
   );
 
-  // Manual save handler - called when user clicks save button
-  const handleManualSave = () => {
+  // Manual save handler - called when user clicks confirm in popup
+  const handleConfirmSave = () => {
     if (!currentItem || !req || scannedCount < req.totalPieces) return;
+    setShowConfirmPopup(false);
     saveItemPicked(currentItem, scannedCount);
+  };
+
+  // Cancel popup and continue scanning
+  const handleCancelPopup = () => {
+    setShowConfirmPopup(false);
+    setTimeout(() => scanInputRef.current?.focus(), 50);
+  };
+
+  // Close remainder popup and continue to piece scanning
+  const handleCloseRemainderPopup = () => {
+    setShowRemainderPopup(false);
+    setTimeout(() => scanInputRef.current?.focus(), 50);
   };
 
   // Save item - runs in background, doesn't block scanning
@@ -471,26 +494,88 @@ export default function MobilePickUpPiecesDetailPage() {
 
       {currentItem && req && (
         <div className="p-4 space-y-4">
-          {/* SKU Info */}
-          <div className="bg-gray-800 rounded-xl p-4 text-center">
-            <p className="text-orange-400 text-sm font-thai mb-1">รหัสสินค้า</p>
-            <p className="text-2xl font-bold mb-1">{currentItem.sku_id}</p>
-            <p className="text-base text-gray-300 font-thai">{currentItem.master_sku?.sku_name || currentItem.sku_name}</p>
+          {/* Scan Input - ย้ายมาบนสุด */}
+          <div className="bg-gray-800 rounded-xl p-3">
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-orange-400 text-sm font-thai">สแกนบาร์โค้ด</span>
+              <span className={`text-xs font-thai px-2 py-0.5 rounded-full ${
+                req.isInRemainderPhase 
+                  ? 'bg-yellow-600 text-white' 
+                  : 'bg-blue-600 text-white'
+              }`}>
+                {req.isInRemainderPhase ? '🔸 1 ครั้ง = 1 ชิ้น' : `📦 1 ครั้ง = ${req.piecesPerPack} ชิ้น`}
+              </span>
+            </div>
+            <input
+              ref={scanInputRef}
+              type="text"
+              inputMode="none"
+              onKeyDown={handleScanInput}
+              placeholder="รอสแกนบาร์โค้ด..."
+              className="w-full px-4 py-3 bg-gray-700 border-2 border-gray-600 rounded-lg text-white text-lg font-mono focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/50 placeholder-gray-500 caret-orange-500"
+              autoFocus
+              autoComplete="off"
+            />
           </div>
 
-          {/* Large Count Display */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-blue-900/50 rounded-xl p-3 text-center border-2 border-blue-500">
-              <p className="text-blue-300 text-xs font-thai mb-1">แพ็ค ({req.piecesPerPack} ชิ้น)</p>
-              <p className="text-4xl font-bold text-blue-400">
-                {req.fullPacksScanned}<span className="text-xl text-blue-300">/{req.fullPacks}</span>
-              </p>
+          {/* SKU Info - เน้นชื่อสินค้า */}
+          <div className="bg-gray-800 rounded-xl p-4 text-center">
+            <p className="text-2xl font-bold text-white font-thai mb-2">
+              {currentItem.master_sku?.sku_name || currentItem.sku_name}
+            </p>
+            {/* Pack type indicator */}
+            <div className="flex justify-center gap-2">
+              {req.remainderPieces === 0 ? (
+                <span className="px-3 py-1 bg-blue-600 text-white text-xs font-thai rounded-full">
+                  📦 แพ็คเต็มอย่างเดียว ({req.fullPacks} แพ็ค)
+                </span>
+              ) : (
+                <>
+                  <span className="px-2 py-1 bg-blue-600 text-white text-xs font-thai rounded-full">
+                    📦 {req.fullPacks} แพ็ค
+                  </span>
+                  <span className="px-2 py-1 bg-yellow-600 text-white text-xs font-thai rounded-full">
+                    🔸 +{req.remainderPieces} ชิ้น
+                  </span>
+                </>
+              )}
             </div>
-            <div className="bg-green-900/50 rounded-xl p-3 text-center border-2 border-green-500">
-              <p className="text-green-300 text-xs font-thai mb-1">ชิ้นทั้งหมด</p>
-              <p className="text-4xl font-bold text-green-400">
-                {scannedCount}<span className="text-xl text-green-300">/{req.totalPieces}</span>
-              </p>
+          </div>
+
+          {/* Large Count Display - Redesigned for clarity */}
+          <div className="space-y-3">
+            {/* Pack Progress */}
+            <div className="bg-blue-900/50 rounded-xl p-4 border-2 border-blue-500">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-blue-300 text-sm font-thai">📦 แพ็คที่สแกน</span>
+                <span className="text-blue-400 text-xs font-thai">({req.piecesPerPack} ชิ้น/แพ็ค)</span>
+              </div>
+              <div className="flex items-baseline justify-center gap-2">
+                <span className="text-5xl font-bold text-blue-400">{req.fullPacksScanned}</span>
+                <span className="text-2xl text-blue-300">/</span>
+                <span className="text-3xl font-semibold text-blue-300">{req.fullPacks}</span>
+                <span className="text-blue-400 text-lg font-thai">แพ็ค</span>
+              </div>
+            </div>
+            
+            {/* Total Pieces Progress */}
+            <div className="bg-green-900/50 rounded-xl p-4 border-2 border-green-500">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-green-300 text-sm font-thai">🔢 ชิ้นที่สแกนได้</span>
+                <span className={`text-xs font-thai px-2 py-0.5 rounded-full ${
+                  scannedCount >= req.totalPieces 
+                    ? 'bg-green-500 text-white' 
+                    : 'bg-green-800 text-green-300'
+                }`}>
+                  {scannedCount >= req.totalPieces ? '✓ ครบแล้ว' : `เหลือ ${req.totalPieces - scannedCount} ชิ้น`}
+                </span>
+              </div>
+              <div className="flex items-baseline justify-center gap-2">
+                <span className="text-5xl font-bold text-green-400">{scannedCount}</span>
+                <span className="text-2xl text-green-300">/</span>
+                <span className="text-3xl font-semibold text-green-300">{req.totalPieces}</span>
+                <span className="text-green-400 text-lg font-thai">ชิ้น</span>
+              </div>
             </div>
           </div>
 
@@ -506,30 +591,6 @@ export default function MobilePickUpPiecesDetailPage() {
               </div>
             </div>
           )}
-
-          {/* Scan Mode Indicator */}
-          <div className="bg-gray-800 rounded-xl p-3 text-center">
-            {req.isInRemainderPhase ? (
-              <p className="text-yellow-400 font-thai text-base">🔸 สแกน 1 ครั้ง = 1 ชิ้น</p>
-            ) : (
-              <p className="text-blue-400 font-thai text-base">📦 สแกน 1 ครั้ง = {req.piecesPerPack} ชิ้น</p>
-            )}
-          </div>
-
-          {/* Scan Input - Visible for barcode scanner */}
-          <div className="bg-gray-800 rounded-xl p-4">
-            <label className="block text-orange-400 text-sm font-thai mb-2">สแกนบาร์โค้ด</label>
-            <input
-              ref={scanInputRef}
-              type="text"
-              onKeyDown={handleScanInput}
-              placeholder="สแกนหรือพิมพ์บาร์โค้ด..."
-              className="w-full px-4 py-3 bg-gray-700 border-2 border-gray-600 rounded-lg text-white text-lg font-mono focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/50 placeholder-gray-500"
-              autoFocus
-              autoComplete="off"
-            />
-            <p className="text-gray-500 text-xs font-thai mt-2">กด Enter หลังสแกน</p>
-          </div>
 
           {/* Progress Bar */}
           <div className="bg-gray-700 rounded-full h-3 overflow-hidden">
@@ -552,25 +613,13 @@ export default function MobilePickUpPiecesDetailPage() {
             </div>
           )}
 
-          {/* Manual Save Button - Show when complete */}
-          {req.isComplete && (
-            <button
-              onClick={handleManualSave}
-              disabled={saving}
-              className="w-full py-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl font-bold font-thai text-xl flex items-center justify-center space-x-3 shadow-lg hover:from-green-600 hover:to-green-700 active:scale-98 transition-all disabled:opacity-50"
-            >
-              {saving ? (
-                <>
-                  <Loader2 className="w-6 h-6 animate-spin" />
-                  <span>กำลังบันทึก...</span>
-                </>
-              ) : (
-                <>
-                  <Save className="w-6 h-6" />
-                  <span>บันทึก ({scannedCount} ชิ้น)</span>
-                </>
-              )}
-            </button>
+          {/* Complete indicator when done */}
+          {req.isComplete && !showConfirmPopup && (
+            <div className="bg-green-600 rounded-xl p-4 text-center">
+              <CheckCircle className="w-12 h-12 text-white mx-auto mb-2" />
+              <p className="text-white font-bold font-thai text-lg">สแกนครบแล้ว!</p>
+              <p className="text-green-200 font-thai text-sm">รอยืนยัน...</p>
+            </div>
           )}
 
           {/* Scan Feedback Indicator */}
@@ -582,6 +631,124 @@ export default function MobilePickUpPiecesDetailPage() {
               {scanFeedback === 'success' ? '✓' : '✗'}
             </div>
           )}
+        </div>
+      )}
+
+      {/* Remainder Phase Popup - Show when full packs complete */}
+      {showRemainderPopup && currentItem && req && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-yellow-500 to-orange-500 p-6 text-center">
+              <div className="text-5xl mb-3">📦 ✓</div>
+              <h2 className="text-2xl font-bold text-white font-thai">แพ็คเต็มครบแล้ว!</h2>
+            </div>
+            
+            {/* Content */}
+            <div className="p-6 space-y-4">
+              <div className="bg-blue-50 rounded-xl p-4 text-center border-2 border-blue-200">
+                <p className="text-blue-600 text-sm font-thai mb-1">สแกนแพ็คเต็มครบ</p>
+                <p className="text-3xl font-bold text-blue-700">{req.fullPacks} แพ็ค</p>
+                <p className="text-blue-500 text-sm font-thai">({req.fullPacks * req.piecesPerPack} ชิ้น)</p>
+              </div>
+              
+              <div className="bg-yellow-50 rounded-xl p-4 border-2 border-yellow-300">
+                <div className="flex items-center gap-3">
+                  <div className="text-3xl">🔸</div>
+                  <div>
+                    <p className="text-yellow-700 font-bold font-thai">ต่อไป: สแกนแพ็คเศษ</p>
+                    <p className="text-yellow-600 font-thai text-sm">
+                      สแกนอีก {req.remainderPieces} ครั้ง (ชิ้นละครั้ง)
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            {/* Button */}
+            <div className="p-4 bg-gray-50">
+              <button
+                onClick={handleCloseRemainderPopup}
+                className="w-full py-4 bg-gradient-to-r from-yellow-500 to-orange-500 text-white rounded-xl font-thai font-bold text-lg hover:from-yellow-600 hover:to-orange-600 transition-all flex items-center justify-center gap-2"
+              >
+                <span>เข้าใจแล้ว สแกนต่อ</span>
+                <span>→</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Popup Modal */}
+      {showConfirmPopup && currentItem && req && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-green-500 to-green-600 p-6 text-center">
+              <CheckCircle className="w-16 h-16 text-white mx-auto mb-3" />
+              <h2 className="text-2xl font-bold text-white font-thai">สแกนครบแล้ว!</h2>
+            </div>
+            
+            {/* Content */}
+            <div className="p-6 space-y-4">
+              <div className="bg-gray-100 rounded-xl p-4 text-center">
+                <p className="text-xl font-bold text-gray-900 font-thai">
+                  {currentItem.master_sku?.sku_name || currentItem.sku_name}
+                </p>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-blue-50 rounded-xl p-3 text-center">
+                  <p className="text-blue-600 text-xs font-thai mb-1">จำนวนที่หยิบ</p>
+                  <p className="text-2xl font-bold text-blue-700">{scannedCount}</p>
+                  <p className="text-blue-500 text-xs font-thai">ชิ้น</p>
+                </div>
+                <div className="bg-green-50 rounded-xl p-3 text-center">
+                  <p className="text-green-600 text-xs font-thai mb-1">จำนวนแพ็ค</p>
+                  <p className="text-2xl font-bold text-green-700">{req.fullPacksScanned}</p>
+                  <p className="text-green-500 text-xs font-thai">แพ็ค</p>
+                </div>
+              </div>
+
+              {/* Next item preview - show product name */}
+              {currentItemIndex < currentShopItems.length - 1 && (
+                <div className="bg-orange-50 rounded-xl p-3 border border-orange-200">
+                  <p className="text-orange-600 text-xs font-thai mb-1">สินค้าถัดไป</p>
+                  <p className="text-orange-800 font-bold font-thai">
+                    {currentShopItems[currentItemIndex + 1]?.master_sku?.sku_name || 
+                     currentShopItems[currentItemIndex + 1]?.sku_name}
+                  </p>
+                </div>
+              )}
+            </div>
+            
+            {/* Buttons */}
+            <div className="p-4 bg-gray-50 flex gap-3">
+              <button
+                onClick={handleCancelPopup}
+                className="flex-1 py-3 px-4 bg-gray-200 text-gray-700 rounded-xl font-thai font-semibold hover:bg-gray-300 transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={handleConfirmSave}
+                disabled={saving}
+                className="flex-1 py-3 px-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl font-thai font-semibold hover:from-green-600 hover:to-green-700 transition-all disabled:opacity-50 flex items-center justify-center gap-2"
+              >
+                {saving ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>กำลังบันทึก...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle className="w-5 h-5" />
+                    <span>ยืนยัน</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
