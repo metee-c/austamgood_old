@@ -332,8 +332,16 @@ const InventoryBalancesPage = () => {
     // Expiring soon filter (client-side only - requires date calculation)
     const matchesExpiring = !showExpiringSoon || isExpiringSoon(item.expiry_date);
 
-    // กรอง Receiving/Shipping location ที่เป็น 0 ออกเสมอ (เพราะเป็น temporary zone)
+    // กรอง Receiving/Shipping location ที่เป็น 0 ออก (เพราะเป็น temporary zone)
+    // ยกเว้นเมื่อผู้ใช้ค้นหาคำที่ตรงกับ location เหล่านี้โดยเฉพาะ
+    const searchLower = debouncedSearchTerm.toLowerCase();
+    const isSearchingTemporaryZone = searchLower.includes('receiving') || 
+                                      searchLower.includes('shipping') ||
+                                      searchLower.includes('rcv') ||
+                                      searchLower.includes('ship');
+    
     const isTemporaryZeroBalance =
+      !isSearchingTemporaryZone &&
       (item.location_name === 'Receiving' ||
        item.location_name === 'Shipping' ||
        item.location_id?.includes('Receiving') ||

@@ -11,9 +11,10 @@ import Modal from '@/components/ui/Modal';
 import ComboBox from '@/components/ui/ComboBox';
 import AddSupplierForm from '@/components/forms/AddSupplierForm';
 import { useCreateReceive, useGeneratePalletId, useUpdateReceive } from '@/hooks/useReceive';
-import { useSuppliers, useSkus, useWarehouses, useLocations, useCustomers, useSystemUsers } from '@/hooks/useFormOptions';
+import { useSuppliers, useSkus, useWarehouses, useLocations, useCustomers, useSystemUsers, SystemUser } from '@/hooks/useFormOptions';
 import { ReceiveType, ReceiveStatus, CreateReceivePayload, PalletScanStatus } from '@/lib/database/receive';
 import { useAuth } from '@/hooks/useAuth';
+import { type } from 'os';
 
 // Validation schema for a single item
 const itemSchema = z.object({
@@ -35,7 +36,7 @@ const itemSchema = z.object({
 
 // Validation schema for the entire form
 const receiveFormSchema = z.object({
-  receive_type: z.enum(['รับสินค้าปกติ', 'รับสินค้าชำรุด', 'รับสินค้าหมดอายุ', 'รับสินค้าคืน', 'รับสินค้าตีกลับ'] as const),
+  receive_type: z.enum(['รับสินค้าปกติ', 'รับสินค้าชำรุด', 'รับสินค้าหมดอายุ', 'รับสินค้าตีกลับ', 'รับสินค้าคืน (ไม่มีเอกสาร)'] as const),
   pallet_box_option: z.enum(['ไม่สร้าง_Pallet_ID', 'สร้าง_Pallet_ID', 'สร้าง_Pallet_ID_รวม', 'สร้าง_Pallet_ID_และ_Box_ID', 'สร้าง_Pallet_ID_และ_สแกน_Pallet_ID_ภายนอก'] as const),
   pallet_calculation_method: z.enum(['ใช้จำนวนจากมาสเตอร์สินค้า', 'กำหนดจำนวนเอง'] as const),
   mixed_pallet_mode: z.boolean().default(false), // เพิ่มตัวเลือก Mixed Pallet
@@ -173,10 +174,10 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
   const { customers } = useCustomers();
   const { users: systemUsers } = useSystemUsers();
 
-  // Auto-set received_by from logged-in user's employee_id
+  // Auto-set received_by from logged-in user's user_id
   useEffect(() => {
-    if (!isEditMode && currentUser?.employee_id && !watch('received_by')) {
-      setValue('received_by', currentUser.employee_id);
+    if (!isEditMode && currentUser?.user_id && !watch('received_by')) {
+      setValue('received_by', currentUser.user_id);
     }
   }, [currentUser, isEditMode, setValue, watch]);
   const watchedWarehouseId = watch('warehouse_id');
@@ -193,6 +194,32 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
     control,
     name: 'items'
   });
+
+  // Auto-set default location based on receive_type
+  useEffect(() => {
+    if (!locations || locations.length === 0) return;
+    
+    // Map receive_type to default location_id
+    const defaultLocationMap: Record<string, string> = {
+      'รับสินค้าปกติ': 'Receiving',
+      'รับสินค้าชำรุด': 'Repair',
+      'รับสินค้าหมดอายุ': 'Expired',
+      'รับสินค้าตีกลับ': 'Return',
+      'รับสินค้าคืน (ไม่มีเอกสาร)': 'Return',
+    };
+    
+    const defaultLocationId = defaultLocationMap[watchedType];
+    if (!defaultLocationId) return;
+    
+    // Check if the location exists
+    const locationExists = locations.some(loc => loc.location_id === defaultLocationId);
+    if (!locationExists) return;
+    
+    // Set default location for ALL items when receive_type changes
+    fields.forEach((_, index) => {
+      setValue(`items.${index}.location_id`, defaultLocationId, { shouldValidate: false });
+    });
+  }, [watchedType, locations, fields.length, setValue]);
 
   // Sync supplier name when supplier_id changes
   const watchedSupplierId = watch('supplier_id');
@@ -404,12 +431,17 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
     console.log('📝 Form submission started', { isEditMode, editData });
     
     // Basic validation
-    if (['รับสินค้าปกติ', 'รับสินค้าชำรุด', 'รับสินค้าหมดอายุ'].includes(data.receive_type) && !data.supplier_id) {
+    if (['รับสินค้าปกติ'].includes(data.receive_type) && !data.supplier_id) {
       alert('กรุณากรอกชื่อผู้ส่ง');
       return;
     }
-    if (['รับสินค้าชำรุด', 'รับสินค้าหมดอายุ', 'รับสินค้าคืน', 'รับสินค้าตีกลับ'].includes(data.receive_type) && !data.customer_id) {
+    if (['รับสินค้าชำรุด', 'รับสินค้าหมดอายุ', 'รับสินค้าตีกลับ', 'รับสินค้าคืน (ไม่มีเอกสาร)'].includes(data.receive_type) && !data.customer_id) {
       alert('กรุณาเลือกลูกค้า');
+      return;
+    }
+    // Reference doc required except for "ไม่มีเอกสาร" types
+    if (!['รับสินค้าคืน (ไม่มีเอกสาร)'].includes(data.receive_type) && !data.reference_doc?.trim()) {
+      alert('กรุณากรอกเลขที่เอกสารอ้างอิง');
       return;
     }
 
@@ -626,7 +658,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
         ...item,
         location_id: item.location_id || undefined
       })) as any,
-      created_by: currentUser?.employee_id || data.received_by, // Use employee_id (references master_employee.employee_id)
+      created_by: currentUser?.user_id || data.received_by, // Use user_id (references master_system_user.user_id)
     };
 
     console.log('📦 Payload ที่ส่งไป API:', JSON.stringify(payload, null, 2));
@@ -658,7 +690,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
     const type = watchedType;
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-        {['รับสินค้าปกติ', 'รับสินค้าชำรุด', 'รับสินค้าหมดอายุ'].includes(type) && (
+        {['รับสินค้าปกติ'].includes(type) && (
           <div>
             <div className="flex items-center justify-between mb-1">
               <label className="block text-xs font-medium text-thai-gray-700 font-thai">ผู้ส่ง *</label>
@@ -697,7 +729,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
           </div>
         )}
 
-        {['รับสินค้าชำรุด', 'รับสินค้าหมดอายุ', 'รับสินค้าคืน', 'รับสินค้าตีกลับ'].includes(type) && (
+        {['รับสินค้าชำรุด', 'รับสินค้าหมดอายุ', 'รับสินค้าตีกลับ', 'รับสินค้าคืน (ไม่มีเอกสาร)'].includes(type) && (
           <div>
             <label className="block text-xs font-medium text-thai-gray-700 font-thai mb-1">ลูกค้า *</label>
             <ComboBox
@@ -740,8 +772,8 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
                 <option value="รับสินค้าปกติ">รับสินค้าปกติ</option>
                 <option value="รับสินค้าชำรุด">รับสินค้าชำรุด</option>
                 <option value="รับสินค้าหมดอายุ">รับสินค้าหมดอายุ</option>
-                <option value="รับสินค้าคืน">รับสินค้าคืน</option>
                 <option value="รับสินค้าตีกลับ">รับสินค้าตีกลับ</option>
+                <option value="รับสินค้าคืน (ไม่มีเอกสาร)">รับสินค้าคืน (ไม่มีเอกสาร)</option>
               </select>
             </div>
             <div>
@@ -767,8 +799,8 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-thai-gray-700 font-thai mb-1">เลขที่เอกสารอ้างอิง</label>
-              <input {...register('reference_doc')} placeholder="PO-2024-001" className="w-full p-2 border border-thai-gray-200 rounded-md text-sm" />
+              <label className="block text-xs font-medium text-thai-gray-700 font-thai mb-1">เลขที่เอกสารอ้างอิง {watchedType !== 'รับสินค้าคืน (ไม่มีเอกสาร)' && '*'}</label>
+              <input {...register('reference_doc')} placeholder="ระบุเลขที่เอกสาร" className="w-full p-2 border border-thai-gray-200 rounded-md text-sm" />
             </div>
             <div>
               <label className="block text-xs font-medium text-thai-gray-700 font-thai mb-1">คลังสินค้า *</label>
@@ -820,8 +852,8 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
               <select {...register('received_by', { valueAsNumber: true })} className="w-full p-2 border border-thai-gray-200 rounded-md text-sm">
                 <option value="">กรุณาเลือกผู้รับสินค้า</option>
                 {Array.isArray(systemUsers) && systemUsers.map(user => (
-                  <option key={user.employee_id} value={user.employee_id}>
-                    {user.first_name} {user.last_name}
+                  <option key={user.user_id} value={user.user_id}>
+                    {user.full_name}
                   </option>
                 ))}
               </select>
@@ -833,7 +865,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
           </div>
 
           {/* Image Upload Section - Only for specific receive types */}
-          {['รับสินค้าชำรุด', 'รับสินค้าหมดอายุ', 'รับสินค้าคืน', 'รับสินค้าตีกลับ'].includes(watchedType) && (
+          {['รับสินค้าชำรุด', 'รับสินค้าหมดอายุ', 'รับสินค้าตีกลับ', 'รับสินค้าคืน (ไม่มีเอกสาร)'].includes(watchedType) && (
           <div>
             <label className="block text-xs font-medium text-thai-gray-700 font-thai mb-1">รูปภาพประกอบ</label>
             <div className="space-y-3">
@@ -1241,7 +1273,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
                               {item.location_id ? (locations?.find(loc => loc.location_id === item.location_id)?.location_code || item.location_id) : '-'}
                             </td>
                             <td className="px-4 py-2 text-sm whitespace-nowrap" style={{minWidth: '150px'}}>
-                              {watch('received_by') ? systemUsers.find(user => user.employee_id === watch('received_by'))?.first_name + ' ' + systemUsers.find(user => user.employee_id === watch('received_by'))?.last_name : '-'}
+                              {watch('received_by') ? systemUsers.find(user => user.user_id === watch('received_by'))?.full_name : '-'}
                             </td>
                             <td className="px-4 py-2 text-sm whitespace-nowrap" style={{minWidth: '120px'}}>
                               <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
@@ -1282,7 +1314,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
                               {item.location_id ? (locations?.find(loc => loc.location_id === item.location_id)?.location_code || item.location_id) : '-'}
                             </td>
                             <td className="px-4 py-2 text-sm whitespace-nowrap" style={{minWidth: '150px'}}>
-                              {watch('received_by') ? systemUsers.find(user => user.employee_id === watch('received_by'))?.first_name + ' ' + systemUsers.find(user => user.employee_id === watch('received_by'))?.last_name : '-'}
+                              {watch('received_by') ? systemUsers.find(user => user.user_id === watch('received_by'))?.full_name : '-'}
                             </td>
                             <td className="px-4 py-2 text-sm whitespace-nowrap" style={{minWidth: '120px'}}>
                               <span className={`px-2 py-1 rounded-full text-xs font-medium ${
@@ -1317,7 +1349,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
                                   {item.location_id ? (locations?.find(loc => loc.location_id === item.location_id)?.location_code || item.location_id) : '-'}
                                 </td>
                                 <td className="px-4 py-2 text-sm whitespace-nowrap" style={{minWidth: '150px'}}>
-                                  {watch('received_by') ? systemUsers.find(user => user.employee_id === watch('received_by'))?.first_name + ' ' + systemUsers.find(user => user.employee_id === watch('received_by'))?.last_name : '-'}
+                                  {watch('received_by') ? systemUsers.find(user => user.user_id === watch('received_by'))?.full_name : '-'}
                                 </td>
                                 <td className="px-4 py-2 text-sm whitespace-nowrap" style={{minWidth: '120px'}}>
                                   <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">

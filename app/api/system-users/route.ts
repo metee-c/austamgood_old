@@ -1,30 +1,38 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
-export const dynamic = 'force-dynamic';
-
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
+    const searchParams = request.nextUrl.searchParams;
+    const search = searchParams.get('search');
+    const activeOnly = searchParams.get('active_only') !== 'false'; // default true
 
-    const { data, error } = await supabase
-      .from('master_employee')
-      .select('employee_id, first_name, last_name, email')
-      .order('first_name', { ascending: true });
+    let query = supabase
+      .from('master_system_user')
+      .select('user_id, username, full_name, email, is_active, role_id')
+      .order('full_name', { ascending: true });
+
+    if (activeOnly) {
+      query = query.eq('is_active', true);
+    }
+
+    if (search) {
+      query = query.or(`full_name.ilike.%${search}%,username.ilike.%${search}%,email.ilike.%${search}%`);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error('Error fetching system users:', error);
-      return NextResponse.json(
-        { error: error.message, data: [] },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ data: data || [] });
   } catch (error) {
-    console.error('Unexpected error fetching system users:', error);
+    console.error('Error in system-users API:', error);
     return NextResponse.json(
-      { error: 'Internal server error', data: [] },
+      { error: 'เกิดข้อผิดพลาดในการโหลดข้อมูลผู้ใช้งาน' },
       { status: 500 }
     );
   }

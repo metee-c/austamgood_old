@@ -7,7 +7,7 @@ import { useMoves, useCreateMove, useUpdateMoveStatus, useUpdateMoveItemStatus }
 import { useReceives } from '@/hooks/useReceive';
 import { useWarehouses } from '@/hooks/useFormOptions';
 import { useLocations } from '@/hooks/useLocations';
-import { useEmployees, Employee } from '@/hooks/useEmployees';
+import { useSystemUsers, SystemUser } from '@/hooks/useSystemUsers';
 import ZoneLocationSelect from '@/components/warehouse/ZoneLocationSelect';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
@@ -246,7 +246,7 @@ const TransferPage: React.FC = () => {
   const { createMove, loading: creatingMove, error: createError } = useCreateMove();
   const { updateStatus, loading: updatingStatus } = useUpdateMoveStatus();
   const { updateItemStatus, loading: updatingItemStatus } = useUpdateMoveItemStatus();
-  const { data: employees, loading: employeesLoading } = useEmployees();
+  const { data: systemUsers, loading: systemUsersLoading } = useSystemUsers();
 
   const receiveFilters = useMemo(
     () => ({ status: DEFAULT_RECEIVE_STATUS }),
@@ -996,12 +996,11 @@ const TransferPage: React.FC = () => {
       };
 
       if (assignmentType === 'individual') {
-        const selectedEmployee = employees?.find(e => e.employee_id === selectedEmployeeId);
-        const fullName = selectedEmployee ? `${selectedEmployee.first_name} ${selectedEmployee.last_name}`.trim() : '';
-        assignmentDetails.employee_name = fullName || null;
+        const selectedUser = systemUsers?.find(u => u.user_id === selectedEmployeeId);
+        assignmentDetails.employee_name = selectedUser?.full_name || null;
       } else if (assignmentType === 'role') {
-        const eligibleEmployees = employees?.filter(e => e.wms_role === selectedRole).map(e => e.employee_id) || [];
-        assignmentDetails.eligible_employees = eligibleEmployees;
+        // Role-based assignment - system users don't have wms_role, so we skip filtering
+        assignmentDetails.eligible_employees = [];
         assignmentDetails.role = selectedRole;
       } else if (assignmentType === 'mixed') {
         assignmentDetails.primary_employee = selectedEmployeeId;
@@ -2528,7 +2527,7 @@ const TransferPage: React.FC = () => {
               <label className="block text-sm font-medium text-gray-700">
                 {assignmentType === 'mixed' ? 'หัวหน้าทีม/คนหลัก' : 'Addพนักงาน'}
               </label>
-              {employeesLoading ? (
+              {systemUsersLoading ? (
                 <div className="flex justify-center py-4">
                   <Loader2 className="w-6 h-6 animate-spin text-gray-500" />
                 </div>
@@ -2538,46 +2537,46 @@ const TransferPage: React.FC = () => {
                     <thead className="bg-gray-50">
                       <tr>
                         <th className="w-12 px-3 py-2 text-left">Add</th>
-                        <th className="px-3 py-2 text-left">ชื่อพนักงาน</th>
-                        <th className="px-3 py-2 text-left">Role</th>
+                        <th className="px-3 py-2 text-left">ชื่อผู้ใช้งาน</th>
+                        <th className="px-3 py-2 text-left">Username</th>
                         <th className="px-3 py-2 text-left">อีเมล</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100">
-                      {(employees || []).length === 0 ? (
+                      {(systemUsers || []).length === 0 ? (
                         <tr>
                           <td colSpan={4} className="px-3 py-8 text-center text-gray-500">
-                            ไม่พบข้อมูลพนักงาน
+                            ไม่พบข้อมูลผู้ใช้งาน
                           </td>
                         </tr>
                       ) : (
-                        (employees || []).map((employee) => (
+                        (systemUsers || []).map((user) => (
                           <tr
-                            key={employee.employee_id}
+                            key={user.user_id}
                             className={`cursor-pointer hover:bg-gray-50 ${
-                              selectedEmployeeId === employee.employee_id ? 'bg-blue-50' : ''
+                              selectedEmployeeId === user.user_id ? 'bg-blue-50' : ''
                             }`}
-                            onClick={() => setSelectedEmployeeId(employee.employee_id)}
+                            onClick={() => setSelectedEmployeeId(user.user_id)}
                           >
                             <td className="px-3 py-2">
                               <input
                                 type="radio"
                                 name="employee"
-                                checked={selectedEmployeeId === employee.employee_id}
-                                onChange={() => setSelectedEmployeeId(employee.employee_id)}
+                                checked={selectedEmployeeId === user.user_id}
+                                onChange={() => setSelectedEmployeeId(user.user_id)}
                                 className="w-4 h-4 text-blue-600"
                               />
                             </td>
                             <td className="px-3 py-2 font-medium text-gray-900">
-                              {employee.first_name} {employee.last_name}
+                              {user.full_name}
                             </td>
                             <td className="px-3 py-2 text-gray-600">
                               <span className="inline-flex items-center px-2 py-1 rounded-full text-xs bg-gray-100">
-                                {employee.wms_role || 'ไม่ระบุ'}
+                                {user.username}
                               </span>
                             </td>
                             <td className="px-3 py-2 text-gray-600">
-                              {employee.email || '-'}
+                              {user.email || '-'}
                             </td>
                           </tr>
                         ))
@@ -2592,19 +2591,9 @@ const TransferPage: React.FC = () => {
           {/* Role-based Assignment Summary */}
           {assignmentType === 'role' && selectedRole && (
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-              <h4 className="text-sm font-medium text-blue-900 mb-2">พนักงานที่สามารถทำงานได้</h4>
-              <div className="space-y-1">
-                {(employees || [])
-                  .filter(emp => emp.wms_role === selectedRole)
-                  .map(emp => (
-                    <div key={emp.employee_id} className="text-sm text-blue-800">
-                      • {emp.first_name} {emp.last_name} ({emp.employee_code})
-                    </div>
-                  ))
-                }
-                {(employees || []).filter(emp => emp.wms_role === selectedRole).length === 0 && (
-                  <div className="text-sm text-orange-600">ไม่มีพนักงานที่มี Role นี้</div>
-                )}
+              <h4 className="text-sm font-medium text-blue-900 mb-2">Role ที่เลือก: {selectedRole}</h4>
+              <div className="text-sm text-blue-800">
+                งานจะถูกมอบหมายให้ผู้ใช้งานที่มี Role นี้
               </div>
             </div>
           )}

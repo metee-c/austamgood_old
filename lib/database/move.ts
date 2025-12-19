@@ -358,9 +358,10 @@ class MoveService {
         move_id: moveData.move_id,
       }));
 
-      const { error: itemsError } = await this.supabase
+      const { data: insertedItems, error: itemsError } = await this.supabase
         .from('wms_move_items')
-        .insert(itemsWithMoveId);
+        .insert(itemsWithMoveId)
+        .select('*');
 
       if (itemsError) {
         console.error('[MoveService] createMove items error', itemsError);
@@ -370,6 +371,67 @@ class MoveService {
           .delete()
           .eq('move_id', moveData.move_id);
         return { data: null, error: itemsError.message };
+      }
+
+      // Auto-complete items without pallet_id (SKU-based moves)
+      // These don't require scanning, so complete them immediately
+      const itemsToAutoComplete = (insertedItems || []).filter(
+        (item: any) => !item.pallet_id && item.from_location_id && item.to_location_id
+      );
+
+      if (itemsToAutoComplete.length > 0) {
+        const now = new Date().toISOString();
+        
+        // Get the move header for inventory recording
+        const moveHeader: MoveHeader = {
+          move_id: moveData.move_id,
+          move_no: moveNo,
+          move_type: payload.move_type,
+          status: 'pending',
+          priority: payload.priority ?? 50,
+          source_receive_id: payload.source_receive_id ?? null,
+          source_document: payload.source_document ?? null,
+          from_warehouse_id: payload.from_warehouse_id ?? null,
+          to_warehouse_id: payload.to_warehouse_id ?? null,
+          requested_by: payload.requested_by ?? null,
+          assigned_to: payload.assigned_to ?? null,
+          approved_by: payload.approved_by ?? null,
+          scheduled_at: payload.scheduled_at ?? null,
+          started_at: null,
+          completed_at: null,
+          notes: payload.notes ?? null,
+          created_by: payload.created_by ?? null,
+          created_at: now,
+          updated_at: now,
+        };
+
+        for (const item of itemsToAutoComplete) {
+          // Update item status to completed with confirmed quantities
+          await this.supabase
+            .from('wms_move_items')
+            .update({
+              status: 'completed',
+              confirmed_pack_qty: item.planned_pack_qty,
+              confirmed_piece_qty: item.planned_piece_qty,
+              started_at: now,
+              completed_at: now,
+              updated_at: now,
+            })
+            .eq('move_item_id', item.move_item_id);
+
+          // Record inventory movement
+          const moveItem: MoveItem = {
+            ...item,
+            status: 'completed',
+            confirmed_pack_qty: item.planned_pack_qty,
+            confirmed_piece_qty: item.planned_piece_qty,
+          };
+          
+          await this.recordInventoryMovement(moveItem, moveHeader);
+        }
+
+        // Recalculate header status after auto-completing items
+        await this.recalculateMoveHeaderStatus(moveData.move_id);
       }
 
       // Finally, fetch the complete move record with items

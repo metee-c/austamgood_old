@@ -231,6 +231,8 @@ export async function POST(request: NextRequest) {
         console.log(`✅ Balance ${balance.balance_id} updated successfully`);
 
         // บันทึก ledger: OUT จาก source_location
+        // ✅ CRITICAL FIX: Include order_id and order_item_id for BRCGS traceability
+        // Note: bonus_face_sheet_items links via order_item_id → wms_order_items.order_id
         ledgerEntries.push({
           movement_at: now,
           transaction_type: 'pick',
@@ -243,6 +245,7 @@ export async function POST(request: NextRequest) {
           reference_no: (item.bonus_face_sheets as any).face_sheet_no,
           reference_doc_type: 'bonus_face_sheet',
           reference_doc_id: bonus_face_sheet_id,
+          order_item_id: item.order_item_id, // ✅ BRCGS: Link to order line
           remarks: `หยิบของแถมจาก ${balance.location_id} (balance_id: ${balance.balance_id})`,
           created_by: userId,
           skip_balance_sync: true
@@ -334,6 +337,7 @@ export async function POST(request: NextRequest) {
     }
 
     // บันทึก ledger: IN ไปยัง Dispatch
+    // ✅ CRITICAL FIX: Include order_item_id for BRCGS traceability
     ledgerEntries.push({
       movement_at: now,
       transaction_type: 'pick',
@@ -346,6 +350,7 @@ export async function POST(request: NextRequest) {
       reference_no: (item.bonus_face_sheets as any).face_sheet_no,
       reference_doc_type: 'bonus_face_sheet',
       reference_doc_id: bonus_face_sheet_id,
+      order_item_id: item.order_item_id, // ✅ BRCGS: Link to order line
       remarks: `ย้ายของแถมไป Dispatch`,
       created_by: userId,
       skip_balance_sync: true

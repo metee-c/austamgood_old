@@ -27,6 +27,7 @@ import ImportOrderModal from '@/components/orders/ImportOrderModal';
 import EditOrderModal from '@/components/orders/EditOrderModal';
 import OrderLocationModal from '@/components/orders/OrderLocationModal';
 import AddCoordinatesModal from '@/components/orders/AddCoordinatesModal';
+import RollbackPreviewModal from '@/components/orders/RollbackPreviewModal';
 import { OrderType, OrderStatus, OrderPriority } from '@/hooks/useOrders';
 import useSWR from 'swr';
 
@@ -1153,76 +1154,21 @@ const OrdersPage = () => {
         />
       )}
 
-      {/* Rollback Confirmation Modal */}
+      {/* Rollback Preview Modal - ใช้ Component ใหม่ที่รองรับ Partial Rollback */}
       {showRollbackModal && selectedOrderForRollback && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6 space-y-4">
-            {/* Header */}
-            <div className="flex items-center space-x-3 pb-4 border-b border-gray-200">
-              <div className="w-12 h-12 rounded-full bg-orange-100 flex items-center justify-center">
-                <RotateCcw className="w-6 h-6 text-orange-600" />
-              </div>
-              <div>
-                <h3 className="text-lg font-bold text-gray-900 font-thai">
-                  ยืนยันการถอยสถานะออเดอร์
-                </h3>
-                <p className="text-sm text-gray-600 font-thai">
-                  โปรดตรวจสอบข้อมูลก่อนดำเนินการ
-                </p>
-              </div>
-            </div>
-
-            {/* Order Info */}
-            <div className="space-y-3 py-2">
-              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
-                <p className="text-sm font-semibold text-gray-900 font-thai mb-2">
-                  ข้อมูลออเดอร์ที่จะถอยสถานะ:
-                </p>
-                <div className="space-y-1 text-sm text-gray-700 font-thai">
-                  <p><span className="font-semibold">เลขที่:</span> {selectedOrderForRollback.order_no}</p>
-                  <p><span className="font-semibold">ลูกค้า:</span> {selectedOrderForRollback.shop_name || selectedOrderForRollback.customer_id}</p>
-                  <p><span className="font-semibold">สถานะปัจจุบัน:</span> <span className="text-orange-600 font-semibold">{getStatusText(selectedOrderForRollback.status)}</span></p>
-                  {selectedOrderForRollback.delivery_date && (
-                    <p><span className="font-semibold">วันที่แผนส่ง:</span> {formatDate(selectedOrderForRollback.delivery_date)}</p>
-                  )}
-                </div>
-              </div>
-
-              <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
-                <p className="text-sm font-semibold text-yellow-800 font-thai mb-2 flex items-center">
-                  <AlertTriangle className="w-4 h-4 mr-2" />
-                  การดำเนินการจะมีผลดังนี้:
-                </p>
-                <ul className="list-disc list-inside space-y-1 text-sm text-yellow-900 font-thai">
-                  <li>เปลี่ยนสถานะเป็น "ร่าง"</li>
-                  <li>ล้างวันที่แผนส่ง</li>
-                  <li>ถอดออกจากแผนเส้นทางทั้งหมด</li>
-                  <li>สามารถกำหนดวันแผนส่งใหม่ได้ในภายหลัง</li>
-                </ul>
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div className="flex items-center justify-end space-x-3 pt-4 border-t border-gray-200">
-              <button
-                onClick={() => {
-                  setShowRollbackModal(false);
-                  setSelectedOrderForRollback(null);
-                }}
-                className="px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg text-sm font-thai transition-colors"
-              >
-                ยกเลิก
-              </button>
-              <button
-                onClick={() => handleRollback(selectedOrderForRollback.order_id)}
-                className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-lg text-sm font-thai transition-colors flex items-center space-x-2"
-              >
-                <RotateCcw className="w-4 h-4" />
-                <span>ยืนยันถอยสถานะ</span>
-              </button>
-            </div>
-          </div>
-        </div>
+        <RollbackPreviewModal
+          orderId={selectedOrderForRollback.order_id}
+          orderNo={selectedOrderForRollback.order_no}
+          onClose={() => {
+            setShowRollbackModal(false);
+            setSelectedOrderForRollback(null);
+          }}
+          onRollbackComplete={() => {
+            setShowRollbackModal(false);
+            setSelectedOrderForRollback(null);
+            refetch();
+          }}
+        />
       )}
     </PageContainer>
   );

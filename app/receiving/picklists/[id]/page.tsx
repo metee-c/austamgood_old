@@ -34,6 +34,7 @@ interface PicklistItem {
     customer_address: string;
   };
   pack_no?: string;
+  no_price_goods_note?: string | null;
 }
 
 interface Picklist {
@@ -350,6 +351,11 @@ const PicklistDetailPage = ({ params }: { params: Promise<{ id: string }> }) => 
                               <span style="margin-left: 8px; font-size: 10px; color: #6b7280;">
                                 (${group.items.length} รายการ)
                               </span>
+                              ${group.items[0]?.no_price_goods_note ? `
+                              <span style="margin-left: 12px; background: #fef3c7; border: 1px solid #f59e0b; color: #b45309; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">
+                                ⚠️ หยิบสินค้าไม่มีราคา${group.items[0].no_price_goods_note !== 'ทั้งหมด' ? ` (${group.items[0].no_price_goods_note})` : 'ทั้งหมด'}
+                              </span>
+                              ` : ''}
                             </div>
                             <div style="font-size: 10px; color: #4b5563;">
                               จำนวนรวม: <span style="font-weight: 600;">${group.items.reduce((sum, item) => sum + Number(item.total_quantity_to_pick || item.quantity_to_pick || 0), 0)} ชิ้น</span>
@@ -612,7 +618,14 @@ const PicklistDetailPage = ({ params }: { params: Promise<{ id: string }> }) => 
                         <span className="text-sm font-bold text-white">{group.stop_sequence}</span>
                       </div>
                       <div>
-                        <div className="text-blue-900 font-semibold text-sm font-thai">{group.customer_name}</div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-blue-900 font-semibold text-sm font-thai">{group.customer_name}</span>
+                          {group.items[0]?.no_price_goods_note && (
+                            <span className="bg-amber-100 border border-amber-400 text-amber-700 px-2 py-0.5 rounded text-xs font-semibold font-thai">
+                              ⚠️ หยิบสินค้าไม่มีราคา{group.items[0].no_price_goods_note !== 'ทั้งหมด' ? ` (${group.items[0].no_price_goods_note})` : 'ทั้งหมด'}
+                            </span>
+                          )}
+                        </div>
                         <div className="text-blue-600 text-xs font-thai">{group.customer_address}</div>
                       </div>
                     </div>

@@ -298,6 +298,16 @@ const CustomerRejectionPage = () => {
           <table className="w-full border-collapse text-sm">
             <thead className="sticky top-0 z-10 bg-gray-100">
               <tr>
+                <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('record_id' as keyof CustomerNoPriceGoods)}>
+                  <div className="flex items-center justify-between">
+                    <span>#</span>
+                    {sortField === 'record_id' ? (
+                      sortDirection === 'asc' ? <ChevronUp className="w-3 h-3 ml-1 inline text-blue-600" /> : <ChevronDown className="w-3 h-3 ml-1 inline text-blue-600" />
+                    ) : (
+                      <ChevronsUpDown className="w-3 h-3 ml-1 inline text-gray-400" />
+                    )}
+                  </div>
+                </th>
                 <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('customer_id')}>
                   <div className="flex items-center justify-between">
                     <span>รหัสลูกค้า</span>
@@ -358,10 +368,41 @@ const CustomerRejectionPage = () => {
                     )}
                   </div>
                 </th>
+                <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ระยะเวลา</th>
                 <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('is_active')}>
                   <div className="flex items-center justify-between">
                     <span>สถานะ</span>
                     {sortField === 'is_active' ? (
+                      sortDirection === 'asc' ? <ChevronUp className="w-3 h-3 ml-1 inline text-blue-600" /> : <ChevronDown className="w-3 h-3 ml-1 inline text-blue-600" />
+                    ) : (
+                      <ChevronsUpDown className="w-3 h-3 ml-1 inline text-gray-400" />
+                    )}
+                  </div>
+                </th>
+                <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('created_by')}>
+                  <div className="flex items-center justify-between">
+                    <span>สร้างโดย</span>
+                    {sortField === 'created_by' ? (
+                      sortDirection === 'asc' ? <ChevronUp className="w-3 h-3 ml-1 inline text-blue-600" /> : <ChevronDown className="w-3 h-3 ml-1 inline text-blue-600" />
+                    ) : (
+                      <ChevronsUpDown className="w-3 h-3 ml-1 inline text-gray-400" />
+                    )}
+                  </div>
+                </th>
+                <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('created_at')}>
+                  <div className="flex items-center justify-between">
+                    <span>วันที่สร้าง</span>
+                    {sortField === 'created_at' ? (
+                      sortDirection === 'asc' ? <ChevronUp className="w-3 h-3 ml-1 inline text-blue-600" /> : <ChevronDown className="w-3 h-3 ml-1 inline text-blue-600" />
+                    ) : (
+                      <ChevronsUpDown className="w-3 h-3 ml-1 inline text-gray-400" />
+                    )}
+                  </div>
+                </th>
+                <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('updated_at')}>
+                  <div className="flex items-center justify-between">
+                    <span>วันที่แก้ไข</span>
+                    {sortField === 'updated_at' ? (
                       sortDirection === 'asc' ? <ChevronUp className="w-3 h-3 ml-1 inline text-blue-600" /> : <ChevronDown className="w-3 h-3 ml-1 inline text-blue-600" />
                     ) : (
                       <ChevronsUpDown className="w-3 h-3 ml-1 inline text-gray-400" />
@@ -374,19 +415,19 @@ const CustomerRejectionPage = () => {
             <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
               {loading ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-500">
+                  <td colSpan={13} className="px-4 py-8 text-center text-sm text-gray-500">
                     กำลังโหลดข้อมูล...
                   </td>
                 </tr>
               ) : error ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-sm text-red-500">
+                  <td colSpan={13} className="px-4 py-8 text-center text-sm text-red-500">
                     เกิดข้อผิดพลาด: {error}
                   </td>
                 </tr>
               ) : sortedCustomers.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-500">
+                  <td colSpan={13} className="px-4 py-8 text-center text-sm text-gray-500">
                     ไม่พบข้อมูล
                   </td>
                 </tr>
@@ -394,21 +435,25 @@ const CustomerRejectionPage = () => {
                 sortedCustomers.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((item) => (
                   <tr key={item.record_id} className="hover:bg-blue-50/30 transition-colors duration-150">
                     <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                      <div className="text-gray-500 font-mono text-[10px]">{item.record_id?.toString()}</div>
+                    </td>
+                    <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                       <div className="font-semibold text-blue-600 font-mono text-[11px]">{item.customer_id}</div>
                     </td>
                     <td className="px-2 py-0.5 text-[11px] border-r border-gray-100 text-gray-700 whitespace-nowrap">{item.customer_name}</td>
                     <td className="px-2 py-0.5 text-[11px] border-r border-gray-100 text-gray-600 max-w-xs truncate">{item.reason || '-'}</td>
                     <td className="px-2 py-0.5 text-[11px] border-r border-gray-100 text-gray-600 max-w-xs truncate">{item.note_for_picking || '-'}</td>
                     <td className="px-2 py-0.5 text-[11px] border-r border-gray-100 text-gray-700 whitespace-nowrap">{formatDate(item.effective_start_date)}</td>
-                    <td className="px-2 py-0.5 text-[11px] border-r border-gray-100 whitespace-nowrap">
-                      <div className="space-y-0.5">
-                        <div className="text-gray-700">{formatDate(item.effective_end_date)}</div>
-                        {getEffectiveBadge(item.effective_start_date, item.effective_end_date)}
-                      </div>
+                    <td className="px-2 py-0.5 text-[11px] border-r border-gray-100 text-gray-700 whitespace-nowrap">{formatDate(item.effective_end_date)}</td>
+                    <td className="px-2 py-0.5 text-[11px] border-r border-gray-100 text-center whitespace-nowrap">
+                      {getEffectiveBadge(item.effective_start_date, item.effective_end_date)}
                     </td>
                     <td className="px-2 py-0.5 text-[11px] border-r border-gray-100 text-center whitespace-nowrap">
                       {getStatusBadge(item.is_active)}
                     </td>
+                    <td className="px-2 py-0.5 text-[11px] border-r border-gray-100 text-gray-600 whitespace-nowrap">{item.created_by || '-'}</td>
+                    <td className="px-2 py-0.5 text-[11px] border-r border-gray-100 text-gray-600 whitespace-nowrap">{formatDate(item.created_at)}</td>
+                    <td className="px-2 py-0.5 text-[11px] border-r border-gray-100 text-gray-600 whitespace-nowrap">{formatDate(item.updated_at)}</td>
                     <td className="px-2 py-0.5 text-xs border-gray-100 whitespace-nowrap">
                       <div className="flex items-center justify-center gap-0.5">
                         <button

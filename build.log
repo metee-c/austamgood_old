@@ -2,14 +2,14 @@
    - Environments: .env.local
 
    Creating an optimized production build ...
- ✓ Compiled successfully in 11.2s
+ ✓ Compiled successfully in 12.3s
    Running TypeScript ...
    Collecting page data using 13 workers ...
-   Generating static pages using 13 workers (0/155) ...
-   Generating static pages using 13 workers (38/155) 
-   Generating static pages using 13 workers (77/155) 
-   Generating static pages using 13 workers (116/155) 
- ✓ Generating static pages using 13 workers (155/155) in 1518.5ms
+   Generating static pages using 13 workers (0/158) ...
+   Generating static pages using 13 workers (39/158) 
+   Generating static pages using 13 workers (78/158) 
+   Generating static pages using 13 workers (118/158) 
+ ✓ Generating static pages using 13 workers (158/158) in 3.0s
    Finalizing page optimization ...
 
 Route (app)
@@ -106,6 +106,8 @@ Route (app)
 ├ ƒ /api/orders/dashboard
 ├ ƒ /api/orders/[id]
 ├ ƒ /api/orders/[id]/rollback
+├ ƒ /api/orders/[id]/rollback-history
+├ ƒ /api/orders/[id]/rollback-preview
 ├ ƒ /api/orders/import
 ├ ƒ /api/orders/import/confirm
 ├ ƒ /api/orders/with-items
@@ -133,6 +135,7 @@ Route (app)
 ├ ƒ /api/receive/update-external-pallet
 ├ ƒ /api/replenishment
 ├ ƒ /api/replenishment/[id]
+├ ƒ /api/reports/391
 ├ ƒ /api/roles
 ├ ƒ /api/roles/[id]
 ├ ƒ /api/roles/[id]/permissions
@@ -248,6 +251,7 @@ Route (app)
 ├ ƒ /receiving/picklists/[id]
 ├ ○ /receiving/routes
 ├ ○ /reports
+├ ○ /reports/391
 ├ ○ /reset-password
 ├ ○ /shipping
 ├ ○ /stock-management/adjustment

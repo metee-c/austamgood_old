@@ -179,7 +179,16 @@ const menuItems = [
     path: '/reports',
     icon: BarChart3,
     label: 'รายงาน',
-    englishLabel: 'Reports'
+    englishLabel: 'Reports',
+    hasSubmenu: true,
+    submenu: [
+      {
+        path: '/reports/391',
+        icon: FileCheck,
+        label: 'รายงาน 391',
+        englishLabel: 'Report 391'
+      }
+    ]
   },
   {
     path: '/stock-management',

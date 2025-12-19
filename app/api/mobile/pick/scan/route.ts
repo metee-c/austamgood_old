@@ -210,6 +210,7 @@ export async function POST(request: NextRequest) {
       }
 
       // บันทึก ledger: OUT จาก source_location
+      // ✅ CRITICAL FIX: Include order_id and order_item_id for BRCGS traceability
       ledgerEntries.push({
         movement_at: now,
         transaction_type: 'pick',
@@ -222,6 +223,8 @@ export async function POST(request: NextRequest) {
         reference_no: item.picklists.picklist_code,
         reference_doc_type: 'picklist',
         reference_doc_id: picklist_id,
+        order_id: item.order_id,           // ✅ BRCGS: Link to order
+        order_item_id: item.order_item_id, // ✅ BRCGS: Link to order line
         remarks: `หยิบจาก ${item.source_location_id} (balance_id: ${balance.balance_id}) - ${item.picklists.picklist_code}`,
         created_by: userId,
         skip_balance_sync: true  // ✅ API อัปเดต balance ด้วยตัวเองแล้ว
@@ -319,6 +322,7 @@ export async function POST(request: NextRequest) {
           })
           .eq('balance_id', balance.balance_id);
 
+        // ✅ CRITICAL FIX: Include order_id and order_item_id for BRCGS traceability
         ledgerEntries.push({
           movement_at: now,
           transaction_type: 'pick',
@@ -331,6 +335,8 @@ export async function POST(request: NextRequest) {
           reference_no: item.picklists.picklist_code,
           reference_doc_type: 'picklist',
           reference_doc_id: picklist_id,
+          order_id: item.order_id,           // ✅ BRCGS: Link to order
+          order_item_id: item.order_item_id, // ✅ BRCGS: Link to order line
           remarks: `หยิบจาก ${balance.location_id} (FEFO) - ${item.picklists.picklist_code}`,
           created_by: userId,
           skip_balance_sync: true
@@ -390,6 +396,7 @@ export async function POST(request: NextRequest) {
     }
 
     // บันทึก ledger: IN ไปยัง Dispatch
+    // ✅ CRITICAL FIX: Include order_id and order_item_id for BRCGS traceability
     ledgerEntries.push({
       movement_at: now,
       transaction_type: 'pick',
@@ -402,6 +409,8 @@ export async function POST(request: NextRequest) {
       reference_no: item.picklists.picklist_code,
       reference_doc_type: 'picklist',
       reference_doc_id: picklist_id,
+      order_id: item.order_id,           // ✅ BRCGS: Link to order
+      order_item_id: item.order_item_id, // ✅ BRCGS: Link to order line
       remarks: `ย้ายไป Dispatch - ${item.picklists.picklist_code}`,
       created_by: userId,
       skip_balance_sync: true  // ✅ API อัปเดต balance ด้วยตัวเองแล้ว

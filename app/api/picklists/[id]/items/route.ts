@@ -38,13 +38,30 @@ export async function GET(
     const orderItemIds = [...new Set(items.map(i => i.order_item_id))];
 
     const [stopsResult, skusResult, locationsResult, orderItemsResult] = await Promise.all([
-      supabase.from('receiving_route_stops').select('stop_id, sequence_no, stop_name, address').in('stop_id', stopIds),
+      supabase.from('receiving_route_stops').select('stop_id, sequence_no, stop_name, address, customer_id').in('stop_id', stopIds),
       supabase.from('master_sku').select('sku_id, sku_name, uom_base, default_location').in('sku_id', skuIds),
       locationIds.length > 0
         ? supabase.from('master_location').select('location_id').in('location_id', locationIds)
         : { data: [], error: null },
       supabase.from('wms_order_items').select('order_item_id, order_id').in('order_item_id', orderItemIds)
     ]);
+
+    // Get customer IDs from stops to check for no_price_goods
+    const customerIds = [...new Set((stopsResult.data || [])
+      .filter((s: any) => s.customer_id)
+      .map((s: any) => s.customer_id))];
+
+    // Query master_customer_no_price_goods for matching customers
+    const noPriceGoodsResult = customerIds.length > 0
+      ? await supabase
+          .from('master_customer_no_price_goods')
+          .select('customer_id, note_for_picking')
+          .in('customer_id', customerIds)
+          .eq('is_active', true)
+      : { data: [], error: null };
+
+    // Create map of customer_id -> note_for_picking
+    const noPriceGoodsMap = new Map((noPriceGoodsResult.data || []).map((r: any) => [r.customer_id, r.note_for_picking]));
 
     const orderIds = [...new Set((orderItemsResult.data || []).map((oi: any) => oi.order_id))];
     const ordersResult = await supabase.from('wms_orders').select('order_id, order_no').in('order_id', orderIds);
@@ -64,6 +81,9 @@ export async function GET(
     const orderItemMap = new Map((orderItemsResult.data || []).map((oi: any) => [oi.order_item_id, oi]));
     const orderMap = new Map((ordersResult.data || []).map((o: any) => [o.order_id, o]));
     const preparationAreaMap = new Map((preparationAreasResult.data || []).map((a: any) => [a.area_id, a]));
+    
+    // Create map of stop_id -> customer_id for no_price_goods lookup
+    const stopCustomerMap = new Map((stopsResult.data || []).map((s: any) => [s.stop_id, s.customer_id]));
 
     const groupedItems = new Map<string, any>();
 
@@ -93,6 +113,10 @@ export async function GET(
           // Otherwise, use the default location from SKU (preparation area ID)
           sourceLocationDisplay = sku.default_location;
         }
+
+        // Check if this stop's customer has no_price_goods requirement
+        const customerId = stopCustomerMap.get(item.stop_id);
+        const noPriceGoodsNote = customerId ? noPriceGoodsMap.get(customerId) : null;
         
         groupedItems.set(groupKey, {
           id: item.id,
@@ -105,6 +129,7 @@ export async function GET(
           order_nos: [orderNo],
           quantities_to_pick: [item.quantity_to_pick],
           quantities_picked: [item.quantity_picked],
+          no_price_goods_note: noPriceGoodsNote || null,
           stop: {
             stop_id: item.stop_id,
             stop_sequence: stop?.sequence_no || 0,

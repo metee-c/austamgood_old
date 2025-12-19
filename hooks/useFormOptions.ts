@@ -43,6 +43,14 @@ interface Employee {
   last_name: string;
 }
 
+export interface SystemUser {
+  user_id: number;
+  username: string;
+  full_name: string;
+  email?: string;
+  is_active: boolean;
+}
+
 // Hook for suppliers
 export const useSuppliers = () => {
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -287,7 +295,7 @@ export const useEmployees = () => {
 
 // Hook for system users (from master_system_user table)
 export const useSystemUsers = () => {
-  const [users, setUsers] = useState<Employee[]>([]);
+  const [users, setUsers] = useState<SystemUser[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
