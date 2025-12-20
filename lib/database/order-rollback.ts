@@ -13,6 +13,20 @@ const supabase = createClient(
 );
 
 // ============================================================================
+// Debug Logger
+// ============================================================================
+const DEBUG_ROLLBACK = true; // เปิด/ปิด debug logs
+
+function debugLog(context: string, message: string, data?: any) {
+  if (!DEBUG_ROLLBACK) return;
+  const timestamp = new Date().toISOString();
+  console.log(`[ROLLBACK-DEBUG][${timestamp}][${context}] ${message}`);
+  if (data !== undefined) {
+    console.log(`[ROLLBACK-DEBUG][${timestamp}][${context}] Data:`, JSON.stringify(data, null, 2));
+  }
+}
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -109,15 +123,21 @@ class OrderRollbackService {
    * แสดงผลกระทบที่จะเกิดขึ้นโดยไม่ execute จริง
    */
   async getRollbackPreview(orderId: number): Promise<{ data: RollbackPreview | null; error: string | null }> {
+    debugLog('getRollbackPreview', `=== START getRollbackPreview for orderId: ${orderId} ===`);
+    
     try {
       // 1. ดึงข้อมูล Order
+      debugLog('getRollbackPreview', 'Step 1: Fetching order data...');
       const { data: order, error: orderError } = await this.supabase
         .from('wms_orders')
         .select('order_id, order_no, status, rollback_lock_at, rollback_lock_expires_at, rollback_lock_by')
         .eq('order_id', orderId)
         .single();
 
+      debugLog('getRollbackPreview', 'Order query result:', { order, orderError });
+
       if (orderError || !order) {
+        debugLog('getRollbackPreview', 'ERROR: Order not found', { orderError });
         return { data: null, error: 'ไม่พบ Order' };
       }
 
@@ -138,14 +158,20 @@ class OrderRollbackService {
         warnings: []
       };
 
+      debugLog('getRollbackPreview', 'Initial preview object created:', preview);
+
       // 2. ตรวจสอบว่าสามารถ Rollback ได้หรือไม่
+      debugLog('getRollbackPreview', 'Step 2: Checking if can rollback...', { status: order.status });
+      
       if (order.status === 'draft') {
+        debugLog('getRollbackPreview', 'BLOCKED: Order already in draft status');
         preview.canRollback = false;
         preview.blockingReason = 'Order อยู่ในสถานะ Draft อยู่แล้ว';
         return { data: preview, error: null };
       }
 
       if (['in_transit', 'delivered'].includes(order.status)) {
+        debugLog('getRollbackPreview', 'BLOCKED: Order in transit or delivered', { status: order.status });
         preview.canRollback = false;
         preview.blockingReason = 'ไม่สามารถ Rollback Order ที่อยู่ระหว่างจัดส่งหรือส่งแล้วได้';
         return { data: preview, error: null };
@@ -154,7 +180,13 @@ class OrderRollbackService {
       // ตรวจสอบ Lock
       if (order.rollback_lock_at && order.rollback_lock_expires_at) {
         const lockExpires = new Date(order.rollback_lock_expires_at);
+        debugLog('getRollbackPreview', 'Checking rollback lock...', { 
+          lockExpires: lockExpires.toISOString(), 
+          now: new Date().toISOString(),
+          isLocked: lockExpires > new Date()
+        });
         if (lockExpires > new Date()) {
+          debugLog('getRollbackPreview', 'BLOCKED: Order is locked by another user');
           preview.canRollback = false;
           preview.blockingReason = 'Order กำลังถูก Rollback โดยผู้ใช้อื่น';
           return { data: preview, error: null };
@@ -162,7 +194,8 @@ class OrderRollbackService {
       }
 
       // 3. ดึงข้อมูล Picklist Items
-      const { data: picklistItems } = await this.supabase
+      debugLog('getRollbackPreview', 'Step 3: Fetching picklist items...');
+      const { data: picklistItems, error: picklistError } = await this.supabase
         .from('picklist_items')
         .select(`
           id, picklist_id, sku_id, quantity_picked, quantity_to_pick, status, source_location_id,
@@ -172,7 +205,14 @@ class OrderRollbackService {
         .eq('order_id', orderId)
         .is('voided_at', null);
 
+      debugLog('getRollbackPreview', 'Picklist items query result:', { 
+        count: picklistItems?.length || 0, 
+        error: picklistError,
+        items: picklistItems 
+      });
+
       if (picklistItems && picklistItems.length > 0) {
+        debugLog('getRollbackPreview', `Processing ${picklistItems.length} picklist items...`);
         const picklistMap = new Map<number, { id: number; code: string; itemCount: number }>();
         for (const item of picklistItems) {
           const pl = item.picklists as any;
@@ -182,6 +222,11 @@ class OrderRollbackService {
           picklistMap.get(pl.id)!.itemCount++;
 
           if (item.status === 'picked' && item.quantity_picked > 0) {
+            debugLog('getRollbackPreview', `Adding stock to restore for SKU ${item.sku_id}:`, {
+              quantity: item.quantity_picked,
+              status: item.status,
+              sourceLocation: item.source_location_id
+            });
             preview.stockToRestore.push({
               skuId: item.sku_id,
               skuName: (item.master_sku as any)?.sku_name || item.sku_id,
@@ -192,10 +237,12 @@ class OrderRollbackService {
           }
         }
         preview.affectedDocuments.picklists = Array.from(picklistMap.values());
+        debugLog('getRollbackPreview', 'Affected picklists:', preview.affectedDocuments.picklists);
       }
 
       // 4. ดึงข้อมูล Face Sheet Items
-      const { data: faceSheetItems } = await this.supabase
+      debugLog('getRollbackPreview', 'Step 4: Fetching face sheet items...');
+      const { data: faceSheetItems, error: faceSheetError } = await this.supabase
         .from('face_sheet_items')
         .select(`
           id, face_sheet_id, sku_id, quantity_picked, quantity_to_pick, status, source_location_id,
@@ -205,7 +252,14 @@ class OrderRollbackService {
         .eq('order_id', orderId)
         .is('voided_at', null);
 
+      debugLog('getRollbackPreview', 'Face sheet items query result:', { 
+        count: faceSheetItems?.length || 0, 
+        error: faceSheetError,
+        items: faceSheetItems 
+      });
+
       if (faceSheetItems && faceSheetItems.length > 0) {
+        debugLog('getRollbackPreview', `Processing ${faceSheetItems.length} face sheet items...`);
         const fsMap = new Map<number, { id: number; code: string; itemCount: number }>();
         for (const item of faceSheetItems) {
           const fs = item.face_sheets as any;
@@ -215,6 +269,11 @@ class OrderRollbackService {
           fsMap.get(fs.id)!.itemCount++;
 
           if (item.status === 'picked' && item.quantity_picked > 0) {
+            debugLog('getRollbackPreview', `Adding face sheet stock to restore for SKU ${item.sku_id}:`, {
+              quantity: item.quantity_picked,
+              status: item.status,
+              sourceLocation: item.source_location_id
+            });
             preview.stockToRestore.push({
               skuId: item.sku_id,
               skuName: (item.master_sku as any)?.sku_name || item.sku_id,
@@ -225,18 +284,27 @@ class OrderRollbackService {
           }
         }
         preview.affectedDocuments.faceSheets = Array.from(fsMap.values());
+        debugLog('getRollbackPreview', 'Affected face sheets:', preview.affectedDocuments.faceSheets);
       }
 
       // 5. ดึงข้อมูล Bonus Face Sheet Items
-      const { data: orderItems } = await this.supabase
+      debugLog('getRollbackPreview', 'Step 5: Fetching bonus face sheet items...');
+      const { data: orderItems, error: orderItemsError } = await this.supabase
         .from('wms_order_items')
         .select('order_item_id')
         .eq('order_id', orderId);
 
+      debugLog('getRollbackPreview', 'Order items query result:', { 
+        count: orderItems?.length || 0, 
+        error: orderItemsError,
+        orderItemIds: orderItems?.map(oi => oi.order_item_id)
+      });
+
       if (orderItems && orderItems.length > 0) {
         const orderItemIds = orderItems.map(oi => oi.order_item_id);
+        debugLog('getRollbackPreview', 'Fetching bonus face sheet items for order_item_ids:', orderItemIds);
         
-        const { data: bonusItems } = await this.supabase
+        const { data: bonusItems, error: bonusError } = await this.supabase
           .from('bonus_face_sheet_items')
           .select(`
             id, face_sheet_id, sku_id, quantity_picked, quantity_to_pick, status, source_location_id,
@@ -246,7 +314,14 @@ class OrderRollbackService {
           .in('order_item_id', orderItemIds)
           .is('voided_at', null);
 
+        debugLog('getRollbackPreview', 'Bonus face sheet items query result:', { 
+          count: bonusItems?.length || 0, 
+          error: bonusError,
+          items: bonusItems 
+        });
+
         if (bonusItems && bonusItems.length > 0) {
+          debugLog('getRollbackPreview', `Processing ${bonusItems.length} bonus face sheet items...`);
           const bfsMap = new Map<number, { id: number; code: string; itemCount: number }>();
           for (const item of bonusItems) {
             const bfs = item.bonus_face_sheets as any;
@@ -256,6 +331,11 @@ class OrderRollbackService {
             bfsMap.get(bfs.id)!.itemCount++;
 
             if (item.status === 'picked' && item.quantity_picked > 0) {
+              debugLog('getRollbackPreview', `Adding bonus stock to restore for SKU ${item.sku_id}:`, {
+                quantity: item.quantity_picked,
+                status: item.status,
+                sourceLocation: item.source_location_id
+              });
               preview.stockToRestore.push({
                 skuId: item.sku_id,
                 skuName: (item.master_sku as any)?.sku_name || item.sku_id,
@@ -266,11 +346,13 @@ class OrderRollbackService {
             }
           }
           preview.affectedDocuments.bonusFaceSheets = Array.from(bfsMap.values());
+          debugLog('getRollbackPreview', 'Affected bonus face sheets:', preview.affectedDocuments.bonusFaceSheets);
         }
       }
 
       // 6. ดึงข้อมูล Loadlist Items
-      const { data: loadlistItems } = await this.supabase
+      debugLog('getRollbackPreview', 'Step 6: Fetching loadlist items...');
+      const { data: loadlistItems, error: loadlistError } = await this.supabase
         .from('loadlist_items')
         .select(`
           id, loadlist_id,
@@ -278,7 +360,14 @@ class OrderRollbackService {
         `)
         .eq('order_id', orderId);
 
+      debugLog('getRollbackPreview', 'Loadlist items query result:', { 
+        count: loadlistItems?.length || 0, 
+        error: loadlistError,
+        items: loadlistItems 
+      });
+
       if (loadlistItems && loadlistItems.length > 0) {
+        debugLog('getRollbackPreview', `Processing ${loadlistItems.length} loadlist items...`);
         const llMap = new Map<number, { id: number; code: string; itemCount: number }>();
         for (const item of loadlistItems) {
           const ll = item.loadlists as any;
@@ -288,47 +377,65 @@ class OrderRollbackService {
           llMap.get(ll.id)!.itemCount++;
         }
         preview.affectedDocuments.loadlists = Array.from(llMap.values());
+        debugLog('getRollbackPreview', 'Affected loadlists:', preview.affectedDocuments.loadlists);
       }
 
       // 7. ดึงข้อมูล Route Stops
-      const { data: routeStops } = await this.supabase
+      debugLog('getRollbackPreview', 'Step 7: Fetching route stops...');
+      const { data: routeStops, error: routeStopsError } = await this.supabase
         .from('receiving_route_stops')
         .select('stop_id, trip_id')
         .eq('order_id', orderId);
+
+      debugLog('getRollbackPreview', 'Route stops query result:', { 
+        count: routeStops?.length || 0, 
+        error: routeStopsError,
+        stops: routeStops 
+      });
 
       if (routeStops && routeStops.length > 0) {
         preview.affectedDocuments.routeStops = routeStops.map(s => ({
           stopId: s.stop_id,
           tripId: s.trip_id
         }));
+        debugLog('getRollbackPreview', 'Affected route stops:', preview.affectedDocuments.routeStops);
       }
 
       // 8. นับ Reservations ที่ต้อง Release
+      debugLog('getRollbackPreview', 'Step 8: Counting reservations to release...');
+      
       if (picklistItems) {
         const picklistItemIds = picklistItems.map(pi => pi.id);
+        debugLog('getRollbackPreview', 'Checking picklist item reservations for IDs:', picklistItemIds);
         if (picklistItemIds.length > 0) {
-          const { count: plResCount } = await this.supabase
+          const { count: plResCount, error: plResError } = await this.supabase
             .from('picklist_item_reservations')
             .select('*', { count: 'exact', head: true })
             .in('picklist_item_id', picklistItemIds)
             .eq('status', 'reserved');
+          debugLog('getRollbackPreview', 'Picklist reservations count:', { count: plResCount, error: plResError });
           preview.reservationsToRelease += plResCount || 0;
         }
       }
 
       if (faceSheetItems) {
         const fsItemIds = faceSheetItems.map(fsi => fsi.id);
+        debugLog('getRollbackPreview', 'Checking face sheet item reservations for IDs:', fsItemIds);
         if (fsItemIds.length > 0) {
-          const { count: fsResCount } = await this.supabase
+          const { count: fsResCount, error: fsResError } = await this.supabase
             .from('face_sheet_item_reservations')
             .select('*', { count: 'exact', head: true })
             .in('face_sheet_item_id', fsItemIds)
             .eq('status', 'reserved');
+          debugLog('getRollbackPreview', 'Face sheet reservations count:', { count: fsResCount, error: fsResError });
           preview.reservationsToRelease += fsResCount || 0;
         }
       }
 
+      debugLog('getRollbackPreview', 'Total reservations to release:', preview.reservationsToRelease);
+
       // 9. สร้าง Warnings
+      debugLog('getRollbackPreview', 'Step 9: Generating warnings...');
       if (preview.stockToRestore.length > 0) {
         preview.warnings.push(`จะมีการคืนสต็อก ${preview.stockToRestore.length} รายการกลับไปยัง Preparation Area`);
       }
@@ -341,8 +448,12 @@ class OrderRollbackService {
         preview.warnings.push(`Order ถูกโหลดแล้ว จะต้อง Reverse การโหลดก่อน`);
       }
 
+      debugLog('getRollbackPreview', '=== FINAL PREVIEW RESULT ===', preview);
+      debugLog('getRollbackPreview', `=== END getRollbackPreview for orderId: ${orderId} ===`);
+
       return { data: preview, error: null };
     } catch (err: any) {
+      debugLog('getRollbackPreview', 'EXCEPTION:', { message: err.message, stack: err.stack });
       console.error('[OrderRollbackService] getRollbackPreview error:', err);
       return { data: null, error: err.message || 'เกิดข้อผิดพลาดในการดึงข้อมูล Preview' };
     }
@@ -365,34 +476,52 @@ class OrderRollbackService {
     const { orderId, userId, reason } = options;
     const startTime = Date.now();
 
+    debugLog('executeRollback', `=== START executeRollback ===`, { orderId, userId, reason });
+
     try {
       // ========================================
       // PRE-VALIDATION (ก่อนเรียก atomic function)
       // ========================================
+      debugLog('executeRollback', 'Step 1: Pre-validation - Fetching order...');
       const { data: order, error: orderError } = await this.supabase
         .from('wms_orders')
         .select('order_id, order_no, status, warehouse_id')
         .eq('order_id', orderId)
         .single();
 
+      debugLog('executeRollback', 'Order query result:', { order, orderError });
+
       if (orderError || !order) {
+        debugLog('executeRollback', 'ERROR: Order not found');
         return { data: null, error: 'ไม่พบ Order' };
       }
 
       if (order.status === 'draft') {
+        debugLog('executeRollback', 'ERROR: Order already in draft status');
         return { data: null, error: 'Order อยู่ในสถานะ Draft อยู่แล้ว' };
       }
 
       if (['in_transit', 'delivered'].includes(order.status)) {
+        debugLog('executeRollback', 'ERROR: Order in transit or delivered', { status: order.status });
         return { data: null, error: 'ไม่สามารถ Rollback Order ที่อยู่ระหว่างจัดส่งหรือส่งแล้วได้' };
       }
 
       const warehouseId = order.warehouse_id || 'WH001';
+      debugLog('executeRollback', 'Pre-validation passed', { 
+        orderNo: order.order_no, 
+        status: order.status, 
+        warehouseId 
+      });
 
       // ========================================
       // EXECUTE ATOMIC ROLLBACK (Single DB Transaction)
       // ========================================
-      console.log(`[OrderRollbackService] Executing atomic rollback for order ${orderId}...`);
+      debugLog('executeRollback', 'Step 2: Executing atomic rollback RPC...', {
+        p_order_id: orderId,
+        p_user_id: userId,
+        p_reason: reason,
+        p_warehouse_id: warehouseId
+      });
       
       const { data: atomicResult, error: atomicError } = await this.supabase.rpc('execute_order_rollback_atomic', {
         p_order_id: orderId,
@@ -401,7 +530,15 @@ class OrderRollbackService {
         p_warehouse_id: warehouseId
       });
 
+      debugLog('executeRollback', 'Atomic RPC result:', { atomicResult, atomicError });
+
       if (atomicError) {
+        debugLog('executeRollback', 'ERROR: Atomic rollback failed', { 
+          message: atomicError.message,
+          details: atomicError.details,
+          hint: atomicError.hint,
+          code: atomicError.code
+        });
         console.error('[OrderRollbackService] Atomic rollback failed:', atomicError);
         return { 
           data: null, 
@@ -410,6 +547,7 @@ class OrderRollbackService {
       }
 
       if (!atomicResult || !atomicResult.success) {
+        debugLog('executeRollback', 'ERROR: Atomic rollback returned unsuccessful', { atomicResult });
         return { 
           data: null, 
           error: 'Atomic rollback returned unsuccessful result' 
@@ -419,6 +557,7 @@ class OrderRollbackService {
       // ========================================
       // MAP RESULT TO RollbackResult TYPE
       // ========================================
+      debugLog('executeRollback', 'Step 3: Mapping result to RollbackResult type...');
       const summary = atomicResult.summary || {};
       
       const result: RollbackResult = {
@@ -452,17 +591,39 @@ class OrderRollbackService {
         durationMs: atomicResult.duration_ms || (Date.now() - startTime)
       };
 
+      // ========================================
+      // STEP 4: RESET SHIPPING COST FOR AFFECTED TRIP
+      // ========================================
+      debugLog('executeRollback', 'Step 4: Resetting shipping cost for affected trip...');
+      const shippingCostResetResult = await this.resetTripShippingCost(orderId, order.order_no, reason);
+      debugLog('executeRollback', 'Shipping cost reset result:', shippingCostResetResult);
+
+      // Add shipping cost reset info to result summary
+      (result.summary as any).shippingCostReset = shippingCostResetResult;
+
+      debugLog('executeRollback', '=== ROLLBACK SUCCESS ===', {
+        orderId: result.orderId,
+        orderNo: result.orderNo,
+        previousStatus: result.previousStatus,
+        newStatus: result.newStatus,
+        summary: result.summary,
+        auditLogId: result.auditLogId,
+        durationMs: result.durationMs
+      });
+
       console.log(`[OrderRollbackService] Atomic rollback completed successfully:`, {
         orderId: result.orderId,
         orderNo: result.orderNo,
         previousStatus: result.previousStatus,
         ledgerEntriesCreated: result.summary.ledgerEntriesCreated,
+        shippingCostReset: shippingCostResetResult,
         durationMs: result.durationMs
       });
 
       return { data: result, error: null };
 
     } catch (err: any) {
+      debugLog('executeRollback', 'EXCEPTION:', { message: err.message, stack: err.stack });
       console.error('[OrderRollbackService] executeRollback error:', err);
       
       const result: RollbackResult = {
@@ -1231,6 +1392,127 @@ class OrderRollbackService {
 
 
   // ==========================================================================
+  // Reset Trip Shipping Cost After Rollback
+  // ==========================================================================
+
+  /**
+   * Reset shipping cost to 0 for the trip that contains the rolled-back order
+   * เมื่อ Rollback Order ให้ reset ค่าขนส่งของคันที่มี order นั้นเป็น 0
+   * และ flag ว่าต้องกรอกค่าขนส่งใหม่
+   */
+  private async resetTripShippingCost(
+    orderId: number,
+    orderNo: string,
+    reason: string
+  ): Promise<{
+    tripId: number | null;
+    tripSequence: number | null;
+    previousShippingCost: number | null;
+    success: boolean;
+    message: string;
+  }> {
+    const result = {
+      tripId: null as number | null,
+      tripSequence: null as number | null,
+      previousShippingCost: null as number | null,
+      success: false,
+      message: ''
+    };
+
+    try {
+      debugLog('resetTripShippingCost', `Finding trip for order ${orderId}...`);
+
+      // 1. หา trip_id จาก receiving_route_stops ที่มี order_id นี้
+      const { data: routeStop, error: stopError } = await this.supabase
+        .from('receiving_route_stops')
+        .select('trip_id')
+        .eq('order_id', orderId)
+        .maybeSingle();
+
+      debugLog('resetTripShippingCost', 'Route stop query result:', { routeStop, stopError });
+
+      if (stopError) {
+        debugLog('resetTripShippingCost', 'ERROR finding route stop:', stopError);
+        result.message = `ไม่สามารถค้นหา route stop: ${stopError.message}`;
+        return result;
+      }
+
+      if (!routeStop) {
+        debugLog('resetTripShippingCost', 'No route stop found for this order - skipping shipping cost reset');
+        result.success = true;
+        result.message = 'Order ไม่ได้อยู่ใน route plan - ไม่ต้อง reset ค่าขนส่ง';
+        return result;
+      }
+
+      const tripId = routeStop.trip_id;
+      result.tripId = tripId;
+
+      // 2. ดึงข้อมูล trip ปัจจุบัน
+      const { data: trip, error: tripError } = await this.supabase
+        .from('receiving_route_trips')
+        .select('trip_id, trip_sequence, shipping_cost, base_price, helper_fee, extra_stop_fee, porterage_fee, other_fees')
+        .eq('trip_id', tripId)
+        .single();
+
+      debugLog('resetTripShippingCost', 'Trip query result:', { trip, tripError });
+
+      if (tripError || !trip) {
+        debugLog('resetTripShippingCost', 'ERROR finding trip:', tripError);
+        result.message = `ไม่พบข้อมูล trip: ${tripError?.message || 'Unknown error'}`;
+        return result;
+      }
+
+      result.tripSequence = trip.trip_sequence;
+      result.previousShippingCost = trip.shipping_cost;
+
+      // 3. Reset shipping cost และ flag ว่าต้องกรอกใหม่
+      const now = new Date().toISOString();
+      const resetReason = `Rollback Order ${orderNo}: ${reason}`;
+
+      const { error: updateError } = await this.supabase
+        .from('receiving_route_trips')
+        .update({
+          shipping_cost: 0,
+          base_price: 0,
+          helper_fee: 0,
+          porterage_fee: 0,
+          other_fees: null,
+          needs_shipping_cost_update: true,
+          shipping_cost_reset_reason: resetReason,
+          shipping_cost_reset_at: now,
+          updated_at: now
+        })
+        .eq('trip_id', tripId);
+
+      debugLog('resetTripShippingCost', 'Update result:', { updateError });
+
+      if (updateError) {
+        debugLog('resetTripShippingCost', 'ERROR updating trip:', updateError);
+        result.message = `ไม่สามารถ reset ค่าขนส่ง: ${updateError.message}`;
+        return result;
+      }
+
+      result.success = true;
+      result.message = `Reset ค่าขนส่งเที่ยวที่ ${trip.trip_sequence} สำเร็จ (เดิม: ${trip.shipping_cost?.toLocaleString() || 0} บาท)`;
+
+      debugLog('resetTripShippingCost', 'SUCCESS:', result);
+      console.log(`[OrderRollbackService] Shipping cost reset for trip ${tripId}:`, {
+        tripSequence: trip.trip_sequence,
+        previousCost: trip.shipping_cost,
+        reason: resetReason
+      });
+
+      return result;
+
+    } catch (err: any) {
+      debugLog('resetTripShippingCost', 'EXCEPTION:', err);
+      result.message = `เกิดข้อผิดพลาด: ${err.message}`;
+      return result;
+    }
+  }
+
+
+  // ==========================================================================
   // Get Rollback History
   // ==========================================================================
 
@@ -1241,6 +1523,8 @@ class OrderRollbackService {
     data: RollbackHistoryItem[] | null;
     error: string | null;
   }> {
+    debugLog('getRollbackHistory', `Fetching rollback history for order ${orderId}...`);
+    
     try {
       const { data, error } = await this.supabase
         .from('wms_rollback_audit_logs')
@@ -1260,7 +1544,10 @@ class OrderRollbackService {
         .eq('entity_id', orderId)
         .order('created_at', { ascending: false });
 
+      debugLog('getRollbackHistory', 'Query result:', { count: data?.length || 0, error });
+
       if (error) {
+        debugLog('getRollbackHistory', 'ERROR:', error);
         return { data: null, error: error.message };
       }
 
@@ -1272,8 +1559,10 @@ class OrderRollbackService {
                    `User ${item.user_id}`
       }));
 
+      debugLog('getRollbackHistory', 'Returning history items:', mappedData.length);
       return { data: mappedData, error: null };
     } catch (err: any) {
+      debugLog('getRollbackHistory', 'EXCEPTION:', err);
       return { data: null, error: err.message || 'เกิดข้อผิดพลาด' };
     }
   }
@@ -1289,31 +1578,44 @@ class OrderRollbackService {
     canRollback: boolean;
     reason?: string;
   }> {
-    const { data: order } = await this.supabase
+    debugLog('canRollback', `Checking if order ${orderId} can be rolled back...`);
+    
+    const { data: order, error } = await this.supabase
       .from('wms_orders')
       .select('status, rollback_lock_at, rollback_lock_expires_at')
       .eq('order_id', orderId)
       .single();
 
+    debugLog('canRollback', 'Order query result:', { order, error });
+
     if (!order) {
+      debugLog('canRollback', 'Order not found');
       return { canRollback: false, reason: 'ไม่พบ Order' };
     }
 
     if (order.status === 'draft') {
+      debugLog('canRollback', 'Order already in draft status');
       return { canRollback: false, reason: 'Order อยู่ในสถานะ Draft อยู่แล้ว' };
     }
 
     if (['in_transit', 'delivered'].includes(order.status)) {
+      debugLog('canRollback', 'Order in transit or delivered', { status: order.status });
       return { canRollback: false, reason: 'ไม่สามารถ Rollback Order ที่อยู่ระหว่างจัดส่งหรือส่งแล้วได้' };
     }
 
     if (order.rollback_lock_at && order.rollback_lock_expires_at) {
       const lockExpires = new Date(order.rollback_lock_expires_at);
+      debugLog('canRollback', 'Checking lock status:', { 
+        lockExpires: lockExpires.toISOString(), 
+        now: new Date().toISOString() 
+      });
       if (lockExpires > new Date()) {
+        debugLog('canRollback', 'Order is locked by another user');
         return { canRollback: false, reason: 'Order กำลังถูก Rollback โดยผู้ใช้อื่น' };
       }
     }
 
+    debugLog('canRollback', 'Order CAN be rolled back');
     return { canRollback: true };
   }
 }

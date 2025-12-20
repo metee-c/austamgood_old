@@ -41,18 +41,31 @@ export default function RollbackPreviewModal({
   // Fetch preview data
   useEffect(() => {
     const fetchPreview = async () => {
+      console.log('[RollbackPreviewModal] Fetching preview for orderId:', orderId);
       try {
         setLoading(true);
         const response = await fetch(`/api/orders/${orderId}/rollback-preview`);
+        console.log('[RollbackPreviewModal] Response status:', response.status);
+        
         const data = await response.json();
+        console.log('[RollbackPreviewModal] Response data:', data);
 
         if (!response.ok || !data.success) {
+          console.log('[RollbackPreviewModal] ERROR:', data.error);
           setError(data.error || 'ไม่สามารถดึงข้อมูลได้');
           return;
         }
 
+        console.log('[RollbackPreviewModal] Preview data received:', {
+          canRollback: data.data?.canRollback,
+          blockingReason: data.data?.blockingReason,
+          affectedDocuments: data.data?.affectedDocuments,
+          stockToRestore: data.data?.stockToRestore?.length,
+          reservationsToRelease: data.data?.reservationsToRelease
+        });
         setPreview(data.data);
       } catch (err: any) {
+        console.error('[RollbackPreviewModal] EXCEPTION:', err);
         setError(err.message || 'เกิดข้อผิดพลาด');
       } finally {
         setLoading(false);
@@ -64,7 +77,10 @@ export default function RollbackPreviewModal({
 
   // Execute rollback
   const handleRollback = async () => {
+    console.log('[RollbackPreviewModal] handleRollback called with reason:', reason);
+    
     if (!reason.trim()) {
+      console.log('[RollbackPreviewModal] ERROR: Empty reason');
       setError('กรุณาระบุเหตุผลในการ Rollback');
       return;
     }
@@ -73,23 +89,35 @@ export default function RollbackPreviewModal({
     setError(null);
 
     try {
+      console.log('[RollbackPreviewModal] Calling POST /api/orders/${orderId}/rollback...');
       const response = await fetch(`/api/orders/${orderId}/rollback`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ reason: reason.trim() })
       });
 
+      console.log('[RollbackPreviewModal] Response status:', response.status);
       const data = await response.json();
+      console.log('[RollbackPreviewModal] Response data:', data);
 
       if (!response.ok || !data.success) {
+        console.log('[RollbackPreviewModal] ERROR:', data.error);
         setError(data.error || 'ไม่สามารถ Rollback ได้');
         setStep('error');
         return;
       }
 
+      console.log('[RollbackPreviewModal] Rollback SUCCESS:', {
+        orderId: data.data?.orderId,
+        orderNo: data.data?.orderNo,
+        previousStatus: data.data?.previousStatus,
+        newStatus: data.data?.newStatus,
+        summary: data.data?.summary
+      });
       setRollbackResult(data.data);
       setStep('success');
     } catch (err: any) {
+      console.error('[RollbackPreviewModal] EXCEPTION:', err);
       setError(err.message || 'เกิดข้อผิดพลาด');
       setStep('error');
     }
@@ -264,42 +292,43 @@ export default function RollbackPreviewModal({
               {/* Stock to Restore */}
               {preview.stockToRestore.length > 0 && (
                 <div>
-                  <h3 className="font-medium text-gray-900 mb-3">สต็อกที่จะคืน</h3>
+                  <h3 className="font-medium text-gray-900 mb-3">
+                    สต็อกที่จะคืน ({preview.stockToRestore.length} รายการ)
+                  </h3>
                   <div className="border rounded-lg overflow-hidden">
                     <table className="w-full text-sm">
-                      <thead className="bg-gray-50">
+                      <thead className="bg-gray-50 sticky top-0">
                         <tr>
                           <th className="px-3 py-2 text-left font-medium text-gray-600">SKU</th>
                           <th className="px-3 py-2 text-right font-medium text-gray-600">จำนวน</th>
                           <th className="px-3 py-2 text-center font-medium text-gray-600">การย้าย</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y">
-                        {preview.stockToRestore.slice(0, 5).map((item, idx) => (
-                          <tr key={idx}>
-                            <td className="px-3 py-2">
-                              <p className="font-medium text-gray-900">{item.skuId}</p>
-                              <p className="text-xs text-gray-500">{item.skuName}</p>
-                            </td>
-                            <td className="px-3 py-2 text-right font-medium">
-                              {item.quantity.toLocaleString()}
-                            </td>
-                            <td className="px-3 py-2">
-                              <div className="flex items-center justify-center gap-1 text-xs">
-                                <span className="text-gray-600">{item.fromLocation}</span>
-                                <ArrowRight className="w-3 h-3 text-gray-400" />
-                                <span className="text-gray-600">{item.toLocation}</span>
-                              </div>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
                     </table>
-                    {preview.stockToRestore.length > 5 && (
-                      <div className="px-3 py-2 bg-gray-50 text-center text-sm text-gray-500">
-                        และอีก {preview.stockToRestore.length - 5} รายการ
-                      </div>
-                    )}
+                    <div className="max-h-48 overflow-y-auto">
+                      <table className="w-full text-sm">
+                        <tbody className="divide-y">
+                          {preview.stockToRestore.map((item, idx) => (
+                            <tr key={idx}>
+                              <td className="px-3 py-2">
+                                <p className="font-medium text-gray-900">{item.skuId}</p>
+                                <p className="text-xs text-gray-500">{item.skuName}</p>
+                              </td>
+                              <td className="px-3 py-2 text-right font-medium">
+                                {item.quantity.toLocaleString()}
+                              </td>
+                              <td className="px-3 py-2">
+                                <div className="flex items-center justify-center gap-1 text-xs">
+                                  <span className="text-gray-600">{item.fromLocation}</span>
+                                  <ArrowRight className="w-3 h-3 text-gray-400" />
+                                  <span className="text-gray-600">{item.toLocation}</span>
+                                </div>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
               )}

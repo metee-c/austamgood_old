@@ -44,17 +44,21 @@ export async function GET() {
         // 1. Find regular picklist items
         console.log(`[DELIVERY-INVENTORY] 🔍 Querying picklist_items for SKU: ${item.sku_id}`);
         
-        // First, get picklist items with status='picked'
+        // First, get picklist items with status='picked' (exclude voided)
         const { data: picklistItems, error: picklistError } = await supabase
           .from('picklist_items')
           .select(`
             picklist_id,
             order_id,
             sku_id,
-            status
+            status,
+            quantity_to_pick,
+            quantity_picked,
+            voided_at
           `)
           .eq('sku_id', item.sku_id)
-          .eq('status', 'picked');
+          .eq('status', 'picked')
+          .is('voided_at', null); // ✅ กรอง voided items ออก
 
         console.log(`[DELIVERY-INVENTORY] 📋 Found ${picklistItems?.length || 0} picked picklist items for SKU ${item.sku_id}`);
         
@@ -103,15 +107,17 @@ export async function GET() {
             }
           }
 
-          // กรองเฉพาะ picklists ที่มี loadlist status='loaded' เท่านั้น
+          // กรองเฉพาะ picklists ที่มี loadlist status='loaded' หรือ 'voided' (เพื่อแสดงข้อมูลที่ยังค้างอยู่)
           // ถ้ายังไม่มี loadlist หรือ loadlist ยัง pending = ยังอยู่ที่ Dispatch ไม่ใช่ที่ Delivery-In-Progress
           const loadedPicklists = picklists?.filter(pl => {
-            const hasLoadedLoadlist = pl.wms_loadlist_picklists?.some((lp: any) => lp.loadlists?.status === 'loaded');
-            console.log(`[DELIVERY-INVENTORY] Picklist ${pl.picklist_code}: hasLoadedLoadlist=${hasLoadedLoadlist}`);
-            return hasLoadedLoadlist;
+            const hasLoadedOrVoidedLoadlist = pl.wms_loadlist_picklists?.some((lp: any) => 
+              lp.loadlists?.status === 'loaded' || lp.loadlists?.status === 'voided'
+            );
+            console.log(`[DELIVERY-INVENTORY] Picklist ${pl.picklist_code}: hasLoadedOrVoidedLoadlist=${hasLoadedOrVoidedLoadlist}`);
+            return hasLoadedOrVoidedLoadlist;
           }) || [];
 
-          console.log(`[DELIVERY-INVENTORY] ✅ Found ${loadedPicklists.length} picklists with loaded loadlist`);
+          console.log(`[DELIVERY-INVENTORY] ✅ Found ${loadedPicklists.length} picklists with loaded/voided loadlist`);
 
           if (loadedPicklists.length > 0) {
             // Get order details for these picklist items
@@ -134,31 +140,45 @@ export async function GET() {
               console.log(`[DELIVERY-INVENTORY] 🛒 Found ${orders?.length || 0} orders`);
             }
 
-            // Build the documents
-            const picklistDocs = loadedPicklists.map((pl: any) => {
-              const loadlistPicklist = pl.wms_loadlist_picklists?.find((lp: any) => lp.loadlists?.status === 'loaded');
-              const picklistItem = picklistItems.find(pi => pi.picklist_id === pl.id);
-              const order = orders?.find(o => o.order_id === picklistItem?.order_id);
+            // ✅ FIX: Build documents for EACH picklist item (not just per picklist)
+            // This ensures each order gets its own row even if same SKU
+            const picklistDocs: any[] = [];
+            
+            for (const pl of loadedPicklists) {
+              const loadlistPicklist = pl.wms_loadlist_picklists?.find((lp: any) => 
+                lp.loadlists?.status === 'loaded' || lp.loadlists?.status === 'voided'
+              );
+              
+              // ✅ Get ALL picklist items for this picklist (not just first one)
+              const itemsForThisPicklist = picklistItems.filter(pi => pi.picklist_id === pl.id);
+              
+              for (const picklistItem of itemsForThisPicklist) {
+                const order = orders?.find(o => o.order_id === picklistItem?.order_id);
 
-              const doc = {
-                document_type: 'picklist',
-                plan_code: pl.route_plan_trip?.route_plan?.plan_code || null,
-                trip_code: pl.route_plan_trip?.trip_code || null,
-                picklist_code: pl.picklist_code || null,
-                loadlist_code: loadlistPicklist?.loadlists?.loadlist_code || null,
-                delivery_number: loadlistPicklist?.loadlists?.delivery_number || null,
-                order_no: order?.order_no || null,
-                shop_name: order?.shop_name || null,
-                province: order?.province || null,
-                phone: order?.phone || null,
-                // Add status info for debugging
-                picklist_status: pl.status,
-                has_loadlist: pl.wms_loadlist_picklists && pl.wms_loadlist_picklists.length > 0
-              };
+                const doc = {
+                  document_type: 'picklist',
+                  plan_code: (pl.route_plan_trip as any)?.route_plan?.[0]?.plan_code || null,
+                  trip_code: (pl.route_plan_trip as any)?.trip_code || null,
+                  picklist_code: pl.picklist_code || null,
+                  loadlist_code: (loadlistPicklist?.loadlists as any)?.[0]?.loadlist_code || (loadlistPicklist?.loadlists as any)?.loadlist_code || null,
+                  delivery_number: (loadlistPicklist?.loadlists as any)?.[0]?.delivery_number || (loadlistPicklist?.loadlists as any)?.delivery_number || null,
+                  order_id: picklistItem?.order_id || null,
+                  order_no: order?.order_no || null,
+                  shop_name: order?.shop_name || null,
+                  province: order?.province || null,
+                  phone: order?.phone || null,
+                  // ✅ Add quantity for this specific order
+                  quantity_picked: parseFloat(picklistItem?.quantity_picked) || 0,
+                  quantity_to_pick: parseFloat(picklistItem?.quantity_to_pick) || 0,
+                  // Add status info for debugging
+                  picklist_status: pl.status,
+                  has_loadlist: pl.wms_loadlist_picklists && pl.wms_loadlist_picklists.length > 0
+                };
 
-              console.log(`[DELIVERY-INVENTORY] 📄 Built picklist doc:`, JSON.stringify(doc, null, 2));
-              return doc;
-            });
+                console.log(`[DELIVERY-INVENTORY] 📄 Built picklist doc:`, JSON.stringify(doc, null, 2));
+                picklistDocs.push(doc);
+              }
+            }
 
             relatedDocuments.push(...picklistDocs);
             console.log(`[DELIVERY-INVENTORY] ✅ Added ${picklistDocs.length} picklist documents for SKU ${item.sku_id}`);
@@ -174,10 +194,14 @@ export async function GET() {
             face_sheet_id,
             order_id,
             sku_id,
-            status
+            status,
+            quantity,
+            quantity_picked,
+            voided_at
           `)
           .eq('sku_id', item.sku_id)
-          .eq('status', 'picked');
+          .eq('status', 'picked')
+          .is('voided_at', null); // ✅ กรอง voided items ออก
 
         console.log(`[DELIVERY-INVENTORY] 📋 Found ${faceSheetItems?.length || 0} picked face sheet items for SKU ${item.sku_id}`);
 
@@ -213,15 +237,17 @@ export async function GET() {
             console.log(`[DELIVERY-INVENTORY] 📦 Found ${faceSheets?.length || 0} face sheets`);
           }
 
-          // กรองเฉพาะ face sheets ที่มี loadlist status='loaded' เท่านั้น
+          // กรองเฉพาะ face sheets ที่มี loadlist status='loaded' หรือ 'voided' (เพื่อแสดงข้อมูลที่ยังค้างอยู่)
           // ถ้ายังไม่มี loadlist หรือ loadlist ยัง pending = ยังอยู่ที่ Dispatch ไม่ใช่ที่ Delivery-In-Progress
           const loadedFaceSheets = faceSheets?.filter(fs => {
-            const hasLoadedLoadlist = fs.loadlist_face_sheets?.some((lfs: any) => lfs.loadlist?.status === 'loaded');
-            console.log(`[DELIVERY-INVENTORY] Face Sheet ${fs.face_sheet_no}: hasLoadedLoadlist=${hasLoadedLoadlist}`);
-            return hasLoadedLoadlist;
+            const hasLoadedOrVoidedLoadlist = fs.loadlist_face_sheets?.some((lfs: any) => 
+              lfs.loadlist?.status === 'loaded' || lfs.loadlist?.status === 'voided'
+            );
+            console.log(`[DELIVERY-INVENTORY] Face Sheet ${fs.face_sheet_no}: hasLoadedOrVoidedLoadlist=${hasLoadedOrVoidedLoadlist}`);
+            return hasLoadedOrVoidedLoadlist;
           }) || [];
 
-          console.log(`[DELIVERY-INVENTORY] ✅ Found ${loadedFaceSheets.length} face sheets with loaded loadlist`);
+          console.log(`[DELIVERY-INVENTORY] ✅ Found ${loadedFaceSheets.length} face sheets with loaded/voided loadlist`);
 
           if (loadedFaceSheets.length > 0) {
             const orderIds = [...new Set(faceSheetItems
@@ -235,35 +261,53 @@ export async function GET() {
               .select('order_id, order_no, shop_name, province, phone')
               .in('order_id', orderIds);
 
-            const faceSheetDocs = loadedFaceSheets.map((fs: any) => {
-              const loadlistFaceSheet = fs.loadlist_face_sheets?.find((lfs: any) => lfs.loadlist?.status === 'loaded');
-              const faceSheetItem = faceSheetItems.find(fsi => fsi.face_sheet_id === fs.id);
-              const order = orders?.find(o => o.order_id === faceSheetItem?.order_id);
+            // ✅ FIX: Build documents for EACH face sheet item (not just per face sheet)
+            // This ensures each order gets its own row even if same SKU
+            const faceSheetDocs: any[] = [];
+            
+            for (const fs of loadedFaceSheets) {
+              const loadlistFaceSheet = fs.loadlist_face_sheets?.find((lfs: any) => 
+                lfs.loadlist?.status === 'loaded' || lfs.loadlist?.status === 'voided'
+              );
+              
+              // ✅ Get ALL face sheet items for this face sheet (not just first one)
+              const itemsForThisFaceSheet = faceSheetItems.filter(fsi => fsi.face_sheet_id === fs.id);
+              
+              for (const faceSheetItem of itemsForThisFaceSheet) {
+                const order = orders?.find(o => o.order_id === faceSheetItem?.order_id);
 
-              return {
-                document_type: 'face_sheet',
-                face_sheet_code: fs.face_sheet_no || null,
-                loadlist_code: loadlistFaceSheet?.loadlist?.loadlist_code || null,
-                delivery_number: loadlistFaceSheet?.loadlist?.delivery_number || null,
-                order_no: order?.order_no || null,
-                shop_name: order?.shop_name || null,
-                province: order?.province || null,
-                phone: order?.phone || null
-              };
-            });
+                faceSheetDocs.push({
+                  document_type: 'face_sheet',
+                  face_sheet_code: fs.face_sheet_no || null,
+                  loadlist_code: (loadlistFaceSheet?.loadlist as any)?.[0]?.loadlist_code || (loadlistFaceSheet?.loadlist as any)?.loadlist_code || null,
+                  delivery_number: (loadlistFaceSheet?.loadlist as any)?.[0]?.delivery_number || (loadlistFaceSheet?.loadlist as any)?.delivery_number || null,
+                  order_id: faceSheetItem?.order_id || null,
+                  order_no: order?.order_no || null,
+                  shop_name: order?.shop_name || null,
+                  province: order?.province || null,
+                  phone: order?.phone || null,
+                  // ✅ Add quantity for this specific order
+                  quantity_picked: parseFloat(faceSheetItem?.quantity_picked) || parseFloat(faceSheetItem?.quantity) || 0,
+                  quantity_to_pick: parseFloat(faceSheetItem?.quantity) || 0
+                });
+              }
+            }
 
             relatedDocuments.push(...faceSheetDocs);
             console.log(`[DELIVERY-INVENTORY] ✅ Added ${faceSheetDocs.length} face sheet documents for SKU ${item.sku_id}`);
           }
         }
 
-        // 3. Find bonus face sheet items (no plan/trip info)
+        // 3. Find bonus face sheet items (no plan/trip info) - exclude voided
         const { data: bonusFaceSheetItems, error: bonusFaceSheetError } = await supabase
           .from('bonus_face_sheet_items')
           .select(`
             face_sheet_id,
             package_id,
             sku_id,
+            quantity,
+            quantity_picked,
+            voided_at,
             bonus_face_sheet:bonus_face_sheets!face_sheet_id!inner (
               face_sheet_no,
               status,
@@ -284,7 +328,8 @@ export async function GET() {
             )
           `)
           .eq('sku_id', item.sku_id)
-          .eq('bonus_face_sheet.wms_loadlist_bonus_face_sheets.loadlist.status', 'loaded');
+          .eq('bonus_face_sheet.wms_loadlist_bonus_face_sheets.loadlist.status', 'loaded')
+          .is('voided_at', null); // ✅ กรอง voided items ออก
 
         if (bonusFaceSheetError) {
           console.error(`[DELIVERY-INVENTORY] ❌ Error fetching bonus face sheet items:`, bonusFaceSheetError);
@@ -301,7 +346,10 @@ export async function GET() {
                 order_no: bfs.package?.order_no || null,
                 shop_name: bfs.package?.shop_name || null,
                 province: bfs.package?.province || null,
-                phone: bfs.package?.phone || null
+                phone: bfs.package?.phone || null,
+                // ✅ Add quantity for this specific item
+                quantity_picked: parseFloat(bfs.quantity_picked) || parseFloat(bfs.quantity) || 0,
+                quantity_to_pick: parseFloat(bfs.quantity) || 0
               };
             });
             relatedDocuments.push(...bonusFaceSheetDocs);

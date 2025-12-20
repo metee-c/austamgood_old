@@ -72,6 +72,16 @@ const PicklistsPage = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 100;
 
+  // Result modal state
+  const [showResultModal, setShowResultModal] = useState(false);
+  const [resultData, setResultData] = useState<{
+    successResults: any[];
+    failResults: any[];
+    total: number;
+    replenishments: any[];
+    getTripInfo: (tripId: number) => string;
+  } | null>(null);
+
   // Fetcher function
   const fetcher = async (url: string) => {
     const response = await fetch(url);
@@ -649,73 +659,96 @@ const PicklistsPage = () => {
                   setCreatingProgress(0);
                   setCreatingTotal(selectedPicklists.length);
 
+                  // Build trips array with loading doors
+                  const tripsData = selectedPicklists.map((tripId) => {
+                    const selectElement = document.querySelector(
+                      `select[data-trip-id="${tripId}"]`
+                    ) as HTMLSelectElement;
+                    return {
+                      trip_id: tripId,
+                      loading_door_number: selectElement?.value || null,
+                    };
+                  });
+
+                  // Helper to find trip sequence from trip_id
+                  const getTripInfo = (tripId: number) => {
+                    for (const plan of publishedPlans?.data || []) {
+                      const trip = plan.trips?.find((t: any) => t.trip_id === tripId);
+                      if (trip) {
+                        return `รถที่ ${trip.trip_sequence}${trip.vehicle_id ? ` (${trip.vehicle_id})` : ''}`;
+                      }
+                    }
+                    return `Trip ID: ${tripId}`;
+                  };
+
+                  // Process one by one for real progress tracking
+                  const successResults: any[] = [];
+                  const failResults: any[] = [];
+                  const allReplenishments: any[] = [];
+
                   try {
-                    // Build trips array with loading doors
-                    const tripsData = selectedPicklists.map((tripId) => {
-                      const selectElement = document.querySelector(
-                        `select[data-trip-id="${tripId}"]`
-                      ) as HTMLSelectElement;
-                      return {
-                        trip_id: tripId,
-                        loading_door_number: selectElement?.value || null,
-                      };
-                    });
+                    for (let i = 0; i < tripsData.length; i++) {
+                      const tripData = tripsData[i];
+                      
+                      try {
+                        const response = await fetch('/api/picklists/create-from-trip', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify(tripData),
+                        });
 
-                    // Use batch API for better performance
-                    const response = await fetch('/api/picklists/create-from-trips-batch', {
-                      method: 'POST',
-                      headers: { 'Content-Type': 'application/json' },
-                      body: JSON.stringify({ trips: tripsData }),
-                    });
+                        const result = await response.json();
 
-                    // Simulate progress for better UX (batch API doesn't provide real-time progress)
-                    const progressInterval = setInterval(() => {
-                      setCreatingProgress(prev => {
-                        if (prev >= selectedPicklists.length - 1) {
-                          clearInterval(progressInterval);
-                          return prev;
+                        if (response.ok && result.success) {
+                          successResults.push({
+                            trip_id: tripData.trip_id,
+                            success: true,
+                            picklist_code: result.picklist_code,
+                            picklist_id: result.picklist_id
+                          });
+                          if (result.replenishments?.length > 0) {
+                            allReplenishments.push(...result.replenishments);
+                          }
+                        } else {
+                          failResults.push({
+                            trip_id: tripData.trip_id,
+                            success: false,
+                            error: result.error || 'Unknown error'
+                          });
                         }
-                        return prev + 1;
-                      });
-                    }, 300);
+                      } catch (err: any) {
+                        failResults.push({
+                          trip_id: tripData.trip_id,
+                          success: false,
+                          error: err.message || 'Network error'
+                        });
+                      }
 
-                    const result = await response.json();
-
-                    clearInterval(progressInterval);
-                    setCreatingProgress(selectedPicklists.length); // Complete progress
-
-                    if (!response.ok) {
-                      throw new Error(result.error || 'Failed to create picklists');
+                      // Update progress after each item
+                      setCreatingProgress(i + 1);
                     }
 
                     await mutate();
                     setShowCreateModal(false);
                     setSelectedPicklists([]);
 
-                    // Show results
-                    const successResults = result.results.filter((r: any) => r.success);
-                    const failResults = result.results.filter((r: any) => !r.success);
-
-                    let message = `สร้าง Picklist สำเร็จ ${successResults.length} รายการ`;
-                    if (successResults.length > 0) {
-                      message += `:\n${successResults.map((r: any) => r.picklist_code).join('\n')}`;
-                    }
-                    if (failResults.length > 0) {
-                      message += `\n\nล้มเหลว ${failResults.length} รายการ:\n${failResults.map((r: any) => `Trip ${r.trip_id}: ${r.error}`).join('\n')}`;
-                    }
-
-                    // Show replenishment alerts if any
-                    if (result.replenishment_count > 0) {
-                      const replenDetails = result.replenishments.map((r: any) => 
-                        `• ${r.sku_name}: ${r.shortage_qty} ชิ้น (${r.from_location_id || 'ค้นหา'} → ${r.to_location_id})`
-                      ).join('\n');
-                      message += `\n\n⚠️ ต้องเบิกเติมสินค้า ${result.replenishment_count} รายการ:\n${replenDetails}`;
-                      message += `\n\nดูรายละเอียดที่หน้า "เบิกเติมสินค้าอัตโนมัติ"`;
-                    }
-
-                    alert(message);
+                    setResultData({
+                      successResults,
+                      failResults,
+                      total: tripsData.length,
+                      replenishments: allReplenishments,
+                      getTripInfo
+                    });
+                    setShowResultModal(true);
                   } catch (error: any) {
-                    alert(`เกิดข้อผิดพลาด: ${error.message}`);
+                    setResultData({
+                      successResults,
+                      failResults: [...failResults, { error: error.message }],
+                      total: tripsData.length,
+                      replenishments: allReplenishments,
+                      getTripInfo
+                    });
+                    setShowResultModal(true);
                   } finally {
                     setIsCreating(false);
                   }
@@ -777,6 +810,110 @@ const PicklistsPage = () => {
             <div className="text-center text-xs text-gray-500 font-thai">
               <p>กรุณารอสักครู่... ระบบกำลังดำเนินการ</p>
               <p className="mt-1">โปรดอย่าปิดหน้าต่างนี้</p>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Result Modal */}
+      {showResultModal && resultData && (
+        <Modal
+          isOpen={showResultModal}
+          onClose={() => setShowResultModal(false)}
+          title="ผลการสร้าง Picklist"
+          size="lg"
+        >
+          <div className="space-y-4">
+            {/* Summary */}
+            <div className={`p-4 rounded-lg ${resultData.failResults.length === 0 ? 'bg-green-50 border border-green-200' : resultData.successResults.length === 0 ? 'bg-red-50 border border-red-200' : 'bg-yellow-50 border border-yellow-200'}`}>
+              <div className="flex items-center gap-3">
+                {resultData.failResults.length === 0 ? (
+                  <CheckCircle className="w-8 h-8 text-green-500" />
+                ) : resultData.successResults.length === 0 ? (
+                  <AlertTriangle className="w-8 h-8 text-red-500" />
+                ) : (
+                  <AlertTriangle className="w-8 h-8 text-yellow-500" />
+                )}
+                <div>
+                  <p className="text-lg font-semibold text-gray-900 font-thai">
+                    สร้าง Picklist สำเร็จ {resultData.successResults.length}/{resultData.total} รายการ
+                  </p>
+                  {resultData.failResults.length > 0 && (
+                    <p className="text-sm text-red-600 font-thai">
+                      ล้มเหลว {resultData.failResults.length} รายการ
+                    </p>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Success List */}
+            {resultData.successResults.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="font-semibold text-green-700 font-thai flex items-center gap-2">
+                  <CheckCircle className="w-4 h-4" />
+                  สำเร็จ ({resultData.successResults.length})
+                </h4>
+                <div className="max-h-32 overflow-y-auto bg-green-50 rounded-lg p-3">
+                  <ul className="space-y-1 text-sm">
+                    {resultData.successResults.map((r: any, idx: number) => (
+                      <li key={idx} className="text-green-800 font-mono">
+                        • {r.picklist_code}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+
+            {/* Fail List */}
+            {resultData.failResults.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="font-semibold text-red-700 font-thai flex items-center gap-2">
+                  <AlertTriangle className="w-4 h-4" />
+                  ล้มเหลว ({resultData.failResults.length})
+                </h4>
+                <div className="max-h-48 overflow-y-auto bg-red-50 rounded-lg p-3">
+                  <ul className="space-y-2 text-sm">
+                    {resultData.failResults.map((r: any, idx: number) => (
+                      <li key={idx} className="text-red-800">
+                        <span className="font-semibold">{r.trip_id ? resultData.getTripInfo(r.trip_id) : 'Error'}:</span>
+                        <br />
+                        <span className="text-red-600 text-xs">{r.error}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+            )}
+
+            {/* Replenishment Alert */}
+            {resultData.replenishments.length > 0 && (
+              <div className="space-y-2">
+                <h4 className="font-semibold text-yellow-700 font-thai flex items-center gap-2">
+                  <Package className="w-4 h-4" />
+                  ต้องเบิกเติมสินค้า ({resultData.replenishments.length})
+                </h4>
+                <div className="max-h-32 overflow-y-auto bg-yellow-50 rounded-lg p-3">
+                  <ul className="space-y-1 text-sm">
+                    {resultData.replenishments.map((r: any, idx: number) => (
+                      <li key={idx} className="text-yellow-800">
+                        • {r.sku_name}: {r.shortage_qty} ชิ้น ({r.from_location_id || 'ค้นหา'} → {r.to_location_id})
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+                <p className="text-xs text-yellow-600 font-thai">
+                  ดูรายละเอียดที่หน้า &quot;เบิกเติมสินค้าอัตโนมัติ&quot;
+                </p>
+              </div>
+            )}
+
+            {/* Close Button */}
+            <div className="flex justify-end pt-4 border-t">
+              <Button variant="primary" onClick={() => setShowResultModal(false)}>
+                ปิด
+              </Button>
             </div>
           </div>
         </Modal>

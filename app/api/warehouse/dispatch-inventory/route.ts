@@ -60,6 +60,7 @@ export async function GET(request: NextRequest) {
         quantity_picked,
         status,
         picked_at,
+        voided_at,
         bonus_face_sheets!face_sheet_id (
           id,
           face_sheet_no,
@@ -97,7 +98,9 @@ export async function GET(request: NextRequest) {
         )
       `)
       .in('sku_id', skuIds)
-      .gt('quantity_picked', 0); // ✅ กรองเฉพาะที่หยิบแล้ว (quantity_picked > 0)
+      .gt('quantity_picked', 0) // ✅ กรองเฉพาะที่หยิบแล้ว (quantity_picked > 0)
+      .is('voided_at', null) // ✅ กรอง voided items ออก
+      .neq('status', 'voided'); // ✅ กรอง voided status ออก
 
     if (bfsError) throw bfsError;
 
@@ -119,6 +122,7 @@ export async function GET(request: NextRequest) {
         picked_at,
         order_id,
         order_no,
+        voided_at,
         picklists!picklist_id (
           id,
           picklist_code,
@@ -144,7 +148,9 @@ export async function GET(request: NextRequest) {
         )
       `)
       .in('sku_id', skuIds)
-      .gt('quantity_picked', 0); // ✅ กรองเฉพาะที่หยิบแล้ว (quantity_picked > 0)
+      .gt('quantity_picked', 0) // ✅ กรองเฉพาะที่หยิบแล้ว (quantity_picked > 0)
+      .is('voided_at', null) // ✅ กรอง voided items ออก
+      .neq('status', 'voided'); // ✅ กรอง voided status ออก
 
     if (picklistError) throw picklistError;
 
@@ -165,6 +171,7 @@ export async function GET(request: NextRequest) {
         quantity_picked,
         status,
         picked_at,
+        voided_at,
         face_sheets!face_sheet_id (
           id,
           face_sheet_no,
@@ -191,7 +198,9 @@ export async function GET(request: NextRequest) {
         )
       `)
       .in('sku_id', skuIds)
-      .gt('quantity_picked', 0); // ✅ กรองเฉพาะที่หยิบแล้ว (quantity_picked > 0)
+      .gt('quantity_picked', 0) // ✅ กรองเฉพาะที่หยิบแล้ว (quantity_picked > 0)
+      .is('voided_at', null) // ✅ กรอง voided items ออก
+      .neq('status', 'voided'); // ✅ กรอง voided status ออก
 
     if (faceSheetError) throw faceSheetError;
 

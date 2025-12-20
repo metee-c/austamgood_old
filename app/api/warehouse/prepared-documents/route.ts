@@ -3,6 +3,30 @@ import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 
+interface PreparedDocumentItem {
+  balance_id?: number;
+  sku_id: string;
+  sku_name: string;
+  quantity: number;
+  location_id: string;
+  pallet_id?: string;
+  pallet_id_external?: string;
+  lot_no?: string;
+  production_date?: string;
+  expiry_date?: string;
+  total_pack_qty?: number;
+  total_piece_qty?: number;
+  reserved_pack_qty?: number;
+  reserved_piece_qty?: number;
+  warehouse_id?: string;
+  last_movement_at?: string;
+  updated_at?: string;
+  // Order info
+  order_id?: number;
+  order_no?: string;
+  shop_name?: string;
+}
+
 interface PreparedDocument {
   document_type: 'picklist' | 'face_sheet' | 'bonus_face_sheet';
   document_id: number;
@@ -11,25 +35,13 @@ interface PreparedDocument {
   total_items: number;
   total_quantity: number;
   created_at: string;
-  items: Array<{
-    balance_id?: number;
-    sku_id: string;
-    sku_name: string;
-    quantity: number;
-    location_id: string;
-    pallet_id?: string;
-    pallet_id_external?: string;
-    lot_no?: string;
-    production_date?: string;
-    expiry_date?: string;
-    total_pack_qty?: number;
-    total_piece_qty?: number;
-    reserved_pack_qty?: number;
-    reserved_piece_qty?: number;
-    warehouse_id?: string;
-    last_movement_at?: string;
-    updated_at?: string;
-  }>;
+  // Route plan info
+  plan_id?: number;
+  plan_code?: string;
+  trip_id?: number;
+  trip_code?: string;
+  loadlist_code?: string | null;
+  items: PreparedDocumentItem[];
 }
 
 export async function GET(request: Request) {
@@ -50,12 +62,18 @@ export async function GET(request: Request) {
         total_lines,
         total_quantity,
         created_at,
+        plan_id,
+        trip_id,
         picklist_items (
           id,
           sku_id,
           sku_name,
           quantity_to_pick,
-          source_location_id
+          source_location_id,
+          order_id,
+          order_no,
+          voided_at,
+          status
         ),
         wms_loadlist_picklists (
           loadlist_id,
@@ -66,10 +84,59 @@ export async function GET(request: Request) {
         )
       `)
       .in('status', ['assigned', 'picking', 'completed'])  // ✅ รวมที่กำลังจัดและจัดเสร็จ
+      .neq('status', 'voided')  // ✅ ไม่รวม picklist ที่ถูก voided
       .order('created_at', { ascending: false });
+
+    console.log('[prepared-documents] Picklists query result:', { 
+      count: picklists?.length || 0, 
+      error: picklistError 
+    });
 
     if (!picklistError && picklists) {
       const dispatchLocationId = 'Dispatch';
+      
+      // Get all unique plan_ids and trip_ids to fetch plan_code and trip_code
+      const planIds = [...new Set(picklists.map(pl => pl.plan_id).filter(Boolean))];
+      const tripIds = [...new Set(picklists.map(pl => pl.trip_id).filter(Boolean))];
+      
+      // Fetch plan codes
+      let planCodeMap: Record<number, string> = {};
+      if (planIds.length > 0) {
+        const { data: plans } = await supabase
+          .from('receiving_route_plans')
+          .select('plan_id, plan_code')
+          .in('plan_id', planIds);
+        if (plans) {
+          planCodeMap = Object.fromEntries(plans.map(p => [p.plan_id, p.plan_code]));
+        }
+      }
+      
+      // Fetch trip codes
+      let tripCodeMap: Record<number, string> = {};
+      if (tripIds.length > 0) {
+        const { data: trips } = await supabase
+          .from('receiving_route_trips')
+          .select('trip_id, trip_code')
+          .in('trip_id', tripIds);
+        if (trips) {
+          tripCodeMap = Object.fromEntries(trips.map(t => [t.trip_id, t.trip_code]));
+        }
+      }
+      
+      // Fetch order info for shop_name
+      const orderIds = [...new Set(picklists.flatMap(pl => 
+        (pl.picklist_items || []).map((item: any) => item.order_id).filter(Boolean)
+      ))];
+      let orderInfoMap: Record<number, { order_no: string; shop_name: string }> = {};
+      if (orderIds.length > 0) {
+        const { data: orders } = await supabase
+          .from('wms_orders')
+          .select('order_id, order_no, shop_name')
+          .in('order_id', orderIds);
+        if (orders) {
+          orderInfoMap = Object.fromEntries(orders.map(o => [o.order_id, { order_no: o.order_no, shop_name: o.shop_name }]));
+        }
+      }
       
       for (const pl of picklists) {
         // ✅ ตรวจสอบว่ายังไม่ได้เพิ่มเข้า loadlist หรืออยู่ใน loadlist ที่ยังไม่ loaded
@@ -91,6 +158,12 @@ export async function GET(request: Request) {
         const items = [];
         
         for (const item of (pl.picklist_items || [])) {
+          // ✅ ข้าม items ที่ถูก voided
+          if (item.voided_at || item.status === 'voided') {
+            console.log(`⏭️ Skip voided picklist item ${item.id} for SKU ${item.sku_id}`);
+            continue;
+          }
+          
           // ดึงข้อมูล balance จาก Dispatch location
           const { data: balances } = await supabase
             .from('wms_inventory_balances')
@@ -115,6 +188,9 @@ export async function GET(request: Request) {
             .limit(1)
             .single();
 
+          // Get order info
+          const orderInfo = item.order_id ? orderInfoMap[item.order_id] : null;
+
           items.push({
             balance_id: balances?.balance_id,
             sku_id: item.sku_id,
@@ -132,11 +208,20 @@ export async function GET(request: Request) {
             reserved_piece_qty: balances?.reserved_piece_qty,
             warehouse_id: balances?.warehouse_id,
             last_movement_at: balances?.last_movement_at,
-            updated_at: balances?.updated_at
+            updated_at: balances?.updated_at,
+            order_id: item.order_id,
+            order_no: item.order_no || orderInfo?.order_no,
+            shop_name: orderInfo?.shop_name
           });
         }
         
-        console.log(`✅ Include picklist ${pl.picklist_code} - not in any loadlist yet`);
+        // ✅ ข้าม picklist ที่ไม่มี items ที่ยังใช้งานได้ (ทั้งหมดถูก voided)
+        if (items.length === 0) {
+          console.log(`⏭️ Skip picklist ${pl.picklist_code} - all items voided`);
+          continue;
+        }
+        
+        console.log(`✅ Include picklist ${pl.picklist_code} - ${items.length} active items`);
         
         documents.push({
           document_type: 'picklist',
@@ -146,7 +231,11 @@ export async function GET(request: Request) {
           total_items: pl.total_lines || 0,
           total_quantity: pl.total_quantity || 0,
           created_at: pl.created_at,
-          loadlist_code: null,  // ✅ ยืนยันว่ายังไม่มี loadlist
+          plan_id: pl.plan_id,
+          plan_code: pl.plan_id ? planCodeMap[pl.plan_id] : undefined,
+          trip_id: pl.trip_id,
+          trip_code: pl.trip_id ? tripCodeMap[pl.trip_id] : undefined,
+          loadlist_code: loadlistCode || null,
           items
         } as any);
       }
@@ -168,7 +257,9 @@ export async function GET(request: Request) {
           product_name,
           quantity,
           quantity_picked,
-          source_location_id
+          source_location_id,
+          voided_at,
+          status
         ),
         loadlist_face_sheets (
           loadlist_id,
@@ -179,6 +270,7 @@ export async function GET(request: Request) {
         )
       `)
       .in('status', ['generated', 'picking', 'completed'])  // ✅ รวมที่กำลังจัดและจัดเสร็จ
+      .neq('status', 'voided')  // ✅ ไม่รวม face sheet ที่ถูก voided
       .eq('warehouse_id', warehouseId)
       .order('created_at', { ascending: false });
 
@@ -229,8 +321,14 @@ export async function GET(request: Request) {
           sum + (parseFloat(item.quantity_picked) || parseFloat(item.quantity) || 0), 0
         );
         
-        // First pass: group by SKU
+        // First pass: group by SKU (skip voided items)
         for (const item of (fs.face_sheet_items || [])) {
+          // ✅ ข้าม items ที่ถูก voided
+          if (item.voided_at || item.status === 'voided') {
+            console.log(`⏭️ Skip voided face sheet item ${item.id} for SKU ${item.sku_id}`);
+            continue;
+          }
+          
           const skuId = item.sku_id || '-';
           const qty = parseFloat(item.quantity_picked) || parseFloat(item.quantity) || 0;
           
@@ -311,7 +409,13 @@ export async function GET(request: Request) {
           updated_at: group.updated_at
         }));
         
-        console.log(`✅ Include face sheet ${fs.face_sheet_no} - not in any loadlist yet - ${items.length} unique SKUs, ${fs.total_packages} packages`);
+        // ✅ ข้าม face sheet ที่ไม่มี items ที่ยังใช้งานได้ (ทั้งหมดถูก voided)
+        if (items.length === 0) {
+          console.log(`⏭️ Skip face sheet ${fs.face_sheet_no} - all items voided`);
+          continue;
+        }
+        
+        console.log(`✅ Include face sheet ${fs.face_sheet_no} - ${items.length} active SKUs, ${fs.total_packages} packages`);
         
         documents.push({
           document_type: 'face_sheet',
@@ -343,7 +447,9 @@ export async function GET(request: Request) {
           product_name,
           quantity,
           quantity_picked,
-          source_location_id
+          source_location_id,
+          voided_at,
+          status
         ),
         wms_loadlist_bonus_face_sheets (
           loadlist_id,
@@ -354,6 +460,7 @@ export async function GET(request: Request) {
         )
       `)
       .in('status', ['generated', 'picking', 'completed'])  // ✅ รวมที่กำลังจัดและจัดเสร็จ
+      .neq('status', 'voided')  // ✅ ไม่รวม bonus face sheet ที่ถูก voided
       .eq('warehouse_id', warehouseId)
       .order('created_at', { ascending: false });
 
@@ -404,8 +511,14 @@ export async function GET(request: Request) {
           sum + (parseFloat(item.quantity_picked) || parseFloat(item.quantity) || 0), 0
         );
         
-        // First pass: group by SKU
+        // First pass: group by SKU (skip voided items)
         for (const item of (bfs.bonus_face_sheet_items || [])) {
+          // ✅ ข้าม items ที่ถูก voided
+          if (item.voided_at || item.status === 'voided') {
+            console.log(`⏭️ Skip voided bonus face sheet item ${item.id} for SKU ${item.sku_id}`);
+            continue;
+          }
+          
           const skuId = item.sku_id || '-';
           const qty = parseFloat(item.quantity_picked) || parseFloat(item.quantity) || 0;
           
@@ -486,7 +599,13 @@ export async function GET(request: Request) {
           updated_at: group.updated_at
         }));
         
-        console.log(`✅ Include bonus face sheet ${bfs.face_sheet_no} - not in any loadlist yet - ${items.length} unique SKUs, ${bfs.total_packages} packages`);
+        // ✅ ข้าม bonus face sheet ที่ไม่มี items ที่ยังใช้งานได้ (ทั้งหมดถูก voided)
+        if (items.length === 0) {
+          console.log(`⏭️ Skip bonus face sheet ${bfs.face_sheet_no} - all items voided`);
+          continue;
+        }
+        
+        console.log(`✅ Include bonus face sheet ${bfs.face_sheet_no} - ${items.length} active SKUs, ${bfs.total_packages} packages`);
         
         documents.push({
           document_type: 'bonus_face_sheet',

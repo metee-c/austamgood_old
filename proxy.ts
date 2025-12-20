@@ -98,6 +98,7 @@ export async function proxy(request: NextRequest) {
 
 /**
  * Validate session token and check timeout
+ * Also updates last_activity_at to keep session alive
  */
 async function validateSessionToken(token: string): Promise<boolean> {
   try {
@@ -134,6 +135,12 @@ async function validateSessionToken(token: string): Promise<boolean> {
       console.log(`⏰ Session timeout: ${session.last_activity_minutes_ago} minutes ago`);
       return false;
     }
+
+    // Update last_activity_at to keep session alive
+    // This ensures the session stays active while user is using the system
+    await supabase.rpc('update_session_activity', {
+      p_token: token
+    });
 
     return true;
   } catch (error) {

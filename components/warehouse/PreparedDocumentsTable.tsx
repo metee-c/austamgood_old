@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { ChevronDown, ChevronRight, FileText, Package, Gift, Loader2 } from 'lucide-react';
+import { ChevronDown, ChevronRight, FileText, Package, Gift, Loader2, Filter, X, Search } from 'lucide-react';
 import Badge from '@/components/ui/Badge';
+import Button from '@/components/ui/Button';
 
 interface DocumentItem {
   balance_id?: number;
@@ -23,6 +24,10 @@ interface DocumentItem {
   warehouse_id?: string;
   last_movement_at?: string;
   updated_at?: string;
+  // Order info
+  order_id?: number;
+  order_no?: string;
+  shop_name?: string;
 }
 
 interface PreparedDocument {
@@ -33,11 +38,26 @@ interface PreparedDocument {
   total_items: number;
   total_quantity: number;
   created_at: string;
+  // Route plan info
+  plan_id?: number;
+  plan_code?: string;
+  trip_id?: number;
+  trip_code?: string;
+  loadlist_code?: string | null;
   items: DocumentItem[];
 }
 
 interface PreparedDocumentsTableProps {
   warehouseId?: string;
+}
+
+interface AdvancedFilters {
+  document_type?: string;
+  status?: string;
+  sku_id?: string;
+  location_id?: string;
+  date_from?: string;
+  date_to?: string;
 }
 
 const PreparedDocumentsTable: React.FC<PreparedDocumentsTableProps> = ({ warehouseId = 'WH01' }) => {
@@ -46,6 +66,11 @@ const PreparedDocumentsTable: React.FC<PreparedDocumentsTableProps> = ({ warehou
   const [error, setError] = useState<string | null>(null);
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const [searchTerm, setSearchTerm] = useState('');
+  
+  // Advanced filter state
+  const [showFilters, setShowFilters] = useState(false);
+  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>({});
+  const [tempAdvancedFilters, setTempAdvancedFilters] = useState<AdvancedFilters>({});
 
   useEffect(() => {
     fetchDocuments();
@@ -121,17 +146,74 @@ const PreparedDocumentsTable: React.FC<PreparedDocumentsTableProps> = ({ warehou
     }
   };
 
+  // Apply advanced filters
+  const applyFilters = () => {
+    setAdvancedFilters(tempAdvancedFilters);
+    setShowFilters(false);
+  };
+
+  // Reset all filters
+  const resetFilters = () => {
+    setTempAdvancedFilters({});
+    setAdvancedFilters({});
+    setSearchTerm('');
+  };
+
+  // Get unique SKUs and locations from documents for filter dropdowns
+  const uniqueSkus = Array.from(new Set(documents.flatMap(doc => doc.items.map(item => item.sku_id)))).sort();
+  const uniqueLocations = Array.from(new Set(documents.flatMap(doc => doc.items.map(item => item.location_id)))).sort();
+
   const filteredDocuments = documents.filter(doc => {
-    if (!searchTerm) return true;
-    const searchLower = searchTerm.toLowerCase();
-    return (
-      doc.document_no.toLowerCase().includes(searchLower) ||
-      doc.items.some(item => 
-        item.sku_id.toLowerCase().includes(searchLower) ||
-        item.sku_name.toLowerCase().includes(searchLower) ||
-        item.location_id.toLowerCase().includes(searchLower)
-      )
-    );
+    // Search filter
+    if (searchTerm) {
+      const searchLower = searchTerm.toLowerCase();
+      const matchesSearch = (
+        doc.document_no.toLowerCase().includes(searchLower) ||
+        (doc.plan_code && doc.plan_code.toLowerCase().includes(searchLower)) ||
+        (doc.trip_code && doc.trip_code.toLowerCase().includes(searchLower)) ||
+        (doc.loadlist_code && doc.loadlist_code.toLowerCase().includes(searchLower)) ||
+        doc.items.some(item => 
+          item.sku_id.toLowerCase().includes(searchLower) ||
+          item.sku_name.toLowerCase().includes(searchLower) ||
+          item.location_id.toLowerCase().includes(searchLower) ||
+          (item.order_no && item.order_no.toLowerCase().includes(searchLower)) ||
+          (item.shop_name && item.shop_name.toLowerCase().includes(searchLower))
+        )
+      );
+      if (!matchesSearch) return false;
+    }
+
+    // Document type filter
+    if (advancedFilters.document_type && doc.document_type !== advancedFilters.document_type) {
+      return false;
+    }
+
+    // Status filter
+    if (advancedFilters.status && doc.status !== advancedFilters.status) {
+      return false;
+    }
+
+    // SKU filter (check if any item matches)
+    if (advancedFilters.sku_id && !doc.items.some(item => item.sku_id === advancedFilters.sku_id)) {
+      return false;
+    }
+
+    // Location filter (check if any item matches)
+    if (advancedFilters.location_id && !doc.items.some(item => item.location_id === advancedFilters.location_id)) {
+      return false;
+    }
+
+    // Date from filter
+    if (advancedFilters.date_from && doc.created_at < advancedFilters.date_from) {
+      return false;
+    }
+
+    // Date to filter
+    if (advancedFilters.date_to && doc.created_at > advancedFilters.date_to + 'T23:59:59') {
+      return false;
+    }
+
+    return true;
   });
 
   if (loading) {
@@ -165,15 +247,145 @@ const PreparedDocumentsTable: React.FC<PreparedDocumentsTableProps> = ({ warehou
 
   return (
     <div className="h-full flex flex-col">
-      {/* Search */}
+      {/* Search and Filter Header */}
       <div className="p-3 border-b border-gray-200 bg-gray-50">
-        <input
-          type="text"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          placeholder="ค้นหาเลขที่เอกสาร, SKU, ชื่อสินค้า, Location..."
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-thai"
-        />
+        <div className="flex items-center gap-2">
+          <div className="flex-1 relative">
+            <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="ค้นหาเลขแผนส่ง, คันที่, ใบหยิบ, ใบโหลด, ออเดอร์, ร้านค้า, SKU..."
+              className="w-full pl-8 pr-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm font-thai"
+            />
+          </div>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            icon={Filter} 
+            onClick={() => {
+              setTempAdvancedFilters(advancedFilters);
+              setShowFilters(!showFilters);
+            }}
+            className={`text-xs ${Object.keys(advancedFilters).some(k => advancedFilters[k as keyof typeof advancedFilters]) ? 'border-primary-500 text-primary-600' : ''}`}
+          >
+            ตัวกรอง
+            {Object.keys(advancedFilters).filter(k => advancedFilters[k as keyof typeof advancedFilters]).length > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 bg-primary-500 text-white rounded-full text-[10px]">
+                {Object.keys(advancedFilters).filter(k => advancedFilters[k as keyof typeof advancedFilters]).length}
+              </span>
+            )}
+          </Button>
+        </div>
+
+        {/* Advanced Filter Panel */}
+        {showFilters && (
+          <div className="mt-3 p-3 bg-white border border-gray-200 rounded-lg">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-gray-900 font-thai">ตัวกรองขั้นสูง</h3>
+              <button
+                onClick={() => setShowFilters(false)}
+                className="p-1 hover:bg-gray-100 rounded"
+              >
+                <X className="w-4 h-4 text-gray-500" />
+              </button>
+            </div>
+            <div className="grid grid-cols-6 gap-3">
+              {/* Document Type */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">ประเภทเอกสาร</label>
+                <select
+                  value={tempAdvancedFilters.document_type || ''}
+                  onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, document_type: e.target.value || undefined }))}
+                  className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
+                >
+                  <option value="">ทั้งหมด</option>
+                  <option value="picklist">ใบหยิบสินค้า</option>
+                  <option value="face_sheet">ใบปะหน้า</option>
+                  <option value="bonus_face_sheet">ใบปะหน้าของแถม</option>
+                </select>
+              </div>
+
+              {/* Status */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">สถานะ</label>
+                <select
+                  value={tempAdvancedFilters.status || ''}
+                  onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, status: e.target.value || undefined }))}
+                  className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
+                >
+                  <option value="">ทั้งหมด</option>
+                  <option value="completed">เสร็จสิ้น</option>
+                  <option value="picking">กำลังจัด</option>
+                  <option value="generated">สร้างแล้ว</option>
+                </select>
+              </div>
+
+              {/* SKU */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">สินค้า (SKU)</label>
+                <select
+                  value={tempAdvancedFilters.sku_id || ''}
+                  onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, sku_id: e.target.value || undefined }))}
+                  className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
+                >
+                  <option value="">ทั้งหมด</option>
+                  {uniqueSkus.map(sku => (
+                    <option key={sku} value={sku}>{sku}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Location */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">ตำแหน่ง</label>
+                <select
+                  value={tempAdvancedFilters.location_id || ''}
+                  onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, location_id: e.target.value || undefined }))}
+                  className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
+                >
+                  <option value="">ทั้งหมด</option>
+                  {uniqueLocations.map(loc => (
+                    <option key={loc} value={loc}>{loc}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Date From */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">วันที่สร้างตั้งแต่</label>
+                <input
+                  type="date"
+                  value={tempAdvancedFilters.date_from || ''}
+                  onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, date_from: e.target.value || undefined }))}
+                  className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+              </div>
+
+              {/* Date To */}
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">วันที่สร้างถึง</label>
+                <input
+                  type="date"
+                  value={tempAdvancedFilters.date_to || ''}
+                  onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, date_to: e.target.value || undefined }))}
+                  className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+              </div>
+
+              {/* Buttons */}
+              <div className="col-span-6 flex items-end gap-2 mt-2">
+                <Button variant="primary" size="sm" onClick={applyFilters} className="text-xs">
+                  ใช้ตัวกรอง
+                </Button>
+                <Button variant="outline" size="sm" onClick={resetFilters} className="text-xs">
+                  ล้างตัวกรอง
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Table */}
@@ -182,7 +394,10 @@ const PreparedDocumentsTable: React.FC<PreparedDocumentsTableProps> = ({ warehou
           <thead className="sticky top-0 z-10 bg-gray-100">
             <tr>
               <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap w-10"></th>
-              <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">เลขที่เอกสารจัด</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">เลขแผนส่ง</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">คันที่</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">ใบหยิบ</th>
+              <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-green-50">ใบโหลด</th>
               <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ประเภท</th>
               <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">สถานะ</th>
               <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รายการ</th>
@@ -205,8 +420,17 @@ const PreparedDocumentsTable: React.FC<PreparedDocumentsTableProps> = ({ warehou
                       <ChevronRight className="w-4 h-4 text-gray-600" />
                     )}
                   </td>
-                  <td className="px-3 py-2 border-r border-gray-100">
+                  <td className="px-3 py-2 border-r border-gray-100 bg-blue-50/30">
+                    <span className="font-mono font-semibold text-purple-700">{doc.plan_code || '-'}</span>
+                  </td>
+                  <td className="px-3 py-2 border-r border-gray-100 bg-blue-50/30">
+                    <span className="font-mono text-purple-600">{doc.trip_code || '-'}</span>
+                  </td>
+                  <td className="px-3 py-2 border-r border-gray-100 bg-blue-50/30">
                     <span className="font-mono font-semibold text-blue-600">{doc.document_no}</span>
+                  </td>
+                  <td className="px-3 py-2 border-r border-gray-100 bg-green-50/30">
+                    <span className="font-mono font-semibold text-green-700">{doc.loadlist_code || '-'}</span>
                   </td>
                   <td className="px-3 py-2 border-r border-gray-100">
                     <div className="flex items-center gap-2">
@@ -239,114 +463,88 @@ const PreparedDocumentsTable: React.FC<PreparedDocumentsTableProps> = ({ warehou
                 {/* Expanded Row - Items */}
                 {expandedRows.has(doc.document_id) && (
                   <tr>
-                    <td colSpan={7} className="bg-gray-50 p-0">
+                    <td colSpan={10} className="bg-gray-50 p-0">
                       <div className="p-4">
                         <h4 className="text-xs font-semibold text-gray-700 mb-2 font-thai">รายการสินค้าในเอกสาร:</h4>
                         <div className="overflow-x-auto">
                           <table className="w-full text-[11px] border border-gray-200">
                             <thead className="bg-gray-100">
                               <tr>
-                                <th className="px-2 py-1 text-left border-b border-r border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '80px' }}>Balance ID</th>
+                                <th className="px-2 py-1 text-left border-b border-r border-gray-200 font-thai whitespace-nowrap bg-orange-50" style={{ minWidth: '100px' }}>เลขออเดอร์</th>
+                                <th className="px-2 py-1 text-left border-b border-r border-gray-200 font-thai whitespace-nowrap bg-orange-50" style={{ minWidth: '150px' }}>ร้านค้า</th>
                                 <th className="px-2 py-1 text-left border-b border-r border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '100px' }}>รหัสสินค้า</th>
-                                <th className="px-2 py-1 text-left border-b border-r border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '250px' }}>ชื่อสินค้า</th>
+                                <th className="px-2 py-1 text-left border-b border-r border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '200px' }}>ชื่อสินค้า</th>
                                 <th className="px-2 py-1 text-left border-b border-r border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '120px' }}>รหัสพาเลท</th>
                                 <th className="px-2 py-1 text-left border-b border-r border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '60px' }}>คลัง</th>
-                                <th className="px-2 py-1 text-left border-b border-r border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '100px' }}>Location ID</th>
-                                <th className="px-2 py-1 text-left border-b border-r border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '100px' }}>Lot No</th>
-                                <th className="px-2 py-1 text-center border-b border-r border-gray-200 font-thai whitespace-nowrap bg-blue-50" style={{ minWidth: '70px' }}>แพ็ครวม</th>
-                                <th className="px-2 py-1 text-center border-b border-r border-gray-200 font-thai whitespace-nowrap bg-blue-50" style={{ minWidth: '70px' }}>ชิ้นรวม</th>
-                                <th className="px-2 py-1 text-center border-b border-r border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '70px' }}>แพ็คจอง</th>
-                                <th className="px-2 py-1 text-center border-b border-r border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '70px' }}>ชิ้นจอง</th>
-                                <th className="px-2 py-1 text-left border-b border-r border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '100px' }}>วันผลิต</th>
-                                <th className="px-2 py-1 text-left border-b border-r border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '100px' }}>วันหมดอายุ</th>
-                                <th className="px-2 py-1 text-left border-b border-r border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '140px' }}>เคลื่อนไหวล่าสุด</th>
-                                <th className="px-2 py-1 text-left border-b border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '140px' }}>อัปเดตเมื่อ</th>
+                                <th className="px-2 py-1 text-left border-b border-r border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '100px' }}>Location</th>
+                                <th className="px-2 py-1 text-left border-b border-r border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '80px' }}>Lot No</th>
+                                <th className="px-2 py-1 text-center border-b border-r border-gray-200 font-thai whitespace-nowrap bg-blue-50" style={{ minWidth: '60px' }}>แพ็ค</th>
+                                <th className="px-2 py-1 text-center border-b border-r border-gray-200 font-thai whitespace-nowrap bg-blue-50" style={{ minWidth: '60px' }}>ชิ้น</th>
+                                <th className="px-2 py-1 text-center border-b border-r border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '60px' }}>จอง</th>
+                                <th className="px-2 py-1 text-left border-b border-r border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '90px' }}>วันผลิต</th>
+                                <th className="px-2 py-1 text-left border-b border-gray-200 font-thai whitespace-nowrap" style={{ minWidth: '90px' }}>หมดอายุ</th>
                               </tr>
                             </thead>
                             <tbody>
                               {doc.items.map((item, idx) => (
                                 <tr key={idx} className="hover:bg-white">
-                                  <td className="px-2 py-1 border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '80px' }}>
-                                    <span className="font-mono text-gray-700">{item.balance_id || '-'}</span>
+                                  <td className="px-2 py-1 border-b border-r border-gray-200 whitespace-nowrap bg-orange-50/30">
+                                    <span className="font-mono font-semibold text-orange-700">{item.order_no || '-'}</span>
                                   </td>
-                                  <td className="px-2 py-1 border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '100px' }}>
+                                  <td className="px-2 py-1 border-b border-r border-gray-200 whitespace-nowrap bg-orange-50/30">
+                                    <span className="text-gray-700 font-thai">{item.shop_name || '-'}</span>
+                                  </td>
+                                  <td className="px-2 py-1 border-b border-r border-gray-200 whitespace-nowrap">
                                     <span className="font-mono font-semibold text-gray-700">{item.sku_id}</span>
                                   </td>
-                                  <td className="px-2 py-1 border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '250px' }}>
+                                  <td className="px-2 py-1 border-b border-r border-gray-200 whitespace-nowrap">
                                     <span className="text-gray-700 font-thai">{item.sku_name}</span>
                                   </td>
-                                  <td className="px-2 py-1 border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '120px' }}>
+                                  <td className="px-2 py-1 border-b border-r border-gray-200 whitespace-nowrap">
                                     <div>
                                       {item.pallet_id_external && (
                                         <div className="font-mono text-gray-700">{item.pallet_id_external}</div>
                                       )}
-                                      {item.pallet_id && (
-                                        <div className="font-mono text-[10px] text-gray-500">{item.pallet_id}</div>
+                                      {item.pallet_id && !item.pallet_id_external && (
+                                        <div className="font-mono text-gray-700">{item.pallet_id}</div>
                                       )}
                                       {!item.pallet_id && !item.pallet_id_external && (
                                         <span className="text-gray-400">-</span>
                                       )}
                                     </div>
                                   </td>
-                                  <td className="px-2 py-1 border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '60px' }}>
+                                  <td className="px-2 py-1 border-b border-r border-gray-200 whitespace-nowrap">
                                     <span className="font-medium text-gray-700 font-thai">{item.warehouse_id || '-'}</span>
                                   </td>
-                                  <td className="px-2 py-1 border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '100px' }}>
+                                  <td className="px-2 py-1 border-b border-r border-gray-200 whitespace-nowrap">
                                     <span className="font-mono text-gray-700">{item.location_id}</span>
                                   </td>
-                                  <td className="px-2 py-1 border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '100px' }}>
+                                  <td className="px-2 py-1 border-b border-r border-gray-200 whitespace-nowrap">
                                     <span className="font-mono text-gray-700">{item.lot_no || '-'}</span>
                                   </td>
-                                  <td className="px-2 py-1 text-center border-b border-r border-gray-200 whitespace-nowrap bg-blue-50" style={{ minWidth: '70px' }}>
+                                  <td className="px-2 py-1 text-center border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">
                                     <span className="font-bold text-blue-600">
                                       {item.package_count?.toLocaleString() || '1'}
                                     </span>
                                   </td>
-                                  <td className="px-2 py-1 text-center border-b border-r border-gray-200 whitespace-nowrap bg-blue-50" style={{ minWidth: '70px' }}>
+                                  <td className="px-2 py-1 text-center border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">
                                     <span className="font-bold text-blue-600">
                                       {item.quantity?.toLocaleString() || '0'}
                                     </span>
                                   </td>
-                                  <td className="px-2 py-1 text-center border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '70px' }}>
-                                    <span className="font-bold text-orange-600">
-                                      {item.reserved_pack_qty?.toLocaleString() || '0'}
-                                    </span>
-                                  </td>
-                                  <td className="px-2 py-1 text-center border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '70px' }}>
+                                  <td className="px-2 py-1 text-center border-b border-r border-gray-200 whitespace-nowrap">
                                     <span className="font-bold text-orange-600">
                                       {item.reserved_piece_qty?.toLocaleString() || '0'}
                                     </span>
                                   </td>
-                                  <td className="px-2 py-1 border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '100px' }}>
+                                  <td className="px-2 py-1 border-b border-r border-gray-200 whitespace-nowrap">
                                     <span className="font-medium text-gray-900 font-thai">
                                       {item.production_date ? new Date(item.production_date).toLocaleDateString('th-TH') : '-'}
                                     </span>
                                   </td>
-                                  <td className="px-2 py-1 border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '100px' }}>
+                                  <td className="px-2 py-1 border-b border-gray-200 whitespace-nowrap">
                                     <span className="font-medium text-gray-900 font-thai">
                                       {item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('th-TH') : '-'}
-                                    </span>
-                                  </td>
-                                  <td className="px-2 py-1 border-b border-r border-gray-200 whitespace-nowrap" style={{ minWidth: '140px' }}>
-                                    <span className="text-gray-600 font-thai">
-                                      {item.last_movement_at ? new Date(item.last_movement_at).toLocaleString('th-TH', {
-                                        year: 'numeric',
-                                        month: '2-digit',
-                                        day: '2-digit',
-                                        hour: '2-digit',
-                                        minute: '2-digit'
-                                      }) : '-'}
-                                    </span>
-                                  </td>
-                                  <td className="px-2 py-1 border-b border-gray-200 whitespace-nowrap" style={{ minWidth: '140px' }}>
-                                    <span className="text-gray-600 font-thai">
-                                      {item.updated_at ? new Date(item.updated_at).toLocaleString('th-TH', {
-                                        year: 'numeric',
-                                        month: '2-digit',
-                                        day: '2-digit',
-                                        hour: '2-digit',
-                                        minute: '2-digit'
-                                      }) : '-'}
                                     </span>
                                   </td>
                                 </tr>

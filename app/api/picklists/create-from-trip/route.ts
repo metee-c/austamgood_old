@@ -188,17 +188,26 @@ export async function POST(request: NextRequest) {
     // ❌ FAIL if any SKU missing source_location
     if (missingLocationSkus.length > 0) {
       console.error('❌ Cannot create picklist: SKUs missing preparation area:', missingLocationSkus);
+      const skuList = missingLocationSkus.map(s => s.sku_name || s.sku_id).join(', ');
       return NextResponse.json({
-        error: 'Cannot create picklist: Some SKUs do not have preparation area configured',
+        error: `สินค้าไม่มีพื้นที่จัดเตรียม (Preparation Area): ${skuList}`,
         missing_locations: missingLocationSkus,
-        instructions: 'Please configure default_location for these SKUs in master data at /master-data/products'
+        instructions: 'กรุณาตั้งค่า default_location สำหรับสินค้าเหล่านี้ที่หน้า /master-data/products'
       }, { status: 400 });
     }
 
     // ============================================================
-    // ✅ FIX #2: Check stock availability BEFORE creating picklist
+    // ✅ FIX #2: Check stock availability and create replenishment if needed
     // ============================================================
     const insufficientStockItems: any[] = [];
+    const replenishmentNeeded: any[] = [];
+
+    // Fetch bulk storage locations for replenishment source
+    const { data: bulkLocations } = await supabase
+      .from('master_location')
+      .select('location_id, zone, location_type')
+      .in('location_type', ['rack', 'floor', 'bulk'])
+      .in('zone', ['Zone Selective Rack', 'Zone Block Stack']);
 
     for (const item of itemsToInsert) {
       // ✅ FIX: Map area_code → zone name → location_ids
@@ -244,23 +253,76 @@ export async function POST(request: NextRequest) {
       }, 0);
 
       if (totalAvailable < item.quantity_to_pick) {
-        insufficientStockItems.push({
-          sku_id: item.sku_id,
-          sku_name: item.sku_name,
-          zone: item.source_location_id,
-          locations_checked: locationIdsToCheck,
-          required: item.quantity_to_pick,
-          available: totalAvailable,
-          shortage: item.quantity_to_pick - totalAvailable
-        });
+        const shortage = item.quantity_to_pick - totalAvailable;
+
+        // Search bulk storage for replenishment source using FEFO
+        const { data: bulkBalances } = await supabase
+          .from('wms_inventory_balances')
+          .select('balance_id, location_id, pallet_id, total_piece_qty, reserved_piece_qty, expiry_date')
+          .eq('warehouse_id', warehouseId)
+          .eq('sku_id', item.sku_id)
+          .in('location_id', (bulkLocations || []).map(l => l.location_id))
+          .gt('total_piece_qty', 0)
+          .order('expiry_date', { ascending: true, nullsFirst: false })
+          .order('created_at', { ascending: true });
+
+        let remainingShortage = shortage;
+        let totalBulkAvailable = 0;
+        const palletsToReplenish: { location_id: string; pallet_id: string | null; qty: number; expiry_date: string | null }[] = [];
+
+        for (const bulk of bulkBalances || []) {
+          if (remainingShortage <= 0) break;
+
+          const palletAvailable = (bulk.total_piece_qty || 0) - (bulk.reserved_piece_qty || 0);
+          if (palletAvailable <= 0) continue;
+
+          totalBulkAvailable += palletAvailable;
+
+          palletsToReplenish.push({
+            location_id: bulk.location_id,
+            pallet_id: bulk.pallet_id,
+            qty: palletAvailable,
+            expiry_date: bulk.expiry_date
+          });
+
+          remainingShortage -= palletAvailable;
+        }
+
+        if (totalBulkAvailable >= shortage) {
+          // Can replenish from bulk storage
+          for (const pallet of palletsToReplenish) {
+            replenishmentNeeded.push({
+              sku_id: item.sku_id,
+              sku_name: item.sku_name,
+              shortage_qty: pallet.qty,
+              from_location_id: pallet.location_id,
+              to_location_id: item.source_location_id,
+              pallet_id: pallet.pallet_id || null,
+              expiry_date: pallet.expiry_date || null
+            });
+          }
+        } else {
+          // Not enough stock even in bulk storage
+          insufficientStockItems.push({
+            sku_id: item.sku_id,
+            sku_name: item.sku_name,
+            zone: item.source_location_id,
+            locations_checked: locationIdsToCheck,
+            required: item.quantity_to_pick,
+            available: totalAvailable,
+            bulk_available: totalBulkAvailable,
+            shortage: item.quantity_to_pick - totalAvailable - totalBulkAvailable
+          });
+        }
       }
     }
 
-    // ❌ FAIL if insufficient stock
+    // ❌ FAIL only if truly insufficient (no replenishment possible)
     if (insufficientStockItems.length > 0) {
       console.error('❌ Cannot create picklist: Insufficient stock:', insufficientStockItems);
+      const skuList = insufficientStockItems.map(s => `${s.sku_name || s.sku_id} (ต้องการ ${s.required} มี ${s.available + s.bulk_available})`).join(', ');
       return NextResponse.json({
-        error: 'Cannot create picklist: Insufficient stock for some items',
+        error: `สต็อกไม่เพียงพอ: ${skuList}`,
         insufficient_items: insufficientStockItems,
         total_items_with_shortage: insufficientStockItems.length
       }, { status: 400 });
@@ -400,9 +462,10 @@ export async function POST(request: NextRequest) {
         remainingQty -= qtyToReserve;
       }
 
-      // Double-check: should never happen (we validated earlier)
+      // Double-check: should never happen if we have replenishment
       if (remainingQty > 0) {
-        throw new Error(`Internal error: Failed to reserve stock for SKU ${item.sku_id}`);
+        // Don't fail - we'll create replenishment task
+        console.log(`SKU ${item.sku_id} needs replenishment: ${remainingQty} pieces`);
       }
     }
 
@@ -417,15 +480,53 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    // ============================================================
+    // ✅ Create replenishment tasks if needed
+    // ============================================================
+    const createdReplenishments: any[] = [];
+    if (replenishmentNeeded.length > 0) {
+      for (const replen of replenishmentNeeded) {
+        const { data: replenTask, error: replenError } = await supabase
+          .from('replenishment_queue')
+          .insert({
+            warehouse_id: warehouseId,
+            sku_id: replen.sku_id,
+            from_location_id: replen.from_location_id,
+            to_location_id: replen.to_location_id,
+            requested_qty: replen.shortage_qty,
+            pallet_id: replen.pallet_id,
+            expiry_date: replen.expiry_date,
+            priority: 3,
+            status: 'pending',
+            trigger_source: 'picklist',
+            trigger_reference: picklistCode
+          })
+          .select()
+          .single();
+
+        if (!replenError && replenTask) {
+          createdReplenishments.push({
+            ...replen,
+            queue_id: replenTask.queue_id
+          });
+        }
+      }
+    }
+
     // Success response
     return NextResponse.json({
       success: true,
       picklist_id: picklist.id,
+      picklist_code: picklistCode,
       picklist_no: picklistCode,
       total_items: itemsToInsert.length,
       total_quantity: totalQuantity,
       reservations_created: reservationsToInsert.length,
-      message: 'Picklist created successfully with stock reserved'
+      replenishments: createdReplenishments,
+      replenishment_count: createdReplenishments.length,
+      message: replenishmentNeeded.length > 0 
+        ? `Picklist created with ${createdReplenishments.length} replenishment tasks`
+        : 'Picklist created successfully with stock reserved'
     });
 
   } catch (error: any) {

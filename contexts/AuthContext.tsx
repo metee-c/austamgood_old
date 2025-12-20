@@ -1,7 +1,8 @@
 'use client';
 
-import React, { createContext, useContext, ReactNode } from 'react';
+import { createContext, useContext, ReactNode } from 'react';
 import { useAuth, User, Session } from '@/hooks/useAuth';
+import { SessionExpiredModal } from '@/components/auth/SessionExpiredModal';
 
 interface AuthContextType {
   user: User | null;
@@ -27,6 +28,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider value={auth}>
       {children}
+      <SessionExpiredModal />
     </AuthContext.Provider>
   );
 }

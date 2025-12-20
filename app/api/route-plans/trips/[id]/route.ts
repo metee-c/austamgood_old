@@ -46,6 +46,17 @@ export async function PATCH(
       if (body.total_stops !== undefined) updateData.total_stops = body.total_stops;
     }
 
+    // Handle shipping cost reset fields (from rollback)
+    if (body.needs_shipping_cost_update !== undefined) {
+      updateData.needs_shipping_cost_update = body.needs_shipping_cost_update;
+    }
+    if (body.shipping_cost_reset_reason !== undefined) {
+      updateData.shipping_cost_reset_reason = body.shipping_cost_reset_reason;
+    }
+    if (body.shipping_cost_reset_at !== undefined) {
+      updateData.shipping_cost_reset_at = body.shipping_cost_reset_at;
+    }
+
     // In formula mode, let the database trigger calculate shipping_cost
     // by removing the manual shipping_cost override
     if (body.pricing_mode === 'formula') {

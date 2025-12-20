@@ -18,7 +18,9 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
-  ChevronsRight
+  ChevronsRight,
+  Filter,
+  X
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
@@ -111,6 +113,28 @@ const InventoryBalancesPage = () => {
   const [showExpiringSoon, setShowExpiringSoon] = useState(false);
   const [showZeroBalance, setShowZeroBalance] = useState(true);
 
+  // Advanced filter panel state
+  const [showFilters, setShowFilters] = useState(false);
+  
+  // Advanced filters
+  interface AdvancedFilters {
+    sku_id?: string;
+    location_id?: string;
+    pallet_id?: string;
+    lot_no?: string;
+    date_from?: string;
+    date_to?: string;
+    document_type?: string;
+    order_no?: string;
+    shop_name?: string;
+  }
+  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>({});
+  const [tempAdvancedFilters, setTempAdvancedFilters] = useState<AdvancedFilters>({});
+
+  // SKU options for filter dropdown
+  const [skuOptions, setSkuOptions] = useState<{sku_id: string; sku_name: string}[]>([]);
+  const [locationOptions, setLocationOptions] = useState<{location_id: string; location_name: string}[]>([]);
+
   // Sorting state
   const [sortColumn, setSortColumn] = useState<'picklist_code' | 'location_id'>('picklist_code');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
@@ -127,7 +151,7 @@ const InventoryBalancesPage = () => {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, selectedWarehouse, showLowStock, showExpiringSoon, showZeroBalance, activeTab]);
+  }, [searchTerm, selectedWarehouse, showLowStock, showExpiringSoon, showZeroBalance, activeTab, advancedFilters]);
 
   useEffect(() => {
     console.log('🔴 [INIT] useEffect called - fetching all data');
@@ -136,6 +160,8 @@ const InventoryBalancesPage = () => {
     fetchBalanceData();
     fetchDispatchData();
     fetchDeliveryData();
+    fetchSkuOptions();
+    fetchLocationOptions();
   }, []);
 
   const fetchPreparationAreas = async () => {
@@ -166,6 +192,55 @@ const InventoryBalancesPage = () => {
     } catch (err) {
       console.error('Error fetching warehouses:', err);
     }
+  };
+
+  const fetchSkuOptions = async () => {
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('master_sku')
+        .select('sku_id, sku_name')
+        .order('sku_id')
+        .limit(500);
+
+      if (error) throw error;
+      setSkuOptions(data || []);
+    } catch (err) {
+      console.error('Error fetching SKU options:', err);
+    }
+  };
+
+  const fetchLocationOptions = async () => {
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('master_location')
+        .select('location_id, location_name')
+        .order('location_id')
+        .limit(500);
+
+      if (error) throw error;
+      setLocationOptions(data || []);
+    } catch (err) {
+      console.error('Error fetching location options:', err);
+    }
+  };
+
+  // Apply advanced filters
+  const applyFilters = () => {
+    setAdvancedFilters(tempAdvancedFilters);
+    setShowFilters(false);
+  };
+
+  // Reset all filters
+  const resetFilters = () => {
+    setTempAdvancedFilters({});
+    setAdvancedFilters({});
+    setSearchTerm('');
+    setSelectedWarehouse('all');
+    setShowLowStock(false);
+    setShowExpiringSoon(false);
+    setShowZeroBalance(true);
   };
 
   const fetchBalanceData = async () => {
@@ -224,15 +299,34 @@ const InventoryBalancesPage = () => {
   };
 
   const fetchDeliveryData = async () => {
+    console.log('🟣 [FRONTEND] fetchDeliveryData called');
     try {
       const response = await fetch('/api/warehouse/delivery-inventory');
+      console.log('🟣 [FRONTEND] Delivery API response status:', response.status);
       if (!response.ok) {
         throw new Error('Failed to fetch delivery inventory');
       }
       const data = await response.json();
+      console.log('🟣 [FRONTEND] Delivery data received:', data.data?.length, 'items');
+      
+      // Debug: แสดงตัวอย่างข้อมูล
+      if (data.data && data.data.length > 0) {
+        console.log('🟣 [FRONTEND] Sample delivery item:', {
+          balance_id: data.data[0].balance_id,
+          sku_id: data.data[0].sku_id,
+          location_id: data.data[0].location_id,
+          related_documents_count: data.data[0].related_documents?.length || 0,
+          related_documents: data.data[0].related_documents
+        });
+        
+        // นับจำนวน items ที่มี related_documents
+        const itemsWithDocs = data.data.filter((item: any) => item.related_documents && item.related_documents.length > 0);
+        console.log('🟣 [FRONTEND] Items with related_documents:', itemsWithDocs.length, '/', data.data.length);
+      }
+      
       setDeliveryData(data.data || []);
     } catch (err: any) {
-      console.error('Error fetching delivery data:', err);
+      console.error('❌ Error fetching delivery data:', err);
     }
   };
 
@@ -342,7 +436,33 @@ const InventoryBalancesPage = () => {
     const matchesExpiring = !showExpiringSoon || isExpiringSoon(item.expiry_date);
     const matchesZeroBalance = showZeroBalance || item.total_piece_qty > 0;
 
-    const passes = matchesSearch && matchesWarehouse && matchesLowStock && matchesExpiring && matchesZeroBalance;
+    // Advanced filters
+    const matchesSku = !advancedFilters.sku_id || item.sku_id === advancedFilters.sku_id;
+    const matchesLocation = !advancedFilters.location_id || item.location_id === advancedFilters.location_id;
+    const matchesPallet = !advancedFilters.pallet_id || 
+      item.pallet_id?.toLowerCase().includes(advancedFilters.pallet_id.toLowerCase()) ||
+      item.pallet_id_external?.toLowerCase().includes(advancedFilters.pallet_id.toLowerCase());
+    const matchesLotNo = !advancedFilters.lot_no || 
+      item.lot_no?.toLowerCase().includes(advancedFilters.lot_no.toLowerCase());
+    
+    // Date filters
+    const matchesDateFrom = !advancedFilters.date_from || 
+      (item.production_date && item.production_date >= advancedFilters.date_from);
+    const matchesDateTo = !advancedFilters.date_to || 
+      (item.production_date && item.production_date <= advancedFilters.date_to);
+
+    // Document filters (for dispatch/delivery tabs)
+    const relatedDoc = item.related_documents?.[0];
+    const matchesDocType = !advancedFilters.document_type || 
+      relatedDoc?.document_type === advancedFilters.document_type;
+    const matchesOrderNo = !advancedFilters.order_no || 
+      relatedDoc?.order_no?.toLowerCase().includes(advancedFilters.order_no.toLowerCase());
+    const matchesShopName = !advancedFilters.shop_name || 
+      relatedDoc?.shop_name?.toLowerCase().includes(advancedFilters.shop_name.toLowerCase());
+
+    const passes = matchesSearch && matchesWarehouse && matchesLowStock && matchesExpiring && matchesZeroBalance &&
+      matchesSku && matchesLocation && matchesPallet && matchesLotNo && matchesDateFrom && matchesDateTo &&
+      matchesDocType && matchesOrderNo && matchesShopName;
     
     // Debug log สำหรับ dispatch items
     if (activeTab === 'dispatch' && item.location_id === 'Dispatch' && !passes) {
@@ -466,6 +586,23 @@ const InventoryBalancesPage = () => {
               />
               ยอด 0
             </label>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              icon={Filter} 
+              onClick={() => {
+                setTempAdvancedFilters(advancedFilters);
+                setShowFilters(!showFilters);
+              }}
+              className={`text-xs py-1 px-2 ${Object.keys(advancedFilters).some(k => advancedFilters[k as keyof typeof advancedFilters]) ? 'border-primary-500 text-primary-600' : ''}`}
+            >
+              ตัวกรอง
+              {Object.keys(advancedFilters).filter(k => advancedFilters[k as keyof typeof advancedFilters]).length > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 bg-primary-500 text-white rounded-full text-[10px]">
+                  {Object.keys(advancedFilters).filter(k => advancedFilters[k as keyof typeof advancedFilters]).length}
+                </span>
+              )}
+            </Button>
             <Button variant="outline" size="sm" icon={Download} className="text-xs py-1 px-2">
               Excel
             </Button>
@@ -485,6 +622,153 @@ const InventoryBalancesPage = () => {
             </Button>
           </div>
         </div>
+
+        {/* Advanced Filter Panel */}
+        {showFilters && (
+          <div className="bg-white border border-gray-200 rounded-lg p-3 shadow-sm flex-shrink-0">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-thai-gray-900 font-thai">ตัวกรองขั้นสูง</h3>
+              <button
+                onClick={() => setShowFilters(false)}
+                className="p-1 hover:bg-gray-100 rounded"
+              >
+                <X className="w-4 h-4 text-gray-500" />
+              </button>
+            </div>
+            <div className="grid grid-cols-6 gap-3">
+              {/* SKU */}
+              <div>
+                <label className="block text-xs font-medium text-thai-gray-700 mb-1 font-thai">สินค้า (SKU)</label>
+                <select
+                  value={tempAdvancedFilters.sku_id || ''}
+                  onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, sku_id: e.target.value || undefined }))}
+                  className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
+                >
+                  <option value="">ทั้งหมด</option>
+                  {skuOptions.map(s => (
+                    <option key={s.sku_id} value={s.sku_id}>{s.sku_id} - {s.sku_name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Location */}
+              <div>
+                <label className="block text-xs font-medium text-thai-gray-700 mb-1 font-thai">ตำแหน่ง</label>
+                <select
+                  value={tempAdvancedFilters.location_id || ''}
+                  onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, location_id: e.target.value || undefined }))}
+                  className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
+                >
+                  <option value="">ทั้งหมด</option>
+                  {locationOptions.map(l => (
+                    <option key={l.location_id} value={l.location_id}>{l.location_id} - {l.location_name}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Pallet ID */}
+              <div>
+                <label className="block text-xs font-medium text-thai-gray-700 mb-1 font-thai">รหัสพาเลท</label>
+                <input
+                  type="text"
+                  value={tempAdvancedFilters.pallet_id || ''}
+                  onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, pallet_id: e.target.value || undefined }))}
+                  placeholder="ค้นหาพาเลท..."
+                  className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+              </div>
+
+              {/* Lot No */}
+              <div>
+                <label className="block text-xs font-medium text-thai-gray-700 mb-1 font-thai">Lot No</label>
+                <input
+                  type="text"
+                  value={tempAdvancedFilters.lot_no || ''}
+                  onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, lot_no: e.target.value || undefined }))}
+                  placeholder="ค้นหา Lot..."
+                  className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+              </div>
+
+              {/* Date From */}
+              <div>
+                <label className="block text-xs font-medium text-thai-gray-700 mb-1 font-thai">วันผลิตตั้งแต่</label>
+                <input
+                  type="date"
+                  value={tempAdvancedFilters.date_from || ''}
+                  onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, date_from: e.target.value || undefined }))}
+                  className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+              </div>
+
+              {/* Date To */}
+              <div>
+                <label className="block text-xs font-medium text-thai-gray-700 mb-1 font-thai">วันผลิตถึง</label>
+                <input
+                  type="date"
+                  value={tempAdvancedFilters.date_to || ''}
+                  onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, date_to: e.target.value || undefined }))}
+                  className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+              </div>
+
+              {/* Document Type - only for dispatch/delivery tabs */}
+              {(activeTab === 'dispatch' || activeTab === 'delivery') && (
+                <div>
+                  <label className="block text-xs font-medium text-thai-gray-700 mb-1 font-thai">ประเภทเอกสาร</label>
+                  <select
+                    value={tempAdvancedFilters.document_type || ''}
+                    onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, document_type: e.target.value || undefined }))}
+                    className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  >
+                    <option value="">ทั้งหมด</option>
+                    <option value="picklist">ใบหยิบ</option>
+                    <option value="face_sheet">ใบปะหน้า</option>
+                    <option value="bonus_face_sheet">ใบปะหน้าโบนัส</option>
+                  </select>
+                </div>
+              )}
+
+              {/* Order No - only for dispatch/delivery tabs */}
+              {(activeTab === 'dispatch' || activeTab === 'delivery') && (
+                <div>
+                  <label className="block text-xs font-medium text-thai-gray-700 mb-1 font-thai">เลขออเดอร์</label>
+                  <input
+                    type="text"
+                    value={tempAdvancedFilters.order_no || ''}
+                    onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, order_no: e.target.value || undefined }))}
+                    placeholder="ค้นหาออเดอร์..."
+                    className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  />
+                </div>
+              )}
+
+              {/* Shop Name - only for dispatch/delivery tabs */}
+              {(activeTab === 'dispatch' || activeTab === 'delivery') && (
+                <div>
+                  <label className="block text-xs font-medium text-thai-gray-700 mb-1 font-thai">ร้านค้า</label>
+                  <input
+                    type="text"
+                    value={tempAdvancedFilters.shop_name || ''}
+                    onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, shop_name: e.target.value || undefined }))}
+                    placeholder="ค้นหาร้านค้า..."
+                    className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
+                  />
+                </div>
+              )}
+
+              {/* Buttons */}
+              <div className={`flex items-end gap-2 ${(activeTab === 'dispatch' || activeTab === 'delivery') ? 'col-span-3' : 'col-span-6'}`}>
+                <Button variant="primary" size="sm" onClick={applyFilters} className="text-xs">
+                  ใช้ตัวกรอง
+                </Button>
+                <Button variant="outline" size="sm" onClick={resetFilters} className="text-xs">
+                  ล้างตัวกรอง
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Flow Tabs */}
         <div className="flex gap-1 flex-shrink-0">
@@ -790,12 +1074,16 @@ const InventoryBalancesPage = () => {
                           </td>
                           <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
                             <span className="font-bold text-green-600">
-                              {balance.total_pack_qty?.toLocaleString()}
+                              {(activeTab === 'delivery' && balance.related_documents?.[0]?.quantity_picked != null)
+                                ? balance.related_documents[0].quantity_picked.toLocaleString()
+                                : balance.total_pack_qty?.toLocaleString()}
                             </span>
                           </td>
                           <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
                             <span className="font-bold text-green-600">
-                              {balance.total_piece_qty?.toLocaleString()}
+                              {(activeTab === 'delivery' && balance.related_documents?.[0]?.quantity_picked != null)
+                                ? balance.related_documents[0].quantity_picked.toLocaleString()
+                                : balance.total_piece_qty?.toLocaleString()}
                             </span>
                           </td>
                           <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
