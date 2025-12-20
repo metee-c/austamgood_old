@@ -27,7 +27,8 @@ export async function GET(request: NextRequest) {
         master_sku (
           sku_id,
           sku_name,
-          weight_per_piece_kg
+          weight_per_piece_kg,
+          default_location
         ),
         master_location (
           location_id,

@@ -366,9 +366,22 @@ export async function GET() {
       })
     );
 
+    // ✅ กรองออก: items ที่ไม่มี related_documents และ total_piece_qty = 0
+    // เพราะถ้าไม่มี related_documents แสดงว่าสินค้าถูก delivered ไปแล้ว
+    const finalData = enrichedData.filter(item => {
+      // ต้องมี related_documents อย่างน้อย 1 รายการ
+      const hasRelatedDocs = item.related_documents && item.related_documents.length > 0;
+      // หรือต้องมี total_piece_qty > 0 (มีสินค้าจริงๆ ที่ Delivery-In-Progress)
+      const hasStock = Number(item.total_piece_qty) > 0;
+      
+      return hasRelatedDocs || hasStock;
+    });
+
+    console.log(`[DELIVERY-INVENTORY] After filtering (no docs & zero qty): ${finalData.length} items`);
+
     return NextResponse.json({
       success: true,
-      data: enrichedData
+      data: finalData
     });
   } catch (error: any) {
     console.error('Error in delivery inventory API:', error);

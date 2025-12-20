@@ -1000,7 +1000,7 @@ function StockImportPage() {
       <Modal
         isOpen={showLoadingModal}
         onClose={() => {}}
-        title=""
+        title="กำลังดำเนินการ"
         size="sm"
       >
         <div className="flex flex-col items-center justify-center py-8">

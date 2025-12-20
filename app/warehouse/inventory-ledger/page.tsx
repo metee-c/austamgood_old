@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Search,
   RefreshCw,
@@ -36,6 +36,7 @@ interface InventoryLedger {
   piece_qty: number;
   reference_no: string | null;
   remarks: string | null;
+  rollback_reason: string | null;
   created_by: number | null;
 }
 
@@ -222,6 +223,9 @@ const InventoryLedgerPage = () => {
           master_system_user!created_by (
             username,
             full_name
+          ),
+          wms_orders!order_id (
+            order_no
           )
         `)
         .order('ledger_id', { ascending: false })
@@ -264,6 +268,8 @@ const InventoryLedgerPage = () => {
         return <Badge variant="default" size="sm" className="whitespace-nowrap"><span className="text-[10px]">คืน</span></Badge>;
       case 'pick':
         return <Badge variant="info" size="sm" className="whitespace-nowrap"><span className="text-[10px]">เบิก</span></Badge>;
+      case 'rollback':
+        return <Badge variant="warning" size="sm" className="whitespace-nowrap bg-orange-100 text-orange-700 border-orange-300"><span className="text-[10px]">ยกเลิกออเดอร์</span></Badge>;
       default:
         return <Badge variant="default" size="sm" className="whitespace-nowrap"><span className="text-[10px]">{type}</span></Badge>;
     }
@@ -382,6 +388,7 @@ const InventoryLedgerPage = () => {
               <option value="adjust">ปรับปรุง</option>
               <option value="pick">เบิก</option>
               <option value="return">คืน</option>
+              <option value="rollback">ยกเลิกออเดอร์</option>
             </select>
             <select
               value={selectedDirection}
@@ -444,7 +451,7 @@ const InventoryLedgerPage = () => {
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันผลิต</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันหมดอายุ</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">เลขที่อ้างอิง</th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">หมายเหตุ</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap min-w-[250px]">หมายเหตุ</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b whitespace-nowrap">สร้างโดย</th>
                     </tr>
                   </thead>
@@ -648,8 +655,23 @@ const InventoryLedgerPage = () => {
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">
                           <span className="font-mono text-thai-gray-700">{ledger.reference_no || '-'}</span>
                         </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">
-                          <span className="text-gray-700 font-thai">{ledger.remarks || '-'}</span>
+                        <td className="px-2 py-0.5 border-r border-gray-100 align-top min-w-[250px]">
+                          <div className="text-gray-700 font-thai text-[11px]">
+                            {ledger.remarks || '-'}
+                            {/* แสดงเหตุผล rollback และเลขออเดอร์ ถ้ามี */}
+                            {(ledger as any).rollback_reason && (
+                              <div className="mt-0.5 text-orange-600">
+                                <span className="font-semibold">เหตุผล: </span>
+                                {(ledger as any).rollback_reason}
+                                {(ledger as any).wms_orders?.order_no && (
+                                  <span className="ml-2">
+                                    | <span className="font-semibold">ออเดอร์: </span>
+                                    {(ledger as any).wms_orders.order_no}
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="px-2 py-0.5 whitespace-nowrap align-top">
                           <span className="text-thai-gray-700 font-thai">

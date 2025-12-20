@@ -409,29 +409,6 @@ const OrdersPage = () => {
     });
   };
 
-  // Handle status change
-  const handleStatusChange = async (orderId: string, newStatus: OrderStatus) => {
-    try {
-      const response = await fetch(`/api/orders/${orderId}`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ status: newStatus }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to update order status');
-      }
-
-      // Refresh the orders list
-      refetch();
-    } catch (error) {
-      console.error('Error updating status:', error);
-      alert('เกิดข้อผิดพลาดในการอัพเดทสถานะ');
-    }
-  };
-
   // Handle type change
   const handleTypeChange = async (orderId: string, newType: OrderType) => {
     try {
@@ -782,33 +759,20 @@ const OrdersPage = () => {
                           </div>
                         </Table.Cell>
                         <Table.Cell width="120px" className="min-w-[120px]">
-                          <div className="relative">
-                            <select
-                              value={order.status || ''}
-                              onChange={(e) => handleStatusChange(order.order_id, e.target.value as OrderStatus)}
-                              className="w-full px-2 py-1 border border-gray-300 rounded text-xs font-thai appearance-none focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
-                              style={{ color: 'transparent' }}
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <option value="" className="text-gray-900">-- เลือกสถานะ --</option>
-                              <option value="draft" className="text-gray-900">ร่าง</option>
-                              <option value="confirmed" className="text-gray-900">ยืนยันแล้ว</option>
-                              <option value="in_picking" className="text-gray-900">กำลังหยิบ</option>
-                              <option value="picked" className="text-gray-900">หยิบเสร็จแล้ว</option>
-                              <option value="loaded" className="text-gray-900">ขึ้นรถแล้ว</option>
-                              <option value="in_transit" className="text-gray-900">กำลังจัดส่ง</option>
-                              <option value="delivered" className="text-gray-900">ส่งถึงแล้ว</option>
-                              <option value="cancelled" className="text-gray-900">ยกเลิก</option>
-                            </select>
-                            <div className="pointer-events-none absolute inset-y-0 left-0 right-6 flex items-center px-2">
-                              <span className="text-xs font-thai text-gray-900 truncate">
-                                {order.status ? getStatusText(order.status) : '-- เลือกสถานะ --'}
-                              </span>
-                            </div>
-                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
-                              <ChevronDown className="w-3.5 h-3.5 text-gray-600" />
-                            </div>
-                          </div>
+                          {/* สถานะ Order - แสดงเป็น Badge อย่างเดียว (ไม่ให้แก้ไข เพราะระบบจัดการอัตโนมัติ) */}
+                          <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-thai font-medium whitespace-nowrap ${
+                            order.status === 'draft' ? 'bg-gray-100 text-gray-700' :
+                            order.status === 'confirmed' ? 'bg-blue-100 text-blue-700' :
+                            order.status === 'in_picking' ? 'bg-yellow-100 text-yellow-700' :
+                            order.status === 'picked' ? 'bg-indigo-100 text-indigo-700' :
+                            order.status === 'loaded' ? 'bg-purple-100 text-purple-700' :
+                            order.status === 'in_transit' ? 'bg-cyan-100 text-cyan-700' :
+                            order.status === 'delivered' ? 'bg-green-100 text-green-700' :
+                            order.status === 'cancelled' ? 'bg-red-100 text-red-700' :
+                            'bg-gray-100 text-gray-700'
+                          }`}>
+                            {getStatusText(order.status) || '-'}
+                          </span>
                         </Table.Cell>
                         <Table.Cell>
                           <span className="font-mono text-gray-600">{order.customer_id}</span>

@@ -72,10 +72,28 @@ const menuItems = [
     hasSubmenu: true,
     submenu: [
       {
+        path: '/production/planning',
+        icon: ClipboardCheck,
+        label: 'วางแผนผลิต',
+        englishLabel: 'Production Planning'
+      },
+      {
         path: '/production/orders',
         icon: Package,
         label: 'ใบสั่งผลิต',
         englishLabel: 'Production Orders'
+      },
+      {
+        path: '/production/actual',
+        icon: PackageCheck,
+        label: 'บันทึกการผลิตจริง',
+        englishLabel: 'Actual Production'
+      },
+      {
+        path: '/production/material-requisition',
+        icon: ArrowRightLeft,
+        label: 'งานเบิกเติมวัตถุดิบ',
+        englishLabel: 'Material Requisition'
       }
     ]
   },

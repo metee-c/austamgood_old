@@ -139,19 +139,19 @@ export async function GET(request: Request) {
       }
       
       for (const pl of picklists) {
-        // ✅ ตรวจสอบว่ายังไม่ได้เพิ่มเข้า loadlist หรืออยู่ใน loadlist ที่ยังไม่ loaded
+        // ✅ ตรวจสอบว่ายังไม่ได้เพิ่มเข้า loadlist หรืออยู่ใน loadlist ที่ยังไม่ loaded/voided
         const loadlistData = (pl as any).wms_loadlist_picklists?.[0];
         const loadlistCode = loadlistData?.loadlists?.loadlist_code;
         const loadlistStatus = loadlistData?.loadlists?.status;
         
-        // ข้ามถ้าอยู่ใน loadlist ที่ loaded แล้ว
-        if (loadlistCode && loadlistStatus === 'loaded') {
-          console.log(`⏭️ Skip picklist ${pl.picklist_code} - in loaded loadlist ${loadlistCode}`);
+        // ✅ ข้ามถ้าอยู่ใน loadlist ที่ loaded หรือ voided แล้ว
+        if (loadlistCode && (loadlistStatus === 'loaded' || loadlistStatus === 'voided')) {
+          console.log(`⏭️ Skip picklist ${pl.picklist_code} - in ${loadlistStatus} loadlist ${loadlistCode}`);
           continue;
         }
         
-        // แสดงถ้า: ยังไม่ได้เข้า loadlist หรือ อยู่ใน loadlist ที่ยังไม่ loaded
-        if (loadlistCode && loadlistStatus !== 'loaded') {
+        // แสดงถ้า: ยังไม่ได้เข้า loadlist หรือ อยู่ใน loadlist ที่ยังไม่ loaded/voided
+        if (loadlistCode && loadlistStatus !== 'loaded' && loadlistStatus !== 'voided') {
           console.log(`✅ Include picklist ${pl.picklist_code} - in ${loadlistStatus} loadlist ${loadlistCode}`);
         }
         
@@ -278,19 +278,19 @@ export async function GET(request: Request) {
       const dispatchLocationId = 'Dispatch';
       
       for (const fs of faceSheets) {
-        // ✅ ตรวจสอบว่ายังไม่ได้เพิ่มเข้า loadlist หรืออยู่ใน loadlist ที่ยังไม่ loaded
+        // ✅ ตรวจสอบว่ายังไม่ได้เพิ่มเข้า loadlist หรืออยู่ใน loadlist ที่ยังไม่ loaded/voided
         const loadlistData = (fs as any).loadlist_face_sheets?.[0];
         const loadlistCode = loadlistData?.loadlists?.loadlist_code;
         const loadlistStatus = loadlistData?.loadlists?.status;
         
-        // ข้ามถ้าอยู่ใน loadlist ที่ loaded แล้ว
-        if (loadlistCode && loadlistStatus === 'loaded') {
-          console.log(`⏭️ Skip face sheet ${fs.face_sheet_no} - in loaded loadlist ${loadlistCode}`);
+        // ✅ ข้ามถ้าอยู่ใน loadlist ที่ loaded หรือ voided แล้ว
+        if (loadlistCode && (loadlistStatus === 'loaded' || loadlistStatus === 'voided')) {
+          console.log(`⏭️ Skip face sheet ${fs.face_sheet_no} - in ${loadlistStatus} loadlist ${loadlistCode}`);
           continue;
         }
         
-        // แสดงถ้า: ยังไม่ได้เข้า loadlist หรือ อยู่ใน loadlist ที่ยังไม่ loaded
-        if (loadlistCode && loadlistStatus !== 'loaded') {
+        // แสดงถ้า: ยังไม่ได้เข้า loadlist หรือ อยู่ใน loadlist ที่ยังไม่ loaded/voided
+        if (loadlistCode && loadlistStatus !== 'loaded' && loadlistStatus !== 'voided') {
           console.log(`✅ Include face sheet ${fs.face_sheet_no} - in ${loadlistStatus} loadlist ${loadlistCode}`);
         }
         
@@ -468,19 +468,19 @@ export async function GET(request: Request) {
       const dispatchLocationId = 'Dispatch';
       
       for (const bfs of bonusFaceSheets) {
-        // ✅ ตรวจสอบว่ายังไม่ได้เพิ่มเข้า loadlist หรืออยู่ใน loadlist ที่ยังไม่ loaded
+        // ✅ ตรวจสอบว่ายังไม่ได้เพิ่มเข้า loadlist หรืออยู่ใน loadlist ที่ยังไม่ loaded/voided
         const loadlistData = (bfs as any).wms_loadlist_bonus_face_sheets?.[0];
         const loadlistCode = loadlistData?.loadlists?.loadlist_code;
         const loadlistStatus = loadlistData?.loadlists?.status;
         
-        // ข้ามถ้าอยู่ใน loadlist ที่ loaded แล้ว
-        if (loadlistCode && loadlistStatus === 'loaded') {
-          console.log(`⏭️ Skip bonus face sheet ${bfs.face_sheet_no} - in loaded loadlist ${loadlistCode}`);
+        // ✅ ข้ามถ้าอยู่ใน loadlist ที่ loaded หรือ voided แล้ว
+        if (loadlistCode && (loadlistStatus === 'loaded' || loadlistStatus === 'voided')) {
+          console.log(`⏭️ Skip bonus face sheet ${bfs.face_sheet_no} - in ${loadlistStatus} loadlist ${loadlistCode}`);
           continue;
         }
         
-        // แสดงถ้า: ยังไม่ได้เข้า loadlist หรือ อยู่ใน loadlist ที่ยังไม่ loaded
-        if (loadlistCode && loadlistStatus !== 'loaded') {
+        // แสดงถ้า: ยังไม่ได้เข้า loadlist หรือ อยู่ใน loadlist ที่ยังไม่ loaded/voided
+        if (loadlistCode && loadlistStatus !== 'loaded' && loadlistStatus !== 'voided') {
           console.log(`✅ Include bonus face sheet ${bfs.face_sheet_no} - in ${loadlistStatus} loadlist ${loadlistCode}`);
         }
         

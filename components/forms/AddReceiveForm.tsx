@@ -4,17 +4,16 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { useForm, useFieldArray, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
-import { Package, Plus, Trash2, Upload, X as XIcon, Image as ImageIcon } from 'lucide-react';
+import { Package, Plus, Trash2, Upload, X as XIcon, Image as ImageIcon, Search, Loader2 } from 'lucide-react';
 import Image from 'next/image';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import ComboBox from '@/components/ui/ComboBox';
 import AddSupplierForm from '@/components/forms/AddSupplierForm';
 import { useCreateReceive, useGeneratePalletId, useUpdateReceive } from '@/hooks/useReceive';
-import { useSuppliers, useSkus, useWarehouses, useLocations, useCustomers, useSystemUsers, SystemUser } from '@/hooks/useFormOptions';
+import { useSuppliers, useSkus, useWarehouses, useLocations, useCustomers, useEmployees } from '@/hooks/useFormOptions';
 import { ReceiveType, ReceiveStatus, CreateReceivePayload, PalletScanStatus } from '@/lib/database/receive';
 import { useAuth } from '@/hooks/useAuth';
-import { type } from 'os';
 
 // Validation schema for a single item
 const itemSchema = z.object({
@@ -32,7 +31,34 @@ const itemSchema = z.object({
   generate_pallet: z.boolean().default(false),
   pallet_id: z.string().optional(),
   pallet_color: z.string().optional(),
+  // เพิ่มฟิลด์สำหรับรับสินค้าตีกลับ
+  original_quantity: z.number().optional(), // จำนวนเดิมจาก Order
+  return_quantity: z.number().optional(), // จำนวนที่รับกลับ
 });
+
+// Interface สำหรับ Order ที่สามารถรับคืนได้
+interface ReturnableOrder {
+  order_id: number;
+  order_no: string;
+  status: string;
+  customer_id: string;
+  customer_name: string;
+  delivery_date: string;
+  order_date: string;
+  label: string;
+}
+
+// Interface สำหรับ Order Item
+interface OrderItem {
+  order_item_id: number;
+  sku_id: string;
+  sku_name: string;
+  barcode: string;
+  quantity: number;
+  qty_per_pack: number;
+  weight_per_piece_kg: number;
+  unit_price: number;
+}
 
 // Validation schema for the entire form
 const receiveFormSchema = z.object({
@@ -76,6 +102,15 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
   const [uploadedImages, setUploadedImages] = useState<{url: string, name: string}[]>([]);
   const [uploading, setUploading] = useState(false);
   const [latestPalletId, setLatestPalletId] = useState<string>(''); // เก็บเลขพาเลทล่าสุด
+  
+  // State สำหรับรับสินค้าตีกลับ (Customer Return)
+  const [returnableOrders, setReturnableOrders] = useState<ReturnableOrder[]>([]);
+  const [selectedReturnOrder, setSelectedReturnOrder] = useState<ReturnableOrder | null>(null);
+  const [orderItems, setOrderItems] = useState<OrderItem[]>([]);
+  const [loadingOrders, setLoadingOrders] = useState(false);
+  const [loadingOrderItems, setLoadingOrderItems] = useState(false);
+  const [orderSearchTerm, setOrderSearchTerm] = useState('');
+  const [isManualOrderEntry, setIsManualOrderEntry] = useState(false); // โหมดพิมพ์เลขออเดอร์เอง (สำหรับสินค้าตีกลับก่อนขึ้นระบบ)
 
   // Form setup
   const {
@@ -155,7 +190,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
     }
   });
 
-  const { fields, append, remove } = useFieldArray({
+  const { fields, append, remove, replace } = useFieldArray({
     control,
     name: 'items'
   });
@@ -172,28 +207,137 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
   const { skus } = useSkus();
   const { warehouses } = useWarehouses();
   const { customers } = useCustomers();
-  const { users: systemUsers } = useSystemUsers();
+  const { employees } = useEmployees(); // ใช้ employees จาก master_employee แทน systemUsers
 
-  // Auto-set received_by from logged-in user's user_id
+  // Auto-set received_by from logged-in user's employee_id (FK to master_employee)
+  // รอให้ employees โหลดเสร็จก่อนถึงจะ set ค่า
   useEffect(() => {
-    if (!isEditMode && currentUser?.user_id && !watch('received_by')) {
-      setValue('received_by', currentUser.user_id);
+    if (!isEditMode && currentUser?.employee_id && employees.length > 0 && !watch('received_by')) {
+      // ตรวจสอบว่า employee_id ของ currentUser มีอยู่ใน employees list
+      const employeeExists = employees.some(emp => emp.employee_id === currentUser.employee_id);
+      if (employeeExists) {
+        setValue('received_by', currentUser.employee_id);
+      }
     }
-  }, [currentUser, isEditMode, setValue, watch]);
+  }, [currentUser, isEditMode, setValue, watch, employees]);
+
+  // Fetch order items when an order is selected for return
+  useEffect(() => {
+    const fetchOrderItems = async () => {
+      if (!selectedReturnOrder) {
+        setOrderItems([]);
+        return;
+      }
+      
+      setLoadingOrderItems(true);
+      try {
+        const response = await fetch(`/api/orders/${selectedReturnOrder.order_id}/items`);
+        const result = await response.json();
+        
+        if (result.success && result.data) {
+          setOrderItems(result.data.items || []);
+          
+          // Set reference_doc to order_no
+          setValue('reference_doc', selectedReturnOrder.order_no);
+          
+          // Set customer_id from order
+          if (selectedReturnOrder.customer_id) {
+            setValue('customer_id', selectedReturnOrder.customer_id);
+            setSelectedCustomerName(selectedReturnOrder.customer_name || '');
+          }
+          
+          // Use replace() instead of while loop + append to avoid infinite re-renders
+          const orderItemsData = result.data.items || [];
+          const newItems = orderItemsData.map((item: any) => ({
+            sku_id: item.sku_id,
+            product_name: item.sku_name,
+            barcode: item.barcode || '',
+            production_date: item.production_date || '', // ดึงจาก API
+            expiry_date: item.expiry_date || '', // ดึงจาก API
+            pack_quantity: 0,
+            piece_quantity: 0, // ผู้ใช้ต้องกรอกจำนวนที่รับกลับ
+            weight_kg: 0,
+            location_id: 'Return',
+            pallet_id_external: '',
+            pallet_scan_status: 'ไม่จำเป็น' as const,
+            generate_pallet: false,
+            pallet_id: '',
+            pallet_color: '',
+            original_quantity: item.quantity, // จำนวนเดิมจาก Order
+            return_quantity: 0, // จำนวนที่รับกลับ (ผู้ใช้กรอก)
+          }));
+          
+          // Replace all items at once - this prevents infinite re-renders
+          replace(newItems);
+        }
+      } catch (error) {
+        console.error('Error fetching order items:', error);
+      } finally {
+        setLoadingOrderItems(false);
+      }
+    };
+    
+    fetchOrderItems();
+  }, [selectedReturnOrder, setValue, replace]);
+
   const watchedWarehouseId = watch('warehouse_id');
-  const warehouseIdString = typeof watchedWarehouseId === 'string' ? watchedWarehouseId : '';
-  
-  const { locations, loading: locationsLoading, error: locationsError } = useLocations(warehouseIdString);
+  const warehouseIdString =
+    typeof watchedWarehouseId === 'string' ? watchedWarehouseId : '';
+
+  const {
+    locations,
+    loading: locationsLoading,
+    error: locationsError,
+  } = useLocations(warehouseIdString);
 
   const watchedType = watch('receive_type');
   const watchedPalletBoxOption = watch('pallet_box_option');
   const watchedPalletCalculationMethod = watch('pallet_calculation_method');
-  
+
   // Use useWatch for items to get better reactivity
   const watchedItems = useWatch({
     control,
-    name: 'items'
+    name: 'items',
   });
+
+  // Fetch returnable orders when receive_type is "รับสินค้าตีกลับ"
+  useEffect(() => {
+    const fetchReturnableOrders = async () => {
+      if (watchedType !== 'รับสินค้าตีกลับ') {
+        setReturnableOrders([]);
+        return;
+      }
+
+      setLoadingOrders(true);
+      try {
+        const searchQuery = orderSearchTerm
+          ? `?search=${encodeURIComponent(orderSearchTerm)}`
+          : '';
+        const response = await fetch(`/api/orders/returnable${searchQuery}`);
+        const result = await response.json();
+
+        if (result.success && result.data) {
+          setReturnableOrders(result.data);
+        }
+      } catch (error) {
+        console.error('Error fetching returnable orders:', error);
+      } finally {
+        setLoadingOrders(false);
+      }
+    };
+
+    fetchReturnableOrders();
+  }, [watchedType, orderSearchTerm]);
+
+  // Auto-set default status based on receive_type
+  // สำหรับรับสินค้าตีกลับ ให้ default เป็น "รับเข้าแล้ว" เพราะสินค้ากลับมาจริงแล้ว
+  useEffect(() => {
+    if (watchedType === 'รับสินค้าตีกลับ') {
+      setValue('status', 'รับเข้าแล้ว');
+    } else if (!isEditMode) {
+      setValue('status', 'รอรับเข้า');
+    }
+  }, [watchedType, setValue, isEditMode]);
 
   // Auto-set default location based on receive_type
   useEffect(() => {
@@ -658,7 +802,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
         ...item,
         location_id: item.location_id || undefined
       })) as any,
-      created_by: currentUser?.user_id || data.received_by, // Use user_id (references master_system_user.user_id)
+      created_by: currentUser?.employee_id || data.received_by, // Use employee_id (FK to master_employee)
     };
 
     console.log('📦 Payload ที่ส่งไป API:', JSON.stringify(payload, null, 2));
@@ -799,8 +943,115 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-thai-gray-700 font-thai mb-1">เลขที่เอกสารอ้างอิง {watchedType !== 'รับสินค้าคืน (ไม่มีเอกสาร)' && '*'}</label>
-              <input {...register('reference_doc')} placeholder="ระบุเลขที่เอกสาร" className="w-full p-2 border border-thai-gray-200 rounded-md text-sm" />
+              <label className="block text-xs font-medium text-thai-gray-700 font-thai mb-1">
+                {watchedType === 'รับสินค้าตีกลับ' ? 'เลขที่ออเดอร์อ้างอิง *' : `เลขที่เอกสารอ้างอิง ${watchedType !== 'รับสินค้าคืน (ไม่มีเอกสาร)' ? '*' : ''}`}
+              </label>
+              {watchedType === 'รับสินค้าตีกลับ' ? (
+                // Order Selection for Customer Return
+                <div className="space-y-2">
+                  {/* Toggle between dropdown and manual entry */}
+                  <div className="flex items-center gap-2 mb-2">
+                    <label className="flex items-center gap-1 text-xs cursor-pointer">
+                      <input
+                        type="radio"
+                        name="orderEntryMode"
+                        checked={!isManualOrderEntry}
+                        onChange={() => {
+                          setIsManualOrderEntry(false);
+                          setValue('reference_doc', '');
+                          setSelectedReturnOrder(null);
+                        }}
+                        className="w-3 h-3"
+                      />
+                      <span>เลือกจากระบบ</span>
+                    </label>
+                    <label className="flex items-center gap-1 text-xs cursor-pointer">
+                      <input
+                        type="radio"
+                        name="orderEntryMode"
+                        checked={isManualOrderEntry}
+                        onChange={() => {
+                          setIsManualOrderEntry(true);
+                          setSelectedReturnOrder(null);
+                          setValue('reference_doc', '');
+                        }}
+                        className="w-3 h-3"
+                      />
+                      <span>พิมพ์เอง (ก่อนขึ้นระบบ)</span>
+                    </label>
+                  </div>
+
+                  {isManualOrderEntry ? (
+                    // Manual entry mode
+                    <div>
+                      <input
+                        {...register('reference_doc')}
+                        placeholder="พิมพ์เลขออเดอร์..."
+                        className="w-full p-2 border border-thai-gray-200 rounded-md text-sm"
+                      />
+                      <p className="text-xs text-orange-600 mt-1">
+                        💡 สำหรับสินค้าตีกลับก่อนขึ้นระบบ - กรุณาเพิ่มรายการสินค้าด้านล่างเอง
+                      </p>
+                    </div>
+                  ) : (
+                    // Dropdown selection mode
+                    <>
+                      <div className="relative">
+                        <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                        <input
+                          type="text"
+                          value={orderSearchTerm}
+                          onChange={(e) => setOrderSearchTerm(e.target.value)}
+                          placeholder="ค้นหาเลขออเดอร์..."
+                          className="w-full pl-8 p-2 border border-thai-gray-200 rounded-md text-sm"
+                        />
+                      </div>
+                      {loadingOrders ? (
+                        <div className="flex items-center gap-2 text-sm text-gray-500">
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>กำลังโหลด...</span>
+                        </div>
+                      ) : (
+                        <select
+                          value={selectedReturnOrder?.order_id || ''}
+                          onChange={(e) => {
+                            const orderId = parseInt(e.target.value, 10);
+                            const order = returnableOrders.find(o => o.order_id === orderId);
+                            setSelectedReturnOrder(order || null);
+                            
+                            // Set customer name immediately when order is selected
+                            if (order) {
+                              setValue('customer_id', order.customer_id);
+                              setSelectedCustomerName(order.customer_name || '');
+                            } else {
+                              setValue('customer_id', '');
+                              setSelectedCustomerName('');
+                            }
+                          }}
+                          className="w-full p-2 border border-thai-gray-200 rounded-md text-sm"
+                        >
+                          <option value="">-- เลือกออเดอร์ --</option>
+                          {returnableOrders.map(order => (
+                            <option key={order.order_id} value={order.order_id}>
+                              {order.order_no} - {order.customer_name} ({order.status === 'delivered' ? 'ส่งแล้ว' : order.status === 'in_transit' ? 'กำลังส่ง' : 'ขึ้นรถแล้ว'})
+                            </option>
+                          ))}
+                        </select>
+                      )}
+                      {selectedReturnOrder && (
+                        <div className="p-2 bg-blue-50 rounded-md text-xs">
+                          <div><strong>ออเดอร์:</strong> {selectedReturnOrder.order_no}</div>
+                          <div><strong>ลูกค้า:</strong> {selectedReturnOrder.customer_name}</div>
+                          <div><strong>วันที่ส่ง:</strong> {selectedReturnOrder.delivery_date || '-'}</div>
+                        </div>
+                      )}
+                      <input type="hidden" {...register('reference_doc')} />
+                    </>
+                  )}
+                </div>
+              ) : (
+                <input {...register('reference_doc')} placeholder="ระบุเลขที่เอกสาร" className="w-full p-2 border border-thai-gray-200 rounded-md text-sm" />
+              )}
             </div>
             <div>
               <label className="block text-xs font-medium text-thai-gray-700 font-thai mb-1">คลังสินค้า *</label>
@@ -851,9 +1102,9 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
               <label className="block text-xs font-medium text-thai-gray-700 font-thai mb-1">ผู้รับสินค้า</label>
               <select {...register('received_by', { valueAsNumber: true })} className="w-full p-2 border border-thai-gray-200 rounded-md text-sm">
                 <option value="">กรุณาเลือกผู้รับสินค้า</option>
-                {Array.isArray(systemUsers) && systemUsers.map(user => (
-                  <option key={user.user_id} value={user.user_id}>
-                    {user.full_name}
+                {Array.isArray(employees) && employees.map(emp => (
+                  <option key={emp.employee_id} value={emp.employee_id}>
+                    {emp.first_name} {emp.last_name}
                   </option>
                 ))}
               </select>
@@ -952,61 +1203,178 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
 
         {/* Line Items Section */}
         <div className="space-y-4">
-          <h3 className="text-lg font-semibold text-thai-gray-900 font-thai">รายการสินค้า</h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-semibold text-thai-gray-900 font-thai">รายการสินค้า</h3>
+            {watchedType === 'รับสินค้าตีกลับ' && selectedReturnOrder && (
+              <span className="text-sm text-blue-600 font-thai">
+                จากออเดอร์: {selectedReturnOrder.order_no}
+              </span>
+            )}
+          </div>
+
+          {/* Loading indicator for order items */}
+          {loadingOrderItems && (
+            <div className="flex items-center justify-center p-4 bg-gray-50 rounded-lg">
+              <Loader2 className="w-5 h-5 animate-spin mr-2 text-blue-500" />
+              <span className="text-sm text-gray-600">กำลังโหลดรายการสินค้า...</span>
+            </div>
+          )}
+
+          {/* Customer Return Table View - แสดงเฉพาะเมื่อเป็นรับสินค้าตีกลับ และเลือกจาก dropdown (ไม่ใช่ manual entry) */}
+          {watchedType === 'รับสินค้าตีกลับ' && selectedReturnOrder && !isManualOrderEntry && !loadingOrderItems && fields.length > 0 && (
+            <div className="border rounded-lg overflow-hidden">
+              <div className="bg-orange-50 px-4 py-2 border-b border-orange-200">
+                <p className="text-sm text-orange-800 font-thai">
+                  <strong>คำแนะนำ:</strong> กรอกจำนวนที่รับกลับในคอลัมน์ "จำนวนรับกลับ" (0 = ไม่รับกลับรายการนี้)
+                </p>
+                <p className="text-xs text-gray-500 mt-1">💡 เลื่อนตารางซ้าย-ขวาเพื่อดูคอลัมน์ทั้งหมด | วันผลิต/วันหมดอายุดึงจากข้อมูลที่โหลดไปแล้ว</p>
+              </div>
+              <div className="overflow-x-auto max-w-full" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                <table className="min-w-max divide-y divide-gray-200 w-full">
+                  <thead className="bg-gray-50">
+                    <tr>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap" style={{ minWidth: '120px' }}>SKU</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap" style={{ minWidth: '200px' }}>ชื่อสินค้า</th>
+                      <th className="px-3 py-2 text-center text-xs font-medium text-gray-500 uppercase whitespace-nowrap" style={{ minWidth: '100px' }}>จำนวนเดิม</th>
+                      <th className="px-3 py-2 text-center text-xs font-medium text-orange-600 uppercase whitespace-nowrap" style={{ minWidth: '120px' }}>จำนวนรับกลับ *</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap" style={{ minWidth: '120px' }}>วันผลิต</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap" style={{ minWidth: '140px' }}>วันหมดอายุ</th>
+                      <th className="px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase whitespace-nowrap" style={{ minWidth: '100px' }}>Location</th>
+                    </tr>
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-200">
+                    {fields.map((field, index) => {
+                      const selectedSkuId = watchedItems?.[index]?.sku_id;
+                      const selectedSku = skus.find((s) => s.sku_id === selectedSkuId);
+                      const originalQty = (watchedItems?.[index] as any)?.original_quantity || 0;
+                      const productName = selectedSku?.sku_name || (watchedItems?.[index] as any)?.product_name || '';
+                      const pieceQty = watchedItems?.[index]?.piece_quantity || 0;
+                      const isReturning = pieceQty > 0; // ถ้าจำนวนรับกลับ > 0 ถึงจะบังคับวันหมดอายุ
+                      const productionDate = watchedItems?.[index]?.production_date || '';
+                      const expiryDate = watchedItems?.[index]?.expiry_date || '';
+
+                      return (
+                        <tr key={field.id} className={`hover:bg-orange-25 ${!isReturning ? 'bg-gray-50 opacity-60' : ''}`}>
+                          <td className="px-3 py-2 text-sm font-mono text-gray-900 whitespace-nowrap">{selectedSkuId}</td>
+                          <td className="px-3 py-2 text-sm text-gray-700 whitespace-nowrap" title={productName}>
+                            {productName}
+                          </td>
+                          <td className="px-3 py-2 text-sm text-center font-semibold text-gray-600 whitespace-nowrap">{originalQty}</td>
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            <input
+                              type="number"
+                              {...register(`items.${index}.piece_quantity`, { valueAsNumber: true })}
+                              className="w-24 p-1 border border-orange-300 rounded text-sm text-center focus:ring-2 focus:ring-orange-500"
+                              placeholder="0"
+                              min={0}
+                              max={originalQty}
+                            />
+                          </td>
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            {productionDate ? (
+                              <span className="text-sm text-gray-600">{productionDate}</span>
+                            ) : (
+                              <span className="text-xs text-gray-400">-</span>
+                            )}
+                            <input type="hidden" {...register(`items.${index}.production_date`)} />
+                          </td>
+                          <td className="px-3 py-2 whitespace-nowrap">
+                            {expiryDate ? (
+                              <span className={`text-sm ${isReturning ? 'text-orange-700 font-medium' : 'text-gray-600'}`}>{expiryDate}</span>
+                            ) : (
+                              <input
+                                type="date"
+                                {...register(`items.${index}.expiry_date`)}
+                                className={`w-32 p-1 border rounded text-sm ${isReturning ? 'border-orange-300' : 'border-gray-200 bg-gray-100'}`}
+                                required={isReturning}
+                                disabled={!isReturning}
+                              />
+                            )}
+                            {expiryDate && <input type="hidden" {...register(`items.${index}.expiry_date`)} />}
+                          </td>
+                          <td className="px-3 py-2 text-sm text-gray-600 whitespace-nowrap">
+                            <span className="px-2 py-1 bg-blue-100 text-blue-800 rounded text-xs">Return</span>
+                            <input type="hidden" {...register(`items.${index}.location_id`)} value="Return" />
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* Normal Form View - แสดงเมื่อไม่ใช่รับสินค้าตีกลับ หรือยังไม่ได้เลือก Order หรือเป็น manual entry mode */}
+          {(watchedType !== 'รับสินค้าตีกลับ' || !selectedReturnOrder || isManualOrderEntry) && (
           <div className="space-y-2">
             {fields.map((field, index) => {
               const selectedSkuId = watchedItems?.[index]?.sku_id;
-              const selectedSku = skus.find(s => s.sku_id === selectedSkuId);
+              const selectedSku = skus.find((s) => s.sku_id === selectedSkuId);
+              const originalQty = (watchedItems?.[index] as any)?.original_quantity;
+              const isCustomerReturn = watchedType === 'รับสินค้าตีกลับ' && selectedReturnOrder;
+
               return (
-                <div key={field.id} className="p-3 border rounded-lg space-y-3 relative bg-white">
+                <div key={field.id} className={`p-3 border rounded-lg space-y-3 relative ${isCustomerReturn ? 'bg-orange-50 border-orange-200' : 'bg-white'}`}>
                   {/* SKU Selection with Delete Button */}
                   <div className="flex items-start gap-2">
                     <div className="flex-1 relative">
-                      <label className="block text-xs font-medium text-thai-gray-700 mb-1">SKU *</label>
+                      <label className="block text-xs font-medium text-thai-gray-700 mb-1">
+                        SKU * {isCustomerReturn && originalQty && <span className="text-orange-600">(จำนวนเดิม: {originalQty} ชิ้น)</span>}
+                      </label>
                       <input
                         {...register(`items.${index}.sku_id`)}
                         list={`sku-list-${index}`}
                         className="w-full p-2 border bg-gray-100 rounded-md text-sm text-gray-700"
                         placeholder="ค้นหาและเลือก SKU..."
                         autoComplete="off"
+                        readOnly={!!isCustomerReturn}
                       />
                       <datalist id={`sku-list-${index}`}>
-                        {skus.map(sku => (
+                        {skus.map((sku) => (
                           <option key={sku.sku_id} value={sku.sku_id}>
                             {sku.sku_id} - {sku.sku_name}
                           </option>
                         ))}
                       </datalist>
                     </div>
-                    <div className="flex shrink-0 mt-6">
-                      <Button type="button" variant="danger" size="sm" onClick={() => remove(index)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
+                    {!isCustomerReturn && (
+                      <div className="flex shrink-0 mt-6">
+                        <Button type="button" variant="danger" size="sm" onClick={() => remove(index)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
                   </div>
 
                   {/* Product Name (shows when SKU is selected) */}
-                  {selectedSku && (
+                  {(selectedSku || (watchedItems?.[index] as any)?.product_name) && (
                     <div>
                       <label className="block text-xs font-medium text-thai-gray-700 mb-1">ชื่อสินค้า</label>
                       <input
-                        value={selectedSku.sku_name || ''}
+                        value={selectedSku?.sku_name || (watchedItems?.[index] as any)?.product_name || ''}
                         readOnly
                         className="w-full p-2 border bg-gray-100 rounded-md text-sm text-gray-700"
                       />
                     </div>
                   )}
-                  
+
                   {/* Essential Quantities */}
                   <div className="grid grid-cols-3 gap-3">
                     <div>
-                      <label className="block text-xs font-medium text-thai-gray-700 mb-1">จำนวน (ชิ้น) *</label>
+                      <label className="block text-xs font-medium text-thai-gray-700 mb-1">
+                        {isCustomerReturn ? 'จำนวนที่รับกลับ (ชิ้น) *' : 'จำนวน (ชิ้น) *'}
+                      </label>
                       <input
                         type="number"
                         {...register(`items.${index}.piece_quantity`, { valueAsNumber: true })}
-                        className="w-full p-2 border rounded-md text-sm"
-                        placeholder="0"
+                        className={`w-full p-2 border rounded-md text-sm ${isCustomerReturn ? 'border-orange-300 bg-white' : ''}`}
+                        placeholder={isCustomerReturn && originalQty ? `สูงสุด ${originalQty}` : '0'}
+                        max={isCustomerReturn ? originalQty : undefined}
                       />
+                      {isCustomerReturn && originalQty && (
+                        <div className="text-xs text-orange-600 mt-1">จำนวนเดิม: {originalQty} ชิ้น</div>
+                      )}
                     </div>
                     <div>
                       <label className="block text-xs font-medium text-thai-gray-700 mb-1">จำนวนแพ็ค (คำนวณอัตโนมัติ)</label>
@@ -1024,7 +1392,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
                         type="number"
                         step="0.001"
                         {...register(`items.${index}.weight_kg`, { valueAsNumber: true })}
-                        className="w-full p-2 border rounded-md text-sm bg-blue-50" 
+                        className="w-full p-2 border rounded-md text-sm bg-blue-50"
                         placeholder="คำนวณจาก SKU"
                       />
                       <div className="text-xs text-gray-500 mt-1">สามารถแก้ไขได้</div>
@@ -1202,6 +1570,10 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
               );
             })}
           </div>
+          )}
+
+          {/* Add Item Button - ซ่อนเมื่อเป็นรับสินค้าตีกลับ (ยกเว้น manual entry mode) */}
+          {(watchedType !== 'รับสินค้าตีกลับ' || isManualOrderEntry) && (
           <Button type="button" variant="outline" onClick={() => append({
             sku_id: '',
             piece_quantity: 0,
@@ -1218,6 +1590,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
           })}>
             <Plus className="mr-2 h-4 w-4" />เพิ่มรายการสินค้า
           </Button>
+          )}
         </div>
 
         {/* Pallet Breakdown Table - แสดงเมื่อมีการเลือกสร้าง Pallet */}
@@ -1273,7 +1646,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
                               {item.location_id ? (locations?.find(loc => loc.location_id === item.location_id)?.location_code || item.location_id) : '-'}
                             </td>
                             <td className="px-4 py-2 text-sm whitespace-nowrap" style={{minWidth: '150px'}}>
-                              {watch('received_by') ? systemUsers.find(user => user.user_id === watch('received_by'))?.full_name : '-'}
+                              {watch('received_by') ? (() => { const emp = employees.find(e => e.employee_id === watch('received_by')); return emp ? `${emp.first_name} ${emp.last_name}` : '-'; })() : '-'}
                             </td>
                             <td className="px-4 py-2 text-sm whitespace-nowrap" style={{minWidth: '120px'}}>
                               <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">
@@ -1314,7 +1687,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
                               {item.location_id ? (locations?.find(loc => loc.location_id === item.location_id)?.location_code || item.location_id) : '-'}
                             </td>
                             <td className="px-4 py-2 text-sm whitespace-nowrap" style={{minWidth: '150px'}}>
-                              {watch('received_by') ? systemUsers.find(user => user.user_id === watch('received_by'))?.full_name : '-'}
+                              {watch('received_by') ? (() => { const emp = employees.find(e => e.employee_id === watch('received_by')); return emp ? `${emp.first_name} ${emp.last_name}` : '-'; })() : '-'}
                             </td>
                             <td className="px-4 py-2 text-sm whitespace-nowrap" style={{minWidth: '120px'}}>
                               <span className={`px-2 py-1 rounded-full text-xs font-medium ${
@@ -1349,7 +1722,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
                                   {item.location_id ? (locations?.find(loc => loc.location_id === item.location_id)?.location_code || item.location_id) : '-'}
                                 </td>
                                 <td className="px-4 py-2 text-sm whitespace-nowrap" style={{minWidth: '150px'}}>
-                                  {watch('received_by') ? systemUsers.find(user => user.user_id === watch('received_by'))?.full_name : '-'}
+                                  {watch('received_by') ? (() => { const emp = employees.find(e => e.employee_id === watch('received_by')); return emp ? `${emp.first_name} ${emp.last_name}` : '-'; })() : '-'}
                                 </td>
                                 <td className="px-4 py-2 text-sm whitespace-nowrap" style={{minWidth: '120px'}}>
                                   <span className="px-2 py-1 rounded-full text-xs font-medium bg-green-100 text-green-800">

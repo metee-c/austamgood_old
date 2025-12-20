@@ -90,6 +90,7 @@ interface TransferSelectedItem {
   pack_qty: number;
   move_method: 'pallet' | 'sku';
   to_location_id: string;
+  default_location?: string | null; // บ้านหยิบ (pick face location)
 }
 
 const STATUS_OPTIONS: { value: MoveStatus | 'all'; label: string }[] = [
@@ -596,6 +597,7 @@ const TransferPage: React.FC = () => {
             pack_qty: Number(balance.total_pack_qty ?? 0),
             move_method: (balance.pallet_id ? 'pallet' : 'sku') as 'sku' | 'pallet',
             to_location_id: '',
+            default_location: balance.master_sku?.default_location ?? null, // บ้านหยิบ
           };
         })
         .filter((item) => {
@@ -2324,6 +2326,29 @@ const TransferPage: React.FC = () => {
                       <h4 className="text-sm font-medium text-blue-900 mb-2">
                         รายการที่เลือกสำหรับย้าย ({transferSelectedItems.length} รายการ)
                       </h4>
+                      {/* Quick action: Set all to pick face location */}
+                      {transferSelectedItems.some(item => item.default_location) && (
+                        <div className="mb-2 flex items-center gap-2">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setTransferSelectedItems(prev =>
+                                prev.map(item => ({
+                                  ...item,
+                                  to_location_id: item.default_location || item.to_location_id,
+                                }))
+                              );
+                            }}
+                            className="text-xs bg-green-50 border-green-300 text-green-700 hover:bg-green-100"
+                          >
+                            🏠 ใช้บ้านหยิบทั้งหมด
+                          </Button>
+                          <span className="text-xs text-gray-500">
+                            (ตั้งโลเคชั่นปลายทางเป็นบ้านหยิบของแต่ละ SKU)
+                          </span>
+                        </div>
+                      )}
                       <div className="overflow-x-auto overflow-y-auto bg-white rounded-lg max-h-[48rem] min-h-[32rem]">
                         <table className="min-w-full text-sm">
                           <thead className="bg-blue-100">
@@ -2373,17 +2398,36 @@ const TransferPage: React.FC = () => {
                                     </div>
                                   </td>
                                   <td className="px-2 py-1.5 align-top w-[18rem]">
-                                    <ZoneLocationSelect
-                                      warehouseId={selectedToWarehouse || ''}
-                                      value={item.to_location_id}
-                                      onChange={(locationId) =>
-                                        handleUpdateTransferItem(item.key, {
-                                          to_location_id: locationId ? String(locationId) : '',
-                                        })
-                                      }
-                                      placeholder="เลือกโลเคชั่นปลายทาง"
-                                      className="w-full"
-                                    />
+                                    <div className="flex flex-col gap-1">
+                                      <ZoneLocationSelect
+                                        warehouseId={selectedToWarehouse || ''}
+                                        value={item.to_location_id}
+                                        onChange={(locationId) =>
+                                          handleUpdateTransferItem(item.key, {
+                                            to_location_id: locationId ? String(locationId) : '',
+                                          })
+                                        }
+                                        placeholder="เลือกโลเคชั่นปลายทาง"
+                                        className="w-full"
+                                      />
+                                      {item.default_location && (
+                                        <button
+                                          type="button"
+                                          onClick={() =>
+                                            handleUpdateTransferItem(item.key, {
+                                              to_location_id: item.default_location || '',
+                                            })
+                                          }
+                                          className={`text-xs px-2 py-1 rounded border ${
+                                            item.to_location_id === item.default_location
+                                              ? 'bg-green-100 border-green-400 text-green-700'
+                                              : 'bg-gray-50 border-gray-300 text-gray-600 hover:bg-green-50 hover:border-green-300 hover:text-green-700'
+                                          }`}
+                                        >
+                                          🏠 บ้านหยิบ: {item.default_location}
+                                        </button>
+                                      )}
+                                    </div>
                                   </td>
                                   <td className="px-2 py-1.5 text-center">
                                     <Button variant="outline" size="sm" onClick={() => handleลบTransferItem(item.key)}>

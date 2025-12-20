@@ -2,14 +2,14 @@
    - Environments: .env.local
 
    Creating an optimized production build ...
- ✓ Compiled successfully in 14.4s
+ ✓ Compiled successfully in 18.6s
    Running TypeScript ...
    Collecting page data using 13 workers ...
-   Generating static pages using 13 workers (0/158) ...
-   Generating static pages using 13 workers (39/158) 
-   Generating static pages using 13 workers (78/158) 
-   Generating static pages using 13 workers (118/158) 
- ✓ Generating static pages using 13 workers (158/158) in 3.4s
+   Generating static pages using 13 workers (0/164) ...
+   Generating static pages using 13 workers (41/164) 
+   Generating static pages using 13 workers (82/164) 
+   Generating static pages using 13 workers (123/164) 
+ ✓ Generating static pages using 13 workers (164/164) in 1331.3ms
    Finalizing page optimization ...
 
 Route (app)
@@ -105,11 +105,13 @@ Route (app)
 ├ ƒ /api/orders
 ├ ƒ /api/orders/dashboard
 ├ ƒ /api/orders/[id]
+├ ƒ /api/orders/[id]/items
 ├ ƒ /api/orders/[id]/rollback
 ├ ƒ /api/orders/[id]/rollback-history
 ├ ƒ /api/orders/[id]/rollback-preview
 ├ ƒ /api/orders/import
 ├ ƒ /api/orders/import/confirm
+├ ƒ /api/orders/returnable
 ├ ƒ /api/orders/with-items
 ├ ƒ /api/permission-modules
 ├ ƒ /api/picklists
@@ -125,6 +127,7 @@ Route (app)
 ├ ƒ /api/preparation-areas/import
 ├ ƒ /api/preparation-areas/template
 ├ ƒ /api/preparation-areas/zones
+├ ƒ /api/production/forecast
 ├ ƒ /api/receives
 ├ ƒ /api/receives/dashboard
 ├ ƒ /api/receives/generate-pallet-id
@@ -237,7 +240,11 @@ Route (app)
 ├ ○ /online-packing/returns
 ├ ○ /online-packing/settings
 ├ ○ /online-packing/users
+├ ○ /production/actual
+├ ○ /production/forecast
+├ ○ /production/material-requisition
 ├ ○ /production/orders
+├ ○ /production/planning
 ├ ○ /profile
 ├ ○ /profile/sessions
 ├ ○ /receiving

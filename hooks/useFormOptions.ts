@@ -275,8 +275,9 @@ export const useEmployees = () => {
           throw new Error(result.error);
         }
 
-        // API returns { data: [...] }, show all employees since there's no status field
-        setEmployees(result.data || []);
+        // API returns array directly (not wrapped in { data: [...] })
+        const employeeData = Array.isArray(result) ? result : (result.data || []);
+        setEmployees(employeeData);
         setError(null);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';

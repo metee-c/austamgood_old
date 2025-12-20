@@ -197,6 +197,7 @@ const TripEditForm: React.FC<TripEditFormProps> = ({ trip, tripIndex, suppliers,
   }, []);
 
   // Initialize pricing mode from trip data
+  // Default to 'formula' (แบบคำนวณ) for trips without saved pricing mode
   const [pricingMode, setPricingMode] = useState<'formula' | 'flat'>(
     (trip as any).pricing_mode === 'flat' ? 'flat' : 'formula'
   );
@@ -1307,7 +1308,8 @@ const EditShippingCostModal: React.FC<EditShippingCostModalProps> = ({
         } catch {}
 
         // If no changes in form, use existing trip data
-        const pricingMode = tripData?.pricingMode || (trip as any).pricing_mode || 'flat';
+        // Default to 'formula' (แบบคำนวณ) for trips without saved pricing mode
+        const pricingMode = tripData?.pricingMode || (trip as any).pricing_mode || 'formula';
         const basePrice = tripData?.base_price ?? (trip as any).base_price ?? 0;
         const helperFee = tripData?.helper_fee ?? (trip as any).helper_fee ?? 0;
         const extraStopFee = tripData?.extra_stop_fee ?? (trip as any).extra_stop_fee ?? 100;

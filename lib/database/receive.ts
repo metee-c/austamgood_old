@@ -297,15 +297,25 @@ export class ReceiveService {
     }
 
     // Step 2: Generate Pallet IDs if needed
-    let itemsToInsert = payload.items.map(item => ({
-      ...item,
-      receive_id: header.receive_id, // Link to the new header
-      created_by: payload.created_by, // Add created_by to items
-      // Convert empty strings to null for date fields (PostgreSQL requires null, not empty string)
-      production_date: item.production_date && item.production_date.trim() !== '' ? item.production_date : null,
-      expiry_date: item.expiry_date && item.expiry_date.trim() !== '' ? item.expiry_date : null,
-      received_date: item.received_date && item.received_date.trim() !== '' ? item.received_date : null,
-    }));
+    let itemsToInsert = payload.items.map(item => {
+      // Extract only valid database columns, excluding UI-only fields
+      const {
+        original_quantity,
+        return_quantity,
+        generate_pallet,
+        ...validItem
+      } = item as any;
+      
+      return {
+        ...validItem,
+        receive_id: header.receive_id, // Link to the new header
+        created_by: payload.created_by, // Add created_by to items
+        // Convert empty strings to null for date fields (PostgreSQL requires null, not empty string)
+        production_date: validItem.production_date && validItem.production_date.trim() !== '' ? validItem.production_date : null,
+        expiry_date: validItem.expiry_date && validItem.expiry_date.trim() !== '' ? validItem.expiry_date : null,
+        received_date: validItem.received_date && validItem.received_date.trim() !== '' ? validItem.received_date : null,
+      };
+    });
 
     // Auto-generate Pallet IDs based on pallet_box_option
     if (payload.pallet_box_option === 'สร้าง_Pallet_ID' || payload.pallet_box_option === 'สร้าง_Pallet_ID_รวม') {
