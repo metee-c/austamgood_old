@@ -22,12 +22,11 @@ import {
   PauseCircle,
   AlertCircle,
   Trash2,
-  Eye,
   ChevronDown,
-  ChevronUp,
   MapPin,
   Calendar,
   Check,
+  Printer,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
@@ -40,7 +39,6 @@ import {
   ProductionOrderWithDetails,
   ProductionOrderStatus,
   CreateProductionOrderInput,
-  PlanDataForOrder,
 } from '@/types/production-order-schema';
 
 // Types for food stock
@@ -52,7 +50,8 @@ interface FoodStockPallet {
   warehouse_id: string;
   total_piece_qty: number;
   reserved_piece_qty: number;
-  available_qty: number;
+  available_qty: number; // in kg
+  available_bags: number; // in bags
   production_date: string | null;
   expiry_date: string | null;
 }
@@ -62,7 +61,9 @@ interface FoodStockByDate {
   sku_name: string;
   production_date: string | null;
   expiry_date: string | null;
-  total_qty: number;
+  total_qty: number; // in kg
+  total_bags: number; // in bags
+  weight_per_bag: number;
   pallets: FoodStockPallet[];
 }
 
@@ -100,7 +101,6 @@ function ProductionOrdersContent() {
   const pageSize = 50;
 
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [selectedOrder, setSelectedOrder] = useState<ProductionOrderWithDetails | null>(null);
   const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
 
   const { orders, totalCount, summary, isLoading, error, mutate } = useProductionOrders({
@@ -112,7 +112,8 @@ function ProductionOrdersContent() {
     pageSize,
   });
 
-  const { deleteOrder } = useProductionOrderMutations();
+  const { deleteOrder, performAction } = useProductionOrderMutations();
+  const [startingOrderId, setStartingOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     if (planIdFromUrl) {
@@ -147,7 +148,182 @@ function ProductionOrdersContent() {
     setDeletingOrderId(null);
     if (success) {
       mutate();
-      if (selectedOrder?.id === orderId) setSelectedOrder(null);
+    }
+  };
+
+  const handlePrintOrder = async (order: ProductionOrderWithDetails, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    
+    // Auto-approve: change status to in_progress before printing
+    // (order has already been reviewed during planning phase)
+    if (order.status === 'planned' || order.status === 'released') {
+      setStartingOrderId(order.id);
+      const result = await performAction(order.id, 'start');
+      setStartingOrderId(null);
+      
+      if (!result) {
+        alert('ไม่สามารถเปลี่ยนสถานะใบสั่งผลิตได้');
+        return;
+      }
+      
+      // Update order with new status for print document
+      order = { ...order, status: 'in_progress' };
+      mutate(); // Refresh the list
+    }
+    
+    // Generate print HTML and open in new window
+    const formatDate = (dateStr: string | null | undefined) => {
+      if (!dateStr) return '-';
+      return new Date(dateStr).toLocaleDateString('th-TH', { year: 'numeric', month: 'short', day: 'numeric' });
+    };
+    
+    const getStatusText = (status: string) => {
+      const map: Record<string, string> = { planned: 'วางแผน', released: 'ปล่อยงาน', in_progress: 'กำลังผลิต', completed: 'เสร็จสิ้น', on_hold: 'พักงาน', cancelled: 'ยกเลิก' };
+      return map[status] || status;
+    };
+
+    const materialsRows = order.items?.map((item, i) => `
+      <tr>
+        <td style="border:1px solid #000;padding:4px;text-align:center">${i + 1}</td>
+        <td style="border:1px solid #000;padding:4px;font-family:monospace">${item.material_sku_id}</td>
+        <td style="border:1px solid #000;padding:4px">${item.material_sku?.sku_name || item.material_sku_id}</td>
+        <td style="border:1px solid #000;padding:4px;text-align:right">${Number(item.required_qty).toLocaleString()} ${item.uom || ''}</td>
+      </tr>
+    `).join('') || '';
+
+    const printHtml = `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>ใบสั่งผลิต ${order.production_no}</title>
+  <style>
+    @page { size: A4 portrait; margin: 10mm; }
+    body { font-family: 'Sarabun', 'Noto Sans Thai', sans-serif; font-size: 11pt; color: #000; margin: 0; padding: 15mm; }
+    table { border-collapse: collapse; width: 100%; }
+    .header { border-bottom: 2px solid #000; padding-bottom: 8px; margin-bottom: 15px; }
+    .title { font-size: 16pt; font-weight: bold; text-align: center; margin: 10px 0; border: 1px solid #000; padding: 6px; }
+    .section-title { font-weight: bold; margin: 15px 0 8px 0; border-left: 3px solid #000; padding-left: 8px; }
+    .signatures { margin-top: 30px; }
+    .footer { margin-top: 20px; font-size: 9pt; border-top: 1px solid #000; padding-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div style="font-size:14pt;font-weight:bold">AUSTAMGOOD CO., LTD.</div>
+    <div style="font-size:9pt">ระบบจัดการคลังสินค้า (WMS)</div>
+  </div>
+  
+  <div class="title">ใบสั่งผลิต (Production Order)</div>
+  <div style="text-align:center;font-size:12pt;font-weight:bold;margin-bottom:15px">เลขที่: ${order.production_no}</div>
+  
+  <!-- ข้อมูลใบสั่งผลิต -->
+  <table style="margin-bottom:15px">
+    <tr>
+      <td style="border:1px solid #000;padding:6px;width:50%;vertical-align:top">
+        <div style="font-weight:bold;border-bottom:1px solid #000;padding-bottom:4px;margin-bottom:6px">ข้อมูลใบสั่งผลิต</div>
+        <table style="width:100%;border:none">
+          <tr><td style="padding:2px 0">สถานะ:</td><td style="padding:2px 0;text-align:right;font-weight:bold">${getStatusText(order.status)}</td></tr>
+          <tr><td style="padding:2px 0">วันที่เริ่ม:</td><td style="padding:2px 0;text-align:right">${formatDate(order.start_date)}</td></tr>
+          <tr><td style="padding:2px 0">กำหนดเสร็จ:</td><td style="padding:2px 0;text-align:right">${formatDate(order.due_date)}</td></tr>
+        </table>
+      </td>
+      <td style="border:1px solid #000;padding:6px;width:50%;vertical-align:top">
+        <div style="font-weight:bold;border-bottom:1px solid #000;padding-bottom:4px;margin-bottom:6px">ข้อมูลแผนการผลิต</div>
+        <table style="width:100%;border:none">
+          <tr><td style="padding:2px 0">รหัสแผน:</td><td style="padding:2px 0;text-align:right">${order.plan?.plan_no || '-'}</td></tr>
+          <tr><td style="padding:2px 0">ชื่อแผน:</td><td style="padding:2px 0;text-align:right">${order.plan?.plan_name || '-'}</td></tr>
+          <tr><td style="padding:2px 0">วันที่สร้าง:</td><td style="padding:2px 0;text-align:right">${formatDate(order.created_at)}</td></tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+  
+  <!-- สินค้าที่ผลิต -->
+  <table style="margin-bottom:15px">
+    <tr style="background:#000;color:#fff">
+      <th colspan="4" style="padding:8px;text-align:left;font-weight:bold">สินค้าที่ผลิต (Finished Goods)</th>
+    </tr>
+    <tr>
+      <td colspan="4" style="border:1px solid #000;padding:8px">
+        <div style="font-size:13pt;font-weight:bold;margin-bottom:4px">${order.sku?.sku_name || order.sku_id}</div>
+        <div style="font-size:10pt;color:#333">รหัส: <span style="font-family:monospace">${order.sku_id}</span></div>
+      </td>
+    </tr>
+    <tr>
+      <td style="border:1px solid #000;padding:10px;text-align:center;width:25%">
+        <div style="font-size:16pt;font-weight:bold">${Number(order.quantity).toLocaleString()}</div>
+        <div style="font-size:9pt">จำนวนสั่งผลิต</div>
+      </td>
+      <td style="border:1px solid #000;padding:10px;text-align:center;width:25%">
+        <div style="font-size:16pt;font-weight:bold">${Number(order.produced_qty || 0).toLocaleString()}</div>
+        <div style="font-size:9pt">ผลิตได้แล้ว</div>
+      </td>
+      <td style="border:1px solid #000;padding:10px;text-align:center;width:25%">
+        <div style="font-size:12pt;font-weight:bold">${order.production_date ? formatDate(order.production_date) : '-'}</div>
+        <div style="font-size:9pt">วันผลิต FG</div>
+      </td>
+      <td style="border:1px solid #000;padding:10px;text-align:center;width:25%">
+        <div style="font-size:12pt;font-weight:bold">${order.expiry_date ? formatDate(order.expiry_date) : '-'}</div>
+        <div style="font-size:9pt">วันหมดอายุ FG</div>
+      </td>
+    </tr>
+  </table>
+  
+  ${order.items && order.items.length > 0 ? `
+  <div class="section-title">รายการวัตถุดิบที่ต้องใช้ (${order.items.length} รายการ)</div>
+  <table>
+    <thead>
+      <tr style="background:#eee">
+        <th style="border:1px solid #000;padding:6px;width:5%">#</th>
+        <th style="border:1px solid #000;padding:6px;width:20%">รหัส</th>
+        <th style="border:1px solid #000;padding:6px">ชื่อวัตถุดิบ</th>
+        <th style="border:1px solid #000;padding:6px;width:15%">จำนวน</th>
+      </tr>
+    </thead>
+    <tbody>${materialsRows}</tbody>
+  </table>
+  ` : ''}
+  
+  ${order.remarks ? `<div style="margin-top:15px;padding:8px;border:1px solid #000"><strong>หมายเหตุ:</strong> ${order.remarks}</div>` : ''}
+  ${order.fg_remarks ? `<div style="margin-top:10px;padding:8px;border:1px solid #000;background:#f9f9f9"><strong>หมายเหตุ FG:</strong> ${order.fg_remarks}</div>` : ''}
+  
+  <!-- ลายเซ็น -->
+  <table class="signatures">
+    <tr>
+      <td style="width:33%;text-align:center;padding-top:50px;border-top:1px solid #000">
+        <div style="font-weight:bold">ผู้สั่งผลิต</div>
+        <div style="font-size:9pt">วันที่: ____/____/____</div>
+      </td>
+      <td style="width:33%;text-align:center;padding-top:50px;border-top:1px solid #000">
+        <div style="font-weight:bold">ผู้ตรวจสอบ</div>
+        <div style="font-size:9pt">วันที่: ____/____/____</div>
+      </td>
+      <td style="width:34%;text-align:center;padding-top:50px;border-top:1px solid #000">
+        <div style="font-weight:bold">ผู้อนุมัติ</div>
+        <div style="font-size:9pt">วันที่: ____/____/____</div>
+      </td>
+    </tr>
+  </table>
+  
+  <div class="footer">
+    <table style="width:100%">
+      <tr>
+        <td style="text-align:left">พิมพ์เมื่อ: ${new Date().toLocaleString('th-TH')}</td>
+        <td style="text-align:right">หน้า 1/1</td>
+      </tr>
+    </table>
+  </div>
+</body>
+</html>`;
+
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(printHtml);
+      printWindow.document.close();
+      printWindow.onload = () => {
+        printWindow.print();
+      };
     }
   };
 
@@ -175,7 +351,14 @@ function ProductionOrdersContent() {
               <option value="cancelled">ยกเลิก</option>
             </select>
             <Button variant="outline" size="sm" icon={Download} className="text-xs py-1 px-2">Excel</Button>
-            <Button variant="primary" size="sm" icon={Plus} onClick={() => setShowCreateModal(true)} className="text-xs py-1 px-2">สร้าง</Button>
+            <Button variant="primary" size="sm" icon={Plus} onClick={() => {
+              if (!planIdFromUrl) {
+                alert('กรุณาเลือกแผนผลิตจากหน้าวางแผนผลิตก่อนสร้างใบสั่งผลิต');
+                router.push('/production/planning');
+                return;
+              }
+              setShowCreateModal(true);
+            }} className="text-xs py-1 px-2">สร้าง</Button>
             <Button variant="outline" size="sm" icon={RefreshCw} onClick={() => mutate()} disabled={isLoading} className="text-xs py-1 px-2">รีเฟรช</Button>
           </div>
         </div>
@@ -233,7 +416,7 @@ function ProductionOrdersContent() {
                       const statusConfig = getStatusConfig(order.status);
                       const isDeleting = deletingOrderId === order.id;
                       return (
-                        <tr key={order.id} className="hover:bg-blue-50/30 transition-colors duration-150 cursor-pointer" onClick={() => setSelectedOrder(order)}>
+                        <tr key={order.id} className="hover:bg-blue-50/30 transition-colors duration-150">
                           <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap"><span className="font-mono font-semibold text-blue-600">{order.production_no}</span></td>
                           <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap"><span className="font-mono text-thai-gray-700">{order.sku_id}</span></td>
                           <td className="px-2 py-1.5 border-r border-gray-100"><span className="text-thai-gray-700 font-thai">{order.sku?.sku_name || order.sku_id}</span></td>
@@ -244,7 +427,7 @@ function ProductionOrdersContent() {
                           <td className="px-2 py-1.5 border-r border-gray-100">{statusConfig.badge}</td>
                           <td className="px-2 py-1.5 text-center">
                             <div className="flex items-center justify-center gap-1">
-                              <button onClick={(e) => { e.stopPropagation(); setSelectedOrder(order); }} className="p-1 rounded hover:bg-blue-100 text-blue-600 transition-colors" title="ดูรายละเอียด"><Eye className="w-4 h-4" /></button>
+                              <button onClick={(e) => handlePrintOrder(order, e)} disabled={startingOrderId === order.id} className="p-1 rounded hover:bg-green-100 text-green-600 transition-colors disabled:opacity-50" title="พิมพ์">{startingOrderId === order.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}</button>
                               <button onClick={(e) => handleDeleteOrder(order.id, e)} disabled={isDeleting} className="p-1 rounded hover:bg-red-100 text-red-500 transition-colors disabled:opacity-50" title="ลบ">{isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}</button>
                             </div>
                           </td>
@@ -279,10 +462,6 @@ function ProductionOrdersContent() {
           onSuccess={() => { setShowCreateModal(false); if (planIdFromUrl) router.replace('/production/orders'); mutate(); }}
         />
       )}
-
-      {selectedOrder && (
-        <OrderDetailModal order={selectedOrder} onClose={() => setSelectedOrder(null)} getStatusConfig={getStatusConfig} onStatusChange={() => mutate()} />
-      )}
     </div>
   );
 }
@@ -316,12 +495,31 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
   const { planData, isLoading: loadingPlan } = usePlanDataForOrder(planId);
   const { createOrder, isLoading: creating } = useProductionOrderMutations();
 
+  // If no planId provided, show error and close
+  if (!planId) {
+    return (
+      <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-lg shadow-xl w-full max-w-md p-6 text-center">
+          <AlertTriangle className="w-12 h-12 text-red-500 mx-auto mb-4" />
+          <h2 className="text-lg font-bold text-thai-gray-900 font-thai mb-2">ไม่พบข้อมูลแผนผลิต</h2>
+          <p className="text-sm text-gray-600 font-thai mb-4">กรุณาเลือกแผนผลิตจากหน้าวางแผนผลิตก่อนสร้างใบสั่งผลิต</p>
+          <Button variant="primary" onClick={onClose} className="w-full">ยกเลิก</Button>
+        </div>
+      </div>
+    );
+  }
+
   // Form state
   const [selectedSkuIndex, setSelectedSkuIndex] = useState(0);
   const [quantity, setQuantity] = useState('');
   const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
   const [dueDate, setDueDate] = useState('');
   const [remarks, setRemarks] = useState('');
+  
+  // FG (Finished Goods) production date and expiry date
+  const [fgProductionDate, setFgProductionDate] = useState(new Date().toISOString().split('T')[0]);
+  const [fgExpiryDate, setFgExpiryDate] = useState('');
+  const [fgRemarks, setFgRemarks] = useState('');
 
   // Food stock state
   const [foodStock, setFoodStock] = useState<FoodStockByDate[]>([]);
@@ -405,6 +603,11 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
       alert('กรุณากรอกข้อมูลให้ครบถ้วน');
       return;
     }
+    
+    if (!fgProductionDate || !fgExpiryDate) {
+      alert('กรุณากรอกวันผลิตและวันหมดอายุของสินค้า FG');
+      return;
+    }
 
     // Build items from materials
     const items = planData?.materials.map(mat => ({
@@ -419,6 +622,9 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
       quantity: Number(quantity),
       start_date: startDate,
       due_date: dueDate,
+      production_date: fgProductionDate,
+      expiry_date: fgExpiryDate,
+      fg_remarks: fgRemarks || undefined,
       remarks,
       items,
     };
@@ -458,7 +664,12 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
               <span className="ml-2 text-sm font-thai">กำลังโหลดข้อมูลแผน...</span>
             </div>
           ) : !planData ? (
-            <div className="text-center py-8 text-red-500 font-thai">ไม่พบข้อมูลแผนผลิต</div>
+            <div className="text-center py-8">
+              <AlertTriangle className="w-10 h-10 text-red-500 mx-auto mb-3" />
+              <p className="text-red-500 font-thai font-semibold mb-2">ไม่พบข้อมูลแผนผลิต</p>
+              <p className="text-sm text-gray-500 font-thai mb-4">กรุณาเลือกแผนผลิตจากหน้าวางแผนผลิตก่อน</p>
+              <Button variant="outline" onClick={onClose}>ยกเลิก</Button>
+            </div>
           ) : (
             <>
               {/* Plan Info */}
@@ -492,7 +703,7 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
               </div>
 
               {/* Form Fields */}
-              <div className="grid grid-cols-4 gap-3">
+              <div className="grid grid-cols-3 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-thai-gray-700 font-thai mb-1">จำนวนที่สั่งผลิต *</label>
                   <input type="number" value={quantity} onChange={(e) => setQuantity(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
@@ -505,9 +716,24 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
                   <label className="block text-xs font-medium text-thai-gray-700 font-thai mb-1">กำหนดเสร็จ *</label>
                   <input type="date" value={dueDate} onChange={(e) => setDueDate(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
                 </div>
+              </div>
+
+              {/* FG Production Date & Expiry Date */}
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <div className="text-xs font-semibold text-blue-800 font-thai mb-2">ข้อมูลสินค้าสำเร็จรูป (FG) ที่จะผลิต</div>
+                <div className="grid grid-cols-2 gap-3 mb-2">
+                  <div>
+                    <label className="block text-xs font-medium text-blue-700 font-thai mb-1">วันผลิต FG *</label>
+                    <input type="date" value={fgProductionDate} onChange={(e) => setFgProductionDate(e.target.value)} className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm bg-white" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-blue-700 font-thai mb-1">วันหมดอายุ FG *</label>
+                    <input type="date" value={fgExpiryDate} onChange={(e) => setFgExpiryDate(e.target.value)} className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm bg-white" />
+                  </div>
+                </div>
                 <div>
-                  <label className="block text-xs font-medium text-thai-gray-700 font-thai mb-1">หมายเหตุ</label>
-                  <input type="text" value={remarks} onChange={(e) => setRemarks(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" placeholder="หมายเหตุ..." />
+                  <label className="block text-xs font-medium text-blue-700 font-thai mb-1">หมายเหตุ FG</label>
+                  <input type="text" value={fgRemarks} onChange={(e) => setFgRemarks(e.target.value)} className="w-full px-3 py-2 border border-blue-300 rounded-lg text-sm bg-white" placeholder="หมายเหตุสำหรับสินค้า FG..." />
                 </div>
               </div>
 
@@ -547,7 +773,7 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
                           <tr>
                             <th className="px-2 py-1.5 text-left font-thai">วันผลิต</th>
                             <th className="px-2 py-1.5 text-left font-thai">วันหมดอายุ</th>
-                            <th className="px-2 py-1.5 text-right font-thai">จำนวนคงเหลือ</th>
+                            <th className="px-2 py-1.5 text-right font-thai">จำนวนคงเหลือ (กก.)</th>
                             <th className="px-2 py-1.5 text-center font-thai">พาเลท</th>
                             <th className="px-2 py-1.5 w-8"></th>
                           </tr>
@@ -678,213 +904,6 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
           >
             {creating ? 'กำลังสร้าง...' : 'สร้างใบสั่งผลิต'}
           </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
-// ========== OrderDetailModal Component ==========
-interface OrderDetailModalProps {
-  order: ProductionOrderWithDetails;
-  onClose: () => void;
-  getStatusConfig: (status: ProductionOrderStatus) => { badge: React.ReactNode; icon: React.ReactNode };
-  onStatusChange: () => void;
-}
-
-function OrderDetailModal({ order, onClose, getStatusConfig, onStatusChange }: OrderDetailModalProps) {
-  const { performAction, isLoading } = useProductionOrderMutations();
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
-
-  const handleAction = async (action: string) => {
-    setActionLoading(action);
-    const result = await performAction(order.id, action);
-    setActionLoading(null);
-    if (result) {
-      onStatusChange();
-    }
-  };
-
-  const statusConfig = getStatusConfig(order.status);
-
-  const formatDate = (dateStr: string | null | undefined) => {
-    if (!dateStr) return '-';
-    return new Date(dateStr).toLocaleDateString('th-TH');
-  };
-
-  const getCreatorName = () => {
-    if (!order.creator) return '-';
-    const { first_name, last_name, nickname } = order.creator;
-    if (nickname) return nickname;
-    return `${first_name || ''} ${last_name || ''}`.trim() || '-';
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b bg-blue-50">
-          <div className="flex items-center gap-3">
-            <h2 className="text-base font-bold text-thai-gray-900 font-thai">
-              รายละเอียดใบสั่งผลิต: {order.production_no}
-            </h2>
-            {statusConfig.badge}
-          </div>
-          <button onClick={onClose} className="p-1 hover:bg-gray-200 rounded"><X className="w-5 h-5" /></button>
-        </div>
-
-        {/* Content */}
-        <div className="flex-1 overflow-auto p-4 space-y-4">
-          {/* Order Info */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="bg-gray-50 rounded-lg p-3">
-              <h3 className="text-xs font-semibold text-gray-500 mb-2 font-thai">ข้อมูลสินค้า</h3>
-              <div className="space-y-1 text-sm">
-                <div><span className="text-gray-500">รหัส:</span> <span className="font-mono font-medium">{order.sku_id}</span></div>
-                <div><span className="text-gray-500">ชื่อ:</span> <span className="font-thai">{order.sku?.sku_name || '-'}</span></div>
-                <div><span className="text-gray-500">จำนวนสั่ง:</span> <span className="font-bold text-blue-600">{Number(order.quantity).toLocaleString()}</span></div>
-                <div><span className="text-gray-500">ผลิตได้:</span> <span className="font-bold text-green-600">{Number(order.produced_qty || 0).toLocaleString()}</span></div>
-              </div>
-            </div>
-            <div className="bg-gray-50 rounded-lg p-3">
-              <h3 className="text-xs font-semibold text-gray-500 mb-2 font-thai">กำหนดการ</h3>
-              <div className="space-y-1 text-sm">
-                <div><span className="text-gray-500">วันเริ่ม:</span> <span>{formatDate(order.start_date)}</span></div>
-                <div><span className="text-gray-500">กำหนดเสร็จ:</span> <span>{formatDate(order.due_date)}</span></div>
-                <div><span className="text-gray-500">เริ่มจริง:</span> <span>{formatDate(order.actual_start_date)}</span></div>
-                <div><span className="text-gray-500">เสร็จจริง:</span> <span>{formatDate(order.actual_completion_date)}</span></div>
-              </div>
-            </div>
-          </div>
-
-          {/* Additional Info */}
-          <div className="bg-gray-50 rounded-lg p-3">
-            <h3 className="text-xs font-semibold text-gray-500 mb-2 font-thai">ข้อมูลเพิ่มเติม</h3>
-            <div className="grid grid-cols-3 gap-2 text-sm">
-              <div><span className="text-gray-500">แผนผลิต:</span> <span className="font-mono">{order.plan?.plan_no || '-'}</span></div>
-              <div><span className="text-gray-500">ผู้สร้าง:</span> <span className="font-thai">{getCreatorName()}</span></div>
-              <div><span className="text-gray-500">ลำดับความสำคัญ:</span> <span>{order.priority || 5}</span></div>
-            </div>
-            {order.remarks && (
-              <div className="mt-2 text-sm">
-                <span className="text-gray-500">หมายเหตุ:</span> <span className="font-thai">{order.remarks}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Materials */}
-          {order.items && order.items.length > 0 && (
-            <div className="border rounded-lg overflow-hidden">
-              <div className="bg-gray-100 px-3 py-2 border-b">
-                <span className="text-sm font-semibold text-gray-700 font-thai">วัตถุดิบ ({order.items.length} รายการ)</span>
-              </div>
-              <table className="w-full text-xs">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-2 py-1.5 text-left font-thai">รหัส</th>
-                    <th className="px-2 py-1.5 text-left font-thai">ชื่อวัตถุดิบ</th>
-                    <th className="px-2 py-1.5 text-right font-thai">ต้องการ</th>
-                    <th className="px-2 py-1.5 text-right font-thai">เบิกแล้ว</th>
-                    <th className="px-2 py-1.5 text-center font-thai">สถานะ</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {order.items.map((item) => (
-                    <tr key={item.id} className="border-b">
-                      <td className="px-2 py-1.5 font-mono text-gray-600">{item.material_sku_id}</td>
-                      <td className="px-2 py-1.5 font-thai">{item.material_sku?.sku_name || item.material_sku_id}</td>
-                      <td className="px-2 py-1.5 text-right font-bold">{Number(item.required_qty).toLocaleString()}</td>
-                      <td className="px-2 py-1.5 text-right text-green-600">{Number(item.issued_qty || 0).toLocaleString()}</td>
-                      <td className="px-2 py-1.5 text-center">
-                        <Badge 
-                          variant={item.status === 'issued' ? 'success' : item.status === 'partial' ? 'warning' : 'default'} 
-                          size="sm"
-                        >
-                          <span className="text-[10px]">
-                            {item.status === 'pending' ? 'รอเบิก' : item.status === 'partial' ? 'เบิกบางส่วน' : item.status === 'issued' ? 'เบิกแล้ว' : item.status}
-                          </span>
-                        </Badge>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-
-        {/* Footer with Actions */}
-        <div className="flex items-center justify-between px-4 py-3 border-t bg-gray-50">
-          <div className="flex items-center gap-2">
-            {order.status === 'planned' && (
-              <Button 
-                variant="primary" 
-                size="sm" 
-                onClick={() => handleAction('release')}
-                disabled={isLoading}
-                icon={actionLoading === 'release' ? Loader2 : CheckCircle2}
-              >
-                ปล่อยงาน
-              </Button>
-            )}
-            {(order.status === 'planned' || order.status === 'released') && (
-              <Button 
-                variant="warning" 
-                size="sm" 
-                onClick={() => handleAction('start')}
-                disabled={isLoading}
-                icon={actionLoading === 'start' ? Loader2 : PlayCircle}
-              >
-                เริ่มผลิต
-              </Button>
-            )}
-            {order.status === 'in_progress' && (
-              <>
-                <Button 
-                  variant="success" 
-                  size="sm" 
-                  onClick={() => handleAction('complete')}
-                  disabled={isLoading}
-                  icon={actionLoading === 'complete' ? Loader2 : CheckCircle2}
-                >
-                  เสร็จสิ้น
-                </Button>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => handleAction('hold')}
-                  disabled={isLoading}
-                  icon={actionLoading === 'hold' ? Loader2 : PauseCircle}
-                >
-                  พักงาน
-                </Button>
-              </>
-            )}
-            {order.status === 'on_hold' && (
-              <Button 
-                variant="warning" 
-                size="sm" 
-                onClick={() => handleAction('start')}
-                disabled={isLoading}
-                icon={actionLoading === 'start' ? Loader2 : PlayCircle}
-              >
-                ดำเนินการต่อ
-              </Button>
-            )}
-            {order.status !== 'completed' && order.status !== 'cancelled' && (
-              <Button 
-                variant="danger" 
-                size="sm" 
-                onClick={() => handleAction('cancel')}
-                disabled={isLoading}
-                icon={actionLoading === 'cancel' ? Loader2 : AlertCircle}
-              >
-                ยกเลิก
-              </Button>
-            )}
-          </div>
-          <Button variant="outline" onClick={onClose}>ปิด</Button>
         </div>
       </div>
     </div>

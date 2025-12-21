@@ -19,6 +19,9 @@ export interface ProductionOrder {
   uom?: string;
   start_date: string;
   due_date: string;
+  production_date?: string;  // วันผลิตของ FG
+  expiry_date?: string;      // วันหมดอายุของ FG
+  fg_remarks?: string;       // หมายเหตุ FG
   actual_start_date?: string;
   actual_completion_date?: string;
   status: ProductionOrderStatus;
@@ -86,6 +89,9 @@ export interface CreateProductionOrderInput {
   uom?: string;
   start_date: string;
   due_date: string;
+  production_date?: string;  // วันผลิตของ FG
+  expiry_date?: string;      // วันหมดอายุของ FG
+  fg_remarks?: string;       // หมายเหตุ FG
   priority?: number;
   remarks?: string;
   items?: CreateProductionOrderItemInput[];

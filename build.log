@@ -2,19 +2,38 @@
    - Environments: .env.local
 
    Creating an optimized production build ...
- ✓ Compiled successfully in 10.7s
+ ✓ Compiled successfully in 25.3s
    Running TypeScript ...
    Collecting page data using 13 workers ...
-   Generating static pages using 13 workers (0/171) ...
-   Generating static pages using 13 workers (42/171) 
-   Generating static pages using 13 workers (85/171) 
-   Generating static pages using 13 workers (128/171) 
- ✓ Generating static pages using 13 workers (171/171) in 1439.5ms
+   Generating static pages using 13 workers (0/190) ...
+   Generating static pages using 13 workers (47/190) 
+   Generating static pages using 13 workers (94/190) 
+   Generating static pages using 13 workers (142/190) 
+ ✓ Generating static pages using 13 workers (190/190) in 1383.5ms
    Finalizing page optimization ...
 
 Route (app)
 ┌ ƒ /
 ├ ƒ /api/admin/migrate-supplier
+├ ƒ /api/ai/analytics/kpi
+├ ƒ /api/ai/chat
+├ ƒ /api/ai/intelligence/consumption
+├ ƒ /api/ai/intelligence/days-of-cover
+├ ƒ /api/ai/intelligence/expiry-risk
+├ ƒ /api/ai/intelligence/overstock-risk
+├ ƒ /api/ai/intelligence/shortage-risk
+├ ƒ /api/ai/intelligence/utilization
+├ ƒ /api/ai/orders/status
+├ ƒ /api/ai/simulation/compare
+├ ƒ /api/ai/simulation/demand-increase
+├ ƒ /api/ai/simulation/lead-time-increase
+├ ƒ /api/ai/simulation/shift-change
+├ ƒ /api/ai/simulation/storage-reduction
+├ ƒ /api/ai/simulation/templates
+├ ƒ /api/ai/stock/balance
+├ ƒ /api/ai/stock/consumption
+├ ƒ /api/ai/stock/movements
+├ ƒ /api/ai/warehouse/locations
 ├ ƒ /api/auth/audit-logs
 ├ ƒ /api/auth/change-password
 ├ ƒ /api/auth/login
@@ -128,6 +147,7 @@ Route (app)
 ├ ƒ /api/preparation-areas/template
 ├ ƒ /api/preparation-areas/zones
 ├ ƒ /api/production/forecast
+├ ƒ /api/production/forecast/[sku_id]
 ├ ƒ /api/production/orders
 ├ ƒ /api/production/orders/food-stock
 ├ ƒ /api/production/orders/[id]

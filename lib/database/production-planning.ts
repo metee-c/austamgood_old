@@ -59,7 +59,7 @@ export async function getProductionPlans(
       ),
       material_requirements(
         *,
-        material_sku:master_sku!material_requirements_material_sku_id_fkey(sku_id, sku_name, uom_base),
+        material_sku:master_sku!material_requirements_material_sku_id_fkey(sku_id, sku_name, uom_base, weight_per_piece_kg),
         finished_sku:master_sku!material_requirements_finished_sku_id_fkey(sku_id, sku_name)
       )
     `, { count: 'exact' })
@@ -139,7 +139,7 @@ export async function getProductionPlanById(
       ),
       material_requirements(
         *,
-        material_sku:master_sku!material_requirements_material_sku_id_fkey(sku_id, sku_name, uom_base),
+        material_sku:master_sku!material_requirements_material_sku_id_fkey(sku_id, sku_name, uom_base, weight_per_piece_kg),
         finished_sku:master_sku!material_requirements_finished_sku_id_fkey(sku_id, sku_name)
       )
     `)
@@ -165,10 +165,10 @@ export async function calculateBomRequirements(
   const supabase = await createClient();
   const { sku_id, quantity } = request;
 
-  // 1. Get SKU info
+  // 1. Get SKU info including weight_per_piece_kg for unit conversion
   const { data: sku, error: skuError } = await supabase
     .from('master_sku')
-    .select('sku_id, sku_name, uom_base')
+    .select('sku_id, sku_name, uom_base, weight_per_piece_kg')
     .eq('sku_id', sku_id)
     .single();
 
@@ -182,7 +182,7 @@ export async function calculateBomRequirements(
     .from('bom_sku')
     .select(`
       *,
-      material_sku:master_sku!fk_material_sku(sku_id, sku_name, uom_base)
+      material_sku:master_sku!fk_material_sku(sku_id, sku_name, uom_base, weight_per_piece_kg)
     `)
     .eq('finished_sku_id', sku_id)
     .eq('status', 'active')
@@ -235,31 +235,45 @@ export async function calculateBomRequirements(
   });
 
   // 6. Calculate requirements for each material
+  // Get FG weight per piece for food material calculation
+  const fgWeightPerPiece = Number(sku.weight_per_piece_kg || 0);
+  
   const materials: CalculatedMaterial[] = bomRecords.map(bom => {
     const qtyPerUnit = Number(bom.material_qty || 0);
     const wastePerUnit = Number(bom.waste_qty || 0);
-    let grossRequirement = Math.ceil(quantity * (qtyPerUnit + wastePerUnit));
     
-    // For food materials (00-*), convert from bags to kg
-    // The weight per bag is encoded in the last 3 digits of the SKU ID (e.g., 012 = 1.2 kg, 070 = 7 kg)
-    // Food materials are tracked in kg in inventory, but BOM is in bags (1 bag per 1 bag FG)
+    // Check if this is a food material (00-*)
     const isFoodMaterial = bom.material_sku_id.startsWith('00-');
     let materialUom = bom.material_uom;
+    let grossRequirement: number;
+
+    if (isFoodMaterial) {
+      // For food materials: requirement = FG qty × FG weight per piece (in kg)
+      // Example: 6,000 bags FG × 4 kg/bag = 24,000 kg food needed
+      grossRequirement = Math.ceil(quantity * fgWeightPerPiece);
+      materialUom = 'กก.'; // kg
+    } else {
+      // For other materials: use BOM material_qty
+      grossRequirement = Math.ceil(quantity * (qtyPerUnit + wastePerUnit));
+    }
+
+    const currentStock = stockBySkuId[bom.material_sku_id] || 0;
+    const allocatedStock = allocatedBySkuId[bom.material_sku_id] || 0;
     
-    if (isFoodMaterial && bom.material_sku?.uom_base === 'กก.') {
-      // Extract weight from SKU ID (last 3 digits / 10)
-      const weightMatch = bom.material_sku_id.match(/(\d{3})$/);
-      if (weightMatch) {
-        const weightPerBag = parseInt(weightMatch[1], 10) / 10;
-        grossRequirement = Math.ceil(quantity * (qtyPerUnit + wastePerUnit) * weightPerBag);
-        materialUom = 'กก.'; // kg
+    // For food materials, convert stock from bags to kg for comparison
+    let availableStockDisplay = Math.max(0, currentStock - allocatedStock);
+    let currentStockDisplay = currentStock;
+    
+    if (isFoodMaterial) {
+      // Food stock is stored in bags, convert to kg for display
+      const materialWeightPerBag = Number(bom.material_sku?.weight_per_piece_kg || 0);
+      if (materialWeightPerBag > 0) {
+        availableStockDisplay = Math.max(0, (currentStock - allocatedStock) * materialWeightPerBag);
+        currentStockDisplay = currentStock * materialWeightPerBag;
       }
     }
     
-    const currentStock = stockBySkuId[bom.material_sku_id] || 0;
-    const allocatedStock = allocatedBySkuId[bom.material_sku_id] || 0;
-    const availableStock = Math.max(0, currentStock - allocatedStock);
-    const netRequirement = Math.max(0, grossRequirement - availableStock);
+    const netRequirement = Math.max(0, grossRequirement - availableStockDisplay);
     const shortageQty = netRequirement;
 
     return {
@@ -272,9 +286,9 @@ export async function calculateBomRequirements(
       step_order: bom.step_order,
       step_name: bom.step_name,
       gross_requirement: grossRequirement,
-      current_stock: currentStock,
+      current_stock: currentStockDisplay,
       allocated_stock: allocatedStock,
-      available_stock: availableStock,
+      available_stock: availableStockDisplay,
       net_requirement: netRequirement,
       shortage_qty: shortageQty,
       has_shortage: shortageQty > 0,

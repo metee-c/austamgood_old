@@ -443,14 +443,13 @@ function ListView({ plans, getStatusConfig, onPlanClick, onDelete, deletingPlanI
         <table className="w-full table-fixed text-sm">
           <thead className="sticky top-0 bg-gradient-to-r from-gray-50 to-gray-100 z-10 border-b border-gray-200">
             <tr>
-              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[11%]">รหัสแผน</th>
-              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[18%]">ชื่อแผน</th>
-              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[11%]">วันที่เริ่ม</th>
-              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[11%]">วันที่สิ้นสุด</th>
-              <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[9%]">สินค้า</th>
-              <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[9%]">วัตถุดิบ</th>
-              <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[9%]">ขาด</th>
-              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[12%]">สถานะ</th>
+              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[12%]">รหัสแผน</th>
+              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[22%]">ชื่อแผน</th>
+              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[12%]">วันที่ผลิต</th>
+              <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[10%]">สินค้า</th>
+              <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[10%]">วัตถุดิบ</th>
+              <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[10%]">ขาด</th>
+              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[14%]">สถานะ</th>
               <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide w-[10%]">จัดการ</th>
             </tr>
           </thead>
@@ -464,9 +463,6 @@ function ListView({ plans, getStatusConfig, onPlanClick, onDelete, deletingPlanI
                   <td className="px-3 py-2 text-xs font-thai text-gray-900">{plan.plan_name}</td>
                   <td className="px-3 py-2 text-xs text-gray-700 font-thai">
                     {new Date(plan.plan_start_date).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' })}
-                  </td>
-                  <td className="px-3 py-2 text-xs text-gray-700 font-thai">
-                    {new Date(plan.plan_end_date).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' })}
                   </td>
                   <td className="px-3 py-2 text-center">
                     <span className="text-sm font-bold text-purple-600">{plan.total_products_planned}</span>
@@ -759,19 +755,11 @@ function PlanDetailModal({
               </div>
             </div>
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs text-gray-500 font-thai mb-1">วันที่เริ่ม</label>
-                  <p className="text-sm font-semibold text-gray-900">
-                    {new Date(plan.plan_start_date).toLocaleDateString('th-TH', { day: '2-digit', month: 'long', year: 'numeric' })}
-                  </p>
-                </div>
-                <div>
-                  <label className="block text-xs text-gray-500 font-thai mb-1">วันที่สิ้นสุด</label>
-                  <p className="text-sm font-semibold text-gray-900">
-                    {new Date(plan.plan_end_date).toLocaleDateString('th-TH', { day: '2-digit', month: 'long', year: 'numeric' })}
-                  </p>
-                </div>
+              <div>
+                <label className="block text-xs text-gray-500 font-thai mb-1">วันที่ผลิต</label>
+                <p className="text-sm font-semibold text-gray-900">
+                  {new Date(plan.plan_start_date).toLocaleDateString('th-TH', { day: '2-digit', month: 'long', year: 'numeric' })}
+                </p>
               </div>
               <div className="grid grid-cols-3 gap-4">
                 <div className="bg-purple-50 rounded-lg p-3 text-center">
@@ -886,24 +874,45 @@ function PlanDetailModal({
                   </thead>
                   <tbody>
                     {plan.material_requirements.map((mat, index) => {
-                      const matWithSku = mat as typeof mat & { material_sku?: { sku_id: string; sku_name: string; uom_base: string } };
+                      const matWithSku = mat as typeof mat & { material_sku?: { sku_id: string; sku_name: string; uom_base: string; weight_per_piece_kg?: number } };
+                      
+                      // For food materials (00-*), check if data needs conversion
+                      // Old data has material_uom = 'ถุง', new data has material_uom = 'กก.'
+                      const isFoodMaterial = mat.material_sku_id.startsWith('00-');
+                      const isOldData = isFoodMaterial && mat.material_uom === 'ถุง';
+                      const weightPerBag = Number(matWithSku.material_sku?.weight_per_piece_kg || 0);
+                      const shouldConvertToKg = isOldData && weightPerBag > 0;
+                      
+                      // Convert quantities if old food material data (stored in bags, need to show in kg)
+                      const displayGrossReq = shouldConvertToKg 
+                        ? Math.ceil(mat.gross_requirement * weightPerBag) 
+                        : mat.gross_requirement;
+                      const displayStock = shouldConvertToKg 
+                        ? Math.floor(mat.current_stock * weightPerBag) 
+                        : mat.current_stock;
+                      const displayUom = isFoodMaterial ? 'กก.' : (matWithSku.material_sku?.uom_base || mat.material_uom);
+                      
                       const shortageQty = mat.shortage_qty || Math.max(0, mat.gross_requirement - mat.current_stock);
+                      const displayShortage = shouldConvertToKg 
+                        ? Math.ceil(shortageQty * weightPerBag) 
+                        : shortageQty;
                       const hasShortage = shortageQty > 0;
+                      
                       return (
                         <tr key={mat.requirement_id || index} className={`border-b border-blue-100 last:border-0 ${hasShortage ? 'bg-red-50/50' : ''}`}>
                           <td className="px-4 py-2 font-mono text-xs text-blue-600">{mat.material_sku_id}</td>
                           <td className="px-4 py-2 text-xs text-gray-900 font-thai">{matWithSku.material_sku?.sku_name || mat.material_sku_id}</td>
                           <td className="px-4 py-2 text-right text-xs font-bold text-gray-900">
-                            {mat.gross_requirement?.toLocaleString()} {matWithSku.material_sku?.uom_base || mat.material_uom}
+                            {displayGrossReq?.toLocaleString()} {displayUom}
                           </td>
                           <td className="px-4 py-2 text-right text-xs text-gray-600">
-                            {mat.current_stock?.toLocaleString()}
+                            {displayStock?.toLocaleString()} {displayUom}
                           </td>
                           <td className="px-4 py-2 text-right">
                             {hasShortage ? (
                               <span className="inline-flex items-center gap-1 text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded">
                                 <AlertTriangle className="w-3 h-3" />
-                                {shortageQty.toLocaleString()}
+                                {displayShortage.toLocaleString()} {displayUom}
                               </span>
                             ) : (
                               <span className="text-xs text-green-600">-</span>
@@ -1027,8 +1036,7 @@ function CreatePlanModal({ onClose, onSuccess }: { onClose: () => void; onSucces
 
   const [planName, setPlanName] = useState('');
   const [planDescription, setPlanDescription] = useState('');
-  const [startDate, setStartDate] = useState(new Date().toISOString().split('T')[0]);
-  const [endDate, setEndDate] = useState(new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+  const [planDate, setPlanDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedSku, setSelectedSku] = useState('');
   const [quantity, setQuantity] = useState<number>(0);
   const [items, setItems] = useState<{ sku_id: string; sku_name: string; required_qty: number; materials: (CalculatedMaterial & { selected: boolean })[] }[]>([]);
@@ -1119,8 +1127,8 @@ function CreatePlanModal({ onClose, onSuccess }: { onClose: () => void; onSucces
     const input: CreateProductionPlanInput = {
       plan_name: planName,
       plan_description: planDescription,
-      plan_start_date: startDate,
-      plan_end_date: endDate,
+      plan_start_date: planDate,
+      plan_end_date: planDate,
       items: items.map(item => ({
         sku_id: item.sku_id,
         required_qty: item.required_qty,
@@ -1181,21 +1189,12 @@ function CreatePlanModal({ onClose, onSuccess }: { onClose: () => void; onSucces
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-thai focus:outline-none focus:ring-2 focus:ring-primary-500/50"
               />
             </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 font-thai mb-1">วันที่เริ่ม *</label>
+            <div className="col-span-2">
+              <label className="block text-sm font-medium text-gray-700 font-thai mb-1">วันที่ผลิต *</label>
               <input
                 type="date"
-                value={startDate}
-                onChange={(e) => setStartDate(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/50"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-gray-700 font-thai mb-1">วันที่สิ้นสุด *</label>
-              <input
-                type="date"
-                value={endDate}
-                onChange={(e) => setEndDate(e.target.value)}
+                value={planDate}
+                onChange={(e) => setPlanDate(e.target.value)}
                 className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500/50"
               />
             </div>

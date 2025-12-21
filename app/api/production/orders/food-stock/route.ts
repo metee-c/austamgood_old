@@ -1,6 +1,7 @@
 /**
  * Food Stock API for Production Orders
  * API สำหรับดึงสต็อกอาหาร (วัตถุดิบหลัก) แบบ FEFO สำหรับการสร้างใบสั่งผลิต
+ * จำนวนจะแสดงเป็น kg (แปลงจากถุง × น้ำหนักต่อถุง)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -11,7 +12,9 @@ export interface FoodStockByDate {
   sku_name: string;
   production_date: string | null;
   expiry_date: string | null;
-  total_qty: number;
+  total_qty: number; // in kg
+  total_bags: number; // original bags count
+  weight_per_bag: number; // kg per bag
   pallets: FoodStockPallet[];
 }
 
@@ -21,9 +24,10 @@ export interface FoodStockPallet {
   location_id: string;
   location_name: string;
   warehouse_id: string;
-  total_piece_qty: number;
-  reserved_piece_qty: number;
-  available_qty: number;
+  total_piece_qty: number; // in bags
+  reserved_piece_qty: number; // in bags
+  available_qty: number; // in kg
+  available_bags: number; // in bags
   production_date: string | null;
   expiry_date: string | null;
 }
@@ -46,6 +50,15 @@ export async function GET(request: NextRequest) {
     }
 
     const supabase = await createClient();
+
+    // Get SKU info including weight_per_piece_kg
+    const { data: skuInfo } = await supabase
+      .from('master_sku')
+      .select('sku_id, sku_name, weight_per_piece_kg')
+      .eq('sku_id', skuId)
+      .single();
+
+    const weightPerBag = Number(skuInfo?.weight_per_piece_kg || 0);
 
     // Locations to exclude (preparation areas, dispatch, delivery-in-progress)
     const excludeLocations = [
@@ -112,15 +125,19 @@ export async function GET(request: NextRequest) {
           sku_name: item.master_sku?.sku_name || skuId,
           production_date: item.production_date,
           expiry_date: item.expiry_date,
-          total_qty: 0,
+          total_qty: 0, // will be in kg
+          total_bags: 0,
+          weight_per_bag: weightPerBag,
           pallets: [],
         });
       }
 
       const group = groupedByDate.get(dateKey)!;
-      const availableQty = Number(item.total_piece_qty) - Number(item.reserved_piece_qty || 0);
+      const availableBags = Number(item.total_piece_qty) - Number(item.reserved_piece_qty || 0);
+      const availableKg = weightPerBag > 0 ? availableBags * weightPerBag : availableBags;
       
-      group.total_qty += availableQty;
+      group.total_bags += availableBags;
+      group.total_qty += availableKg;
       group.pallets.push({
         balance_id: item.balance_id,
         pallet_id: item.pallet_id || '-',
@@ -129,7 +146,8 @@ export async function GET(request: NextRequest) {
         warehouse_id: item.warehouse_id,
         total_piece_qty: Number(item.total_piece_qty),
         reserved_piece_qty: Number(item.reserved_piece_qty || 0),
-        available_qty: availableQty,
+        available_qty: availableKg, // in kg
+        available_bags: availableBags, // in bags
         production_date: item.production_date,
         expiry_date: item.expiry_date,
       });
@@ -143,12 +161,15 @@ export async function GET(request: NextRequest) {
       return new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime();
     });
 
-    // Calculate total available
+    // Calculate total available (in kg)
     const totalAvailable = result.reduce((sum, group) => sum + group.total_qty, 0);
+    const totalBags = result.reduce((sum, group) => sum + group.total_bags, 0);
 
     return NextResponse.json({
       data: result,
-      totalAvailable,
+      totalAvailable, // in kg
+      totalBags,
+      weightPerBag,
       skuId,
     });
   } catch (error: any) {

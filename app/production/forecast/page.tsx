@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Search,
   RefreshCw,
@@ -18,7 +18,9 @@ import {
   AlertCircle,
   CheckCircle,
   HelpCircle,
-  X
+  X,
+  ChevronDown,
+  ChevronRight as ChevronRightIcon
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
@@ -53,6 +55,18 @@ interface ForecastSKU {
   days_until_stockout: number;
 }
 
+interface BalanceDetail {
+  id: number;
+  location_code: string;
+  location_name: string;
+  production_date: string | null;
+  expiry_date: string | null;
+  lot_no: string | null;
+  piece_qty: number;
+  reserved_piece_qty: number;
+  available_qty: number;
+}
+
 const ForecastPage = () => {
   const [forecastData, setForecastData] = useState<ForecastSKU[]>([]);
   const [loading, setLoading] = useState(true);
@@ -68,6 +82,11 @@ const ForecastPage = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
   const pageSize = 100;
+
+  // Expandable rows state
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const [balanceDetails, setBalanceDetails] = useState<Record<string, BalanceDetail[]>>({});
+  const [loadingBalances, setLoadingBalances] = useState<Set<string>>(new Set());
 
   // Tooltip state
   const [showDosTooltip, setShowDosTooltip] = useState(false);
@@ -96,7 +115,7 @@ const ForecastPage = () => {
     try {
       setLoading(true);
       setError(null);
-      
+
       const params = new URLSearchParams();
       if (debouncedSearchTerm) params.set('search', debouncedSearchTerm);
       if (selectedPriority !== 'all') params.set('priority', selectedPriority);
@@ -105,7 +124,7 @@ const ForecastPage = () => {
       params.set('pageSize', pageSize.toString());
 
       const response = await fetch(`/api/production/forecast?${params.toString()}`);
-      
+
       if (!response.ok) {
         throw new Error('Failed to fetch forecast data');
       }
@@ -120,6 +139,89 @@ const ForecastPage = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchBalanceDetails = async (skuId: string) => {
+    // ถ้ามีข้อมูลอยู่แล้ว ไม่ต้องดึงใหม่
+    if (balanceDetails[skuId]) {
+      return;
+    }
+
+    try {
+      setLoadingBalances(prev => new Set(prev).add(skuId));
+
+      // Import supabase client dynamically
+      const { createClient } = await import('@/lib/supabase/client');
+      const supabase = createClient();
+
+      // Query balance details directly
+      const { data: balances, error } = await supabase
+        .from('wms_inventory_balances')
+        .select(`
+          balance_id,
+          sku_id,
+          location_id,
+          production_date,
+          expiry_date,
+          lot_no,
+          total_piece_qty,
+          reserved_piece_qty,
+          master_location(
+            location_code,
+            location_name
+          )
+        `)
+        .eq('sku_id', skuId)
+        .gt('total_piece_qty', 0)
+        .order('expiry_date', { ascending: true, nullsFirst: false })
+        .order('production_date', { ascending: true, nullsFirst: false });
+
+      if (error) {
+        throw error;
+      }
+
+      // Format the data
+      const formattedBalances = (balances || []).map((balance: any) => ({
+        id: balance.balance_id,
+        location_code: balance.master_location?.location_code || '-',
+        location_name: balance.master_location?.location_name || '-',
+        production_date: balance.production_date,
+        expiry_date: balance.expiry_date,
+        lot_no: balance.lot_no,
+        piece_qty: balance.total_piece_qty,
+        reserved_piece_qty: balance.reserved_piece_qty || 0,
+        available_qty: balance.total_piece_qty - (balance.reserved_piece_qty || 0),
+      }));
+
+      setBalanceDetails(prev => ({
+        ...prev,
+        [skuId]: formattedBalances
+      }));
+    } catch (err: any) {
+      console.error('Error fetching balance details:', err);
+    } finally {
+      setLoadingBalances(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(skuId);
+        return newSet;
+      });
+    }
+  };
+
+  const toggleRow = async (skuId: string) => {
+    const newExpanded = new Set(expandedRows);
+
+    if (newExpanded.has(skuId)) {
+      // Collapse
+      newExpanded.delete(skuId);
+    } else {
+      // Expand
+      newExpanded.add(skuId);
+      // ดึงข้อมูล balance details ถ้ายังไม่มี
+      await fetchBalanceDetails(skuId);
+    }
+
+    setExpandedRows(newExpanded);
   };
 
   const getPriorityBadge = (priority: string) => {
@@ -1169,19 +1271,38 @@ const ForecastPage = () => {
                       </th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
-                    {forecastData.map((record) => (
-                      <tr
-                        key={record.sku_id}
-                        className={`hover:bg-blue-50/30 transition-colors duration-150 ${
-                          record.priority === 'critical' ? 'bg-red-50/50' : ''
-                        }`}
-                      >
-                        <td className="px-2 py-1 border-r border-gray-100 whitespace-nowrap">
-                          <span className="font-mono font-semibold text-thai-gray-700">
-                            {record.sku_id}
-                          </span>
-                        </td>
+                  <tbody className="bg-white text-[11px]">
+                    {forecastData.map((record) => {
+                      const isExpanded = expandedRows.has(record.sku_id);
+                      const isLoadingBalance = loadingBalances.has(record.sku_id);
+                      const balances = balanceDetails[record.sku_id] || [];
+
+                      return (
+                        <React.Fragment key={record.sku_id}>
+                          {/* แถวหลัก */}
+                          <tr
+                            className={`border-b border-gray-100 hover:bg-blue-50/30 transition-colors duration-150 ${
+                              record.priority === 'critical' ? 'bg-red-50/50' : ''
+                            }`}
+                          >
+                            <td className="px-2 py-1 border-r border-gray-100 whitespace-nowrap">
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={() => toggleRow(record.sku_id)}
+                                  className="p-0.5 hover:bg-gray-200 rounded transition-colors"
+                                  title={isExpanded ? 'ซ่อนรายละเอียด' : 'แสดงรายละเอียด'}
+                                >
+                                  {isExpanded ? (
+                                    <ChevronDown className="w-3.5 h-3.5 text-gray-600" />
+                                  ) : (
+                                    <ChevronRightIcon className="w-3.5 h-3.5 text-gray-600" />
+                                  )}
+                                </button>
+                                <span className="font-mono font-semibold text-thai-gray-700">
+                                  {record.sku_id}
+                                </span>
+                              </div>
+                            </td>
                         <td className="px-2 py-1 border-r border-gray-100 whitespace-nowrap">
                           <span className="text-thai-gray-700 font-thai text-[11px]">
                             {record.sku_name}
@@ -1267,20 +1388,145 @@ const ForecastPage = () => {
                               : '-'}
                           </span>
                         </td>
-                        <td className="px-2 py-1 text-center whitespace-nowrap">
-                          <button
-                            title="สั่งผลิต"
-                            className="p-1 text-primary-600 hover:text-primary-800 hover:bg-primary-50 rounded transition-colors"
-                            onClick={() => {
-                              // TODO: Implement production order logic
-                              console.log('สั่งผลิต:', record.sku_id, record.suggested_production);
-                            }}
-                          >
-                            <FileText className="w-4 h-4" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))}
+                            <td className="px-2 py-1 text-center whitespace-nowrap">
+                              <button
+                                title="สั่งผลิต"
+                                className="p-1 text-primary-600 hover:text-primary-800 hover:bg-primary-50 rounded transition-colors"
+                                onClick={() => {
+                                  // TODO: Implement production order logic
+                                  console.log('สั่งผลิต:', record.sku_id, record.suggested_production);
+                                }}
+                              >
+                                <FileText className="w-4 h-4" />
+                              </button>
+                            </td>
+                          </tr>
+
+                          {/* แถวย่อย - รายละเอียด balance */}
+                          {isExpanded && (
+                            <tr className="bg-gray-50/50">
+                              <td colSpan={16} className="px-0 py-0">
+                                {isLoadingBalance ? (
+                                  <div className="flex items-center justify-center py-4 text-gray-500">
+                                    <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                                    <span className="text-xs font-thai">กำลังโหลดรายละเอียด...</span>
+                                  </div>
+                                ) : balances.length === 0 ? (
+                                  <div className="flex items-center justify-center py-4 text-gray-400">
+                                    <span className="text-xs font-thai">ไม่มีสต็อกในคลัง</span>
+                                  </div>
+                                ) : (
+                                  <div className="px-4 py-2">
+                                    {/* Group balances by production_date + expiry_date */}
+                                    {(() => {
+                                      const grouped = balances.reduce((acc, balance) => {
+                                        const key = `${balance.production_date || 'null'}_${balance.expiry_date || 'null'}`;
+                                        if (!acc[key]) {
+                                          acc[key] = {
+                                            production_date: balance.production_date,
+                                            expiry_date: balance.expiry_date,
+                                            piece_qty: 0,
+                                            reserved_piece_qty: 0,
+                                            available_qty: 0,
+                                          };
+                                        }
+                                        acc[key].piece_qty += balance.piece_qty;
+                                        acc[key].reserved_piece_qty += balance.reserved_piece_qty;
+                                        acc[key].available_qty += balance.available_qty;
+                                        return acc;
+                                      }, {} as Record<string, { production_date: string | null; expiry_date: string | null; piece_qty: number; reserved_piece_qty: number; available_qty: number }>);
+                                      
+                                      const groupedBalances = Object.values(grouped).sort((a, b) => {
+                                        // Sort by expiry_date first, then production_date
+                                        const expA = a.expiry_date || '9999-12-31';
+                                        const expB = b.expiry_date || '9999-12-31';
+                                        if (expA !== expB) return expA.localeCompare(expB);
+                                        const prodA = a.production_date || '9999-12-31';
+                                        const prodB = b.production_date || '9999-12-31';
+                                        return prodA.localeCompare(prodB);
+                                      });
+
+                                      return (
+                                        <>
+                                          <div className="text-xs font-semibold text-gray-700 mb-2 font-thai">
+                                            รายละเอียดสต็อกตามวันผลิต/หมดอายุ ({groupedBalances.length} รายการ)
+                                          </div>
+                                          <table className="w-full text-[10px] border border-gray-200">
+                                            <thead className="bg-gray-100">
+                                              <tr>
+                                                <th className="px-2 py-1 text-center border-r border-gray-200 font-thai">วันผลิต</th>
+                                                <th className="px-2 py-1 text-center border-r border-gray-200 font-thai">วันหมดอายุ</th>
+                                                <th className="px-2 py-1 text-center border-r border-gray-200 font-thai">จำนวน (ถุง)</th>
+                                                <th className="px-2 py-1 text-center border-r border-gray-200 font-thai">สำรอง</th>
+                                                <th className="px-2 py-1 text-center border-r border-gray-200 font-thai">พร้อมใช้</th>
+                                                <th className="px-2 py-1 text-center font-thai">ดูรายละเอียด</th>
+                                              </tr>
+                                            </thead>
+                                            <tbody className="bg-white">
+                                              {groupedBalances.map((balance, idx) => (
+                                                <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                                  <td className="px-2 py-1 text-center border-r border-gray-200">
+                                                    {balance.production_date
+                                                      ? new Date(balance.production_date).toLocaleDateString('th-TH', {
+                                                          day: '2-digit',
+                                                          month: '2-digit',
+                                                          year: '2-digit',
+                                                        })
+                                                      : '-'}
+                                                  </td>
+                                                  <td className="px-2 py-1 text-center border-r border-gray-200">
+                                                    {balance.expiry_date
+                                                      ? new Date(balance.expiry_date).toLocaleDateString('th-TH', {
+                                                          day: '2-digit',
+                                                          month: '2-digit',
+                                                          year: '2-digit',
+                                                        })
+                                                      : '-'}
+                                                  </td>
+                                                  <td className="px-2 py-1 text-center border-r border-gray-200 font-semibold text-blue-600">
+                                                    {balance.piece_qty.toLocaleString()}
+                                                  </td>
+                                                  <td className="px-2 py-1 text-center border-r border-gray-200 text-orange-600">
+                                                    {balance.reserved_piece_qty > 0 ? balance.reserved_piece_qty.toLocaleString() : '-'}
+                                                  </td>
+                                                  <td className="px-2 py-1 text-center border-r border-gray-200 font-semibold text-green-600">
+                                                    {balance.available_qty.toLocaleString()}
+                                                  </td>
+                                                  <td className="px-2 py-1 text-center">
+                                                    <button
+                                                      onClick={() => {
+                                                        // Navigate to inventory-balances with filters
+                                                        const params = new URLSearchParams();
+                                                        params.set('sku', record.sku_id);
+                                                        if (balance.production_date) {
+                                                          params.set('production_date', balance.production_date);
+                                                        }
+                                                        if (balance.expiry_date) {
+                                                          params.set('expiry_date', balance.expiry_date);
+                                                        }
+                                                        window.open(`/warehouse/inventory-balances?${params.toString()}`, '_blank');
+                                                      }}
+                                                      className="px-2 py-0.5 text-[10px] bg-primary-50 text-primary-700 hover:bg-primary-100 rounded transition-colors font-thai"
+                                                      title="ดูรายละเอียดในหน้า Inventory Balances"
+                                                    >
+                                                      ดูเพิ่มเติม
+                                                    </button>
+                                                  </td>
+                                                </tr>
+                                              ))}
+                                            </tbody>
+                                          </table>
+                                        </>
+                                      );
+                                    })()}
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          )}
+                        </React.Fragment>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

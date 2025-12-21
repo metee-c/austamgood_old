@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Package,
   Search,
@@ -46,6 +47,7 @@ interface InventoryBalance {
 }
 
 const InventoryBalancesPage = () => {
+  const searchParams = useSearchParams();
   const [balanceData, setBalanceData] = useState<InventoryBalance[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -54,10 +56,12 @@ const InventoryBalancesPage = () => {
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [selectedBalance, setSelectedBalance] = useState<InventoryBalance | null>(null);
 
-  // Filters
-  const [searchTerm, setSearchTerm] = useState('');
-  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+  // Filters - initialize from URL params
+  const [searchTerm, setSearchTerm] = useState(searchParams.get('sku') || '');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchParams.get('sku') || '');
   const [selectedWarehouse, setSelectedWarehouse] = useState('all');
+  const [productionDateFilter, setProductionDateFilter] = useState(searchParams.get('production_date') || '');
+  const [expiryDateFilter, setExpiryDateFilter] = useState(searchParams.get('expiry_date') || '');
 
   const [showLowStock, setShowLowStock] = useState(false);
   const [showExpiringSoon, setShowExpiringSoon] = useState(false);
@@ -102,7 +106,7 @@ const InventoryBalancesPage = () => {
       // Reset to page 1 when filters change
       fetchBalanceData(1);
     }
-  }, [debouncedSearchTerm, selectedWarehouse, showZeroBalance]);
+  }, [debouncedSearchTerm, selectedWarehouse, showZeroBalance, productionDateFilter, expiryDateFilter]);
 
   const fetchPreparationAreas = async () => {
     try {
@@ -288,6 +292,16 @@ const InventoryBalancesPage = () => {
       query = query.gt('total_piece_qty', 0);
     }
 
+    // Production date filter (from URL params)
+    if (productionDateFilter) {
+      query = query.eq('production_date', productionDateFilter);
+    }
+
+    // Expiry date filter (from URL params)
+    if (expiryDateFilter) {
+      query = query.eq('expiry_date', expiryDateFilter);
+    }
+
     return query;
   };
 
@@ -465,6 +479,59 @@ const InventoryBalancesPage = () => {
               รีเฟรช
             </Button>
           </div>
+          
+          {/* Active URL Filters Display */}
+          {(productionDateFilter || expiryDateFilter) && (
+            <div className="flex items-center gap-2 mt-1.5 pt-1.5 border-t border-gray-100">
+              <span className="text-xs text-gray-500 font-thai">กรองจาก:</span>
+              {productionDateFilter && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-blue-50 text-blue-700 rounded text-xs font-thai">
+                  วันผลิต: {new Date(productionDateFilter).toLocaleDateString('th-TH')}
+                  <button
+                    onClick={() => {
+                      setProductionDateFilter('');
+                      // Update URL without the param
+                      const url = new URL(window.location.href);
+                      url.searchParams.delete('production_date');
+                      window.history.replaceState({}, '', url.toString());
+                    }}
+                    className="ml-1 hover:text-blue-900"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+              {expiryDateFilter && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-orange-50 text-orange-700 rounded text-xs font-thai">
+                  วันหมดอายุ: {new Date(expiryDateFilter).toLocaleDateString('th-TH')}
+                  <button
+                    onClick={() => {
+                      setExpiryDateFilter('');
+                      // Update URL without the param
+                      const url = new URL(window.location.href);
+                      url.searchParams.delete('expiry_date');
+                      window.history.replaceState({}, '', url.toString());
+                    }}
+                    className="ml-1 hover:text-orange-900"
+                  >
+                    ×
+                  </button>
+                </span>
+              )}
+              <button
+                onClick={() => {
+                  setSearchTerm('');
+                  setProductionDateFilter('');
+                  setExpiryDateFilter('');
+                  // Clear all URL params
+                  window.history.replaceState({}, '', window.location.pathname);
+                }}
+                className="text-xs text-gray-500 hover:text-gray-700 underline font-thai"
+              >
+                ล้างทั้งหมด
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Data Table */}

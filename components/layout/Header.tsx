@@ -8,10 +8,12 @@ import {
   Search,
   Menu,
   LogOut,
-  ChevronDown
+  ChevronDown,
+  MessageCircle
 } from 'lucide-react';
 import Breadcrumb from '@/components/ui/Breadcrumb';
 import { useAuthContext } from '@/contexts/AuthContext';
+import { useAIChat } from '@/contexts/AIChatContext';
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -21,6 +23,7 @@ interface HeaderProps {
 const Header: React.FC<HeaderProps> = ({ onMenuClick, showMenuButton }) => {
   const pathname = usePathname();
   const { user, logout } = useAuthContext();
+  const { toggleChat } = useAIChat();
 
   const handleLogout = async () => {
     await logout();
@@ -48,6 +51,15 @@ const Header: React.FC<HeaderProps> = ({ onMenuClick, showMenuButton }) => {
 
         {/* Right Side */}
         <div className="flex items-center space-x-2">
+          {/* AI Chat Button */}
+          <button 
+            onClick={toggleChat}
+            className="relative p-1 rounded hover:bg-thai-gray-100 transition-colors group"
+            title="AI ผู้ช่วยคลังสินค้า"
+          >
+            <MessageCircle className="w-4 h-4 text-thai-gray-600" />
+          </button>
+
           {/* Notifications */}
           <button className="relative p-1 rounded hover:bg-thai-gray-100 transition-colors">
             <Bell className="w-4 h-4 text-thai-gray-600" />
