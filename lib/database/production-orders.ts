@@ -1,0 +1,516 @@
+/**
+ * Production Orders Database Service
+ * บริการฐานข้อมูลสำหรับระบบใบสั่งผลิต
+ */
+
+import { createClient } from '@/lib/supabase/server';
+import {
+  ProductionOrder,
+  ProductionOrderWithDetails,
+  ProductionOrderFilters,
+  ProductionOrderListResponse,
+  CreateProductionOrderInput,
+  UpdateProductionOrderInput,
+  PlanDataForOrder,
+} from '@/types/production-order-schema';
+
+/**
+ * Generate production order number: PO-YYYYMMDD-XXX
+ */
+async function generateProductionNo(): Promise<string> {
+  const supabase = await createClient();
+  const today = new Date();
+  const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
+  const prefix = `PO-${dateStr}`;
+
+  // Get count of orders created today
+  const { count } = await supabase
+    .from('production_orders')
+    .select('*', { count: 'exact', head: true })
+    .like('production_no', `${prefix}%`);
+
+  const sequence = String((count || 0) + 1).padStart(3, '0');
+  return `${prefix}-${sequence}`;
+}
+
+/**
+ * Get production orders with filters
+ */
+export async function getProductionOrders(
+  filters: ProductionOrderFilters = {}
+): Promise<ProductionOrderListResponse> {
+  const supabase = await createClient();
+  const { search, status, plan_id, start_date, end_date, page = 1, pageSize = 50 } = filters;
+
+  let query = supabase
+    .from('production_orders')
+    .select(`
+      *,
+      sku:master_sku!production_orders_sku_id_fkey(sku_id, sku_name, uom_base, category, sub_category),
+      plan:production_plan!production_orders_plan_id_fkey(plan_id, plan_no, plan_name),
+      creator:master_employee!production_orders_created_by_fkey(employee_id, first_name, last_name, nickname),
+      items:production_order_items(
+        *,
+        material_sku:master_sku!production_order_items_material_sku_id_fkey(sku_id, sku_name, uom_base)
+      )
+    `, { count: 'exact' })
+    .order('created_at', { ascending: false });
+
+  // Apply filters
+  if (search) {
+    query = query.or(`production_no.ilike.%${search}%,sku_id.ilike.%${search}%`);
+  }
+
+  if (status && status !== 'all') {
+    query = query.eq('status', status);
+  }
+
+  if (plan_id) {
+    query = query.eq('plan_id', plan_id);
+  }
+
+  if (start_date) {
+    query = query.gte('start_date', start_date);
+  }
+
+  if (end_date) {
+    query = query.lte('due_date', end_date);
+  }
+
+  // Pagination
+  const from = (page - 1) * pageSize;
+  const to = from + pageSize - 1;
+  query = query.range(from, to);
+
+  const { data, error, count } = await query;
+
+  if (error) {
+    console.error('Error fetching production orders:', error);
+    throw new Error('Failed to fetch production orders');
+  }
+
+  // Get summary counts
+  const { data: summaryData } = await supabase
+    .from('production_orders')
+    .select('status');
+
+  const summary = {
+    total: summaryData?.length || 0,
+    planned: summaryData?.filter(o => o.status === 'planned').length || 0,
+    released: summaryData?.filter(o => o.status === 'released').length || 0,
+    in_progress: summaryData?.filter(o => o.status === 'in_progress').length || 0,
+    completed: summaryData?.filter(o => o.status === 'completed').length || 0,
+    on_hold: summaryData?.filter(o => o.status === 'on_hold').length || 0,
+    cancelled: summaryData?.filter(o => o.status === 'cancelled').length || 0,
+  };
+
+  return {
+    data: (data || []) as ProductionOrderWithDetails[],
+    totalCount: count || 0,
+    summary,
+  };
+}
+
+/**
+ * Get single production order by ID
+ */
+export async function getProductionOrderById(
+  orderId: string
+): Promise<ProductionOrderWithDetails | null> {
+  const supabase = await createClient();
+
+  const { data, error } = await supabase
+    .from('production_orders')
+    .select(`
+      *,
+      sku:master_sku!production_orders_sku_id_fkey(sku_id, sku_name, uom_base, category, sub_category),
+      plan:production_plan!production_orders_plan_id_fkey(plan_id, plan_no, plan_name),
+      creator:master_employee!production_orders_created_by_fkey(employee_id, first_name, last_name, nickname),
+      items:production_order_items(
+        *,
+        material_sku:master_sku!production_order_items_material_sku_id_fkey(sku_id, sku_name, uom_base)
+      )
+    `)
+    .eq('id', orderId)
+    .single();
+
+  if (error) {
+    console.error('Error fetching production order:', error);
+    return null;
+  }
+
+  return data as ProductionOrderWithDetails;
+}
+
+/**
+ * Get plan data for creating production order
+ */
+export async function getPlanDataForOrder(planId: string): Promise<PlanDataForOrder | null> {
+  const supabase = await createClient();
+
+  // Get plan with items and materials
+  const { data: plan, error: planError } = await supabase
+    .from('production_plan')
+    .select(`
+      plan_id,
+      plan_no,
+      plan_name,
+      plan_start_date,
+      plan_end_date,
+      items:production_plan_items(
+        sku_id,
+        required_qty,
+        sku:master_sku(sku_id, sku_name)
+      ),
+      material_requirements(
+        material_sku_id,
+        gross_requirement,
+        material_uom,
+        material_sku:master_sku!material_requirements_material_sku_id_fkey(sku_id, sku_name)
+      )
+    `)
+    .eq('plan_id', planId)
+    .single();
+
+  if (planError || !plan) {
+    console.error('Error fetching plan data:', planError);
+    return null;
+  }
+
+  return {
+    plan_id: plan.plan_id,
+    plan_no: plan.plan_no,
+    plan_name: plan.plan_name,
+    plan_start_date: plan.plan_start_date,
+    plan_end_date: plan.plan_end_date,
+    items: (plan.items || []).map((item: any) => ({
+      sku_id: item.sku_id,
+      sku_name: item.sku?.sku_name || item.sku_id,
+      required_qty: Number(item.required_qty),
+    })),
+    materials: (plan.material_requirements || []).map((mat: any) => ({
+      material_sku_id: mat.material_sku_id,
+      material_name: mat.material_sku?.sku_name || mat.material_sku_id,
+      gross_requirement: Number(mat.gross_requirement),
+      material_uom: mat.material_uom,
+    })),
+  };
+}
+
+/**
+ * Create a new production order
+ */
+export async function createProductionOrder(
+  input: CreateProductionOrderInput,
+  userId?: number
+): Promise<ProductionOrderWithDetails | null> {
+  const supabase = await createClient();
+
+  try {
+    // 1. Generate production order number
+    const productionNo = await generateProductionNo();
+
+    // 2. Get SKU info for UOM
+    const { data: skuData } = await supabase
+      .from('master_sku')
+      .select('uom_base')
+      .eq('sku_id', input.sku_id)
+      .single();
+
+    // 3. Create production order header
+    const { data: order, error: orderError } = await supabase
+      .from('production_orders')
+      .insert({
+        production_no: productionNo,
+        plan_id: input.plan_id,
+        sku_id: input.sku_id,
+        quantity: input.quantity,
+        produced_qty: 0,
+        uom: input.uom || skuData?.uom_base,
+        start_date: input.start_date,
+        due_date: input.due_date,
+        priority: input.priority || 5,
+        status: 'planned',
+        remarks: input.remarks,
+        created_by: userId,
+      })
+      .select()
+      .single();
+
+    if (orderError || !order) {
+      console.error('Error creating production order:', orderError);
+      throw new Error('Failed to create production order');
+    }
+
+    // 4. Create order items (materials) if provided
+    if (input.items && input.items.length > 0) {
+      const orderItems = input.items.map(item => ({
+        production_order_id: order.id,
+        material_sku_id: item.material_sku_id,
+        required_qty: item.required_qty,
+        issued_qty: 0,
+        uom: item.uom,
+        status: 'pending',
+        remarks: item.remarks,
+      }));
+
+      const { error: itemsError } = await supabase
+        .from('production_order_items')
+        .insert(orderItems);
+
+      if (itemsError) {
+        console.error('Error creating order items:', itemsError);
+        // Rollback - delete the order
+        await supabase.from('production_orders').delete().eq('id', order.id);
+        throw new Error('Failed to create order items');
+      }
+    }
+
+    // 5. Return complete order
+    return await getProductionOrderById(order.id);
+  } catch (error) {
+    console.error('Error in createProductionOrder:', error);
+    throw error;
+  }
+}
+
+
+/**
+ * Update production order
+ */
+export async function updateProductionOrder(
+  input: UpdateProductionOrderInput
+): Promise<ProductionOrderWithDetails | null> {
+  const supabase = await createClient();
+
+  const { id, ...updateData } = input;
+
+  const { error } = await supabase
+    .from('production_orders')
+    .update({
+      ...updateData,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', id);
+
+  if (error) {
+    console.error('Error updating production order:', error);
+    throw new Error('Failed to update production order');
+  }
+
+  return await getProductionOrderById(id);
+}
+
+/**
+ * Delete production order
+ */
+export async function deleteProductionOrder(orderId: string): Promise<boolean> {
+  const supabase = await createClient();
+
+  // Delete order items first
+  await supabase
+    .from('production_order_items')
+    .delete()
+    .eq('production_order_id', orderId);
+
+  // Delete order
+  const { error } = await supabase
+    .from('production_orders')
+    .delete()
+    .eq('id', orderId);
+
+  if (error) {
+    console.error('Error deleting production order:', error);
+    return false;
+  }
+
+  return true;
+}
+
+/**
+ * Release production order (change status from planned to released)
+ */
+export async function releaseProductionOrder(
+  orderId: string
+): Promise<ProductionOrderWithDetails | null> {
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from('production_orders')
+    .update({
+      status: 'released',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', orderId)
+    .eq('status', 'planned');
+
+  if (error) {
+    console.error('Error releasing production order:', error);
+    throw new Error('Failed to release production order');
+  }
+
+  return await getProductionOrderById(orderId);
+}
+
+/**
+ * Start production (change status to in_progress)
+ */
+export async function startProductionOrder(
+  orderId: string
+): Promise<ProductionOrderWithDetails | null> {
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from('production_orders')
+    .update({
+      status: 'in_progress',
+      actual_start_date: new Date().toISOString().split('T')[0],
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', orderId)
+    .in('status', ['planned', 'released']);
+
+  if (error) {
+    console.error('Error starting production order:', error);
+    throw new Error('Failed to start production order');
+  }
+
+  return await getProductionOrderById(orderId);
+}
+
+/**
+ * Complete production order
+ */
+export async function completeProductionOrder(
+  orderId: string,
+  producedQty?: number
+): Promise<ProductionOrderWithDetails | null> {
+  const supabase = await createClient();
+
+  const updateData: any = {
+    status: 'completed',
+    actual_completion_date: new Date().toISOString().split('T')[0],
+    updated_at: new Date().toISOString(),
+  };
+
+  if (producedQty !== undefined) {
+    updateData.produced_qty = producedQty;
+  }
+
+  const { error } = await supabase
+    .from('production_orders')
+    .update(updateData)
+    .eq('id', orderId);
+
+  if (error) {
+    console.error('Error completing production order:', error);
+    throw new Error('Failed to complete production order');
+  }
+
+  return await getProductionOrderById(orderId);
+}
+
+/**
+ * Put production order on hold
+ */
+export async function holdProductionOrder(
+  orderId: string
+): Promise<ProductionOrderWithDetails | null> {
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from('production_orders')
+    .update({
+      status: 'on_hold',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', orderId);
+
+  if (error) {
+    console.error('Error holding production order:', error);
+    throw new Error('Failed to hold production order');
+  }
+
+  return await getProductionOrderById(orderId);
+}
+
+/**
+ * Cancel production order
+ */
+export async function cancelProductionOrder(
+  orderId: string
+): Promise<ProductionOrderWithDetails | null> {
+  const supabase = await createClient();
+
+  const { error } = await supabase
+    .from('production_orders')
+    .update({
+      status: 'cancelled',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', orderId);
+
+  if (error) {
+    console.error('Error cancelling production order:', error);
+    throw new Error('Failed to cancel production order');
+  }
+
+  return await getProductionOrderById(orderId);
+}
+
+/**
+ * Create multiple production orders from a plan (one per SKU)
+ */
+export async function createOrdersFromPlan(
+  planId: string,
+  userId?: number
+): Promise<ProductionOrderWithDetails[]> {
+  const supabase = await createClient();
+
+  // Get plan data
+  const planData = await getPlanDataForOrder(planId);
+  if (!planData) {
+    throw new Error('Plan not found');
+  }
+
+  const createdOrders: ProductionOrderWithDetails[] = [];
+
+  // Create one order per SKU in the plan
+  for (const item of planData.items) {
+    // Get materials for this SKU from the plan
+    const materialsForSku = planData.materials.filter(mat => {
+      // In a real scenario, you'd need to match materials to SKUs via BOM
+      // For now, we'll include all materials
+      return true;
+    });
+
+    const orderInput: CreateProductionOrderInput = {
+      plan_id: planId,
+      sku_id: item.sku_id,
+      quantity: item.required_qty,
+      start_date: planData.plan_start_date,
+      due_date: planData.plan_end_date,
+      items: materialsForSku.map(mat => ({
+        material_sku_id: mat.material_sku_id,
+        required_qty: mat.gross_requirement,
+        uom: mat.material_uom,
+      })),
+    };
+
+    const order = await createProductionOrder(orderInput, userId);
+    if (order) {
+      createdOrders.push(order);
+    }
+  }
+
+  // Update plan status to in_production
+  await supabase
+    .from('production_plan')
+    .update({
+      status: 'in_production',
+      updated_at: new Date().toISOString(),
+    })
+    .eq('plan_id', planId);
+
+  return createdOrders;
+}

@@ -1,69 +1,160 @@
-import { z } from 'zod';
+/**
+ * Production Order Types
+ * ประเภทข้อมูลสำหรับระบบใบสั่งผลิต
+ */
 
-export const productionOrderSchema = z.object({
-  production_no: z.string().optional(),
-  plan_id: z.string().uuid().optional().nullable(),
-  sku_id: z.string().min(1, 'Product is required'),
-  quantity: z.number().positive('Quantity must be positive'),
-  produced_qty: z.number().min(0).default(0),
-  uom: z.string().optional(),
-  start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format'),
-  due_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Invalid date format'),
-  actual_start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
-  actual_completion_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
-  status: z.enum(['planned', 'in_progress', 'completed', 'closed', 'cancelled']).default('planned'),
-  priority: z.number().int().min(1).max(99).default(5),
-  remarks: z.string().optional().nullable()
-}).refine(data => {
-  const startDate = new Date(data.start_date);
-  const dueDate = new Date(data.due_date);
-  return dueDate >= startDate;
-}, {
-  message: 'Due date must be after or equal to start date',
-  path: ['due_date']
-});
+// ========== Enums ==========
+export type ProductionOrderStatus = 'planned' | 'released' | 'in_progress' | 'completed' | 'on_hold' | 'cancelled';
+export type ProductionItemStatus = 'pending' | 'partial' | 'issued' | 'returned';
 
-export const productionOrderItemSchema = z.object({
-  production_order_id: z.string().uuid(),
-  material_sku_id: z.string().min(1, 'Material is required'),
-  required_qty: z.number().positive('Required quantity must be positive'),
-  issued_qty: z.number().min(0).default(0),
-  uom: z.string().optional(),
-  status: z.enum(['pending', 'issued', 'returned']).default('pending'),
-  issued_date: z.string().optional().nullable(),
-  remarks: z.string().optional().nullable()
-});
+// ========== Production Order (Header) ==========
+export interface ProductionOrder {
+  id: string;
+  production_no: string;
+  plan_id?: string;
+  sku_id: string;
+  quantity: number;
+  produced_qty: number;
+  remaining_qty?: number;
+  uom?: string;
+  start_date: string;
+  due_date: string;
+  actual_start_date?: string;
+  actual_completion_date?: string;
+  status: ProductionOrderStatus;
+  priority: number;
+  remarks?: string;
+  created_by?: number;
+  created_at: string;
+  updated_at: string;
+}
 
-export const productionLogSchema = z.object({
-  production_order_id: z.string().uuid(),
-  action: z.string().min(1, 'Action is required'),
-  old_value: z.string().optional().nullable(),
-  new_value: z.string().optional().nullable(),
-  remarks: z.string().optional().nullable(),
-  created_by: z.number().optional().nullable()
-});
+// User info for creator (from master_employee)
+export interface OrderUserInfo {
+  employee_id: number;
+  first_name?: string;
+  last_name?: string;
+  nickname?: string;
+}
 
-export const issueMaterialsSchema = z.object({
-  production_order_id: z.string().uuid(),
-  material_sku_id: z.string().min(1),
-  issued_qty: z.number().positive('Issued quantity must be positive'),
-  remarks: z.string().optional()
-});
+export interface ProductionOrderWithDetails extends ProductionOrder {
+  items?: ProductionOrderItemWithDetails[];
+  sku?: {
+    sku_id: string;
+    sku_name: string;
+    uom_base: string;
+    category?: string;
+    sub_category?: string;
+  };
+  plan?: {
+    plan_id: string;
+    plan_no: string;
+    plan_name: string;
+  };
+  creator?: OrderUserInfo;
+}
 
-export const updateStatusSchema = z.object({
-  production_order_id: z.string().uuid(),
-  status: z.enum(['planned', 'in_progress', 'completed', 'closed', 'cancelled']),
-  actual_start_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
-  actual_completion_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional().nullable(),
-  produced_qty: z.number().min(0).optional(),
-  remarks: z.string().optional()
-});
+// ========== Production Order Items (Materials) ==========
+export interface ProductionOrderItem {
+  id: string;
+  production_order_id: string;
+  material_sku_id: string;
+  required_qty: number;
+  issued_qty: number;
+  remaining_qty?: number;
+  uom?: string;
+  status: ProductionItemStatus;
+  issued_date?: string;
+  remarks?: string;
+  created_at: string;
+  updated_at: string;
+}
 
-export type ProductionOrder = z.infer<typeof productionOrderSchema>;
-export type ProductionOrderItem = z.infer<typeof productionOrderItemSchema>;
-export type ProductionLog = z.infer<typeof productionLogSchema>;
-export type IssueMaterials = z.infer<typeof issueMaterialsSchema>;
-export type UpdateStatus = z.infer<typeof updateStatusSchema>;
+export interface ProductionOrderItemWithDetails extends ProductionOrderItem {
+  material_sku?: {
+    sku_id: string;
+    sku_name: string;
+    uom_base: string;
+  };
+}
 
-export type ProductionOrderStatus = 'planned' | 'in_progress' | 'completed' | 'closed' | 'cancelled';
-export type ProductionItemStatus = 'pending' | 'issued' | 'returned';
+// ========== Input Types ==========
+export interface CreateProductionOrderInput {
+  plan_id?: string;
+  sku_id: string;
+  quantity: number;
+  uom?: string;
+  start_date: string;
+  due_date: string;
+  priority?: number;
+  remarks?: string;
+  items?: CreateProductionOrderItemInput[];
+}
+
+export interface CreateProductionOrderItemInput {
+  material_sku_id: string;
+  required_qty: number;
+  uom?: string;
+  remarks?: string;
+}
+
+export interface UpdateProductionOrderInput {
+  id: string;
+  quantity?: number;
+  start_date?: string;
+  due_date?: string;
+  priority?: number;
+  remarks?: string;
+  status?: ProductionOrderStatus;
+}
+
+// ========== Filter Types ==========
+export interface ProductionOrderFilters {
+  search?: string;
+  status?: ProductionOrderStatus | 'all';
+  plan_id?: string;
+  start_date?: string;
+  end_date?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+// ========== Response Types ==========
+export interface ProductionOrderListResponse {
+  data: ProductionOrderWithDetails[];
+  totalCount: number;
+  summary: {
+    total: number;
+    planned: number;
+    released: number;
+    in_progress: number;
+    completed: number;
+    on_hold: number;
+    cancelled: number;
+  };
+}
+
+export interface ProductionOrderResponse {
+  data: ProductionOrderWithDetails | null;
+  error: string | null;
+}
+
+// ========== Pre-fill Data from Plan ==========
+export interface PlanDataForOrder {
+  plan_id: string;
+  plan_no: string;
+  plan_name: string;
+  plan_start_date: string;
+  plan_end_date: string;
+  items: {
+    sku_id: string;
+    sku_name: string;
+    required_qty: number;
+  }[];
+  materials: {
+    material_sku_id: string;
+    material_name: string;
+    gross_requirement: number;
+    material_uom?: string;
+  }[];
+}

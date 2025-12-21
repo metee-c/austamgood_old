@@ -25,12 +25,10 @@ import {
   X,
   Trash2,
   Check,
-  User,
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
-import { useAuth } from '@/hooks/useAuth';
 import {
   useProductionPlans,
   useSkusWithBom,
@@ -63,10 +61,6 @@ const ProductionPlanningPage = () => {
   // Modal state
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<ProductionPlanWithItems | null>(null);
-  const [deletingPlanId, setDeletingPlanId] = useState<string | null>(null);
-
-  // Mutations
-  const { deletePlan } = useProductionPlanMutations();
 
   // Fetch data
   const { plans, isLoading, error, summary, mutate } = useProductionPlans({
@@ -153,52 +147,74 @@ const ProductionPlanningPage = () => {
     setCurrentMonth(new Date());
   };
 
-  // Handle delete plan
-  const handleDeletePlan = async (planId: string, e?: React.MouseEvent) => {
-    if (e) {
-      e.stopPropagation();
-    }
-    if (!confirm('คุณต้องการลบแผนการผลิตนี้หรือไม่?')) return;
-    
-    setDeletingPlanId(planId);
-    const success = await deletePlan(planId);
-    setDeletingPlanId(null);
-    
-    if (success) {
-      mutate();
-      if (selectedPlan?.plan_id === planId) {
-        setSelectedPlan(null);
-      }
-    }
-  };
-
   return (
-    <div className="h-[calc(100vh-3.25rem)] bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
-      <div className="h-full flex flex-col space-y-1 pt-0 px-2 pb-1">
-        {/* Header & Filters */}
-        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-lg px-2 py-1.5 shadow-sm flex-shrink-0">
+    <div className="h-[calc(100vh-3.25rem)] bg-gradient-to-br from-blue-50 via-white to-indigo-50 overflow-hidden">
+      <div className="h-full flex flex-col space-y-3 pt-2 px-3 pb-2">
+
+        {/* Header Section */}
+        <div className="bg-white/90 backdrop-blur-sm border-2 border-primary-100 rounded-xl px-4 py-3 shadow-lg flex-shrink-0">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-gradient-to-br from-primary-500 to-primary-600 rounded-xl flex items-center justify-center shadow-md">
+                <Box className="w-6 h-6 text-white" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-gray-900 font-thai">แผนการผลิต</h1>
+                <p className="text-xs text-gray-500 font-thai mt-0.5">Production Planning</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" icon={Download} className="text-xs">
+                Export
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                icon={TrendingUp}
+                className="text-xs"
+                onClick={() => router.push('/production/forecast')}
+              >
+                ยอดประมาณการณ์
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                icon={Plus}
+                className="text-xs font-semibold"
+                onClick={() => setShowCreateModal(true)}
+              >
+                สร้างแผนใหม่
+              </Button>
+            </div>
+          </div>
+        </div>
+
+        {/* Filters & Controls */}
+        <div className="bg-white/80 backdrop-blur-sm border border-gray-200 rounded-xl px-3 py-2 shadow-sm flex-shrink-0">
           <div className="flex items-center gap-2">
-            <h1 className="text-base font-bold text-thai-gray-900 font-thai whitespace-nowrap">แผนการผลิต</h1>
             <div className="flex-1 relative">
-              <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3.5 h-3.5 text-thai-gray-400" />
+              <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
               <input
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="ค้นหา..."
-                className="w-full pl-7 pr-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai placeholder:text-thai-gray-400 focus:outline-none focus:ring-1 focus:ring-primary-500/30 focus:border-primary-500/30 transition-all"
+                placeholder="ค้นหาด้วย รหัสแผน, ชื่อแผน..."
+                className="w-full pl-9 pr-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-thai focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500"
               />
             </div>
-            <input
-              type="date"
-              value={selectedDate}
-              onChange={(e) => setSelectedDate(e.target.value)}
-              className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/30 focus:border-primary-500/30 transition-all w-28"
-            />
+            <div className="flex items-center gap-2">
+              <Calendar className="w-4 h-4 text-gray-400" />
+              <input
+                type="date"
+                value={selectedDate}
+                onChange={(e) => setSelectedDate(e.target.value)}
+                className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-thai focus:outline-none focus:ring-2 focus:ring-primary-500/50 w-36"
+              />
+            </div>
             <select
               value={selectedStatus}
               onChange={(e) => setSelectedStatus(e.target.value as ProductionPlanStatus | 'all')}
-              className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/30 focus:border-primary-500/30 transition-all"
+              className="px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm font-thai focus:outline-none focus:ring-2 focus:ring-primary-500/50"
             >
               <option value="all">ทุกสถานะ</option>
               <option value="draft">ร่าง</option>
@@ -209,46 +225,37 @@ const ProductionPlanningPage = () => {
             </select>
 
             {/* View Toggle */}
-            <div className="flex items-center gap-1 bg-gray-100 rounded p-0.5">
+            <div className="flex items-center gap-1 bg-gray-100 rounded-lg p-1">
               <button
                 onClick={() => setViewMode('grid')}
-                className={`p-1 rounded transition-colors ${
+                className={`p-1.5 rounded transition-colors ${
                   viewMode === 'grid' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                 }`}
                 title="มุมมองกริด"
               >
-                <LayoutGrid className="w-3.5 h-3.5" />
+                <LayoutGrid className="w-4 h-4" />
               </button>
               <button
                 onClick={() => setViewMode('list')}
-                className={`p-1 rounded transition-colors ${
+                className={`p-1.5 rounded transition-colors ${
                   viewMode === 'list' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                 }`}
                 title="มุมมองรายการ"
               >
-                <List className="w-3.5 h-3.5" />
+                <List className="w-4 h-4" />
               </button>
               <button
                 onClick={() => setViewMode('calendar')}
-                className={`p-1 rounded transition-colors ${
+                className={`p-1.5 rounded transition-colors ${
                   viewMode === 'calendar' ? 'bg-white text-primary-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                 }`}
                 title="มุมมองปฏิทิน"
               >
-                <Calendar className="w-3.5 h-3.5" />
+                <Calendar className="w-4 h-4" />
               </button>
             </div>
 
-            <Button variant="outline" size="sm" icon={TrendingUp} onClick={() => router.push('/production/forecast')} className="text-xs py-1 px-2">
-              ยอดประมาณการ
-            </Button>
-            <Button variant="outline" size="sm" icon={Download} className="text-xs py-1 px-2">
-              Excel
-            </Button>
-            <Button variant="primary" size="sm" icon={Plus} onClick={() => setShowCreateModal(true)} className="text-xs py-1 px-2">
-              สร้าง
-            </Button>
-            <Button variant="outline" size="sm" icon={RefreshCw} onClick={() => mutate()} disabled={isLoading} className="text-xs py-1 px-2">
+            <Button variant="outline" size="sm" icon={RefreshCw} onClick={() => mutate()} disabled={isLoading} className="text-xs">
               รีเฟรช
             </Button>
           </div>
@@ -284,13 +291,11 @@ const ProductionPlanningPage = () => {
               getPlansByDate={getPlansByDate}
               getDaysInMonth={getDaysInMonth}
               onPlanClick={setSelectedPlan}
-              onDelete={handleDeletePlan}
-              deletingPlanId={deletingPlanId}
             />
           ) : viewMode === 'grid' ? (
-            <GridView plans={plans} getStatusConfig={getStatusConfig} onPlanClick={setSelectedPlan} onDelete={handleDeletePlan} deletingPlanId={deletingPlanId} />
+            <GridView plans={plans} getStatusConfig={getStatusConfig} onPlanClick={setSelectedPlan} />
           ) : (
-            <ListView plans={plans} getStatusConfig={getStatusConfig} onPlanClick={setSelectedPlan} onDelete={handleDeletePlan} deletingPlanId={deletingPlanId} />
+            <ListView plans={plans} getStatusConfig={getStatusConfig} onPlanClick={setSelectedPlan} />
           )}
         </div>
       </div>
@@ -312,7 +317,6 @@ const ProductionPlanningPage = () => {
           plan={selectedPlan}
           onClose={() => setSelectedPlan(null)}
           getStatusConfig={getStatusConfig}
-          onStatusChange={() => mutate()}
         />
       )}
     </div>
@@ -320,7 +324,7 @@ const ProductionPlanningPage = () => {
 };
 
 // Grid View Component
-function GridView({ plans, getStatusConfig, onPlanClick, onDelete, deletingPlanId }: { plans: ProductionPlanWithItems[]; getStatusConfig: (status: string) => any; onPlanClick: (plan: ProductionPlanWithItems) => void; onDelete: (planId: string, e?: React.MouseEvent) => void; deletingPlanId: string | null }) {
+function GridView({ plans, getStatusConfig, onPlanClick }: { plans: ProductionPlanWithItems[]; getStatusConfig: (status: string) => any; onPlanClick: (plan: ProductionPlanWithItems) => void }) {
   const statusColumns = [
     { status: 'draft', title: 'ร่าง', subtitle: 'Draft', icon: Clock, gradient: 'from-gray-400 to-gray-500', bgColor: 'bg-gray-50', borderColor: 'border-gray-200', countBg: 'bg-gray-100 text-gray-600' },
     { status: 'approved', title: 'อนุมัติแล้ว', subtitle: 'Approved', icon: CheckCircle2, gradient: 'from-blue-500 to-blue-600', bgColor: 'bg-blue-50', borderColor: 'border-blue-200', countBg: 'bg-blue-100 text-blue-700' },
@@ -365,7 +369,7 @@ function GridView({ plans, getStatusConfig, onPlanClick, onDelete, deletingPlanI
                 ) : (
                   <div className="space-y-3">
                     {columnPlans.map((plan) => (
-                      <PlanCard key={plan.plan_id} plan={plan} onClick={() => onPlanClick(plan)} onDelete={onDelete} isDeleting={deletingPlanId === plan.plan_id} />
+                      <PlanCard key={plan.plan_id} plan={plan} onClick={() => onPlanClick(plan)} />
                     ))}
                   </div>
                 )}
@@ -379,30 +383,20 @@ function GridView({ plans, getStatusConfig, onPlanClick, onDelete, deletingPlanI
 }
 
 // Plan Card Component
-function PlanCard({ plan, onClick, onDelete, isDeleting }: { plan: ProductionPlanWithItems; onClick: () => void; onDelete: (planId: string, e?: React.MouseEvent) => void; isDeleting: boolean }) {
+function PlanCard({ plan, onClick }: { plan: ProductionPlanWithItems; onClick: () => void }) {
   const itemCount = plan.items?.length || 0;
 
   return (
     <div 
-      className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all cursor-pointer group relative"
+      className="bg-white rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition-all cursor-pointer group"
       onClick={onClick}
     >
-      {/* Delete button */}
-      <button
-        onClick={(e) => onDelete(plan.plan_id, e)}
-        disabled={isDeleting}
-        className="absolute top-2 right-2 p-1 rounded-full bg-red-50 text-red-500 opacity-0 group-hover:opacity-100 hover:bg-red-100 transition-all z-10"
-        title="ลบแผน"
-      >
-        {isDeleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
-      </button>
-
       <div className="px-3 py-2.5 border-b border-gray-100">
         <div className="flex items-center justify-between mb-1">
           <span className="font-mono text-xs font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded">
             {plan.plan_no}
           </span>
-          <span className="text-[10px] text-gray-500 font-thai mr-6">
+          <span className="text-[10px] text-gray-500 font-thai">
             {new Date(plan.plan_start_date).toLocaleDateString('th-TH', { day: '2-digit', month: 'short' })}
           </span>
         </div>
@@ -436,28 +430,26 @@ function PlanCard({ plan, onClick, onDelete, isDeleting }: { plan: ProductionPla
 
 
 // List View Component
-function ListView({ plans, getStatusConfig, onPlanClick, onDelete, deletingPlanId }: { plans: ProductionPlanWithItems[]; getStatusConfig: (status: string) => any; onPlanClick: (plan: ProductionPlanWithItems) => void; onDelete: (planId: string, e?: React.MouseEvent) => void; deletingPlanId: string | null }) {
+function ListView({ plans, getStatusConfig, onPlanClick }: { plans: ProductionPlanWithItems[]; getStatusConfig: (status: string) => any; onPlanClick: (plan: ProductionPlanWithItems) => void }) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200">
       <div className="overflow-x-auto thin-scrollbar">
         <table className="w-full table-fixed text-sm">
           <thead className="sticky top-0 bg-gradient-to-r from-gray-50 to-gray-100 z-10 border-b border-gray-200">
             <tr>
-              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[11%]">รหัสแผน</th>
-              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[18%]">ชื่อแผน</th>
-              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[11%]">วันที่เริ่ม</th>
-              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[11%]">วันที่สิ้นสุด</th>
-              <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[9%]">สินค้า</th>
-              <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[9%]">วัตถุดิบ</th>
-              <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[9%]">ขาด</th>
-              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[12%]">สถานะ</th>
-              <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide w-[10%]">จัดการ</th>
+              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[12%]">รหัสแผน</th>
+              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[20%]">ชื่อแผน</th>
+              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[12%]">วันที่เริ่ม</th>
+              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[12%]">วันที่สิ้นสุด</th>
+              <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[10%]">สินค้า</th>
+              <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[10%]">วัตถุดิบ</th>
+              <th className="px-3 py-2.5 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-r border-gray-200 w-[10%]">ขาด</th>
+              <th className="px-3 py-2.5 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide w-[14%]">สถานะ</th>
             </tr>
           </thead>
           <tbody>
             {plans.map((plan) => {
               const statusConfig = getStatusConfig(plan.status);
-              const isDeleting = deletingPlanId === plan.plan_id;
               return (
                 <tr key={plan.plan_id} className="border-b border-gray-100 hover:bg-blue-50/30 transition-colors cursor-pointer" onClick={() => onPlanClick(plan)}>
                   <td className="px-3 py-2 text-xs font-mono font-semibold text-blue-700">{plan.plan_no}</td>
@@ -482,16 +474,6 @@ function ListView({ plans, getStatusConfig, onPlanClick, onDelete, deletingPlanI
                     )}
                   </td>
                   <td className="px-3 py-2">{statusConfig.badge}</td>
-                  <td className="px-3 py-2 text-center">
-                    <button
-                      onClick={(e) => onDelete(plan.plan_id, e)}
-                      disabled={isDeleting}
-                      className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 transition-colors disabled:opacity-50"
-                      title="ลบแผน"
-                    >
-                      {isDeleting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                    </button>
-                  </td>
                 </tr>
               );
             })}
@@ -512,8 +494,6 @@ function CalendarView({
   getPlansByDate,
   getDaysInMonth,
   onPlanClick,
-  onDelete,
-  deletingPlanId,
 }: {
   plans: ProductionPlanWithItems[];
   currentMonth: Date;
@@ -523,8 +503,6 @@ function CalendarView({
   getPlansByDate: (date: string) => ProductionPlanWithItems[];
   getDaysInMonth: (date: Date) => { daysInMonth: number; startingDayOfWeek: number; year: number; month: number };
   onPlanClick: (plan: ProductionPlanWithItems) => void;
-  onDelete: (planId: string, e?: React.MouseEvent) => void;
-  deletingPlanId: string | null;
 }) {
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-4">
@@ -574,22 +552,13 @@ function CalendarView({
                 <div className="space-y-1">
                   {dayPlans.slice(0, 3).map((plan) => {
                     const statusConfig = getStatusConfig(plan.status);
-                    const isDeleting = deletingPlanId === plan.plan_id;
                     return (
                       <div
                         key={plan.plan_id}
-                        className={`text-[10px] font-thai px-1.5 py-1 rounded border ${statusConfig.color} cursor-pointer hover:shadow-sm transition-shadow relative group`}
+                        className={`text-[10px] font-thai px-1.5 py-1 rounded border ${statusConfig.color} cursor-pointer hover:shadow-sm transition-shadow`}
                         title={`${plan.plan_no} - ${plan.plan_name}`}
                         onClick={(e) => { e.stopPropagation(); onPlanClick(plan); }}
                       >
-                        <button
-                          onClick={(e) => { e.stopPropagation(); onDelete(plan.plan_id, e); }}
-                          disabled={isDeleting}
-                          className="absolute -top-1 -right-1 p-0.5 rounded-full bg-red-500 text-white opacity-0 group-hover:opacity-100 hover:bg-red-600 transition-all"
-                          title="ลบแผน"
-                        >
-                          {isDeleting ? <Loader2 className="w-2.5 h-2.5 animate-spin" /> : <X className="w-2.5 h-2.5" />}
-                        </button>
                         <div className="flex items-center gap-1 mb-0.5">
                           {statusConfig.icon}
                           <span className="font-mono font-semibold truncate">{plan.plan_no}</span>
@@ -615,93 +584,15 @@ function CalendarView({
 
 // Plan Detail Modal Component
 function PlanDetailModal({ 
-  plan: initialPlan, 
+  plan, 
   onClose, 
-  getStatusConfig,
-  onStatusChange,
+  getStatusConfig 
 }: { 
   plan: ProductionPlanWithItems; 
   onClose: () => void; 
   getStatusConfig: (status: string) => any;
-  onStatusChange?: () => void;
 }) {
-  const router = useRouter();
-  const [plan, setPlan] = useState(initialPlan);
-  const [isLoadingBom, setIsLoadingBom] = useState(false);
-  const [bomError, setBomError] = useState<string | null>(null);
-  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const statusConfig = getStatusConfig(plan.status);
-
-  // Navigate to production orders page with plan_id
-  const handleCreateProductionOrder = () => {
-    if (!confirm('คุณต้องการสั่งผลิตหรือไม่? ระบบจะนำคุณไปยังหน้าสร้างใบสั่งผลิต')) return;
-    router.push(`/production/orders?plan_id=${plan.plan_id}`);
-    onClose();
-  };
-
-  // Status action handler
-  const handleStatusAction = async (action: 'approve' | 'start' | 'complete' | 'cancel') => {
-    if (!confirm(getConfirmMessage(action))) return;
-    
-    setIsUpdatingStatus(true);
-    try {
-      const response = await fetch(`/api/production/planning/${plan.plan_id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ action }),
-      });
-      const result = await response.json();
-      if (response.ok && result.data) {
-        setPlan(result.data);
-        onStatusChange?.();
-      } else {
-        alert(result.error || 'เกิดข้อผิดพลาด');
-      }
-    } catch (err) {
-      alert('เกิดข้อผิดพลาดในการอัพเดตสถานะ');
-    } finally {
-      setIsUpdatingStatus(false);
-    }
-  };
-
-  const getConfirmMessage = (action: string) => {
-    switch (action) {
-      case 'approve': return 'คุณต้องการอนุมัติแผนการผลิตนี้หรือไม่?';
-      case 'start': return 'คุณต้องการสั่งผลิตหรือไม่?';
-      case 'complete': return 'คุณต้องการเสร็จสิ้นแผนการผลิตนี้หรือไม่?';
-      case 'cancel': return 'คุณต้องการยกเลิกแผนการผลิตนี้หรือไม่?';
-      default: return 'ยืนยันการดำเนินการ?';
-    }
-  };
-
-  // Auto-recalculate material requirements if empty
-  useEffect(() => {
-    const recalculateBom = async () => {
-      // Only recalculate if material_requirements is empty but plan has items
-      if ((!plan.material_requirements || plan.material_requirements.length === 0) && plan.items && plan.items.length > 0) {
-        setIsLoadingBom(true);
-        setBomError(null);
-        try {
-          const response = await fetch(`/api/production/planning/${plan.plan_id}`, {
-            method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ action: 'recalculate' }),
-          });
-          const result = await response.json();
-          if (response.ok && result.data) {
-            setPlan(result.data);
-          } else {
-            setBomError(result.error || 'ไม่สามารถคำนวณวัตถุดิบได้');
-          }
-        } catch (err) {
-          setBomError('เกิดข้อผิดพลาดในการคำนวณวัตถุดิบ');
-        } finally {
-          setIsLoadingBom(false);
-        }
-      }
-    };
-    recalculateBom();
-  }, [initialPlan.plan_id]);
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -744,19 +635,6 @@ function PlanDetailModal({
                   {statusConfig.badge}
                 </div>
               </div>
-              <div>
-                <label className="block text-xs text-gray-500 font-thai mb-1">ผู้สร้างแผน</label>
-                <div className="flex items-center gap-2">
-                  <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center">
-                    <User className="w-3 h-3 text-blue-600" />
-                  </div>
-                  <p className="text-sm font-semibold text-gray-900 font-thai">
-                    {plan.creator
-                      ? plan.creator.nickname || `${plan.creator.first_name || ''} ${plan.creator.last_name || ''}`.trim() || `พนักงาน #${plan.creator.employee_id}`
-                      : 'ไม่ระบุ'}
-                  </p>
-                </div>
-              </div>
             </div>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
@@ -794,7 +672,7 @@ function PlanDetailModal({
 
           {/* Items List */}
           {plan.items && plan.items.length > 0 && (
-            <div className="mb-6">
+            <div>
               <h3 className="text-sm font-semibold text-gray-700 font-thai mb-3 flex items-center gap-2">
                 <Package className="w-4 h-4 text-purple-500" />
                 รายการสินค้าที่ต้องผลิต ({plan.items.length} รายการ)
@@ -844,172 +722,21 @@ function PlanDetailModal({
             </div>
           )}
 
-          {/* Material Requirements (BOM) */}
-          {isLoadingBom ? (
-            <div className="mb-6">
-              <h3 className="text-sm font-semibold text-gray-700 font-thai mb-3 flex items-center gap-2">
-                <Box className="w-4 h-4 text-blue-500" />
-                รายการวัตถุดิบที่ต้องใช้
-              </h3>
-              <div className="bg-blue-50/50 rounded-lg border border-blue-200 p-8 flex items-center justify-center">
-                <Loader2 className="w-5 h-5 animate-spin text-blue-500 mr-2" />
-                <span className="text-sm text-blue-600 font-thai">กำลังคำนวณวัตถุดิบจาก BOM...</span>
-              </div>
-            </div>
-          ) : bomError ? (
-            <div className="mb-6">
-              <h3 className="text-sm font-semibold text-gray-700 font-thai mb-3 flex items-center gap-2">
-                <Box className="w-4 h-4 text-blue-500" />
-                รายการวัตถุดิบที่ต้องใช้
-              </h3>
-              <div className="bg-red-50 rounded-lg border border-red-200 p-4 flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-red-500" />
-                <span className="text-sm text-red-600 font-thai">{bomError}</span>
-              </div>
-            </div>
-          ) : plan.material_requirements && plan.material_requirements.length > 0 ? (
-            <div className="mb-6">
-              <h3 className="text-sm font-semibold text-gray-700 font-thai mb-3 flex items-center gap-2">
-                <Box className="w-4 h-4 text-blue-500" />
-                รายการวัตถุดิบที่ต้องใช้ ({plan.material_requirements.length} รายการ)
-              </h3>
-              <div className="bg-blue-50/50 rounded-lg border border-blue-200 overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-blue-100/50 border-b border-blue-200">
-                    <tr>
-                      <th className="px-4 py-2 text-left text-xs font-semibold text-blue-700 font-thai">รหัสวัตถุดิบ</th>
-                      <th className="px-4 py-2 text-left text-xs font-semibold text-blue-700 font-thai">ชื่อวัตถุดิบ</th>
-                      <th className="px-4 py-2 text-right text-xs font-semibold text-blue-700 font-thai">ต้องใช้</th>
-                      <th className="px-4 py-2 text-right text-xs font-semibold text-blue-700 font-thai">สต็อก</th>
-                      <th className="px-4 py-2 text-right text-xs font-semibold text-blue-700 font-thai">ขาด</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {plan.material_requirements.map((mat, index) => {
-                      const matWithSku = mat as typeof mat & { material_sku?: { sku_id: string; sku_name: string; uom_base: string } };
-                      const shortageQty = mat.shortage_qty || Math.max(0, mat.gross_requirement - mat.current_stock);
-                      const hasShortage = shortageQty > 0;
-                      return (
-                        <tr key={mat.requirement_id || index} className={`border-b border-blue-100 last:border-0 ${hasShortage ? 'bg-red-50/50' : ''}`}>
-                          <td className="px-4 py-2 font-mono text-xs text-blue-600">{mat.material_sku_id}</td>
-                          <td className="px-4 py-2 text-xs text-gray-900 font-thai">{matWithSku.material_sku?.sku_name || mat.material_sku_id}</td>
-                          <td className="px-4 py-2 text-right text-xs font-bold text-gray-900">
-                            {mat.gross_requirement?.toLocaleString()} {matWithSku.material_sku?.uom_base || mat.material_uom}
-                          </td>
-                          <td className="px-4 py-2 text-right text-xs text-gray-600">
-                            {mat.current_stock?.toLocaleString()}
-                          </td>
-                          <td className="px-4 py-2 text-right">
-                            {hasShortage ? (
-                              <span className="inline-flex items-center gap-1 text-xs font-bold text-red-600 bg-red-100 px-2 py-0.5 rounded">
-                                <AlertTriangle className="w-3 h-3" />
-                                {shortageQty.toLocaleString()}
-                              </span>
-                            ) : (
-                              <span className="text-xs text-green-600">-</span>
-                            )}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          ) : null}
-
           {/* Created/Updated Info */}
-          <div className="mt-6 pt-4 border-t border-gray-200 space-y-2">
-            <div className="flex items-center justify-between text-xs text-gray-500">
-              <div className="flex items-center gap-4">
-                <span className="font-thai">
-                  สร้างเมื่อ: {new Date(plan.created_at).toLocaleString('th-TH')}
-                </span>
-                {plan.creator && (
-                  <span className="font-thai">
-                    โดย: <span className="font-semibold text-gray-700">{plan.creator.nickname || `${plan.creator.first_name || ''} ${plan.creator.last_name || ''}`.trim() || `พนักงาน #${plan.creator.employee_id}`}</span>
-                  </span>
-                )}
-              </div>
-              {plan.updated_at && plan.updated_at !== plan.created_at && (
-                <span className="font-thai">
-                  แก้ไขล่าสุด: {new Date(plan.updated_at).toLocaleString('th-TH')}
-                </span>
-              )}
-            </div>
-            {plan.approver && plan.approved_at && (
-              <div className="flex items-center gap-4 text-xs text-gray-500">
-                <span className="font-thai">
-                  อนุมัติเมื่อ: {new Date(plan.approved_at).toLocaleString('th-TH')}
-                </span>
-                <span className="font-thai">
-                  โดย: <span className="font-semibold text-gray-700">{plan.approver.nickname || `${plan.approver.first_name || ''} ${plan.approver.last_name || ''}`.trim() || `พนักงาน #${plan.approver.employee_id}`}</span>
-                </span>
-              </div>
+          <div className="mt-6 pt-4 border-t border-gray-200 flex items-center justify-between text-xs text-gray-500">
+            <span className="font-thai">
+              สร้างเมื่อ: {new Date(plan.created_at).toLocaleString('th-TH')}
+            </span>
+            {plan.updated_at && plan.updated_at !== plan.created_at && (
+              <span className="font-thai">
+                แก้ไขล่าสุด: {new Date(plan.updated_at).toLocaleString('th-TH')}
+              </span>
             )}
           </div>
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50">
-          <div className="flex items-center gap-2">
-            {/* Status action buttons based on current status */}
-            {plan.status === 'draft' && (
-              <>
-                <Button
-                  variant="primary"
-                  size="sm"
-                  icon={CheckCircle2}
-                  onClick={() => handleStatusAction('approve')}
-                  disabled={isUpdatingStatus}
-                >
-                  {isUpdatingStatus ? 'กำลังดำเนินการ...' : 'อนุมัติ'}
-                </Button>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  icon={AlertCircle}
-                  onClick={() => handleStatusAction('cancel')}
-                  disabled={isUpdatingStatus}
-                >
-                  ยกเลิก
-                </Button>
-              </>
-            )}
-            {plan.status === 'approved' && (
-              <>
-                <Button
-                  variant="warning"
-                  size="sm"
-                  icon={PlayCircle}
-                  onClick={handleCreateProductionOrder}
-                  disabled={isUpdatingStatus}
-                >
-                  สั่งผลิต
-                </Button>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  icon={AlertCircle}
-                  onClick={() => handleStatusAction('cancel')}
-                  disabled={isUpdatingStatus}
-                >
-                  ยกเลิก
-                </Button>
-              </>
-            )}
-            {plan.status === 'in_production' && (
-              <Button
-                variant="success"
-                size="sm"
-                icon={CheckCircle2}
-                onClick={() => handleStatusAction('complete')}
-                disabled={isUpdatingStatus}
-              >
-                {isUpdatingStatus ? 'กำลังดำเนินการ...' : 'เสร็จสิ้น'}
-              </Button>
-            )}
-          </div>
+        <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50">
           <Button variant="outline" size="sm" onClick={onClose}>ปิด</Button>
         </div>
       </div>
@@ -1020,7 +747,6 @@ function PlanDetailModal({
 
 // Create Plan Modal Component
 function CreatePlanModal({ onClose, onSuccess }: { onClose: () => void; onSuccess: () => void }) {
-  const { user } = useAuth();
   const { skus, isLoading: loadingSkus } = useSkusWithBom();
   const { createPlan, isLoading: creating, error: createError } = useProductionPlanMutations();
   const { calculate, result: bomResult, isLoading: calculating, reset: resetBom } = useBomCalculation();
@@ -1146,19 +872,6 @@ function CreatePlanModal({ onClose, onSuccess }: { onClose: () => void; onSucces
 
         {/* Content */}
         <div className="p-6 overflow-y-auto max-h-[calc(90vh-140px)]">
-          {/* Creator Info */}
-          <div className="mb-4 p-3 bg-blue-50 border border-blue-200 rounded-lg flex items-center gap-3">
-            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-              <User className="w-4 h-4 text-blue-600" />
-            </div>
-            <div>
-              <p className="text-xs text-blue-600 font-thai">ผู้สร้างแผน</p>
-              <p className="text-sm font-semibold text-blue-800 font-thai">
-                {user?.full_name || user?.username || 'ไม่ระบุ'}
-              </p>
-            </div>
-          </div>
-
           {/* Plan Info */}
           <div className="grid grid-cols-2 gap-4 mb-6">
             <div className="col-span-2">
@@ -1413,4 +1126,3 @@ export default function ProductionPlanningPageWithPermission() {
     </PermissionGuard>
   );
 }
-

@@ -2,14 +2,14 @@
    - Environments: .env.local
 
    Creating an optimized production build ...
- ✓ Compiled successfully in 18.6s
+ ✓ Compiled successfully in 10.7s
    Running TypeScript ...
    Collecting page data using 13 workers ...
-   Generating static pages using 13 workers (0/164) ...
-   Generating static pages using 13 workers (41/164) 
-   Generating static pages using 13 workers (82/164) 
-   Generating static pages using 13 workers (123/164) 
- ✓ Generating static pages using 13 workers (164/164) in 1331.3ms
+   Generating static pages using 13 workers (0/171) ...
+   Generating static pages using 13 workers (42/171) 
+   Generating static pages using 13 workers (85/171) 
+   Generating static pages using 13 workers (128/171) 
+ ✓ Generating static pages using 13 workers (171/171) in 1439.5ms
    Finalizing page optimization ...
 
 Route (app)
@@ -128,6 +128,15 @@ Route (app)
 ├ ƒ /api/preparation-areas/template
 ├ ƒ /api/preparation-areas/zones
 ├ ƒ /api/production/forecast
+├ ƒ /api/production/orders
+├ ƒ /api/production/orders/food-stock
+├ ƒ /api/production/orders/[id]
+├ ƒ /api/production/orders/plan-data
+├ ƒ /api/production/planning
+├ ƒ /api/production/planning/bom-calculation
+├ ƒ /api/production/planning/[id]
+├ ƒ /api/production/planning/next-plan-name
+├ ƒ /api/production/planning/skus-with-bom
 ├ ƒ /api/receives
 ├ ƒ /api/receives/dashboard
 ├ ƒ /api/receives/generate-pallet-id

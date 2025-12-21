@@ -259,102 +259,97 @@ const BOMPage = () => {
             <p className="font-thai">ไม่พบข้อมูล BOM ที่ตรงกับการค้นหา</p>
           </div>
         ) : (
-          <div className="flex-1 overflow-auto thin-scrollbar">
-            <div className="overflow-x-auto">
-              <Table>
+          <div className="flex-1 overflow-auto thin-scrollbar relative">
+            <Table>
                 <Table.Header>
                   <Table.Row>
-                    <SortableHeader field="bom_id" className="w-32" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>BOM ID</SortableHeader>
-                    <SortableHeader field="finished_sku_id" className="min-w-48" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>สินค้าสำเร็จรูป</SortableHeader>
-                    <SortableHeader field="material_sku_id" className="min-w-48" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>วัตถุดิบ</SortableHeader>
-                    <SortableHeader field="material_qty" className="w-24" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ปริมาณ</SortableHeader>
-                    <SortableHeader field="material_uom" className="w-20" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>หน่วย</SortableHeader>
-                    <SortableHeader field="step_order" className="w-20" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ลำดับ</SortableHeader>
-                    <SortableHeader field="step_name" className="w-32" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ขั้นตอน</SortableHeader>
-                    <SortableHeader field="waste_qty" className="w-24" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>Loss</SortableHeader>
-                    <SortableHeader field="status" className="w-24" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>สถานะ</SortableHeader>
-                    <Table.Head className="w-32">การดำเนินการ</Table.Head>
+                    <SortableHeader field="bom_id" className="w-28 text-xs" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>BOM ID</SortableHeader>
+                    <SortableHeader field="finished_sku_id" className="w-44 text-xs" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>สินค้าสำเร็จรูป</SortableHeader>
+                    <SortableHeader field="material_sku_id" className="w-44 text-xs" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>วัตถุดิบ</SortableHeader>
+                    <SortableHeader field="material_qty" className="w-20 text-xs text-center" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ปริมาณ</SortableHeader>
+                    <SortableHeader field="material_uom" className="w-16 text-xs" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>หน่วย</SortableHeader>
+                    <SortableHeader field="step_order" className="w-16 text-xs text-center" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ลำดับ</SortableHeader>
+                    <SortableHeader field="step_name" className="w-32 text-xs" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>ขั้นตอน</SortableHeader>
+                    <SortableHeader field="waste_qty" className="w-20 text-xs text-center" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>Loss</SortableHeader>
+                    <SortableHeader field="status" className="w-20 text-xs" sortField={sortField} sortDirection={sortDirection} handleSort={handleSort}>สถานะ</SortableHeader>
+                    <Table.Head className="w-24 text-xs">จัดการ</Table.Head>
                   </Table.Row>
                 </Table.Header>
                 <Table.Body>
                   {sortedRecords.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((record) => (
-                    <Table.Row key={record.id} className="hover:bg-thai-gray-50">
+                    <Table.Row key={record.id}>
                       <Table.Cell>
-                        <div className="font-mono text-sm font-medium text-primary-600">
+                        <span className="font-mono font-semibold text-blue-600">
                           {record.bom_id}
-                        </div>
+                        </span>
                       </Table.Cell>
                       <Table.Cell>
-                        <div className="space-y-1">
-                          <div className="font-medium font-thai text-sm">
+                        <div className="flex items-center gap-1">
+                          <span className="font-thai font-medium truncate" title={record.finished_sku?.sku_name || record.finished_sku_id}>
                             {record.finished_sku?.sku_name || record.finished_sku_id}
-                          </div>
-                          <div className="text-xs text-thai-gray-500 font-mono">
-                            {record.finished_sku_id}
-                          </div>
+                          </span>
+                          <span className="text-gray-400 font-mono flex-shrink-0 text-[10px]">
+                            ({record.finished_sku_id})
+                          </span>
                         </div>
                       </Table.Cell>
                       <Table.Cell>
-                        <div className="space-y-1">
-                          <div className="font-medium font-thai text-sm">
+                        <div className="flex items-center gap-1">
+                          <span className="font-thai font-medium truncate" title={record.material_sku?.sku_name || record.material_sku_id}>
                             {record.material_sku?.sku_name || record.material_sku_id}
-                          </div>
-                          <div className="text-xs text-thai-gray-500 font-mono">
-                            {record.material_sku_id}
-                          </div>
+                          </span>
+                          <span className="text-gray-400 font-mono flex-shrink-0 text-[10px]">
+                            ({record.material_sku_id})
+                          </span>
                         </div>
                       </Table.Cell>
-                      <Table.Cell>
-                        <div className="text-center">
-                          <div className="text-sm font-bold text-blue-600">
-                            {record.material_qty}
-                          </div>
-                        </div>
+                      <Table.Cell className="text-center">
+                        <span className="font-semibold text-blue-600">
+                          {record.material_qty}
+                        </span>
                       </Table.Cell>
                       <Table.Cell>
-                        <span className="text-sm font-thai font-medium">{record.material_uom}</span>
+                        <span className="font-thai font-medium">{record.material_uom}</span>
+                      </Table.Cell>
+                      <Table.Cell className="text-center">
+                        <span className="font-semibold">
+                          {record.step_order}
+                        </span>
                       </Table.Cell>
                       <Table.Cell>
-                        <div className="text-center">
-                          <div className="text-sm font-bold">
-                            {record.step_order}
-                          </div>
-                        </div>
+                        <span className="font-thai truncate" title={record.step_name || '-'}>{record.step_name || '-'}</span>
+                      </Table.Cell>
+                      <Table.Cell className="text-center">
+                        {record.waste_qty ? (
+                          <span className="font-medium text-red-600">
+                            {record.waste_qty}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
                       </Table.Cell>
                       <Table.Cell>
-                        <span className="text-sm font-thai">{record.step_name || '-'}</span>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <div className="text-center">
-                          {record.waste_qty ? (
-                            <div className="text-sm font-medium text-red-600">
-                              {record.waste_qty}
-                            </div>
-                          ) : (
-                            <span className="text-xs text-thai-gray-400">-</span>
-                          )}
-                        </div>
-                      </Table.Cell>
-                      <Table.Cell>
-                        <Badge variant={record.status === 'active' ? 'success' : 'default'}>
-                          {record.status === 'active' ? 'ใช้งาน' : 'ไม่ใช้งาน'}
+                        <Badge variant={record.status === 'active' ? 'success' : 'default'} className="text-[10px] py-0.5 px-1.5">
+                          {record.status === 'active' ? 'ใช้งาน' : 'ไม่ใช้'}
                         </Badge>
                       </Table.Cell>
                       <Table.Cell>
-                        <div className="flex space-x-1">
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            icon={Edit} 
+                        <div className="flex space-x-0.5">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon={Edit}
                             onClick={() => handleEdit(record)}
                             title="แก้ไข"
+                            className="h-6 w-6 p-0"
                           />
-                          <Button 
-                            variant="ghost" 
-                            size="sm" 
-                            icon={Trash2} 
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            icon={Trash2}
                             onClick={() => handleDelete(record)}
                             title="ลบ"
+                            className="h-6 w-6 p-0"
                           />
                         </div>
                       </Table.Cell>
@@ -362,8 +357,6 @@ const BOMPage = () => {
                   ))}
                 </Table.Body>
               </Table>
-            </div>
-
           </div>
         )}
         <PaginationBar
