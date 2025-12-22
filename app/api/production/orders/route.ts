@@ -68,6 +68,7 @@ export async function POST(request: NextRequest) {
       priority: body.priority,
       remarks: body.remarks,
       items: body.items,
+      selected_pallets: body.selected_pallets, // พาเลทวัตถุดิบอาหารที่เลือก
     };
 
     const order = await createProductionOrder(input, userId);

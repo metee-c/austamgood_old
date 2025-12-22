@@ -269,7 +269,36 @@ export async function createProductionOrder(
       }
     }
 
-    // 5. Return complete order
+    // 5. Create replenishment_queue entries for selected food material pallets
+    if (input.selected_pallets && input.selected_pallets.length > 0) {
+      const replenishmentEntries = input.selected_pallets.map(pallet => ({
+        warehouse_id: 'WH001', // Default warehouse
+        sku_id: pallet.sku_id,
+        from_location_id: pallet.location_id,
+        to_location_id: 'Repack', // ปลายทางคือ Repack เสมอสำหรับงานเบิกวัตถุดิบจากใบสั่งผลิต
+        pallet_id: pallet.pallet_id,
+        requested_qty: pallet.qty,
+        confirmed_qty: 0,
+        priority: 3, // High priority for production
+        status: 'pending',
+        trigger_source: 'production_order',
+        trigger_reference: productionNo,
+        notes: `เบิกวัตถุดิบอาหารสำหรับใบสั่งผลิต ${productionNo}`,
+        assigned_to: null,
+      }));
+
+      const { error: replenishmentError } = await supabase
+        .from('replenishment_queue')
+        .insert(replenishmentEntries);
+
+      if (replenishmentError) {
+        console.error('Error creating replenishment queue entries:', replenishmentError);
+        // Don't rollback - order is created, just log the error
+        // The user can manually create replenishment tasks later
+      }
+    }
+
+    // 6. Return complete order
     return await getProductionOrderById(order.id);
   } catch (error) {
     console.error('Error in createProductionOrder:', error);

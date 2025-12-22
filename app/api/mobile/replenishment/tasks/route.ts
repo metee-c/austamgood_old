@@ -14,6 +14,8 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
 
     const status = searchParams.get('status') || 'all';
+    const triggerSource = searchParams.get('trigger_source') || null;
+    const showAll = searchParams.get('show_all') === 'true'; // Show all tasks, not just assigned to current user
 
     // Get current user from session
     const sessionResult = await getCurrentSession();
@@ -61,12 +63,23 @@ export async function GET(request: NextRequest) {
     if (status && status !== 'all') {
       query = query.eq('status', status);
     } else {
-      // Default: show assigned, in_progress (not pending/completed/cancelled)
-      query = query.in('status', ['assigned', 'in_progress']);
+      // Default: show pending, assigned, in_progress (not completed/cancelled)
+      query = query.in('status', ['pending', 'assigned', 'in_progress']);
     }
 
-    // Filter by assigned user - show only tasks assigned to current user
-    query = query.eq('assigned_to', currentUserId);
+    // Filter by trigger_source if specified
+    if (triggerSource) {
+      query = query.eq('trigger_source', triggerSource);
+    } else {
+      // If no trigger_source specified, exclude production_order tasks
+      // Production order tasks should only appear in the "เติมวัตถุดิบ" tab
+      query = query.or('trigger_source.is.null,trigger_source.neq.production_order');
+    }
+
+    // Filter by assigned user - show only tasks assigned to current user (unless show_all is true)
+    if (!showAll) {
+      query = query.eq('assigned_to', currentUserId);
+    }
 
     const { data, error } = await query;
 

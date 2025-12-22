@@ -174,20 +174,6 @@ function MobileReceivePage() {
     return filtered;
   }, [receives, searchTerm, selectedType, selectedStatus]);
 
-  // Statistics
-  const stats = useMemo(() => {
-    const total = receives.length;
-    const pending = receives.filter(r => r.status === 'รอรับเข้า').length;
-    const received = receives.filter(r => r.status === 'รับเข้าแล้ว').length;
-    const checking = receives.filter(r => r.status === 'กำลังตรวจสอบ').length;
-    const completed = receives.filter(r => r.status === 'สำเร็จ').length;
-    const pendingScan = receives.filter(r =>
-      r.wms_receive_items?.some(item => item.pallet_scan_status === 'รอดำเนินการ')
-    ).length;
-
-    return { total, pending, received, checking, completed, pendingScan };
-  }, [receives]);
-
   // Get status badge
   const getStatusBadge = (status: string) => {
     switch (status) {
@@ -298,62 +284,41 @@ function MobileReceivePage() {
             </div>
           </div>
 
-          {/* Statistics Cards - Compact */}
-          <div className="grid grid-cols-4 gap-1.5 mb-2">
-            <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
-              <div className="text-xl font-bold">{stats.total}</div>
-              <div className="text-[10px] text-sky-100">ทั้งหมด</div>
+          {/* Search and Filter - Same Row */}
+          <div className="flex items-center gap-2 mb-2">
+            {/* Search Box */}
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+              <input
+                type="text"
+                placeholder="ค้นหา..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-9 pr-8 py-2 rounded-lg bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-sky-300 font-thai text-sm"
+              />
+              {searchTerm && (
+                <button
+                  onClick={() => setSearchTerm('')}
+                  className="absolute right-2.5 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
             </div>
-            <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
-              <div className="text-xl font-bold">{stats.received}</div>
-              <div className="text-[10px] text-sky-100">รับแล้ว</div>
-            </div>
-            <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
-              <div className="text-xl font-bold">{stats.checking}</div>
-              <div className="text-[10px] text-sky-100">ตรวจสอบ</div>
-            </div>
-            <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
-              <div className="text-xl font-bold text-yellow-300">{stats.pendingScan}</div>
-              <div className="text-[10px] text-sky-100">รอสแกน</div>
-            </div>
-          </div>
 
-          {/* Search - Compact */}
-          <div className="relative mb-2">
-            <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="ค้นหา..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full pl-9 pr-8 py-2 rounded-lg bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-sky-300 font-thai text-sm"
-            />
-            {searchTerm && (
-              <button
-                onClick={() => setSearchTerm('')}
-                className="absolute right-2.5 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            )}
-          </div>
-
-          {/* Filter Toggle - Compact */}
-          <button
-            onClick={() => setShowFilter(!showFilter)}
-            className="w-full bg-white/20 rounded-lg py-1.5 px-3 flex items-center justify-between font-thai text-xs hover:bg-white/30 transition-colors"
-          >
-            <div className="flex items-center gap-1.5">
-              <Filter className="w-3.5 h-3.5" />
-              <span>ตัวกรอง</span>
+            {/* Filter Button - Compact */}
+            <button
+              onClick={() => setShowFilter(!showFilter)}
+              className="relative bg-white/20 rounded-lg p-2 hover:bg-white/30 transition-colors flex-shrink-0"
+            >
+              <Filter className="w-5 h-5" />
               {(selectedType !== 'all' || selectedStatus !== 'all') && (
-                <span className="bg-yellow-400 text-gray-900 rounded-full px-1.5 py-0.5 text-[10px] font-semibold">
+                <span className="absolute -top-1 -right-1 bg-yellow-400 text-gray-900 rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold">
                   {(selectedType !== 'all' ? 1 : 0) + (selectedStatus !== 'all' ? 1 : 0)}
                 </span>
               )}
-            </div>
-            <ChevronRight className={`w-3.5 h-3.5 transition-transform ${showFilter ? 'rotate-90' : ''}`} />
-          </button>
+            </button>
+          </div>
 
           {/* Filter Panel */}
           {showFilter && (

@@ -80,6 +80,8 @@ interface ReplenishmentTasksResponse {
 interface UseReplenishmentTasksOptions {
   status?: ReplenishmentStatus | 'all';
   assignedOnly?: boolean;
+  triggerSource?: string;
+  showAll?: boolean;
   refreshInterval?: number;
 }
 
@@ -96,12 +98,16 @@ export function useReplenishmentTasks(options: UseReplenishmentTasksOptions = {}
   const {
     status = 'all',
     assignedOnly = false,
+    triggerSource,
+    showAll = false,
     refreshInterval = 30000
   } = options;
 
   const params = new URLSearchParams();
   if (status) params.append('status', status);
   if (assignedOnly) params.append('assigned_only', 'true');
+  if (triggerSource) params.append('trigger_source', triggerSource);
+  if (showAll) params.append('show_all', 'true');
 
   const url = `/api/mobile/replenishment/tasks?${params.toString()}`;
 

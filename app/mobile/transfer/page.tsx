@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import MobileLayout from '@/components/layout/MobileLayout';
@@ -27,6 +27,7 @@ import { useMoves } from '@/hooks/useMoves';
 import { MoveRecord, MoveStatus, MoveType } from '@/lib/database/move';
 import { useReplenishmentTasks, ReplenishmentStatus } from '@/hooks/useReplenishmentTasks';
 import { ReplenishmentTaskCard } from '@/components/mobile/ReplenishmentTaskCard';
+import { Utensils } from 'lucide-react';
 
 // Type labels
 const MOVE_TYPE_LABELS: Record<MoveType, string> = {
@@ -67,18 +68,44 @@ function MobileTransferListPage() {
 
   // Data fetching
   const { data: allMoves, loading, error, refetch } = useMoves();
+  
+  // Regular replenishment tasks (auto-replenishment, etc.)
   const { tasks: replenishmentTasks, isLoading: tasksLoading, updateTaskStatus, mutate: mutateTasks } = useReplenishmentTasks({
     status: 'all',
     refreshInterval: 30000 // Auto-refresh every 30 seconds
   });
 
+  // Food material replenishment tasks (from production orders)
+  // Only show tasks assigned to current user (showAll: false)
+  const { 
+    tasks: foodMaterialTasks, 
+    isLoading: foodMaterialLoading, 
+    updateTaskStatus: updateFoodMaterialStatus,
+    mutate: mutateFoodMaterial 
+  } = useReplenishmentTasks({
+    status: 'all',
+    triggerSource: 'production_order',
+    showAll: false, // Only show tasks assigned to current user
+    refreshInterval: 30000
+  });
+
   // State
-  const [activeTab, setActiveTab] = useState<'alerts' | 'moves'>('alerts'); // เริ่มต้นที่ tab alerts
+  const [activeTab, setActiveTab] = useState<'alerts' | 'moves' | 'food_material'>('alerts'); // เริ่มต้นที่ tab alerts
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<MoveStatus | 'all'>('all');
   const [selectedType, setSelectedType] = useState<MoveType | 'all'>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+
+  // State for Alerts tab
+  const [alertsSearchTerm, setAlertsSearchTerm] = useState('');
+  const [alertsStatusFilter, setAlertsStatusFilter] = useState<ReplenishmentStatus | 'all'>('all');
+  const [showAlertsFilter, setShowAlertsFilter] = useState(false);
+
+  // State for Food Material tab
+  const [foodSearchTerm, setFoodSearchTerm] = useState('');
+  const [foodStatusFilter, setFoodStatusFilter] = useState<ReplenishmentStatus | 'all'>('all');
+  const [showFoodFilter, setShowFoodFilter] = useState(false);
 
   // Quick Move Modal State
   const [showQuickMoveModal, setShowQuickMoveModal] = useState(false);
@@ -94,33 +121,42 @@ function MobileTransferListPage() {
   const [showCapacityError, setShowCapacityError] = useState(false);
   const [capacityErrorMessage, setCapacityErrorMessage] = useState('');
 
-  // Audio feedback
+  // Audio feedback - with graceful fallback if files don't exist
   const playTapSound = () => {
+    if (typeof window === 'undefined') return;
     try {
       const audio = new Audio('/audio/tap.mp3');
       audio.volume = 0.3;
-      audio.play().catch(() => {});
-    } catch (err) {
+      audio.play().catch(() => {
+        // Silent fail - audio file may not exist
+      });
+    } catch {
       // Silent fail
     }
   };
 
   const playSuccessSound = () => {
+    if (typeof window === 'undefined') return;
     try {
       const audio = new Audio('/audio/success.mp3');
       audio.volume = 0.5;
-      audio.play().catch(() => {});
-    } catch (err) {
+      audio.play().catch(() => {
+        // Silent fail - audio file may not exist
+      });
+    } catch {
       // Silent fail
     }
   };
 
   const playErrorSound = () => {
+    if (typeof window === 'undefined') return;
     try {
       const audio = new Audio('/audio/error.mp3');
       audio.volume = 0.5;
-      audio.play().catch(() => {});
-    } catch (err) {
+      audio.play().catch(() => {
+        // Silent fail - audio file may not exist
+      });
+    } catch {
       // Silent fail
     }
   };
@@ -389,7 +425,7 @@ function MobileTransferListPage() {
     }
   };
 
-  // Filter and search logic
+  // Filter and search logic for Moves
   const filteredMoves = useMemo(() => {
     if (!allMoves) return [];
 
@@ -424,17 +460,49 @@ function MobileTransferListPage() {
     return result;
   }, [allMoves, selectedStatus, selectedType, searchTerm]);
 
-  // Statistics
-  const stats = useMemo(() => {
-    if (!allMoves) return { total: 0, assigned: 0, inProgress: 0, completed: 0 };
+  // Filter and search logic for Alerts (Replenishment Tasks)
+  const filteredReplenishmentTasks = useMemo(() => {
+    let result = [...replenishmentTasks];
 
-    return {
-      total: allMoves.length,
-      assigned: allMoves.filter(m => m.status === 'pending').length,
-      inProgress: allMoves.filter(m => m.status === 'in_progress').length,
-      completed: allMoves.filter(m => m.status === 'completed').length
-    };
-  }, [allMoves]);
+    // Filter by status
+    if (alertsStatusFilter !== 'all') {
+      result = result.filter(task => task.status === alertsStatusFilter);
+    }
+
+    // Search by sku_id or location
+    if (alertsSearchTerm.trim()) {
+      const term = alertsSearchTerm.toLowerCase().trim();
+      result = result.filter(task =>
+        task.sku_id?.toLowerCase().includes(term) ||
+        task.from_location_code?.toLowerCase().includes(term) ||
+        task.pick_location_code?.toLowerCase().includes(term)
+      );
+    }
+
+    return result;
+  }, [replenishmentTasks, alertsStatusFilter, alertsSearchTerm]);
+
+  // Filter and search logic for Food Material Tasks
+  const filteredFoodMaterialTasks = useMemo(() => {
+    let result = [...foodMaterialTasks];
+
+    // Filter by status
+    if (foodStatusFilter !== 'all') {
+      result = result.filter(task => task.status === foodStatusFilter);
+    }
+
+    // Search by sku_id or location
+    if (foodSearchTerm.trim()) {
+      const term = foodSearchTerm.toLowerCase().trim();
+      result = result.filter(task =>
+        task.sku_id?.toLowerCase().includes(term) ||
+        task.from_location_code?.toLowerCase().includes(term) ||
+        task.pick_location_code?.toLowerCase().includes(term)
+      );
+    }
+
+    return result;
+  }, [foodMaterialTasks, foodStatusFilter, foodSearchTerm]);
 
   // Handle refresh
   const handleRefresh = async () => {
@@ -442,6 +510,8 @@ function MobileTransferListPage() {
     playTapSound();
     if (activeTab === 'alerts') {
       await mutateTasks();
+    } else if (activeTab === 'food_material') {
+      await mutateFoodMaterial();
     } else {
       await refetch();
     }
@@ -461,6 +531,23 @@ function MobileTransferListPage() {
     } catch (err) {
       playErrorSound();
       console.error('Error updating task status:', err);
+      return { success: false, error: 'Unknown error' };
+    }
+  };
+
+  // Handle food material task status update
+  const handleFoodMaterialStatusUpdate = async (queueId: string, status: ReplenishmentStatus, data?: { confirmed_qty?: number; notes?: string }) => {
+    try {
+      const result = await updateFoodMaterialStatus(queueId, status, data);
+      if (result.success) {
+        playSuccessSound();
+      } else {
+        playErrorSound();
+      }
+      return result;
+    } catch (err) {
+      playErrorSound();
+      console.error('Error updating food material task status:', err);
       return { success: false, error: 'Unknown error' };
     }
   };
@@ -593,6 +680,27 @@ function MobileTransferListPage() {
               </button>
               <button
                 onClick={() => {
+                  setActiveTab('food_material');
+                  playTapSound();
+                }}
+                className={`flex-1 py-2 px-3 rounded-lg font-thai text-sm font-semibold transition-all ${
+                  activeTab === 'food_material'
+                    ? 'bg-white text-sky-600 shadow-md'
+                    : 'bg-white/20 text-white hover:bg-white/30'
+                }`}
+              >
+                <div className="flex items-center justify-center gap-1.5">
+                  <Utensils className="w-4 h-4" />
+                  <span>เติมวัตถุดิบ</span>
+                  {foodMaterialTasks.length > 0 && (
+                    <span className="bg-orange-500 text-white rounded-full px-1.5 py-0.5 text-[10px] font-bold min-w-[18px] text-center">
+                      {foodMaterialTasks.length}
+                    </span>
+                  )}
+                </div>
+              </button>
+              <button
+                onClick={() => {
                   setActiveTab('moves');
                   playTapSound();
                 }}
@@ -609,67 +717,47 @@ function MobileTransferListPage() {
               </button>
             </div>
 
-            {/* Statistics Cards - Show only for Moves tab */}
+            {/* Search and Filter - Show only for Moves tab */}
             {activeTab === 'moves' && (
               <>
-                <div className="grid grid-cols-4 gap-1.5 mb-2">
-                  <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
-                    <div className="text-xl font-bold">{stats.total}</div>
-                    <div className="text-[10px] text-sky-100">ทั้งหมด</div>
+                {/* Search and Filter - Same Row */}
+                <div className="flex items-center gap-2 mb-2">
+                  {/* Search Box */}
+                  <div className="relative flex-1">
+                    <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="ค้นหา..."
+                      value={searchTerm}
+                      onChange={(e) => setSearchTerm(e.target.value)}
+                      className="w-full pl-9 pr-8 py-2 rounded-lg bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-sky-300 font-thai text-sm"
+                    />
+                    {searchTerm && (
+                      <button
+                        onClick={() => setSearchTerm('')}
+                        className="absolute right-2.5 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
                   </div>
-                  <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
-                    <div className="text-xl font-bold">{stats.assigned}</div>
-                    <div className="text-[10px] text-sky-100">รอดำเนินการ</div>
-                  </div>
-                  <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
-                    <div className="text-xl font-bold">{stats.inProgress}</div>
-                    <div className="text-[10px] text-sky-100">ดำเนินการ</div>
-                  </div>
-                  <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
-                    <div className="text-xl font-bold text-yellow-300">{stats.completed}</div>
-                    <div className="text-[10px] text-sky-100">เสร็จสิ้น</div>
-                  </div>
-                </div>
 
-                {/* Search - Compact */}
-                <div className="relative mb-2">
-                  <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-                  <input
-                    type="text"
-                    placeholder="ค้นหา..."
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                    className="w-full pl-9 pr-8 py-2 rounded-lg bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-sky-300 font-thai text-sm"
-                  />
-                  {searchTerm && (
-                    <button
-                      onClick={() => setSearchTerm('')}
-                      className="absolute right-2.5 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
-                  )}
-                </div>
-
-                {/* Filter Toggle - Compact */}
-                <button
-                  onClick={() => {
-                    setShowFilters(!showFilters);
-                    playTapSound();
-                  }}
-                  className="w-full bg-white/20 rounded-lg py-1.5 px-3 flex items-center justify-between font-thai text-xs hover:bg-white/30 transition-colors"
-                >
-                  <div className="flex items-center gap-1.5">
-                    <Filter className="w-3.5 h-3.5" />
-                    <span>ตัวกรอง</span>
+                  {/* Filter Button - Compact */}
+                  <button
+                    onClick={() => {
+                      setShowFilters(!showFilters);
+                      playTapSound();
+                    }}
+                    className="relative bg-white/20 rounded-lg p-2 hover:bg-white/30 transition-colors flex-shrink-0"
+                  >
+                    <Filter className="w-5 h-5" />
                     {(selectedStatus !== 'all' || selectedType !== 'all') && (
-                      <span className="bg-yellow-400 text-gray-900 rounded-full px-1.5 py-0.5 text-[10px] font-semibold">
+                      <span className="absolute -top-1 -right-1 bg-yellow-400 text-gray-900 rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold">
                         {(selectedStatus !== 'all' ? 1 : 0) + (selectedType !== 'all' ? 1 : 0)}
                       </span>
                     )}
-                  </div>
-                  <ChevronRight className={`w-3.5 h-3.5 transition-transform ${showFilters ? 'rotate-90' : ''}`} />
-                </button>
+                  </button>
+                </div>
 
                 {/* Filter Panel */}
                 {showFilters && (
@@ -731,37 +819,168 @@ function MobileTransferListPage() {
               </>
             )}
 
-            {/* Tasks Summary - Show only for Alerts tab */}
+            {/* Search and Filter - Show for Alerts tab */}
             {activeTab === 'alerts' && (
-              <div className="bg-white/15 backdrop-blur-sm rounded-lg p-3">
-                <div className="text-center">
-                  <div className="text-3xl font-bold mb-1">{replenishmentTasks.length}</div>
-                  <div className="text-sm text-sky-100 font-thai">งานเติมสต็อก</div>
+              <>
+                {/* Search and Filter - Same Row */}
+                <div className="flex items-center gap-2 mb-2">
+                  {/* Search Box */}
+                  <div className="relative flex-1">
+                    <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="ค้นหา..."
+                      value={alertsSearchTerm}
+                      onChange={(e) => setAlertsSearchTerm(e.target.value)}
+                      className="w-full pl-9 pr-8 py-2 rounded-lg bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-sky-300 font-thai text-sm"
+                    />
+                    {alertsSearchTerm && (
+                      <button
+                        onClick={() => setAlertsSearchTerm('')}
+                        className="absolute right-2.5 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Filter Button - Compact */}
+                  <button
+                    onClick={() => {
+                      setShowAlertsFilter(!showAlertsFilter);
+                      playTapSound();
+                    }}
+                    className="relative bg-white/20 rounded-lg p-2 hover:bg-white/30 transition-colors flex-shrink-0"
+                  >
+                    <Filter className="w-5 h-5" />
+                    {alertsStatusFilter !== 'all' && (
+                      <span className="absolute -top-1 -right-1 bg-yellow-400 text-gray-900 rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold">
+                        1
+                      </span>
+                    )}
+                  </button>
                 </div>
-                {replenishmentTasks.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-white/20 grid grid-cols-3 gap-2 text-center text-xs">
+
+                {/* Filter Panel */}
+                {showAlertsFilter && (
+                  <div className="mt-3 bg-white/10 backdrop-blur-sm rounded-lg p-3 space-y-3">
+                    {/* Status Filter */}
                     <div>
-                      <div className="text-lg font-bold text-yellow-300">
-                        {replenishmentTasks.filter(t => t.status === 'pending').length}
-                      </div>
-                      <div className="text-sky-100 font-thai">รอดำเนินการ</div>
+                      <label className="block text-xs font-semibold text-white mb-1.5 font-thai">สถานะ</label>
+                      <select
+                        value={alertsStatusFilter}
+                        onChange={(e) => {
+                          setAlertsStatusFilter(e.target.value as ReplenishmentStatus | 'all');
+                          playTapSound();
+                        }}
+                        className="w-full px-2.5 py-2 bg-white/90 text-gray-900 border-0 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-white/50 font-thai"
+                      >
+                        <option value="all">ทุกสถานะ</option>
+                        <option value="pending">รอดำเนินการ</option>
+                        <option value="assigned">มอบหมายแล้ว</option>
+                        <option value="in_progress">กำลังดำเนินการ</option>
+                        <option value="completed">เสร็จสิ้น</option>
+                      </select>
                     </div>
-                    <div>
-                      <div className="text-lg font-bold text-blue-300">
-                        {replenishmentTasks.filter(t => t.status === 'assigned').length}
-                      </div>
-                      <div className="text-sky-100 font-thai">มอบหมายแล้ว</div>
-                    </div>
-                    <div>
-                      <div className="text-lg font-bold text-purple-300">
-                        {replenishmentTasks.filter(t => t.status === 'in_progress').length}
-                      </div>
-                      <div className="text-sky-100 font-thai">กำลังดำเนินการ</div>
-                    </div>
+
+                    {/* Clear Filters */}
+                    {alertsStatusFilter !== 'all' && (
+                      <button
+                        onClick={() => {
+                          setAlertsStatusFilter('all');
+                          playTapSound();
+                        }}
+                        className="w-full px-3 py-1.5 bg-white/20 text-white text-xs font-medium rounded-lg hover:bg-white/30 transition-colors font-thai"
+                      >
+                        ล้างตัวกรอง
+                      </button>
+                    )}
                   </div>
                 )}
-              </div>
+              </>
             )}
+
+            {/* Search and Filter - Show for Food Material tab */}
+            {activeTab === 'food_material' && (
+              <>
+                {/* Search and Filter - Same Row */}
+                <div className="flex items-center gap-2 mb-2">
+                  {/* Search Box */}
+                  <div className="relative flex-1">
+                    <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <input
+                      type="text"
+                      placeholder="ค้นหา..."
+                      value={foodSearchTerm}
+                      onChange={(e) => setFoodSearchTerm(e.target.value)}
+                      className="w-full pl-9 pr-8 py-2 rounded-lg bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-sky-300 font-thai text-sm"
+                    />
+                    {foodSearchTerm && (
+                      <button
+                        onClick={() => setFoodSearchTerm('')}
+                        className="absolute right-2.5 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Filter Button - Compact */}
+                  <button
+                    onClick={() => {
+                      setShowFoodFilter(!showFoodFilter);
+                      playTapSound();
+                    }}
+                    className="relative bg-white/20 rounded-lg p-2 hover:bg-white/30 transition-colors flex-shrink-0"
+                  >
+                    <Filter className="w-5 h-5" />
+                    {foodStatusFilter !== 'all' && (
+                      <span className="absolute -top-1 -right-1 bg-yellow-400 text-gray-900 rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold">
+                        1
+                      </span>
+                    )}
+                  </button>
+                </div>
+
+                {/* Filter Panel */}
+                {showFoodFilter && (
+                  <div className="mt-3 bg-white/10 backdrop-blur-sm rounded-lg p-3 space-y-3">
+                    {/* Status Filter */}
+                    <div>
+                      <label className="block text-xs font-semibold text-white mb-1.5 font-thai">สถานะ</label>
+                      <select
+                        value={foodStatusFilter}
+                        onChange={(e) => {
+                          setFoodStatusFilter(e.target.value as ReplenishmentStatus | 'all');
+                          playTapSound();
+                        }}
+                        className="w-full px-2.5 py-2 bg-white/90 text-gray-900 border-0 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-white/50 font-thai"
+                      >
+                        <option value="all">ทุกสถานะ</option>
+                        <option value="pending">รอดำเนินการ</option>
+                        <option value="assigned">มอบหมายแล้ว</option>
+                        <option value="in_progress">กำลังดำเนินการ</option>
+                        <option value="completed">เสร็จสิ้น</option>
+                      </select>
+                    </div>
+
+                    {/* Clear Filters */}
+                    {foodStatusFilter !== 'all' && (
+                      <button
+                        onClick={() => {
+                          setFoodStatusFilter('all');
+                          playTapSound();
+                        }}
+                        className="w-full px-3 py-1.5 bg-white/20 text-white text-xs font-medium rounded-lg hover:bg-white/30 transition-colors font-thai"
+                      >
+                        ล้างตัวกรอง
+                      </button>
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
           </div>
         </div>
 
@@ -775,19 +994,55 @@ function MobileTransferListPage() {
                   <Loader2 className="w-8 h-8 animate-spin mb-3" />
                   <p className="text-sm font-thai">กำลังโหลดงานเติมสต็อก...</p>
                 </div>
-              ) : replenishmentTasks.length === 0 ? (
+              ) : filteredReplenishmentTasks.length === 0 ? (
                 <div className="flex flex-col items-center justify-center h-64 text-gray-400">
                   <CheckCircle2 className="w-16 h-16 mb-3 text-green-400" />
                   <p className="text-lg font-bold text-green-600 mb-2 font-thai">ไม่มีงานเติมสต็อก</p>
-                  <p className="text-sm text-gray-500 font-thai">ยังไม่มีงานเติมสต็อกที่ต้องดำเนินการ</p>
+                  <p className="text-sm text-gray-500 font-thai">
+                    {alertsSearchTerm || alertsStatusFilter !== 'all'
+                      ? 'ไม่พบงานที่ตรงกับเงื่อนไขการค้นหา'
+                      : 'ยังไม่มีงานเติมสต็อกที่ต้องดำเนินการ'}
+                  </p>
                 </div>
               ) : (
                 <>
-                  {replenishmentTasks.map((task) => (
+                  {filteredReplenishmentTasks.map((task) => (
                     <ReplenishmentTaskCard
                       key={task.queue_id}
                       task={task}
                       onStatusUpdate={handleTaskStatusUpdate}
+                    />
+                  ))}
+                </>
+              )}
+            </>
+          )}
+
+          {/* Food Material Tab Content */}
+          {activeTab === 'food_material' && (
+            <>
+              {foodMaterialLoading ? (
+                <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+                  <Loader2 className="w-8 h-8 animate-spin mb-3" />
+                  <p className="text-sm font-thai">กำลังโหลดงานเติมวัตถุดิบอาหาร...</p>
+                </div>
+              ) : filteredFoodMaterialTasks.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                  <Utensils className="w-16 h-16 mb-3 text-orange-300" />
+                  <p className="text-lg font-bold text-orange-600 mb-2 font-thai">ไม่มีงานเติมวัตถุดิบ</p>
+                  <p className="text-sm text-gray-500 font-thai">
+                    {foodSearchTerm || foodStatusFilter !== 'all'
+                      ? 'ไม่พบงานที่ตรงกับเงื่อนไขการค้นหา'
+                      : 'ยังไม่มีงานเติมวัตถุดิบอาหารที่ต้องดำเนินการ'}
+                  </p>
+                </div>
+              ) : (
+                <>
+                  {filteredFoodMaterialTasks.map((task) => (
+                    <ReplenishmentTaskCard
+                      key={task.queue_id}
+                      task={task}
+                      onStatusUpdate={handleFoodMaterialStatusUpdate}
                     />
                   ))}
                 </>
@@ -915,10 +1170,23 @@ function MobileTransferListPage() {
         {/* Results Count */}
         {!loading && (
           <>
-            {activeTab === 'alerts' && replenishmentTasks.length > 0 && (
+            {activeTab === 'alerts' && filteredReplenishmentTasks.length > 0 && (
               <div className="px-4 py-3 bg-white border-t border-gray-200">
                 <p className="text-sm text-center text-gray-600 font-thai">
-                  แสดง <span className="font-semibold text-gray-900">{replenishmentTasks.length}</span> งานเติมสต็อก
+                  แสดง <span className="font-semibold text-gray-900">{filteredReplenishmentTasks.length}</span> งานเติมสต็อก
+                  {(alertsSearchTerm || alertsStatusFilter !== 'all') && (
+                    <span> จากทั้งหมด <span className="font-semibold text-gray-900">{replenishmentTasks.length}</span> งาน</span>
+                  )}
+                </p>
+              </div>
+            )}
+            {activeTab === 'food_material' && filteredFoodMaterialTasks.length > 0 && (
+              <div className="px-4 py-3 bg-white border-t border-gray-200">
+                <p className="text-sm text-center text-gray-600 font-thai">
+                  แสดง <span className="font-semibold text-gray-900">{filteredFoodMaterialTasks.length}</span> งานเติมวัตถุดิบอาหาร
+                  {(foodSearchTerm || foodStatusFilter !== 'all') && (
+                    <span> จากทั้งหมด <span className="font-semibold text-gray-900">{foodMaterialTasks.length}</span> งาน</span>
+                  )}
                 </p>
               </div>
             )}

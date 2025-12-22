@@ -160,57 +160,42 @@ function MobilePickUpPiecesPage() {
           </button>
         </div>
 
-        {/* Stats Summary */}
-        <div className="grid grid-cols-2 gap-2 mb-3">
-          <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
-            <div className="text-xl font-bold">
-              {tasks.filter((t) => t.status === 'pending' || t.status === 'in_progress').length}
-            </div>
-            <div className="text-[10px] opacity-90">รอหยิบ</div>
+        {/* Search and Filter - Same Row */}
+        <div className="flex items-center gap-2 mb-2" suppressHydrationWarning>
+          {/* Search Box */}
+          <div className="relative flex-1">
+            <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="ค้นหารหัสงาน..."
+              className="w-full pl-9 pr-8 py-2 rounded-lg bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-300 font-thai text-sm"
+              suppressHydrationWarning
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm('')}
+                className="absolute right-2.5 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            )}
           </div>
-          <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
-            <div className="text-xl font-bold">{tasks.filter((t) => t.status === 'completed').length}</div>
-            <div className="text-[10px] opacity-90">เสร็จสิ้น</div>
-          </div>
-        </div>
 
-        {/* Search Bar */}
-        <div className="relative" suppressHydrationWarning>
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="ค้นหารหัสงาน..."
-            className="w-full pl-9 pr-4 py-2 rounded-lg bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-orange-300 font-thai text-sm"
-            suppressHydrationWarning
-          />
+          {/* Filter Button - Compact */}
+          <button
+            onClick={() => setShowFilter(!showFilter)}
+            className="relative bg-white/20 rounded-lg p-2 hover:bg-white/30 transition-colors flex-shrink-0"
+          >
+            <Filter className="w-5 h-5" />
+            {selectedStatus !== 'all' && (
+              <span className="absolute -top-1 -right-1 bg-yellow-400 text-gray-900 rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold">
+                1
+              </span>
+            )}
+          </button>
         </div>
-
-        {/* Filter Button */}
-        <button
-          onClick={() => setShowFilter(!showFilter)}
-          className="mt-2 w-full bg-white/20 rounded-lg py-1.5 px-3 flex items-center justify-between font-thai text-xs hover:bg-white/30 transition-colors"
-        >
-          <span className="flex items-center gap-1.5">
-            <Filter className="w-3.5 h-3.5" />
-            <span>
-              กรอง:{' '}
-              {selectedStatus === 'all'
-                ? 'ทั้งหมด'
-                : selectedStatus === 'pending'
-                  ? 'รอดำเนินการ'
-                  : selectedStatus === 'in_progress'
-                    ? 'กำลังหยิบ'
-                    : selectedStatus === 'completed'
-                      ? 'เสร็จสิ้น'
-                      : selectedStatus === 'cancelled'
-                        ? 'ยกเลิก'
-                        : 'อื่นๆ'}
-            </span>
-          </span>
-          {showFilter ? <X className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
-        </button>
       </div>
 
       {/* Filter Dropdown */}

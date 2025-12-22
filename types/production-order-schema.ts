@@ -82,6 +82,14 @@ export interface ProductionOrderItemWithDetails extends ProductionOrderItem {
 }
 
 // ========== Input Types ==========
+export interface SelectedPalletInput {
+  balance_id: number;
+  pallet_id: string;
+  location_id: string;
+  qty: number; // quantity to requisition (in kg or base unit)
+  sku_id: string;
+}
+
 export interface CreateProductionOrderInput {
   plan_id?: string;
   sku_id: string;
@@ -95,6 +103,7 @@ export interface CreateProductionOrderInput {
   priority?: number;
   remarks?: string;
   items?: CreateProductionOrderItemInput[];
+  selected_pallets?: SelectedPalletInput[]; // พาเลทวัตถุดิบอาหารที่เลือก
 }
 
 export interface CreateProductionOrderItemInput {

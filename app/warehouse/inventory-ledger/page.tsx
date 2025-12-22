@@ -325,6 +325,37 @@ const InventoryLedgerPage = () => {
         consolidatedData.push(item);
         processedIds.add(item.ledger_id);
       }
+    } else if (item.reference_no && (item.transaction_type === 'transfer_out' || item.transaction_type === 'transfer_in')) {
+      // สำหรับ replenishment ที่ไม่มี move_item_id แต่มี reference_no (เช่น REPL-xxx)
+      // หาคู่ของมัน (in/out) ที่มี reference_no เดียวกัน
+      const pair = filteredData.find(
+        other =>
+          other.ledger_id !== item.ledger_id &&
+          other.reference_no === item.reference_no &&
+          other.direction !== item.direction &&
+          other.sku_id === item.sku_id &&
+          !other.move_item_id // ต้องไม่มี move_item_id เหมือนกัน
+      );
+
+      if (pair) {
+        // รวมเป็นแถวเดียว
+        const outEntry = item.direction === 'out' ? item : pair;
+        const inEntry = item.direction === 'in' ? item : pair;
+
+        consolidatedData.push({
+          ...item,
+          _isConsolidated: true,
+          _outEntry: outEntry,
+          _inEntry: inEntry,
+        });
+
+        processedIds.add(item.ledger_id);
+        processedIds.add(pair.ledger_id);
+      } else {
+        // ไม่มีคู่ แสดงปกติ
+        consolidatedData.push(item);
+        processedIds.add(item.ledger_id);
+      }
     } else {
       // ธุรกรรมอื่นๆ ที่ไม่มี move_item_id (เช่น receive) แสดงปกติ
       consolidatedData.push(item);
@@ -599,9 +630,14 @@ const InventoryLedgerPage = () => {
                         </td>
                         <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
                           {ledger._isConsolidated ? (
-                            <span className="font-bold text-blue-600">
-                              {ledger.pack_qty?.toLocaleString()}
-                            </span>
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className="font-bold text-red-600 text-[10px]">
+                                -{ledger._outEntry?.pack_qty?.toLocaleString()}
+                              </span>
+                              <span className="font-bold text-green-600 text-[10px]">
+                                +{ledger._inEntry?.pack_qty?.toLocaleString()}
+                              </span>
+                            </div>
                           ) : (
                             <span className={`font-bold ${
                               ledger.direction === 'in' ? 'text-green-600' : 'text-red-600'
@@ -612,9 +648,14 @@ const InventoryLedgerPage = () => {
                         </td>
                         <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
                           {ledger._isConsolidated ? (
-                            <span className="font-bold text-blue-600">
-                              {ledger.piece_qty?.toLocaleString()}
-                            </span>
+                            <div className="flex flex-col items-center gap-0.5">
+                              <span className="font-bold text-red-600 text-[10px]">
+                                -{ledger._outEntry?.piece_qty?.toLocaleString()}
+                              </span>
+                              <span className="font-bold text-green-600 text-[10px]">
+                                +{ledger._inEntry?.piece_qty?.toLocaleString()}
+                              </span>
+                            </div>
                           ) : (
                             <span className={`font-bold ${
                               ledger.direction === 'in' ? 'text-green-600' : 'text-red-600'
@@ -630,9 +671,14 @@ const InventoryLedgerPage = () => {
                             if (totalWeight === 0) return <span className="text-gray-400">-</span>;
 
                             return ledger._isConsolidated ? (
-                              <span className="font-bold text-blue-600">
-                                {totalWeight.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                              </span>
+                              <div className="flex flex-col items-center gap-0.5">
+                                <span className="font-bold text-red-600 text-[10px]">
+                                  -{((ledger._outEntry?.piece_qty || 0) * weightPerPiece).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                                <span className="font-bold text-green-600 text-[10px]">
+                                  +{((ledger._inEntry?.piece_qty || 0) * weightPerPiece).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              </div>
                             ) : (
                               <span className={`font-bold ${
                                 ledger.direction === 'in' ? 'text-green-600' : 'text-red-600'

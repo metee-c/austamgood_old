@@ -695,7 +695,27 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
           return;
         }
       } else {
-        // Split into pallets according to table display logic
+        // ถ้าเลือก "ไม่สร้าง Pallet ID" ให้รับเป็น 1 record เดียว ไม่ต้องแบ่ง
+        if (data.pallet_box_option === 'ไม่สร้าง_Pallet_ID') {
+          processedItems.push({
+            ...itemWithoutPallet,
+            location_id: normalizedLocationId,
+            pallet_id_external: normalizedPalletExternal,
+            production_date: normalizedProductionDate,
+            expiry_date: normalizedExpiryDate,
+            piece_quantity: item.piece_quantity,
+            pack_quantity: selectedSku.qty_per_pack ? Math.ceil(item.piece_quantity / selectedSku.qty_per_pack) : 0,
+            weight_kg: selectedSku.weight_per_piece_kg ? parseFloat((item.piece_quantity * selectedSku.weight_per_piece_kg).toFixed(3)) : undefined,
+            pallet_id: undefined,
+            product_name: selectedSku.sku_name,
+            barcode: selectedSku.barcode,
+            pallet_scan_status: 'ไม่จำเป็น' as PalletScanStatus,
+            received_date: data.receive_date
+          });
+          continue; // ข้ามไปรายการถัดไป
+        }
+        
+        // Split into pallets according to table display logic (สำหรับกรณีที่ต้องสร้าง Pallet ID)
         const piecesPerPallet = watchedPalletCalculationMethod === 'กำหนดจำนวนเอง' 
           ? (watch('custom_pieces_per_pallet') || selectedSku.qty_per_pallet || 100)
           : (selectedSku.qty_per_pallet || 100);
@@ -707,7 +727,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
         if (data.pallet_box_option === 'สร้าง_Pallet_ID_รวม') {
           // ใช้ pallet ID ที่ผู้ใช้ใส่เอง
           palletIds = item.pallet_id ? [item.pallet_id] : [];
-        } else if (data.pallet_box_option !== 'ไม่สร้าง_Pallet_ID' && numPallets > 0) {
+        } else if (numPallets > 0) {
           try {
             setGeneratingPallets(true);
             const { data: generatedPalletIds, error: palletError } = await generateMultiplePalletIds(numPallets);

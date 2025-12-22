@@ -14,6 +14,7 @@ export async function GET(request: NextRequest) {
     
     const status = searchParams.get('status');
     const warehouseId = searchParams.get('warehouse_id');
+    const triggerSource = searchParams.get('trigger_source');
     const limit = parseInt(searchParams.get('limit') || '100');
 
     let query = supabase
@@ -52,6 +53,11 @@ export async function GET(request: NextRequest) {
 
     if (warehouseId) {
       query = query.eq('warehouse_id', warehouseId);
+    }
+
+    // Filter by trigger_source (e.g., 'production_order' for material requisition)
+    if (triggerSource) {
+      query = query.eq('trigger_source', triggerSource);
     }
 
     const { data, error } = await query;

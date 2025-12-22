@@ -103,7 +103,7 @@ function ProductionOrdersContent() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [deletingOrderId, setDeletingOrderId] = useState<string | null>(null);
 
-  const { orders, totalCount, summary, isLoading, error, mutate } = useProductionOrders({
+  const { orders, totalCount, isLoading, error, mutate } = useProductionOrders({
     search: searchTerm,
     status: selectedStatus,
     start_date: dateFrom || undefined,
@@ -363,18 +363,6 @@ function ProductionOrdersContent() {
           </div>
         </div>
 
-        {summary && (
-          <div className="grid grid-cols-7 gap-2 flex-shrink-0">
-            <SummaryCard label="ทั้งหมด" count={summary.total} color="gray" />
-            <SummaryCard label="วางแผน" count={summary.planned} color="gray" />
-            <SummaryCard label="ปล่อยงาน" count={summary.released} color="blue" />
-            <SummaryCard label="กำลังผลิต" count={summary.in_progress} color="orange" />
-            <SummaryCard label="เสร็จสิ้น" count={summary.completed} color="green" />
-            <SummaryCard label="พักงาน" count={summary.on_hold} color="yellow" />
-            <SummaryCard label="ยกเลิก" count={summary.cancelled} color="red" />
-          </div>
-        )}
-
         <div className="flex-1 min-h-0 flex flex-col">
           <div className="w-full flex-1 bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col overflow-hidden">
             {isLoading ? (
@@ -465,24 +453,6 @@ function ProductionOrdersContent() {
     </div>
   );
 }
-
-function SummaryCard({ label, count, color }: { label: string; count: number; color: string }) {
-  const colorClasses: Record<string, string> = {
-    gray: 'bg-gray-50 border-gray-200 text-gray-700',
-    blue: 'bg-blue-50 border-blue-200 text-blue-700',
-    orange: 'bg-orange-50 border-orange-200 text-orange-700',
-    green: 'bg-green-50 border-green-200 text-green-700',
-    yellow: 'bg-yellow-50 border-yellow-200 text-yellow-700',
-    red: 'bg-red-50 border-red-200 text-red-700',
-  };
-  return (
-    <div className={`rounded-lg border px-3 py-2 ${colorClasses[color]}`}>
-      <p className="text-[10px] font-thai">{label}</p>
-      <p className="text-lg font-bold">{count}</p>
-    </div>
-  );
-}
-
 
 // ========== CreateOrderModal Component ==========
 interface CreateOrderModalProps {
@@ -578,13 +548,13 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
     });
   };
 
-  const togglePalletSelection = (balanceId: number, availableQty: number) => {
+  const togglePalletSelection = (balanceId: number, availableBags: number) => {
     setSelectedPallets(prev => {
       const newMap = new Map(prev);
       if (newMap.has(balanceId)) {
         newMap.delete(balanceId);
       } else {
-        newMap.set(balanceId, availableQty);
+        newMap.set(balanceId, availableBags); // จำนวนถุง ไม่ใช่ กก.
       }
       return newMap;
     });
@@ -616,6 +586,32 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
       uom: mat.material_uom,
     })) || [];
 
+    // Build selected_pallets from selectedPallets Map
+    const selected_pallets: Array<{
+      balance_id: number;
+      pallet_id: string;
+      location_id: string;
+      qty: number;
+      sku_id: string;
+    }> = [];
+
+    if (selectedPallets.size > 0 && foodStock.length > 0) {
+      // Find pallet details from foodStock
+      for (const dateGroup of foodStock) {
+        for (const pallet of dateGroup.pallets) {
+          if (selectedPallets.has(pallet.balance_id)) {
+            selected_pallets.push({
+              balance_id: pallet.balance_id,
+              pallet_id: pallet.pallet_id,
+              location_id: pallet.location_id,
+              qty: selectedPallets.get(pallet.balance_id) || pallet.available_bags, // ใช้ available_bags (ถุง) ไม่ใช่ available_qty (กก.)
+              sku_id: dateGroup.sku_id,
+            });
+          }
+        }
+      }
+    }
+
     const input: CreateProductionOrderInput = {
       plan_id: planId || undefined,
       sku_id: selectedSku.sku_id,
@@ -627,15 +623,11 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
       fg_remarks: fgRemarks || undefined,
       remarks,
       items,
+      selected_pallets: selected_pallets.length > 0 ? selected_pallets : undefined,
     };
 
     const result = await createOrder(input);
     if (result) {
-      // TODO: Create material requisition tasks for selected pallets
-      if (selectedPallets.size > 0) {
-        console.log('Selected pallets for requisition:', Array.from(selectedPallets.entries()));
-        // Future: POST to /api/production/material-requisition
-      }
       onSuccess();
     }
   };
@@ -829,7 +821,7 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
                                           <input
                                             type="checkbox"
                                             checked={isSelected}
-                                            onChange={() => togglePalletSelection(pallet.balance_id, pallet.available_qty)}
+                                            onChange={() => togglePalletSelection(pallet.balance_id, pallet.available_bags)}
                                             className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                           />
                                           <span className="font-mono text-[10px] text-gray-600">{pallet.pallet_id}</span>
