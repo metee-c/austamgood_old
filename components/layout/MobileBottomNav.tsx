@@ -185,29 +185,6 @@ export default function MobileBottomNav() {
           </ul>
         </nav>
       </div>
-
-      {/* Floating Action Button - Modern Design */}
-      <button
-        onClick={() => setShowMenu(!showMenu)}
-        className={`
-          fixed bottom-20 right-4 z-50
-          w-14 h-14 rounded-full
-          flex items-center justify-center
-          transition-all duration-300 ease-out
-          ${showMenu
-            ? 'bg-primary-600 shadow-2xl scale-110'
-            : 'bg-gradient-to-br from-primary-500 to-primary-600 shadow-lg hover:shadow-xl hover:scale-105 active:scale-95'
-          }
-          text-white
-        `}
-        style={{
-          boxShadow: showMenu
-            ? '0 10px 40px -10px rgba(0, 153, 255, 0.6)'
-            : '0 4px 20px -4px rgba(0, 153, 255, 0.4)'
-        }}
-      >
-        <User className={`transition-all duration-300 ${showMenu ? 'w-6 h-6' : 'w-5 h-5'}`} />
-      </button>
     </>
   );
 }

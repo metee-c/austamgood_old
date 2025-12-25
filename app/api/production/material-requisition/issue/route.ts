@@ -13,6 +13,62 @@ import { getCurrentSession } from '@/lib/auth';
 export const dynamic = 'force-dynamic';
 
 /**
+ * Helper function to check if all materials are issued and update production order status
+ */
+async function checkAndUpdateProductionOrderStatus(supabase: any, productionOrderId: string) {
+  try {
+    // Get all items for this production order
+    const { data: items, error: itemsError } = await supabase
+      .from('production_order_items')
+      .select('id, status, required_qty, issued_qty')
+      .eq('production_order_id', productionOrderId);
+
+    if (itemsError || !items || items.length === 0) {
+      console.log('📦 [Status Check] No items found or error:', itemsError);
+      return;
+    }
+
+    // Check replenishment_queue for food materials
+    const { data: replenishmentItems, error: replenishmentError } = await supabase
+      .from('replenishment_queue')
+      .select('id, status, requested_qty, confirmed_qty')
+      .eq('trigger_reference', productionOrderId);
+
+    // Check if all packaging items are issued
+    const allPackagingIssued = items.every(
+      (item: any) => item.status === 'issued' || item.status === 'completed'
+    );
+
+    // Check if all food materials are completed (from replenishment_queue)
+    const allFoodCompleted = !replenishmentItems || replenishmentItems.length === 0 || 
+      replenishmentItems.every((item: any) => item.status === 'completed');
+
+    console.log('📦 [Status Check] Packaging issued:', allPackagingIssued, 'Food completed:', allFoodCompleted);
+
+    // If all materials are ready, update production order status to 'in_progress'
+    if (allPackagingIssued && allFoodCompleted) {
+      const { error: updateError } = await supabase
+        .from('production_orders')
+        .update({
+          status: 'in_progress',
+          actual_start_date: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', productionOrderId)
+        .in('status', ['planned', 'released']); // Only update if not already in_progress or completed
+
+      if (updateError) {
+        console.error('📦 [Status Check] Error updating production order status:', updateError);
+      } else {
+        console.log('📦 [Status Check] Production order status updated to in_progress');
+      }
+    }
+  } catch (error) {
+    console.error('📦 [Status Check] Error in checkAndUpdateProductionOrderStatus:', error);
+  }
+}
+
+/**
  * POST /api/production/material-requisition/issue
  * เบิกวัสดุบรรจุภัณฑ์ - ย้ายสต็อกจริงจากต้นทางไปปลายทาง (Repack)
  */
@@ -101,9 +157,9 @@ export async function POST(request: NextRequest) {
       .gt('total_piece_qty', 0)
       .neq('location_id', destLocationId); // ไม่เอาจาก Repack
 
-    // ถ้า user ระบุ from_location ให้ใช้เฉพาะ location นั้น
+    // ถ้า user ระบุ from_location ให้ใช้เฉพาะ location นั้น (case-insensitive)
     if (from_location && from_location.trim()) {
-      stockQuery = stockQuery.eq('location_id', from_location.trim());
+      stockQuery = stockQuery.ilike('location_id', from_location.trim());
     }
 
     const { data: sourceStocks, error: stockError } = await stockQuery
@@ -250,6 +306,9 @@ export async function POST(request: NextRequest) {
       console.error('Error updating production_order_items:', updateError);
       return NextResponse.json({ error: updateError.message }, { status: 500 });
     }
+
+    // 8. Check if all items are issued - update production order status
+    await checkAndUpdateProductionOrderStatus(supabase, item.production_order_id);
 
     // Build allocation summary for response
     const allocationSummary = allocations.map((a) => ({

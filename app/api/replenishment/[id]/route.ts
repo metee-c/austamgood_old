@@ -4,6 +4,62 @@ import { createClient } from '@/lib/supabase/server';
 export const dynamic = 'force-dynamic';
 
 /**
+ * Helper function to check if all materials are issued and update production order status
+ */
+async function checkAndUpdateProductionOrderStatus(supabase: any, productionOrderId: string) {
+  try {
+    // Get all packaging items for this production order
+    const { data: items, error: itemsError } = await supabase
+      .from('production_order_items')
+      .select('id, status, required_qty, issued_qty')
+      .eq('production_order_id', productionOrderId);
+
+    if (itemsError) {
+      console.log('📦 [Status Check] Error fetching items:', itemsError);
+      return;
+    }
+
+    // Check replenishment_queue for food materials
+    const { data: replenishmentItems, error: replenishmentError } = await supabase
+      .from('replenishment_queue')
+      .select('id, status, requested_qty, confirmed_qty')
+      .eq('trigger_reference', productionOrderId);
+
+    // Check if all packaging items are issued
+    const allPackagingIssued = !items || items.length === 0 || items.every(
+      (item: any) => item.status === 'issued' || item.status === 'completed'
+    );
+
+    // Check if all food materials are completed (from replenishment_queue)
+    const allFoodCompleted = !replenishmentItems || replenishmentItems.length === 0 || 
+      replenishmentItems.every((item: any) => item.status === 'completed');
+
+    console.log('📦 [Status Check] Packaging issued:', allPackagingIssued, 'Food completed:', allFoodCompleted);
+
+    // If all materials are ready, update production order status to 'in_progress'
+    if (allPackagingIssued && allFoodCompleted) {
+      const { error: updateError } = await supabase
+        .from('production_orders')
+        .update({
+          status: 'in_progress',
+          actual_start_date: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', productionOrderId)
+        .in('status', ['planned', 'released']); // Only update if not already in_progress or completed
+
+      if (updateError) {
+        console.error('📦 [Status Check] Error updating production order status:', updateError);
+      } else {
+        console.log('📦 [Status Check] Production order status updated to in_progress');
+      }
+    }
+  } catch (error) {
+    console.error('📦 [Status Check] Error in checkAndUpdateProductionOrderStatus:', error);
+  }
+}
+
+/**
  * GET /api/replenishment/[id]
  * Get single replenishment task
  */
@@ -79,6 +135,11 @@ export async function PATCH(
     if (error) {
       console.error('Error updating replenishment task:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    // If task is completed, check if all materials are ready and update production order status
+    if (body.status === 'completed' && data?.trigger_reference) {
+      await checkAndUpdateProductionOrderStatus(supabase, data.trigger_reference);
     }
 
     return NextResponse.json({ data });

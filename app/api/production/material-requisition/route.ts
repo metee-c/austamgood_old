@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
         created_at,
         pallet_id,
         expiry_date,
-        master_sku:sku_id (sku_id, sku_name, uom_base, qty_per_pack),
+        master_sku:sku_id (sku_id, sku_name, uom_base, qty_per_pack, category, sub_category),
         from_location:from_location_id (location_id, zone, location_type),
         to_location:to_location_id (location_id, zone, location_type),
         assigned_user:assigned_to (user_id, username, full_name)
@@ -66,6 +66,25 @@ export async function GET(request: NextRequest) {
     if (replenishmentError) {
       console.error('Error fetching replenishment tasks:', replenishmentError);
       return NextResponse.json({ error: replenishmentError.message }, { status: 500 });
+    }
+
+    // Fetch production_date from inventory_balances for pallets in replenishment_queue
+    const palletIds = (replenishmentData || [])
+      .map((r: any) => r.pallet_id)
+      .filter((p: string | null) => p);
+    
+    let palletDatesMap: Record<string, string | null> = {};
+    if (palletIds.length > 0) {
+      const { data: balanceData } = await supabase
+        .from('wms_inventory_balances')
+        .select('pallet_id, production_date')
+        .in('pallet_id', palletIds);
+      
+      (balanceData || []).forEach((b: any) => {
+        if (b.pallet_id && b.production_date) {
+          palletDatesMap[b.pallet_id] = b.production_date;
+        }
+      });
     }
 
     // 2. Fetch production_order_items for packaging (items without replenishment tasks)
@@ -94,6 +113,7 @@ export async function GET(request: NextRequest) {
           sku_id,
           sku_name,
           uom_base,
+          category,
           sub_category
         )
       `)
@@ -116,72 +136,141 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: itemsError.message }, { status: 500 });
     }
 
-    // Get set of SKUs that have replenishment tasks (to exclude from packaging list)
-    const replenishmentSkuSet = new Set(
-      (replenishmentData || []).map((r: any) => `${r.trigger_reference}-${r.sku_id}`)
-    );
-
-    // Filter production_order_items to only include packaging (items without replenishment tasks)
-    const packagingItems = (itemsData || []).filter((item: any) => {
-      const key = `${item.production_order?.production_no}-${item.material_sku_id}`;
-      return !replenishmentSkuSet.has(key);
-    });
+    // ไม่กรอง production_order_items - แสดงทั้งหมดเพื่อให้เห็นประวัติการเบิก
+    // replenishment_queue จะแสดงเป็นแถวแยกสำหรับ variance ที่ต้องเบิกเพิ่ม
+    const packagingItems = itemsData || [];
 
     // Transform replenishment data (food materials)
-    const foodMaterials = (replenishmentData || []).map((task: any) => ({
-      type: 'food', // food material with replenishment task
-      queue_id: task.queue_id,
-      sku_id: task.sku_id,
-      sku_name: task.master_sku?.sku_name || task.sku_id,
-      uom: task.master_sku?.uom_base || 'ชิ้น',
-      requested_qty: task.requested_qty,
-      confirmed_qty: task.confirmed_qty || 0,
-      from_location_id: task.from_location_id,
-      from_location_zone: task.from_location?.zone || '',
-      to_location_id: task.to_location_id || 'Repack',
-      to_location_zone: task.to_location?.zone || 'Zone Repack',
-      pallet_id: task.pallet_id,
-      expiry_date: task.expiry_date,
-      priority: task.priority,
-      status: task.status,
-      trigger_reference: task.trigger_reference,
-      assigned_to: task.assigned_to,
-      assigned_user: task.assigned_user,
-      assigned_at: task.assigned_at,
-      started_at: task.started_at,
-      completed_at: task.completed_at,
-      created_at: task.created_at,
-      notes: task.notes,
-    }));
+    // ตรวจสอบ category/sub_category เพื่อกำหนด type ที่ถูกต้อง
+    // - อาหาร: category='วัตถุดิบ' และ sub_category มีคำว่า 'อาหาร'
+    // - packaging: category='ถุงบรรจุภัณฑ์' หรือไม่ใช่อาหาร
+    const foodMaterials = (replenishmentData || []).map((task: any) => {
+      const category = task.master_sku?.category || '';
+      const subCategory = task.master_sku?.sub_category || '';
+      const isFood = category === 'วัตถุดิบ' && subCategory.includes('อาหาร');
+      
+      return {
+        type: isFood ? 'food' : 'packaging', // กำหนด type ตาม category จริง
+        source: 'replenishment_queue', // ระบุแหล่งข้อมูล
+        queue_id: task.queue_id,
+        sku_id: task.sku_id,
+        sku_name: task.master_sku?.sku_name || task.sku_id,
+        uom: task.master_sku?.uom_base || 'ชิ้น',
+        requested_qty: task.requested_qty,
+        confirmed_qty: task.confirmed_qty || 0,
+        from_location_id: task.from_location_id,
+        from_location_zone: task.from_location?.zone || '',
+        to_location_id: task.to_location_id || 'Repack',
+        to_location_zone: task.to_location?.zone || 'Zone Repack',
+        pallet_id: task.pallet_id,
+        expiry_date: task.expiry_date,
+        production_date: task.pallet_id ? palletDatesMap[task.pallet_id] || null : null,
+        priority: task.priority,
+        status: task.status,
+        trigger_reference: task.trigger_reference,
+        assigned_to: task.assigned_to,
+        assigned_user: task.assigned_user,
+        assigned_at: task.assigned_at,
+        started_at: task.started_at,
+        completed_at: task.completed_at,
+        created_at: task.created_at,
+        notes: task.notes,
+      };
+    });
 
-    // Transform packaging items
-    const packagingMaterials = packagingItems.map((item: any) => ({
-      type: 'packaging', // packaging material without replenishment task
-      item_id: item.id,
-      production_order_id: item.production_order_id,
-      sku_id: item.material_sku_id,
-      sku_name: item.material_sku?.sku_name || item.material_sku_id,
-      uom: item.uom || item.material_sku?.uom_base || '',
-      requested_qty: Number(item.required_qty) || 0,
-      confirmed_qty: Number(item.issued_qty) || 0,
-      remaining_qty: Number(item.remaining_qty) || Number(item.required_qty) - Number(item.issued_qty) || 0,
-      from_location_id: null,
-      from_location_zone: '',
-      to_location_id: 'Repack',
-      to_location_zone: 'Zone Repack',
-      pallet_id: null,
-      expiry_date: null,
-      priority: 5, // default priority
-      status: item.status,
-      trigger_reference: item.production_order?.production_no || '',
-      assigned_to: null,
-      assigned_user: null,
-      assigned_at: null,
-      started_at: null,
-      completed_at: item.issued_date,
-      created_at: item.created_at,
-      notes: item.remarks,
-    }));
+    // Get unique packaging SKU IDs to fetch their stock locations
+    const packagingSkuIds = [...new Set(packagingItems.map((item: any) => item.material_sku_id))];
+    
+    // Fetch stock locations for packaging materials
+    let stockLocationsMap: Record<string, { location_id: string; zone: string; qty: number }[]> = {};
+    
+    if (packagingSkuIds.length > 0) {
+      const { data: stockData } = await supabase
+        .from('wms_inventory_balances')
+        .select(`
+          sku_id,
+          location_id,
+          total_piece_qty,
+          reserved_piece_qty,
+          master_location:location_id (location_id, zone, location_type)
+        `)
+        .in('sku_id', packagingSkuIds)
+        .gt('total_piece_qty', 0)
+        .not('location_id', 'in', '(Repack,Dispatch,Delivery-In-Progress,RCV,SHIP)')
+        .order('total_piece_qty', { ascending: false });
+      
+      // Group by SKU
+      (stockData || []).forEach((stock: any) => {
+        const availableQty = Number(stock.total_piece_qty) - Number(stock.reserved_piece_qty || 0);
+        if (availableQty > 0) {
+          if (!stockLocationsMap[stock.sku_id]) {
+            stockLocationsMap[stock.sku_id] = [];
+          }
+          stockLocationsMap[stock.sku_id].push({
+            location_id: stock.location_id,
+            zone: stock.master_location?.zone || '',
+            qty: availableQty,
+          });
+        }
+      });
+    }
+
+    // Transform packaging items - แสดงประวัติการเบิกทั้งหมด
+    const packagingMaterials = packagingItems.map((item: any) => {
+      // Get best stock location for this SKU (highest qty first)
+      const stockLocations = stockLocationsMap[item.material_sku_id] || [];
+      const bestLocation = stockLocations[0] || null;
+      const issuedQty = Number(item.issued_qty) || 0;
+      const requiredQty = Number(item.required_qty) || 0;
+      const remainingQty = Number(item.remaining_qty) || requiredQty - issuedQty || 0;
+      
+      // กำหนด status ตามจำนวนที่เบิกไปแล้ว
+      let displayStatus = item.status;
+      if (issuedQty > 0 && remainingQty === 0) {
+        displayStatus = 'completed'; // เบิกครบแล้ว
+      } else if (issuedQty > 0 && remainingQty > 0) {
+        displayStatus = 'partial'; // เบิกบางส่วน (ยังต้องเบิกเพิ่ม)
+      }
+      
+      // กำหนด type ตาม category จริงของ SKU
+      // - อาหาร: category='วัตถุดิบ' และ sub_category มีคำว่า 'อาหาร'
+      // - packaging: category='ถุงบรรจุภัณฑ์' หรือไม่ใช่อาหาร
+      const category = item.material_sku?.category || '';
+      const subCategory = item.material_sku?.sub_category || '';
+      const isFood = category === 'วัตถุดิบ' && (subCategory.includes('อาหาร') || subCategory.includes('แมว') || subCategory.includes('สุนัข'));
+      
+      return {
+        type: isFood ? 'food' : 'packaging', // กำหนด type ตาม category จริง
+        source: 'production_order_items', // ระบุแหล่งข้อมูล
+        item_id: item.id,
+        production_order_id: item.production_order_id,
+        sku_id: item.material_sku_id,
+        sku_name: item.material_sku?.sku_name || item.material_sku_id,
+        uom: item.uom || item.material_sku?.uom_base || '',
+        // แสดง issued_qty เป็นจำนวนที่เบิกไปแล้ว (สำหรับประวัติ)
+        requested_qty: issuedQty, // จำนวนที่เบิกไปแล้ว
+        total_required_qty: requiredQty, // จำนวนที่ต้องการทั้งหมด (สำหรับ reference)
+        confirmed_qty: issuedQty, // จำนวนที่เบิกไปแล้ว
+        remaining_qty: remainingQty, // จำนวนที่ยังต้องเบิกเพิ่ม
+        from_location_id: bestLocation?.location_id || null,
+        from_location_zone: bestLocation?.zone || '',
+        available_stock_locations: stockLocations, // รายการโลเคชั่นทั้งหมดที่มีสต็อก
+        to_location_id: 'Repack',
+        to_location_zone: 'Zone Repack',
+        pallet_id: null,
+        expiry_date: null,
+        priority: 5, // default priority
+        status: displayStatus,
+        trigger_reference: item.production_order?.production_no || '',
+        assigned_to: null,
+        assigned_user: null,
+        assigned_at: null,
+        started_at: null,
+        completed_at: item.issued_date,
+        created_at: item.created_at,
+        notes: item.remarks,
+      };
+    });
 
     // Combine and sort by created_at
     const allMaterials = [...foodMaterials, ...packagingMaterials].sort(
@@ -201,6 +290,7 @@ export async function GET(request: NextRequest) {
       assigned: allMaterials.filter((m) => m.status === 'assigned').length,
       in_progress: allMaterials.filter((m) => m.status === 'in_progress').length,
       completed: allMaterials.filter((m) => m.status === 'completed').length,
+      partial: allMaterials.filter((m) => m.status === 'partial').length,
       cancelled: allMaterials.filter((m) => m.status === 'cancelled').length,
     };
 

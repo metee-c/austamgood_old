@@ -15,7 +15,8 @@ import {
   Loader2,
   X,
   Package,
-  Truck
+  Truck,
+  User
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Badge from '@/components/ui/Badge';
@@ -251,13 +252,21 @@ function MobilePickPage() {
             <ClipboardList className="w-6 h-6" />
             <h1 className="text-lg font-bold font-thai">เช็คสินค้า (Pick)</h1>
           </div>
-          <button
-            onClick={handleRefresh}
-            disabled={refreshing}
-            className="p-1.5 bg-white/20 rounded-lg hover:bg-white/30 transition-colors active:scale-95 disabled:opacity-50"
-          >
-            <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleRefresh}
+              disabled={refreshing}
+              className="p-1.5 bg-white/20 rounded-lg hover:bg-white/30 transition-colors active:scale-95 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
+            </button>
+            <button
+              onClick={() => router.push('/profile')}
+              className="p-1.5 bg-white/20 rounded-lg hover:bg-white/30 transition-colors active:scale-95"
+            >
+              <User className="w-5 h-5" />
+            </button>
+          </div>
         </div>
 
         {/* Search and Filter - Same Row */}

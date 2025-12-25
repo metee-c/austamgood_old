@@ -12,7 +12,9 @@ import {
   XCircle,
   Loader2,
   Package,
+  ExternalLink,
 } from 'lucide-react';
+import { useRouter } from 'next/navigation';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
@@ -66,6 +68,7 @@ const fetcher = async (url: string) => {
 };
 
 const MaterialRequisitionPage = () => {
+  const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<MaterialStatus | 'all'>('all');
   const [selectedTask, setSelectedTask] = useState<MaterialItem | null>(null);
@@ -476,8 +479,7 @@ const MaterialRequisitionPage = () => {
                             <Button
                               size="sm"
                               variant="primary"
-                              onClick={() => handleUpdateStatus(item.queue_id!, 'in_progress')}
-                              disabled={isUpdating}
+                              onClick={() => router.push(`/mobile/transfer/replenishment/${item.queue_id}`)}
                               className="text-[10px] px-1.5 py-1 h-6 min-h-0"
                             >
                               <Play className="w-3 h-3 mr-0.5" />
@@ -742,9 +744,9 @@ const MaterialRequisitionPage = () => {
                   <input
                     type="text"
                     value={fromLocationInput}
-                    onChange={(e) => setFromLocationInput(e.target.value.toUpperCase())}
-                    placeholder="พิมพ์โลเคชั่นต้นทาง..."
-                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono uppercase"
+                    onChange={(e) => setFromLocationInput(e.target.value)}
+                    placeholder={selectedTask.from_location_id || 'พิมพ์โลเคชั่นต้นทาง...'}
+                    className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono"
                   />
                 </div>
 
@@ -752,18 +754,18 @@ const MaterialRequisitionPage = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-1 font-thai">
                     โลเคชั่นปลายทาง <span className="text-red-500">*</span>
                     <span className="text-xs text-gray-500 ml-2">
-                      (ต้องพิมพ์: <span className="font-mono font-bold text-blue-600">{selectedTask.to_location_id || 'Repack'}</span>)
+                      (พิมพ์: <span className="font-mono font-bold text-blue-600">{selectedTask.to_location_id || 'Repack'}</span>)
                     </span>
                   </label>
                   <input
                     type="text"
                     value={toLocationInput}
                     onChange={(e) => {
-                      setToLocationInput(e.target.value.toUpperCase());
+                      setToLocationInput(e.target.value);
                       setLocationError('');
                     }}
-                    placeholder={`พิมพ์ ${selectedTask.to_location_id || 'Repack'} เพื่อยืนยัน`}
-                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono uppercase ${
+                    placeholder={selectedTask.to_location_id || 'Repack'}
+                    className={`w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 font-mono ${
                       locationError ? 'border-red-500 bg-red-50' : ''
                     }`}
                   />

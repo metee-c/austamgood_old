@@ -281,6 +281,12 @@ function MobileReceivePage() {
               >
                 <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
               </button>
+              <button
+                onClick={() => router.push('/profile')}
+                className="p-1.5 bg-white/20 rounded-lg hover:bg-white/30 transition-colors active:scale-95"
+              >
+                <User className="w-4 h-4" />
+              </button>
             </div>
           </div>
 

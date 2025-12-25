@@ -548,13 +548,13 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
     });
   };
 
-  const togglePalletSelection = (balanceId: number, availableBags: number) => {
+  const togglePalletSelection = (balanceId: number, availableKg: number) => {
     setSelectedPallets(prev => {
       const newMap = new Map(prev);
       if (newMap.has(balanceId)) {
         newMap.delete(balanceId);
       } else {
-        newMap.set(balanceId, availableBags); // จำนวนถุง ไม่ใช่ กก.
+        newMap.set(balanceId, availableKg); // เก็บเป็น กก.
       }
       return newMap;
     });
@@ -579,12 +579,24 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
       return;
     }
 
-    // Build items from materials
-    const items = planData?.materials.map(mat => ({
-      material_sku_id: mat.material_sku_id,
-      required_qty: mat.gross_requirement,
-      uom: mat.material_uom,
-    })) || [];
+    // ตรวจสอบว่าเลือกวัตถุดิบอาหารครบยอดหรือเกิน (ถ้ามีวัตถุดิบอาหาร)
+    if (foodMaterials.length > 0 && requiredFoodQty > 0) {
+      if (totalSelectedQty < requiredFoodQty) {
+        alert(`กรุณาเลือกวัตถุดิบอาหารให้ครบยอด\n\nต้องการ: ${requiredFoodQty.toLocaleString()} ${foodMaterials[0]?.material_uom || 'กก.'}\nเลือกแล้ว: ${totalSelectedQty.toLocaleString()} ${foodMaterials[0]?.material_uom || 'กก.'}\n\nยังขาดอีก: ${(requiredFoodQty - totalSelectedQty).toLocaleString()} ${foodMaterials[0]?.material_uom || 'กก.'}`);
+        return;
+      }
+    }
+
+    // Build items from materials - เฉพาะวัตถุดิบที่ไม่ใช่อาหาร (packaging)
+    // วัตถุดิบอาหาร (SKU ขึ้นต้นด้วย 00-) จะใช้ selected_pallets แทน ไม่ต้องใส่ใน items
+    // เพื่อป้องกันการสร้างรายการซ้ำ
+    const items = planData?.materials
+      .filter(mat => !mat.material_sku_id.startsWith('00-')) // กรองเอาเฉพาะ non-food materials
+      .map(mat => ({
+        material_sku_id: mat.material_sku_id,
+        required_qty: mat.gross_requirement,
+        uom: mat.material_uom,
+      })) || [];
 
     // Build selected_pallets from selectedPallets Map
     const selected_pallets: Array<{
@@ -604,7 +616,7 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
               balance_id: pallet.balance_id,
               pallet_id: pallet.pallet_id,
               location_id: pallet.location_id,
-              qty: selectedPallets.get(pallet.balance_id) || pallet.available_bags, // ใช้ available_bags (ถุง) ไม่ใช่ available_qty (กก.)
+              qty: pallet.available_bags, // ส่งเป็นถุงเสมอ (API ต้องการถุง)
               sku_id: dateGroup.sku_id,
             });
           }
@@ -821,7 +833,7 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
                                           <input
                                             type="checkbox"
                                             checked={isSelected}
-                                            onChange={() => togglePalletSelection(pallet.balance_id, pallet.available_bags)}
+                                            onChange={() => togglePalletSelection(pallet.balance_id, pallet.available_qty)}
                                             className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                           />
                                           <span className="font-mono text-[10px] text-gray-600">{pallet.pallet_id}</span>

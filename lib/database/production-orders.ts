@@ -128,7 +128,7 @@ export async function getProductionOrderById(
       creator:master_employee!production_orders_created_by_fkey(employee_id, first_name, last_name, nickname),
       items:production_order_items(
         *,
-        material_sku:master_sku!production_order_items_material_sku_id_fkey(sku_id, sku_name, uom_base)
+        material_sku:master_sku!production_order_items_material_sku_id_fkey(sku_id, sku_name, uom_base, category, sub_category)
       )
     `)
     .eq('id', orderId)
@@ -206,9 +206,12 @@ export async function createProductionOrder(
 ): Promise<ProductionOrderWithDetails | null> {
   const supabase = await createClient();
 
+  console.log('🏭 [createProductionOrder] Starting with input:', JSON.stringify(input, null, 2));
+
   try {
     // 1. Generate production order number
     const productionNo = await generateProductionNo();
+    console.log('🏭 [createProductionOrder] Generated production_no:', productionNo);
 
     // 2. Get SKU info for UOM
     const { data: skuData } = await supabase
@@ -216,6 +219,7 @@ export async function createProductionOrder(
       .select('uom_base')
       .eq('sku_id', input.sku_id)
       .single();
+    console.log('🏭 [createProductionOrder] SKU data:', skuData);
 
     // 3. Create production order header
     const { data: order, error: orderError } = await supabase
@@ -241,12 +245,16 @@ export async function createProductionOrder(
       .single();
 
     if (orderError || !order) {
-      console.error('Error creating production order:', orderError);
+      console.error('🏭 [createProductionOrder] Error creating production order:', orderError);
       throw new Error('Failed to create production order');
     }
+    console.log('🏭 [createProductionOrder] Order header created:', order.id);
 
     // 4. Create order items (materials) if provided
     if (input.items && input.items.length > 0) {
+      console.log('🏭 [createProductionOrder] Creating order items:', input.items.length);
+      console.log('🏭 [createProductionOrder] Items detail:', JSON.stringify(input.items, null, 2));
+      
       const orderItems = input.items.map(item => ({
         production_order_id: order.id,
         material_sku_id: item.material_sku_id,
@@ -257,26 +265,52 @@ export async function createProductionOrder(
         remarks: item.remarks,
       }));
 
+      console.log('🏭 [createProductionOrder] Order items to insert:', JSON.stringify(orderItems, null, 2));
+
       const { error: itemsError } = await supabase
         .from('production_order_items')
         .insert(orderItems);
 
       if (itemsError) {
-        console.error('Error creating order items:', itemsError);
+        console.error('🏭 [createProductionOrder] Error creating order items:', itemsError);
         // Rollback - delete the order
         await supabase.from('production_orders').delete().eq('id', order.id);
         throw new Error('Failed to create order items');
       }
+      console.log('🏭 [createProductionOrder] Order items created successfully');
+    } else {
+      console.log('🏭 [createProductionOrder] No items provided');
     }
 
     // 5. Create replenishment_queue entries for selected food material pallets
     if (input.selected_pallets && input.selected_pallets.length > 0) {
+      console.log('🏭 [createProductionOrder] Creating replenishment entries for pallets:', input.selected_pallets.length);
+      console.log('🏭 [createProductionOrder] Selected pallets detail:', JSON.stringify(input.selected_pallets, null, 2));
+      
+      // Fetch expiry_date from inventory balances for each pallet
+      const palletIds = input.selected_pallets.map(p => p.pallet_id).filter(Boolean);
+      let expiryDateMap: Record<string, string | null> = {};
+      
+      if (palletIds.length > 0) {
+        const { data: balanceData } = await supabase
+          .from('wms_inventory_balances')
+          .select('pallet_id, expiry_date')
+          .in('pallet_id', palletIds);
+        
+        (balanceData || []).forEach((b: any) => {
+          if (b.pallet_id) {
+            expiryDateMap[b.pallet_id] = b.expiry_date;
+          }
+        });
+      }
+
       const replenishmentEntries = input.selected_pallets.map(pallet => ({
         warehouse_id: 'WH001', // Default warehouse
         sku_id: pallet.sku_id,
         from_location_id: pallet.location_id,
         to_location_id: 'Repack', // ปลายทางคือ Repack เสมอสำหรับงานเบิกวัตถุดิบจากใบสั่งผลิต
         pallet_id: pallet.pallet_id,
+        expiry_date: pallet.pallet_id ? expiryDateMap[pallet.pallet_id] || null : null,
         requested_qty: pallet.qty,
         confirmed_qty: 0,
         priority: 3, // High priority for production
@@ -287,21 +321,28 @@ export async function createProductionOrder(
         assigned_to: null,
       }));
 
+      console.log('🏭 [createProductionOrder] Replenishment entries to insert:', JSON.stringify(replenishmentEntries, null, 2));
+
       const { error: replenishmentError } = await supabase
         .from('replenishment_queue')
         .insert(replenishmentEntries);
 
       if (replenishmentError) {
-        console.error('Error creating replenishment queue entries:', replenishmentError);
+        console.error('🏭 [createProductionOrder] Error creating replenishment queue entries:', replenishmentError);
         // Don't rollback - order is created, just log the error
         // The user can manually create replenishment tasks later
+      } else {
+        console.log('🏭 [createProductionOrder] Replenishment entries created successfully');
       }
+    } else {
+      console.log('🏭 [createProductionOrder] No selected pallets provided');
     }
 
     // 6. Return complete order
+    console.log('🏭 [createProductionOrder] Fetching complete order details');
     return await getProductionOrderById(order.id);
   } catch (error) {
-    console.error('Error in createProductionOrder:', error);
+    console.error('🏭 [createProductionOrder] Error:', error);
     throw error;
   }
 }

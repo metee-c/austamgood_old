@@ -48,8 +48,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const userId = sessionResult.session.employee_id;
 
+    console.log('📦 [POST /api/production/orders] Request body:', JSON.stringify(body, null, 2));
+
     // Check if this is a request to create orders from a plan
     if (body.action === 'create_from_plan' && body.plan_id) {
+      console.log('📦 [POST /api/production/orders] Creating orders from plan:', body.plan_id);
       const orders = await createOrdersFromPlan(body.plan_id, userId);
       return NextResponse.json({ data: orders, message: `สร้างใบสั่งผลิต ${orders.length} รายการสำเร็จ` });
     }
@@ -71,7 +74,12 @@ export async function POST(request: NextRequest) {
       selected_pallets: body.selected_pallets, // พาเลทวัตถุดิบอาหารที่เลือก
     };
 
+    console.log('📦 [POST /api/production/orders] Input to createProductionOrder:', JSON.stringify(input, null, 2));
+    console.log('📦 [POST /api/production/orders] Items count:', input.items?.length || 0);
+    console.log('📦 [POST /api/production/orders] Selected pallets count:', input.selected_pallets?.length || 0);
+
     const order = await createProductionOrder(input, userId);
+    console.log('📦 [POST /api/production/orders] Order created:', order?.id);
     return NextResponse.json({ data: order });
   } catch (error: any) {
     console.error('Error in POST /api/production/orders:', error);
