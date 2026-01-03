@@ -1,21 +1,16 @@
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   Search,
   Filter,
   Package,
   ChevronRight,
-  Clock,
-  CheckCircle,
-  AlertCircle,
   AlertTriangle,
   RefreshCw,
   Loader2,
   X,
-  Calendar,
-  TruckIcon,
   User,
   Plus
 } from 'lucide-react';
@@ -273,6 +268,16 @@ function MobileReceivePage() {
               >
                 <Plus className="w-4 h-4" />
                 รับสินค้า
+              </button>
+              <button
+                onClick={() => {
+                  playTapSound();
+                  router.push('/mobile/receive/production');
+                }}
+                className="px-2.5 py-1.5 bg-emerald-500 text-white rounded-lg font-thai text-sm font-semibold hover:bg-emerald-600 transition-colors active:scale-95 flex items-center gap-1 shadow-sm"
+              >
+                <Package className="w-4 h-4" />
+                รับผลิต
               </button>
               <button
                 onClick={handleRefresh}

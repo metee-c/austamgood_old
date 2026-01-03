@@ -84,7 +84,8 @@
       "Bash(timeout 15 bash -c \"psql ''postgresql://postgres.iwlkslewdgenckuejbit:Austam@567890@aws-0-ap-southeast-1.pooler.supabase.com:6543/postgres'' -c \"\"SELECT email, role_id, is_active, created_at FROM system_users ORDER BY created_at DESC LIMIT 10;\"\" 2>nul\")",
       "Bash(node scripts/generate-password-hash.js:*)",
       "Bash(timeout 30 npm run build:*)",
-      "Bash(cp:*)"
+      "Bash(cp:*)",
+      "Bash(ls:*)"
     ],
     "deny": [],
     "ask": []

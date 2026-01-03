@@ -282,7 +282,8 @@ const InboundPage = () => {
     { value: 'รับสินค้าชำรุด', label: 'รับสินค้าชำรุด' },
     { value: 'รับสินค้าหมดอายุ', label: 'รับสินค้าหมดอายุ' },
     { value: 'รับสินค้าคืน', label: 'รับสินค้าคืน' },
-    { value: 'รับสินค้าตีกลับ', label: 'รับสินค้าตีกลับ' }
+    { value: 'รับสินค้าตีกลับ', label: 'รับสินค้าตีกลับ' },
+    { value: 'การผลิต', label: 'การผลิต' }
   ];
   // Status types for dropdown
   const statuses: { value: ReceiveStatus | 'all'; label: string }[] = [
@@ -324,6 +325,8 @@ const InboundPage = () => {
         return <Badge variant="warning" size="sm" className="whitespace-nowrap"><span className="text-[10px]">รับสินค้าคืน</span></Badge>;
       case 'รับสินค้าตีกลับ':
         return <Badge variant="default" size="sm" className="whitespace-nowrap"><span className="text-[10px]">รับสินค้าตีกลับ</span></Badge>;
+      case 'การผลิต':
+        return <Badge variant="success" size="sm" className="whitespace-nowrap"><span className="text-[10px]">รับสินค้าจากผลิต</span></Badge>;
       default:
         return <Badge variant="default" size="sm" className="whitespace-nowrap"><span className="text-[10px]">{type}</span></Badge>;
     }

@@ -56,6 +56,15 @@ interface FoodStockPallet {
   expiry_date: string | null;
 }
 
+// Selection mode for pallet
+type PalletSelectionMode = 'full' | 'partial'; // full = ทั้งพาเลท, partial = รายถุง
+
+interface PalletSelection {
+  mode: PalletSelectionMode;
+  qty: number; // จำนวนถุงที่เลือก
+  maxQty: number; // จำนวนถุงทั้งหมดในพาเลท
+}
+
 interface FoodStockByDate {
   sku_id: string;
   sku_name: string;
@@ -495,7 +504,8 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
   const [foodStock, setFoodStock] = useState<FoodStockByDate[]>([]);
   const [loadingFoodStock, setLoadingFoodStock] = useState(false);
   const [expandedDateRows, setExpandedDateRows] = useState<Set<string>>(new Set());
-  const [selectedPallets, setSelectedPallets] = useState<Map<number, number>>(new Map()); // balance_id -> qty
+  const [selectedPallets, setSelectedPallets] = useState<Map<number, PalletSelection>>(new Map()); // balance_id -> PalletSelection
+  const [editingPalletQty, setEditingPalletQty] = useState<number | null>(null); // balance_id ที่กำลังแก้ไขจำนวน
 
   // Get selected SKU and its materials
   const selectedSku = planData?.items[selectedSkuIndex];
@@ -548,13 +558,61 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
     });
   };
 
-  const togglePalletSelection = (balanceId: number, availableKg: number) => {
+  const togglePalletSelection = (balanceId: number, availableBags: number, availableKg: number) => {
     setSelectedPallets(prev => {
       const newMap = new Map(prev);
       if (newMap.has(balanceId)) {
         newMap.delete(balanceId);
+        setEditingPalletQty(null);
       } else {
-        newMap.set(balanceId, availableKg); // เก็บเป็น กก.
+        // Default: เลือกทั้งพาเลท
+        newMap.set(balanceId, {
+          mode: 'full',
+          qty: availableBags,
+          maxQty: availableBags
+        });
+      }
+      return newMap;
+    });
+  };
+
+  const togglePartialMode = (balanceId: number, availableBags: number) => {
+    setSelectedPallets(prev => {
+      const newMap = new Map(prev);
+      const current = newMap.get(balanceId);
+      if (current) {
+        if (current.mode === 'full') {
+          // เปลี่ยนเป็น partial mode และเปิด input
+          newMap.set(balanceId, {
+            mode: 'partial',
+            qty: current.qty,
+            maxQty: availableBags
+          });
+          setEditingPalletQty(balanceId);
+        } else {
+          // เปลี่ยนกลับเป็น full mode
+          newMap.set(balanceId, {
+            mode: 'full',
+            qty: availableBags,
+            maxQty: availableBags
+          });
+          setEditingPalletQty(null);
+        }
+      }
+      return newMap;
+    });
+  };
+
+  const updatePalletQty = (balanceId: number, newQty: number) => {
+    setSelectedPallets(prev => {
+      const newMap = new Map(prev);
+      const current = newMap.get(balanceId);
+      if (current) {
+        const validQty = Math.max(1, Math.min(newQty, current.maxQty));
+        newMap.set(balanceId, {
+          ...current,
+          qty: validQty
+        });
       }
       return newMap;
     });
@@ -562,7 +620,19 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
 
   const totalSelectedQty = useMemo(() => {
     let total = 0;
-    selectedPallets.forEach(qty => total += qty);
+    selectedPallets.forEach((selection) => {
+      // คำนวณ กก. จากจำนวนถุง (ใช้ weight_per_bag จาก foodStock หรือ default 20 กก./ถุง)
+      const weightPerBag = foodStock[0]?.weight_per_bag || 20;
+      total += selection.qty * weightPerBag;
+    });
+    return total;
+  }, [selectedPallets, foodStock]);
+
+  const totalSelectedBags = useMemo(() => {
+    let total = 0;
+    selectedPallets.forEach((selection) => {
+      total += selection.qty;
+    });
     return total;
   }, [selectedPallets]);
 
@@ -611,12 +681,13 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
       // Find pallet details from foodStock
       for (const dateGroup of foodStock) {
         for (const pallet of dateGroup.pallets) {
-          if (selectedPallets.has(pallet.balance_id)) {
+          const selection = selectedPallets.get(pallet.balance_id);
+          if (selection) {
             selected_pallets.push({
               balance_id: pallet.balance_id,
               pallet_id: pallet.pallet_id,
               location_id: pallet.location_id,
-              qty: pallet.available_bags, // ส่งเป็นถุงเสมอ (API ต้องการถุง)
+              qty: selection.qty, // ส่งจำนวนถุงที่เลือกจริง (อาจเป็นบางส่วนของพาเลท)
               sku_id: dateGroup.sku_id,
             });
           }
@@ -757,6 +828,7 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
                       <span className={`font-bold ${totalSelectedQty >= requiredFoodQty ? 'text-green-600' : 'text-red-600'}`}>
                         {totalSelectedQty.toLocaleString()} {foodMaterials[0]?.material_uom || 'กก.'}
                       </span>
+                      <span className="text-gray-400 ml-1">({totalSelectedBags} ถุง)</span>
                     </div>
                   </div>
 
@@ -822,28 +894,62 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
 
                                 {/* Sub-rows - individual pallets */}
                                 {isExpanded && dateGroup.pallets.map((pallet) => {
-                                  const isSelected = selectedPallets.has(pallet.balance_id);
+                                  const selection = selectedPallets.get(pallet.balance_id);
+                                  const isSelected = !!selection;
+                                  const isPartial = selection?.mode === 'partial';
+                                  const isEditing = editingPalletQty === pallet.balance_id;
                                   return (
                                     <tr 
                                       key={pallet.balance_id}
-                                      className={`border-b ${isSelected ? 'bg-green-50' : 'bg-gray-50/50'} hover:bg-blue-50/50`}
+                                      className={`border-b ${isSelected ? (isPartial ? 'bg-yellow-50' : 'bg-green-50') : 'bg-gray-50/50'} hover:bg-blue-50/50`}
                                     >
                                       <td className="px-2 py-1 pl-8" colSpan={2}>
                                         <div className="flex items-center gap-2">
                                           <input
                                             type="checkbox"
                                             checked={isSelected}
-                                            onChange={() => togglePalletSelection(pallet.balance_id, pallet.available_qty)}
+                                            onChange={() => togglePalletSelection(pallet.balance_id, pallet.available_bags, pallet.available_qty)}
                                             className="w-3.5 h-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                                           />
                                           <span className="font-mono text-[10px] text-gray-600">{pallet.pallet_id}</span>
                                           <span className="text-gray-400">|</span>
                                           <MapPin className="w-3 h-3 text-gray-400" />
                                           <span className="text-[10px]">{pallet.location_name || pallet.location_id}</span>
+                                          {isSelected && (
+                                            <button
+                                              type="button"
+                                              onClick={(e) => {
+                                                e.stopPropagation();
+                                                togglePartialMode(pallet.balance_id, pallet.available_bags);
+                                              }}
+                                              className={`ml-2 px-1.5 py-0.5 text-[9px] rounded ${isPartial ? 'bg-yellow-200 text-yellow-800' : 'bg-gray-200 text-gray-600'} hover:opacity-80`}
+                                              title={isPartial ? 'คลิกเพื่อเลือกทั้งพาเลท' : 'คลิกเพื่อเลือกรายถุง'}
+                                            >
+                                              {isPartial ? 'รายถุง' : 'ทั้งพาเลท'}
+                                            </button>
+                                          )}
                                         </div>
                                       </td>
                                       <td className="px-2 py-1 text-right">
-                                        <span className="text-green-600">{pallet.available_qty.toLocaleString()}</span>
+                                        {isSelected && isPartial ? (
+                                          <div className="flex items-center justify-end gap-1">
+                                            <input
+                                              type="number"
+                                              min={1}
+                                              max={pallet.available_bags}
+                                              value={selection?.qty || 0}
+                                              onChange={(e) => updatePalletQty(pallet.balance_id, parseInt(e.target.value) || 1)}
+                                              onClick={(e) => e.stopPropagation()}
+                                              className="w-14 px-1 py-0.5 text-[10px] text-right border border-yellow-400 rounded bg-yellow-50 focus:outline-none focus:ring-1 focus:ring-yellow-500"
+                                            />
+                                            <span className="text-[10px] text-gray-500">/ {pallet.available_bags} ถุง</span>
+                                          </div>
+                                        ) : (
+                                          <>
+                                            <span className="text-green-600">{pallet.available_qty.toLocaleString()} กก.</span>
+                                            <span className="text-gray-400 text-[10px] ml-1">({pallet.available_bags} ถุง)</span>
+                                          </>
+                                        )}
                                         {pallet.reserved_piece_qty > 0 && (
                                           <span className="text-orange-500 text-[10px] ml-1">(จอง {pallet.reserved_piece_qty})</span>
                                         )}
@@ -852,7 +958,14 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
                                         <span className="text-[10px] text-gray-500">{pallet.warehouse_id}</span>
                                       </td>
                                       <td className="px-2 py-1 text-center">
-                                        {isSelected && <Check className="w-4 h-4 text-green-600 mx-auto" />}
+                                        {isSelected && (
+                                          <div className="flex flex-col items-center">
+                                            <Check className={`w-4 h-4 ${isPartial ? 'text-yellow-600' : 'text-green-600'}`} />
+                                            {isPartial && (
+                                              <span className="text-[9px] text-yellow-600 font-bold">{selection?.qty}</span>
+                                            )}
+                                          </div>
+                                        )}
                                       </td>
                                     </tr>
                                   );

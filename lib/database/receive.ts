@@ -13,7 +13,8 @@ export type ReceiveType =
   | 'รับสินค้าหมดอายุ'
   | 'รับสินค้าคืน'
   | 'รับสินค้าคืน (ไม่มีเอกสาร)'
-  | 'รับสินค้าตีกลับ';
+  | 'รับสินค้าตีกลับ'
+  | 'การผลิต';
 
 export type PalletScanStatus = 'ไม่จำเป็น' | 'สแกนแล้ว' | 'รอดำเนินการ';
 
@@ -42,6 +43,15 @@ export interface ReceiveHeader {
   updated_at: string;
 }
 
+// --- Interface for Material Traceability Info ---
+export interface MaterialTraceabilityInfo {
+  material_sku_id: string;
+  material_name: string;
+  production_date?: string;
+  expiry_date?: string;
+  qty_used?: number;
+}
+
 // --- Interface for Receive Line Items (wms_receive_items) ---
 export interface ReceiveItem {
   item_id: number;
@@ -63,6 +73,9 @@ export interface ReceiveItem {
   created_by?: number;
   created_at: string;
   updated_at: string;
+  // Production traceability fields
+  production_order_id?: string;
+  source_materials_info?: MaterialTraceabilityInfo[];
 }
 
 // --- Interface for the data payload to create a new receive document ---

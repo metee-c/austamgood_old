@@ -194,9 +194,10 @@ class StockAdjustmentService {
           const packSize = skuPackSizeMap.get(item.sku_id) || 1;
           
           // Get current balance - try exact match first
+          // Include production_date and expiry_date for sync trigger matching
           let balanceQuery = this.supabase
             .from('wms_inventory_balances')
-            .select('total_pack_qty, total_piece_qty')
+            .select('total_pack_qty, total_piece_qty, production_date, expiry_date, pallet_id_external')
             .eq('warehouse_id', payload.warehouse_id)
             .eq('location_id', item.location_id)
             .eq('sku_id', item.sku_id);
@@ -213,7 +214,7 @@ class StockAdjustmentService {
           if (!balance && !item.pallet_id) {
             const { data: aggregatedBalance } = await this.supabase
               .from('wms_inventory_balances')
-              .select('total_pack_qty, total_piece_qty')
+              .select('total_pack_qty, total_piece_qty, production_date, expiry_date, pallet_id_external')
               .eq('warehouse_id', payload.warehouse_id)
               .eq('location_id', item.location_id)
               .eq('sku_id', item.sku_id)
@@ -231,15 +232,20 @@ class StockAdjustmentService {
           const afterPieceQty = beforePieceQty + adjustmentPieceQty;
           const afterPackQty = packSize > 0 ? Math.floor(afterPieceQty / packSize) : 0;
 
+          // Use dates from balance if not provided by caller (for sync trigger matching)
+          const productionDate = item.production_date || (balance as any)?.production_date || null;
+          const expiryDate = item.expiry_date || (balance as any)?.expiry_date || null;
+          const palletIdExternal = item.pallet_id_external || (balance as any)?.pallet_id_external || null;
+
           return {
             line_no: index + 1,
             sku_id: item.sku_id,
             location_id: item.location_id,
             pallet_id: item.pallet_id || null,
-            pallet_id_external: item.pallet_id_external || null,
+            pallet_id_external: palletIdExternal,
             lot_no: item.lot_no || null,
-            production_date: item.production_date || null,
-            expiry_date: item.expiry_date || null,
+            production_date: productionDate,
+            expiry_date: expiryDate,
             before_pack_qty: beforePackQty,
             before_piece_qty: beforePieceQty,
             adjustment_pack_qty: payload.adjustment_type === 'decrease' ? -adjustmentPackQty : adjustmentPackQty,

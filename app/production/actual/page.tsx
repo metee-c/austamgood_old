@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   Search,
   RefreshCw,
@@ -14,11 +14,14 @@ import {
   ChevronsRight,
   Plus,
   X,
-  Check
+  Check,
+  Printer,
+  Edit
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
+import { ProductionReceiptForPrint } from '@/components/production/ProductionReceiptPrintDocument';
 
 // Production Receipt interface (from production_receipts table)
 interface ProductionReceipt {
@@ -85,7 +88,38 @@ interface BomItem {
   pallet_id?: string; // รหัสพาเลท
 }
 
-// TODO: Replace with actual data interface from database
+// Interface for calculated production data
+interface CalculatedData {
+  fg_planned_qty: number;
+  fg_actual_qty: number;
+  fg_received_qty: number; // จำนวน FG ที่รับเข้าจาก wms_receive_items
+  fg_variance: number; // ส่วนต่าง: บันทึกจริง - รับเข้า
+  food_actual_qty: number;
+  food_actual_kg: number;
+  packaging_actual_qty: number;
+  avg_weight_per_bag: number;
+  waste_per_piece: number;
+  total_waste: number;
+  food_materials: Array<{
+    sku_id: string;
+    sku_name: string;
+    issued_qty: number;
+    actual_qty: number;
+    variance_qty: number;
+    variance_type: string;
+    uom: string;
+  }>;
+  packaging_materials: Array<{
+    sku_id: string;
+    sku_name: string;
+    issued_qty: number;
+    actual_qty: number;
+    variance_qty: number;
+    variance_type: string;
+    uom: string;
+  }>;
+}
+
 interface ActualProduction {
   record_id: number;
   production_date: string;
@@ -99,10 +133,13 @@ interface ActualProduction {
   status: string;
   created_at: string;
   created_by: string;
+  // ข้อมูลเพิ่มเติมที่คำนวณ
+  calculated?: CalculatedData;
 }
 
 const ActualProductionPage = () => {
   const [actualData, setActualData] = useState<ActualProduction[]>([]);
+  const [rawReceiptData, setRawReceiptData] = useState<any[]>([]); // เก็บข้อมูลดิบจาก API สำหรับปริ้น
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -132,6 +169,20 @@ const ActualProductionPage = () => {
   });
   const [submitting, setSubmitting] = useState(false);
   const [bomItems, setBomItems] = useState<BomItem[]>([]);
+
+  // Edit modal states
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editingReceipt, setEditingReceipt] = useState<any>(null);
+  const [editForm, setEditForm] = useState({
+    actual_qty: '',
+    lot_no: '',
+    batch_no: '',
+    remarks: ''
+  });
+  const [editBomItems, setEditBomItems] = useState<BomItem[]>([]);
+
+  // Print states
+  const printRef = useRef<HTMLDivElement>(null);
 
   // Debounce search term
   useEffect(() => {
@@ -165,6 +216,9 @@ const ActualProductionPage = () => {
         throw new Error(result.error || 'Failed to fetch data');
       }
 
+      // เก็บข้อมูลดิบสำหรับปริ้น
+      setRawReceiptData(result.data || []);
+
       // Transform API data to match ActualProduction interface
       const transformedData: ActualProduction[] = (result.data || []).map((receipt: any) => ({
         record_id: receipt.id,
@@ -180,7 +234,9 @@ const ActualProductionPage = () => {
         created_at: receipt.created_at,
         created_by: receipt.producer 
           ? `${receipt.producer.first_name || ''} ${receipt.producer.last_name || ''}`.trim() || receipt.producer.nickname || '-'
-          : '-'
+          : '-',
+        // ข้อมูลเพิ่มเติมที่คำนวณจาก API
+        calculated: receipt.calculated || null
       }));
 
       setActualData(transformedData);
@@ -191,6 +247,323 @@ const ActualProductionPage = () => {
       console.error('Error:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Handle print receipt - ไปหน้าพิมพ์เลยโดยไม่ต้องมี preview
+  const handlePrintReceipt = (recordId: string) => {
+    const rawReceipt = rawReceiptData.find((r: any) => r.id === recordId);
+    if (rawReceipt) {
+      // เรียก executePrint โดยตรงโดยส่ง receipt เข้าไป
+      executePrintDirect(rawReceipt as ProductionReceiptForPrint);
+    }
+  };
+
+  // Execute print directly - สร้าง HTML พร้อม CSS ครบถ้วนสำหรับปริ้น (แบบทางการ ขาวดำ)
+  const executePrintDirect = (receipt: ProductionReceiptForPrint) => {
+    const calc = receipt.calculated;
+    
+    const formatDate = (dateStr: string | null | undefined) => {
+      if (!dateStr) return '-';
+      return new Date(dateStr).toLocaleDateString('th-TH', {
+        year: 'numeric',
+        month: 'long',
+        day: 'numeric',
+      });
+    };
+
+    const formatDateTime = (dateStr: string | null | undefined) => {
+      if (!dateStr) return '-';
+      return new Date(dateStr).toLocaleString('th-TH', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+      });
+    };
+
+    const producerName = receipt.producer
+      ? `${receipt.producer.first_name || ''} ${receipt.producer.last_name || ''}`.trim() || receipt.producer.nickname || '-'
+      : '-';
+
+    const fgPlanned = calc?.fg_planned_qty || receipt.production_order?.quantity || 0;
+    const fgActual = calc?.fg_actual_qty || receipt.received_qty || 0;
+    const efficiency = fgPlanned > 0 ? ((fgActual / fgPlanned) * 100).toFixed(1) : '0';
+
+    // สร้าง HTML สำหรับตารางรวม (สินค้าสำเร็จรูป + วัตถุดิบอาหาร + วัสดุบรรจุภัณฑ์)
+    let combinedTableHtml = '';
+    
+    // Helper function สำหรับ format วันที่แบบสั้น
+    const formatDateShort = (dateStr: string | null | undefined) => {
+      if (!dateStr) return '-';
+      return new Date(dateStr).toLocaleDateString('th-TH', {
+        day: '2-digit',
+        month: '2-digit',
+        year: '2-digit',
+      });
+    };
+    
+    // สร้าง rows สำหรับวัตถุดิบอาหาร (พร้อมแถวย่อยรายพาเลท)
+    let foodRows = '';
+    let foodTotal = 0;
+    if (calc?.food_materials && calc.food_materials.length > 0) {
+      foodRows = calc.food_materials.map((item: any, index: number) => {
+        // แถวหลักของวัตถุดิบ
+        let mainRow = `
+          <tr>
+            <td style="padding: 6px; border: 1px solid #000; text-align: center;">${index + 1}</td>
+            <td style="padding: 6px; border: 1px solid #000; font-family: monospace; font-size: 9pt;">${item.sku_id}</td>
+            <td style="padding: 6px; border: 1px solid #000;">${item.sku_name || '-'}</td>
+            <td style="padding: 6px; border: 1px solid #000; text-align: right; font-weight: bold;">${item.actual_qty.toLocaleString()} ${item.uom}</td>
+            <td style="padding: 6px; border: 1px solid #000;"></td>
+          </tr>
+        `;
+        
+        // แถวย่อยรายพาเลท (ถ้ามี)
+        let palletRows = '';
+        if (item.pallet_details && item.pallet_details.length > 0) {
+          palletRows = item.pallet_details.map((pallet: any, pIdx: number) => `
+            <tr style="background: #fafafa;">
+              <td style="padding: 4px 6px; border: 1px solid #ddd; text-align: center; font-size: 8pt; color: #666;">${index + 1}.${pIdx + 1}</td>
+              <td style="padding: 4px 6px; border: 1px solid #ddd; font-family: monospace; font-size: 8pt; color: #333;">${pallet.pallet_id || '-'}</td>
+              <td style="padding: 4px 6px; border: 1px solid #ddd; font-size: 8pt;">
+                <span style="color: #666;">MFG:</span> ${formatDateShort(pallet.production_date)} 
+                <span style="color: #666; margin-left: 8px;">EXP:</span> ${formatDateShort(pallet.expiry_date)}
+              </td>
+              <td style="padding: 4px 6px; border: 1px solid #ddd; text-align: right; font-size: 8pt;">${pallet.qty?.toLocaleString() || '-'} ${item.uom}</td>
+              <td style="padding: 4px 6px; border: 1px solid #ddd; font-size: 8pt; color: #666;">${pallet.from_location_id || ''}</td>
+            </tr>
+          `).join('');
+        }
+        
+        return mainRow + palletRows;
+      }).join('');
+      foodTotal = calc.food_materials.reduce((sum: number, m: any) => sum + m.actual_qty, 0);
+    }
+
+    // สร้าง rows สำหรับวัสดุบรรจุภัณฑ์
+    let packagingRows = '';
+    let packagingTotal = 0;
+    if (calc?.packaging_materials && calc.packaging_materials.length > 0) {
+      packagingRows = calc.packaging_materials.map((item: any, index: number) => `
+        <tr>
+          <td style="padding: 6px; border: 1px solid #000; text-align: center;">${index + 1}</td>
+          <td style="padding: 6px; border: 1px solid #000; font-family: monospace; font-size: 9pt;">${item.sku_id}</td>
+          <td style="padding: 6px; border: 1px solid #000;">${item.sku_name || '-'}</td>
+          <td style="padding: 6px; border: 1px solid #000; text-align: right; font-weight: bold;">${item.actual_qty.toLocaleString()} ${item.uom}</td>
+          <td style="padding: 6px; border: 1px solid #000;"></td>
+        </tr>
+      `).join('');
+      packagingTotal = calc.packaging_materials.reduce((sum: number, m: any) => sum + m.actual_qty, 0);
+    }
+
+    // รวมทุกส่วนเป็นตารางเดียว
+    combinedTableHtml = `
+      <table style="width: 100%; border-collapse: collapse; font-size: 9pt; border: 1px solid #000; margin-bottom: 15px;">
+        <!-- Section: สินค้าสำเร็จรูป -->
+        <tr style="background: #e5e5e5;">
+          <td colspan="5" style="padding: 8px 10px; font-weight: bold; font-size: 10pt; border: 1px solid #000;">สินค้าสำเร็จรูป (Finished Goods)</td>
+        </tr>
+        <tr style="background: #f5f5f5;">
+          <th style="padding: 6px; text-align: left; font-weight: 600; width: 6%; border: 1px solid #000;">#</th>
+          <th style="padding: 6px; text-align: left; font-weight: 600; width: 18%; border: 1px solid #000;">รหัสสินค้า</th>
+          <th style="padding: 6px; text-align: left; font-weight: 600; border: 1px solid #000;">ชื่อสินค้า</th>
+          <th style="padding: 6px; text-align: right; font-weight: 600; width: 15%; border: 1px solid #000;">ชิ้น (จริง)</th>
+          <th style="padding: 6px; text-align: left; font-weight: 600; width: 20%; border: 1px solid #000;">หมายเหตุ</th>
+        </tr>
+        <tr>
+          <td style="padding: 6px; border: 1px solid #000; text-align: center;">1</td>
+          <td style="padding: 6px; border: 1px solid #000; font-family: monospace; font-size: 9pt;">${receipt.product_sku_id}</td>
+          <td style="padding: 6px; border: 1px solid #000;">${receipt.product_sku?.sku_name || '-'}</td>
+          <td style="padding: 6px; border: 1px solid #000; text-align: right; font-weight: bold;">${Number(fgActual).toLocaleString()}</td>
+          <td style="padding: 6px; border: 1px solid #000;"></td>
+        </tr>
+        <tr style="background: #f5f5f5;">
+          <td colspan="3" style="padding: 6px; text-align: right; border: 1px solid #000; font-weight: bold;">รวม:</td>
+          <td style="padding: 6px; text-align: right; font-weight: bold; border: 1px solid #000;">${Number(fgActual).toLocaleString()}</td>
+          <td style="padding: 6px; border: 1px solid #000;"></td>
+        </tr>
+        
+        ${calc?.food_materials && calc.food_materials.length > 0 ? `
+        <!-- Section: วัตถุดิบอาหาร -->
+        <tr style="background: #e5e5e5;">
+          <td colspan="5" style="padding: 8px 10px; font-weight: bold; font-size: 10pt; border: 1px solid #000;">วัตถุดิบอาหาร (${calc.food_materials.length} รายการ)</td>
+        </tr>
+        <tr style="background: #f5f5f5;">
+          <th style="padding: 6px; text-align: left; font-weight: 600; width: 6%; border: 1px solid #000;">#</th>
+          <th style="padding: 6px; text-align: left; font-weight: 600; width: 18%; border: 1px solid #000;">รหัสวัตถุดิบ</th>
+          <th style="padding: 6px; text-align: left; font-weight: 600; border: 1px solid #000;">ชื่อวัตถุดิบ</th>
+          <th style="padding: 6px; text-align: right; font-weight: 600; width: 15%; border: 1px solid #000;">ใช้จริง</th>
+          <th style="padding: 6px; text-align: left; font-weight: 600; width: 20%; border: 1px solid #000;">หมายเหตุ</th>
+        </tr>
+        ${foodRows}
+        <tr style="background: #f5f5f5;">
+          <td colspan="3" style="padding: 6px; text-align: right; border: 1px solid #000; font-weight: bold;">รวม:</td>
+          <td style="padding: 6px; text-align: right; font-weight: bold; border: 1px solid #000;">${foodTotal.toLocaleString()}</td>
+          <td style="padding: 6px; border: 1px solid #000;"></td>
+        </tr>
+        ` : ''}
+        
+        ${calc?.packaging_materials && calc.packaging_materials.length > 0 ? `
+        <!-- Section: วัสดุบรรจุภัณฑ์ -->
+        <tr style="background: #e5e5e5;">
+          <td colspan="5" style="padding: 8px 10px; font-weight: bold; font-size: 10pt; border: 1px solid #000;">วัสดุบรรจุภัณฑ์ (${calc.packaging_materials.length} รายการ)</td>
+        </tr>
+        <tr style="background: #f5f5f5;">
+          <th style="padding: 6px; text-align: left; font-weight: 600; width: 6%; border: 1px solid #000;">#</th>
+          <th style="padding: 6px; text-align: left; font-weight: 600; width: 18%; border: 1px solid #000;">รหัสวัตถุดิบ</th>
+          <th style="padding: 6px; text-align: left; font-weight: 600; border: 1px solid #000;">ชื่อวัตถุดิบ</th>
+          <th style="padding: 6px; text-align: right; font-weight: 600; width: 15%; border: 1px solid #000;">ใช้จริง</th>
+          <th style="padding: 6px; text-align: left; font-weight: 600; width: 20%; border: 1px solid #000;">หมายเหตุ</th>
+        </tr>
+        ${packagingRows}
+        <tr style="background: #f5f5f5;">
+          <td colspan="3" style="padding: 6px; text-align: right; border: 1px solid #000; font-weight: bold;">รวม:</td>
+          <td style="padding: 6px; text-align: right; font-weight: bold; border: 1px solid #000;">${packagingTotal.toLocaleString()}</td>
+          <td style="padding: 6px; border: 1px solid #000;"></td>
+        </tr>
+        ` : ''}
+      </table>
+    `;
+
+    const printHtml = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="UTF-8">
+        <title>ใบรับผลิตจริง - ${receipt.production_order?.production_no || ''}</title>
+        <style>
+          @import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@400;600;700&display=swap');
+          * { box-sizing: border-box; }
+          body { 
+            margin: 0; 
+            padding: 0; 
+            font-family: 'Sarabun', 'Noto Sans Thai', sans-serif; 
+            font-size: 10pt;
+            color: #000;
+            line-height: 1.4;
+          }
+          @media print {
+            @page { size: A4 portrait; margin: 10mm; }
+          }
+        </style>
+      </head>
+      <body>
+        <div style="width: 210mm; min-height: 297mm; padding: 12mm; margin: 0 auto; background: white;">
+          <!-- Header -->
+          <div style="border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 15px;">
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+              <div>
+                <div style="font-size: 16pt; font-weight: bold; color: #000; margin-bottom: 2px;">AUSTAMGOOD CO., LTD.</div>
+                <div style="font-size: 8pt; color: #333;">ระบบจัดการคลังสินค้า (WMS) - Production Module</div>
+              </div>
+              <div style="text-align: right;">
+                <div style="font-size: 8pt; color: #333;">เลขที่เอกสาร</div>
+                <div style="font-size: 10pt; font-weight: bold;">${receipt.production_order?.production_no || '-'}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Document Title -->
+          <div style="font-size: 14pt; font-weight: bold; text-align: center; color: #000; margin: 12px 0; padding: 8px; border: 2px solid #000;">ใบรับผลิตจริง (Production Receipt)</div>
+
+          <!-- Info Grid -->
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 15px;">
+            <!-- Receipt Info -->
+            <div style="border: 1px solid #000; padding: 10px;">
+              <div style="font-size: 9pt; font-weight: bold; color: #000; text-transform: uppercase; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid #000;">ข้อมูลการรับผลิต</div>
+              <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px dotted #999;"><span style="color: #333; font-size: 9pt;">วันที่รับผลิต:</span><span style="font-weight: 600; color: #000;">${formatDateTime(receipt.received_at)}</span></div>
+              <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px dotted #999;"><span style="color: #333; font-size: 9pt;">Lot No.:</span><span style="font-weight: 600; color: #000;">${receipt.lot_no || '-'}</span></div>
+              <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px dotted #999;"><span style="color: #333; font-size: 9pt;">Batch No.:</span><span style="font-weight: 600; color: #000;">${receipt.batch_no || '-'}</span></div>
+              <div style="display: flex; justify-content: space-between; padding: 3px 0;"><span style="color: #333; font-size: 9pt;">ผู้บันทึก:</span><span style="font-weight: 600; color: #000;">${producerName}</span></div>
+            </div>
+            <!-- FG Dates Info -->
+            <div style="border: 1px solid #000; padding: 10px;">
+              <div style="font-size: 9pt; font-weight: bold; color: #000; text-transform: uppercase; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid #000;">วันที่สินค้าสำเร็จรูป</div>
+              <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px dotted #999;"><span style="color: #333; font-size: 9pt;">วันผลิต (MFG):</span><span style="font-weight: 600; color: #000;">${formatDate(receipt.production_order?.production_date)}</span></div>
+              <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px dotted #999;"><span style="color: #333; font-size: 9pt;">วันหมดอายุ (EXP):</span><span style="font-weight: 600; color: #000;">${formatDate(receipt.production_order?.expiry_date)}</span></div>
+              <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px dotted #999;"><span style="color: #333; font-size: 9pt;">สถานะใบสั่งผลิต:</span><span style="font-weight: 600; color: #000;">${receipt.production_order?.status === 'completed' ? 'เสร็จสิ้น' : receipt.production_order?.status === 'in_progress' ? 'กำลังผลิต' : receipt.production_order?.status || '-'}</span></div>
+              <div style="display: flex; justify-content: space-between; padding: 3px 0;"><span style="color: #333; font-size: 9pt;">วันที่บันทึก:</span><span style="font-weight: 600; color: #000;">${formatDateTime(receipt.created_at)}</span></div>
+            </div>
+          </div>
+
+          <!-- Combined Table: สินค้าสำเร็จรูป + วัตถุดิบอาหาร + วัสดุบรรจุภัณฑ์ -->
+          ${combinedTableHtml}
+
+          <!-- Remarks -->
+          ${receipt.remarks ? `
+            <div style="margin-bottom: 15px; padding: 10px; border: 1px solid #000;">
+              <div style="font-weight: bold; color: #000; margin-bottom: 4px; font-size: 9pt;">หมายเหตุ:</div>
+              <div style="font-size: 9pt;">${receipt.remarks}</div>
+            </div>
+          ` : ''}
+
+          <!-- Summary Section - Table Format (moved before signature) -->
+          <div style="margin-bottom: 15px;">
+            <div style="font-size: 10pt; font-weight: bold; color: #000; margin-bottom: 8px; padding: 6px 10px; background: #f5f5f5; border-left: 4px solid #000;">สรุปประสิทธิผลการผลิต</div>
+            <table style="width: 100%; border-collapse: collapse; font-size: 9pt; border: 1px solid #000;">
+              <thead>
+                <tr style="background: #e5e5e5;">
+                  <th style="padding: 8px; border: 1px solid #000; text-align: center; font-weight: bold;">น้ำหนักเฉลี่ย/ถุง (กก.)</th>
+                  <th style="padding: 8px; border: 1px solid #000; text-align: center; font-weight: bold;">เวสต่อชิ้น</th>
+                  <th style="padding: 8px; border: 1px solid #000; text-align: center; font-weight: bold;">เวสรวม</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td style="padding: 12px; border: 1px solid #000; text-align: center; font-size: 14pt; font-weight: bold;">${calc?.avg_weight_per_bag?.toFixed(3) || '-'}</td>
+                  <td style="padding: 12px; border: 1px solid #000; text-align: center; font-size: 14pt; font-weight: bold;">${calc?.waste_per_piece?.toFixed(3) || '0'}</td>
+                  <td style="padding: 12px; border: 1px solid #000; text-align: center; font-size: 14pt; font-weight: bold;">${calc?.total_waste?.toLocaleString(undefined, { maximumFractionDigits: 2 }) || '0'}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Signature Section -->
+          <div style="margin-top: 25px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px;">
+            <div style="text-align: center; padding-top: 40px; border-top: 1px solid #000;">
+              <div style="font-weight: 600; margin-bottom: 4px; font-size: 9pt;">ผู้วางแผน/สั่งผลิต</div>
+              <div style="font-size: 8pt; color: #333;">ชื่อ: ____________________</div>
+              <div style="font-size: 8pt; color: #333;">วันที่: ____/____/____</div>
+            </div>
+            <div style="text-align: center; padding-top: 40px; border-top: 1px solid #000;">
+              <div style="font-weight: 600; margin-bottom: 4px; font-size: 9pt;">ผู้ผลิต</div>
+              <div style="font-size: 8pt; color: #333;">ชื่อ: ____________________</div>
+              <div style="font-size: 8pt; color: #333;">วันที่: ____/____/____</div>
+            </div>
+            <div style="text-align: center; padding-top: 40px; border-top: 1px solid #000;">
+              <div style="font-weight: 600; margin-bottom: 4px; font-size: 9pt;">ผู้รับสินค้า</div>
+              <div style="font-size: 8pt; color: #333;">ชื่อ: ____________________</div>
+              <div style="font-size: 8pt; color: #333;">วันที่: ____/____/____</div>
+            </div>
+            <div style="text-align: center; padding-top: 40px; border-top: 1px solid #000;">
+              <div style="font-weight: 600; margin-bottom: 4px; font-size: 9pt;">ผู้ตรวจสอบ</div>
+              <div style="font-size: 8pt; color: #333;">ชื่อ: ____________________</div>
+              <div style="font-size: 8pt; color: #333;">วันที่: ____/____/____</div>
+            </div>
+          </div>
+
+          <!-- Footer -->
+          <div style="margin-top: 20px; padding-top: 8px; border-top: 1px solid #000; display: flex; justify-content: space-between; font-size: 8pt; color: #333;">
+            <div>พิมพ์เมื่อ: ${new Date().toLocaleString('th-TH')}</div>
+            <div>เอกสารนี้สร้างโดยระบบ WMS อัตโนมัติ</div>
+            <div>หน้า 1/1</div>
+          </div>
+        </div>
+      </body>
+      </html>
+    `;
+
+    const printWindow = window.open('', '_blank');
+    if (printWindow) {
+      printWindow.document.write(printHtml);
+      printWindow.document.close();
+      printWindow.focus();
+      setTimeout(() => {
+        printWindow.print();
+        printWindow.close();
+      }, 500);
     }
   };
 
@@ -450,6 +823,129 @@ const ActualProductionPage = () => {
     }
   };
 
+  // Handle edit receipt - เปิด modal แก้ไขพร้อมข้อมูลเดิม
+  const handleEditReceipt = async (recordId: string) => {
+    const rawReceipt = rawReceiptData.find((r: any) => r.id === recordId);
+    if (!rawReceipt) {
+      alert('ไม่พบข้อมูลที่ต้องการแก้ไข');
+      return;
+    }
+
+    setEditingReceipt(rawReceipt);
+    setEditForm({
+      actual_qty: rawReceipt.received_qty?.toString() || '',
+      lot_no: rawReceipt.lot_no || '',
+      batch_no: rawReceipt.batch_no || '',
+      remarks: rawReceipt.remarks || ''
+    });
+
+    // ดึงข้อมูล BOM materials จาก production_receipt_materials
+    const materials = rawReceipt.materials || [];
+    const calc = rawReceipt.calculated;
+    
+    // รวม food_materials และ packaging_materials
+    const allMaterials: BomItem[] = [];
+    
+    if (calc?.food_materials) {
+      calc.food_materials.forEach((m: any) => {
+        allMaterials.push({
+          id: `food-${m.sku_id}`,
+          material_sku_id: m.sku_id,
+          material_name: m.sku_name || m.sku_id,
+          required_qty: m.issued_qty || 0,
+          issued_qty: m.issued_qty || 0,
+          remaining_qty: 0,
+          uom: m.uom || 'ชิ้น',
+          is_food: true,
+          actual_qty: m.actual_qty?.toString() || ''
+        });
+      });
+    }
+    
+    if (calc?.packaging_materials) {
+      calc.packaging_materials.forEach((m: any) => {
+        allMaterials.push({
+          id: `pkg-${m.sku_id}`,
+          material_sku_id: m.sku_id,
+          material_name: m.sku_name || m.sku_id,
+          required_qty: m.issued_qty || 0,
+          issued_qty: m.issued_qty || 0,
+          remaining_qty: 0,
+          uom: m.uom || 'ชิ้น',
+          is_food: false,
+          actual_qty: m.actual_qty?.toString() || ''
+        });
+      });
+    }
+    
+    setEditBomItems(allMaterials);
+    setShowEditModal(true);
+  };
+
+  // Update BOM item actual qty for edit
+  const handleEditBomActualQtyChange = (itemId: string, value: string) => {
+    setEditBomItems(prev => prev.map(item => 
+      item.id === itemId ? { ...item, actual_qty: value } : item
+    ));
+  };
+
+  // Submit edit receipt
+  const handleSubmitEdit = async () => {
+    if (!editingReceipt || !editForm.actual_qty) {
+      alert('กรุณากรอกจำนวนผลิตจริง');
+      return;
+    }
+
+    const actualQty = parseFloat(editForm.actual_qty);
+    if (isNaN(actualQty) || actualQty <= 0) {
+      alert('จำนวนผลิตจริงต้องมากกว่า 0');
+      return;
+    }
+
+    // Prepare BOM materials with actual usage
+    const bomMaterials = editBomItems.map(item => {
+      const actualQtyValue = item.actual_qty ? parseFloat(item.actual_qty) : item.issued_qty;
+      return {
+        material_sku_id: item.material_sku_id,
+        issued_qty: item.issued_qty,
+        actual_qty: actualQtyValue,
+        uom: item.uom,
+        is_food: item.is_food
+      };
+    }).filter(m => m.material_sku_id);
+
+    try {
+      setSubmitting(true);
+      const response = await fetch(`/api/production/actual/${editingReceipt.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          received_qty: actualQty,
+          lot_no: editForm.lot_no || null,
+          batch_no: editForm.batch_no || null,
+          remarks: editForm.remarks || null,
+          bom_materials: bomMaterials
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to update production receipt');
+      }
+
+      alert('แก้ไขข้อมูลสำเร็จ');
+      setShowEditModal(false);
+      setEditingReceipt(null);
+      setEditBomItems([]);
+      fetchActualData(currentPage);
+    } catch (err: any) {
+      alert('เกิดข้อผิดพลาด: ' + err.message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const getShiftBadge = (shift: string) => {
     switch (shift) {
       case 'morning':
@@ -545,12 +1041,19 @@ const ActualProductionPage = () => {
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสใบสั่งผลิต</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสสินค้า</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชื่อสินค้า</th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">กะ</th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ผลิตได้</th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">เสีย</th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ดี</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">ชิ้น (แผน)</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-green-50">ชิ้น (จริง)</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-teal-50">รับเข้า FG</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-orange-50">ส่วนต่าง FG</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-amber-50">อาหาร (กก.)</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">ถุง/สติ๊กเกอร์</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-cyan-50">กก./ถุง</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-red-50">เวส/ชิ้น</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-red-50">เวสรวม</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันที่บันทึก</th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b whitespace-nowrap">บันทึกโดย</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">บันทึกโดย</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">สถานะ</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap">แก้ไข/ปริ้น</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
@@ -570,17 +1073,88 @@ const ActualProductionPage = () => {
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                           <span className="text-thai-gray-700 font-thai text-[11px]">{record.sku_name}</span>
                         </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">
-                          {getShiftBadge(record.shift)}
+                        {/* ชิ้น (แผน) */}
+                        <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap bg-blue-50/30">
+                          <span className="font-bold text-blue-600">
+                            {record.calculated?.fg_planned_qty?.toLocaleString() || '-'}
+                          </span>
                         </td>
-                        <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
-                          <span className="font-bold text-blue-600">{record.actual_quantity?.toLocaleString()}</span>
+                        {/* ชิ้น (จริง) */}
+                        <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap bg-green-50/30">
+                          <span className="font-bold text-green-600">
+                            {record.calculated?.fg_actual_qty?.toLocaleString() || record.actual_quantity?.toLocaleString() || '-'}
+                          </span>
                         </td>
-                        <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
-                          <span className="font-bold text-red-600">{record.defect_quantity?.toLocaleString()}</span>
+                        {/* รับเข้า FG (จาก wms_receive_items) */}
+                        <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap bg-teal-50/30">
+                          <span className="font-bold text-teal-600">
+                            {record.calculated?.fg_received_qty?.toLocaleString() || '-'}
+                          </span>
                         </td>
-                        <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
-                          <span className="font-bold text-green-600">{record.good_quantity?.toLocaleString()}</span>
+                        {/* ส่วนต่าง FG (บันทึกจริง - รับเข้า) */}
+                        <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap bg-orange-50/30">
+                          {record.calculated?.fg_received_qty !== undefined && record.calculated?.fg_received_qty > 0 ? (
+                            <span className={`font-bold ${
+                              record.calculated?.fg_variance === 0 
+                                ? 'text-green-600' 
+                                : record.calculated?.fg_variance > 0 
+                                  ? 'text-orange-600' 
+                                  : 'text-red-600'
+                            }`}>
+                              {record.calculated?.fg_variance === 0 
+                                ? '✓ ตรง' 
+                                : record.calculated?.fg_variance > 0 
+                                  ? `+${record.calculated?.fg_variance?.toLocaleString()}`
+                                  : record.calculated?.fg_variance?.toLocaleString()
+                              }
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                        {/* อาหาร (กก.) */}
+                        <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap bg-amber-50/30">
+                          <span className="font-bold text-amber-700">
+                            {record.calculated?.food_actual_kg?.toLocaleString(undefined, { maximumFractionDigits: 2 }) || '-'}
+                          </span>
+                          {record.calculated?.food_actual_qty ? (
+                            <span className="text-[9px] text-amber-500 ml-0.5">
+                              ({record.calculated.food_actual_qty} ถุง)
+                            </span>
+                          ) : null}
+                        </td>
+                        {/* ถุง/สติ๊กเกอร์ */}
+                        <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap bg-purple-50/30">
+                          <span className="font-bold text-purple-600">
+                            {record.calculated?.packaging_actual_qty?.toLocaleString() || '-'}
+                          </span>
+                        </td>
+                        {/* กก./ถุง (น้ำหนักเฉลี่ย) */}
+                        <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap bg-cyan-50/30">
+                          <span className="font-bold text-cyan-700">
+                            {record.calculated?.avg_weight_per_bag 
+                              ? record.calculated.avg_weight_per_bag.toFixed(3)
+                              : '-'
+                            }
+                          </span>
+                        </td>
+                        {/* เวส/ชิ้น */}
+                        <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap bg-red-50/30">
+                          <span className="font-bold text-red-600">
+                            {record.calculated?.waste_per_piece 
+                              ? record.calculated.waste_per_piece.toFixed(3)
+                              : '-'
+                            }
+                          </span>
+                        </td>
+                        {/* เวสรวม */}
+                        <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap bg-red-50/30">
+                          <span className="font-bold text-red-600">
+                            {record.calculated?.total_waste 
+                              ? record.calculated.total_waste.toLocaleString(undefined, { maximumFractionDigits: 2 })
+                              : '-'
+                            }
+                          </span>
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">
                           <span className="text-thai-gray-600 font-thai">
@@ -593,8 +1167,41 @@ const ActualProductionPage = () => {
                             })}
                           </span>
                         </td>
-                        <td className="px-2 py-0.5 whitespace-nowrap align-top">
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">
                           <span className="text-thai-gray-700 font-thai">{record.created_by}</span>
+                        </td>
+                        {/* สถานะ */}
+                        <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap align-top">
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                            record.status === 'completed' 
+                              ? 'bg-green-100 text-green-700' 
+                              : record.status === 'in_progress'
+                              ? 'bg-blue-100 text-blue-700'
+                              : 'bg-gray-100 text-gray-700'
+                          }`}>
+                            {record.status === 'completed' ? 'เสร็จสิ้น' : 
+                             record.status === 'in_progress' ? 'กำลังผลิต' : 
+                             record.status || '-'}
+                          </span>
+                        </td>
+                        {/* ปุ่มแก้ไข + ปริ้น */}
+                        <td className="px-2 py-0.5 text-center whitespace-nowrap align-top">
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => handleEditReceipt(record.record_id as unknown as string)}
+                              className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                              title="แก้ไขข้อมูล"
+                            >
+                              <Edit className="w-4 h-4" />
+                            </button>
+                            <button
+                              onClick={() => handlePrintReceipt(record.record_id as unknown as string)}
+                              className="p-1 text-green-600 hover:bg-green-50 rounded transition-colors"
+                              title="ปริ้นใบรับผลิตจริง"
+                            >
+                              <Printer className="w-4 h-4" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -960,6 +1567,236 @@ const ActualProductionPage = () => {
                 className="px-6 bg-green-600 hover:bg-green-700"
               >
                 {submitting ? 'กำลังบันทึก...' : 'บันทึกผลิตจริง'}
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Edit Production Receipt */}
+      {showEditModal && editingReceipt && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-lg shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+            {/* Header */}
+            <div className="bg-gradient-to-r from-amber-500 to-amber-600 text-white px-6 py-4 rounded-t-lg flex-shrink-0">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold font-thai">แก้ไขใบรับผลิตจริง</h2>
+                  <p className="text-amber-100 text-sm font-thai mt-0.5">Edit Production Receipt</p>
+                </div>
+                <button 
+                  onClick={() => { setShowEditModal(false); setEditingReceipt(null); setEditBomItems([]); }} 
+                  className="p-1.5 hover:bg-white/20 rounded-full transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-auto p-6">
+              {/* Document Info */}
+              <div className="border border-gray-300 rounded-lg overflow-hidden mb-4">
+                <div className="flex border-b border-gray-200">
+                  <div className="bg-gray-50 px-3 py-2 w-24 font-medium text-gray-600 text-xs font-thai border-r border-gray-200">ชื่อสินค้า</div>
+                  <div className="px-3 py-2 flex-1">
+                    <span className="font-thai text-gray-900 text-sm font-semibold">{editingReceipt.product_sku?.sku_name || '-'}</span>
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 divide-x divide-gray-200">
+                  <div className="divide-y divide-gray-200">
+                    <div className="flex">
+                      <div className="bg-gray-50 px-3 py-2 w-24 font-medium text-gray-600 text-xs font-thai border-r border-gray-200">ใบสั่งผลิต</div>
+                      <div className="px-3 py-2 flex-1">
+                        <span className="font-mono font-bold text-blue-600 text-sm">{editingReceipt.production_order?.production_no || '-'}</span>
+                      </div>
+                    </div>
+                    <div className="flex">
+                      <div className="bg-gray-50 px-3 py-2 w-24 font-medium text-gray-600 text-xs font-thai border-r border-gray-200">รหัสสินค้า</div>
+                      <div className="px-3 py-2 flex-1">
+                        <span className="font-mono text-gray-700 text-sm">{editingReceipt.product_sku_id}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="divide-y divide-gray-200">
+                    <div className="flex">
+                      <div className="bg-gray-50 px-3 py-2 w-20 font-medium text-gray-600 text-xs font-thai border-r border-gray-200">MFG</div>
+                      <div className="px-3 py-2 flex-1">
+                        <span className="font-thai text-gray-900 text-sm font-semibold">
+                          {editingReceipt.production_order?.production_date 
+                            ? new Date(editingReceipt.production_order.production_date).toLocaleDateString('th-TH')
+                            : '-'
+                          }
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex">
+                      <div className="bg-gray-50 px-3 py-2 w-20 font-medium text-gray-600 text-xs font-thai border-r border-gray-200">EXP</div>
+                      <div className="px-3 py-2 flex-1">
+                        <span className="font-thai text-gray-900 text-sm font-semibold">
+                          {editingReceipt.production_order?.expiry_date 
+                            ? new Date(editingReceipt.production_order.expiry_date).toLocaleDateString('th-TH')
+                            : '-'
+                          }
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="divide-y divide-gray-200">
+                    <div className="flex">
+                      <div className="bg-blue-50 px-3 py-2 w-20 font-medium text-blue-600 text-xs font-thai border-r border-blue-200">สั่งผลิต</div>
+                      <div className="px-3 py-2 flex-1 bg-blue-50/50">
+                        <span className="font-bold text-blue-700 text-sm">{editingReceipt.production_order?.quantity?.toLocaleString() || '-'}</span>
+                      </div>
+                    </div>
+                    <div className="flex">
+                      <div className="bg-green-50 px-3 py-2 w-20 font-medium text-green-600 text-xs font-thai border-r border-green-200">ผลิตแล้ว</div>
+                      <div className="px-3 py-2 flex-1 bg-green-50/50">
+                        <span className="font-bold text-green-700 text-sm">{editingReceipt.production_order?.produced_qty?.toLocaleString() || '-'}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* BOM Items Table for Edit */}
+              {editBomItems.length > 0 && (
+                <div className="border border-gray-300 rounded-lg overflow-hidden mb-6">
+                  <div className="bg-purple-100 px-4 py-2 border-b border-gray-300">
+                    <h3 className="font-semibold text-purple-800 font-thai text-sm">รายการวัตถุดิบ (BOM)</h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-semibold text-gray-600 border-b border-r text-xs font-thai">#</th>
+                          <th className="px-3 py-2 text-left font-semibold text-gray-600 border-b border-r text-xs font-thai">รหัสวัตถุดิบ</th>
+                          <th className="px-3 py-2 text-left font-semibold text-gray-600 border-b border-r text-xs font-thai">ชื่อวัตถุดิบ</th>
+                          <th className="px-3 py-2 text-center font-semibold text-gray-600 border-b border-r text-xs font-thai">เบิกแล้ว</th>
+                          <th className="px-3 py-2 text-center font-semibold text-gray-600 border-b border-r text-xs font-thai">หน่วย</th>
+                          <th className="px-3 py-2 text-center font-semibold text-gray-600 border-b text-xs font-thai">ใช้จริง</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {editBomItems.map((item, index) => (
+                          <tr key={item.id} className={`${item.is_food ? 'bg-amber-50' : 'bg-white'} hover:bg-gray-50`}>
+                            <td className="px-3 py-2 border-b border-r text-center text-gray-500">{index + 1}</td>
+                            <td className="px-3 py-2 border-b border-r font-mono text-xs">{item.material_sku_id}</td>
+                            <td className="px-3 py-2 border-b border-r font-thai text-xs">
+                              {item.material_name}
+                              {item.is_food && (
+                                <span className="ml-2 px-1.5 py-0.5 bg-amber-200 text-amber-800 text-[10px] rounded font-thai">อาหาร</span>
+                              )}
+                            </td>
+                            <td className="px-3 py-2 border-b border-r text-center text-green-600 font-bold">{item.issued_qty.toLocaleString()}</td>
+                            <td className="px-3 py-2 border-b border-r text-center text-gray-500 text-xs">{item.uom}</td>
+                            <td className="px-3 py-2 border-b text-center">
+                              <input
+                                type="number"
+                                value={item.actual_qty || ''}
+                                onChange={(e) => handleEditBomActualQtyChange(item.id, e.target.value)}
+                                placeholder={item.issued_qty.toString()}
+                                className="w-20 px-2 py-1 border border-gray-300 rounded text-center text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                                min="0"
+                                step="0.01"
+                              />
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Input Form Table */}
+              <div className="border border-gray-300 rounded-lg overflow-hidden">
+                <div className="bg-amber-100 px-4 py-2 border-b border-gray-300">
+                  <h3 className="font-semibold text-amber-800 font-thai text-sm">ข้อมูลสินค้าสำเร็จรูป</h3>
+                </div>
+                <table className="w-full text-sm">
+                  <tbody>
+                    <tr className="border-b border-gray-200">
+                      <td className="bg-gray-50 px-4 py-3 font-medium text-gray-600 w-44 font-thai border-r align-middle">
+                        จำนวนผลิตจริง <span className="text-red-500">*</span>
+                      </td>
+                      <td className="px-4 py-2">
+                        <input
+                          type="number"
+                          value={editForm.actual_qty}
+                          onChange={(e) => setEditForm({ ...editForm, actual_qty: e.target.value })}
+                          placeholder="กรอกจำนวน"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-amber-500 focus:border-amber-500 text-base font-bold"
+                          min="0"
+                          step="0.01"
+                          autoFocus
+                        />
+                      </td>
+                    </tr>
+                    <tr className="border-b border-gray-200">
+                      <td className="bg-gray-50 px-4 py-3 font-medium text-gray-600 font-thai border-r align-middle">
+                        หมายเลขล็อต (Lot No.)
+                      </td>
+                      <td className="px-4 py-2">
+                        <input
+                          type="text"
+                          value={editForm.lot_no}
+                          onChange={(e) => setEditForm({ ...editForm, lot_no: e.target.value })}
+                          placeholder="เช่น LOT-202512-001"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                        />
+                      </td>
+                    </tr>
+                    <tr className="border-b border-gray-200">
+                      <td className="bg-gray-50 px-4 py-3 font-medium text-gray-600 font-thai border-r align-middle">
+                        หมายเลขแบทช์ (Batch No.)
+                      </td>
+                      <td className="px-4 py-2">
+                        <input
+                          type="text"
+                          value={editForm.batch_no}
+                          onChange={(e) => setEditForm({ ...editForm, batch_no: e.target.value })}
+                          placeholder="เช่น BATCH-001"
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
+                        />
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="bg-gray-50 px-4 py-3 font-medium text-gray-600 font-thai border-r align-top">
+                        หมายเหตุ
+                      </td>
+                      <td className="px-4 py-2">
+                        <textarea
+                          value={editForm.remarks}
+                          onChange={(e) => setEditForm({ ...editForm, remarks: e.target.value })}
+                          placeholder="หมายเหตุเพิ่มเติม (ถ้ามี)..."
+                          rows={2}
+                          className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-amber-500 focus:border-amber-500 resize-none"
+                        />
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* Footer Actions */}
+            <div className="flex justify-end gap-3 px-6 py-4 border-t border-gray-200 bg-gray-50 rounded-b-lg flex-shrink-0">
+              <Button 
+                variant="outline" 
+                onClick={() => { setShowEditModal(false); setEditingReceipt(null); setEditBomItems([]); }} 
+                disabled={submitting}
+                className="px-6"
+              >
+                ยกเลิก
+              </Button>
+              <Button 
+                variant="primary" 
+                icon={Check} 
+                onClick={handleSubmitEdit} 
+                disabled={submitting || !editForm.actual_qty}
+                className="px-6 bg-amber-600 hover:bg-amber-700"
+              >
+                {submitting ? 'กำลังบันทึก...' : 'บันทึกการแก้ไข'}
               </Button>
             </div>
           </div>

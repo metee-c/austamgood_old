@@ -199,9 +199,11 @@ const MaterialRequisitionPage = () => {
     }
   };
 
-  // Issue packaging material (for packaging items)
+  // Issue packaging material (for packaging items from production_order_items or replenishment_queue)
   const handleIssuePackaging = async () => {
-    if (!selectedTask || selectedTask.type !== 'packaging' || !selectedTask.item_id) return;
+    if (!selectedTask || selectedTask.type !== 'packaging') return;
+    // รองรับทั้ง item_id (production_order_items) และ queue_id (replenishment_queue)
+    if (!selectedTask.item_id && !selectedTask.queue_id) return;
     if (issueQty <= 0) {
       alert('กรุณาระบุจำนวนที่ต้องการเบิก');
       return;
@@ -221,7 +223,8 @@ const MaterialRequisitionPage = () => {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          item_id: selectedTask.item_id,
+          item_id: selectedTask.item_id || null,
+          queue_id: selectedTask.queue_id || null,
           issue_qty: issueQty,
           from_location: fromLocationInput.trim() || null,
           to_location: toLocationInput.trim(),

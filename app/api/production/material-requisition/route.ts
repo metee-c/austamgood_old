@@ -139,6 +139,14 @@ export async function GET(request: NextRequest) {
     // ไม่กรอง production_order_items - แสดงทั้งหมดเพื่อให้เห็นประวัติการเบิก
     // replenishment_queue จะแสดงเป็นแถวแยกสำหรับ variance ที่ต้องเบิกเพิ่ม
     const packagingItems = itemsData || [];
+    
+    // สร้าง Set ของ SKU ที่มี replenishment_queue สำหรับ variance (ทุกสถานะ)
+    // เพื่อไม่ให้แสดงปุ่มเบิกซ้ำใน production_order_items
+    // รวม completed ด้วย เพราะถ้า variance queue เสร็จแล้ว ก็ไม่ควรแสดงปุ่มเบิกใน production_order_items
+    const skusWithVarianceQueue = new Set(
+      (replenishmentData || [])
+        .map((r: any) => `${r.sku_id}|${r.trigger_reference}`)
+    );
 
     // Transform replenishment data (food materials)
     // ตรวจสอบ category/sub_category เพื่อกำหนด type ที่ถูกต้อง
@@ -215,7 +223,34 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Transform packaging items - แสดงประวัติการเบิกทั้งหมด
+    // สำหรับรายการที่เบิกไปแล้ว (issued_qty > 0) - ดึง from_location จาก ledger
+    // เพื่อแสดงว่าเบิกจากไหน แม้ว่าสต็อกจะหมดแล้ว
+    const issuedItemProductionNos = packagingItems
+      .filter((item: any) => Number(item.issued_qty) > 0)
+      .map((item: any) => `PROD-${item.production_order?.production_no}`)
+      .filter(Boolean);
+    
+    let issuedFromLocationMap: Record<string, string> = {};
+    
+    if (issuedItemProductionNos.length > 0) {
+      const { data: ledgerData } = await supabase
+        .from('wms_inventory_ledger')
+        .select('reference_no, location_id, sku_id')
+        .in('reference_no', issuedItemProductionNos)
+        .eq('direction', 'out')
+        .eq('transaction_type', 'transfer_out')
+        .order('created_at', { ascending: false });
+      
+      // Map: "SKU|PROD-PO-xxx" -> location_id (ใช้รายการแรกที่เจอ = ล่าสุด)
+      (ledgerData || []).forEach((entry: any) => {
+        const key = `${entry.sku_id}|${entry.reference_no}`;
+        if (!issuedFromLocationMap[key]) {
+          issuedFromLocationMap[key] = entry.location_id;
+        }
+      });
+    }
+
+    // Transform packaging items - แสดงรายการเบิกวัตถุดิบ
     const packagingMaterials = packagingItems.map((item: any) => {
       // Get best stock location for this SKU (highest qty first)
       const stockLocations = stockLocationsMap[item.material_sku_id] || [];
@@ -224,44 +259,76 @@ export async function GET(request: NextRequest) {
       const requiredQty = Number(item.required_qty) || 0;
       const remainingQty = Number(item.remaining_qty) || requiredQty - issuedQty || 0;
       
+      // ตรวจสอบว่า SKU นี้มี replenishment_queue สำหรับ variance หรือไม่
+      const productionNo = item.production_order?.production_no || '';
+      const hasVarianceQueue = skusWithVarianceQueue.has(`${item.material_sku_id}|${productionNo}`);
+      
       // กำหนด status ตามจำนวนที่เบิกไปแล้ว
       let displayStatus = item.status;
       if (issuedQty > 0 && remainingQty === 0) {
         displayStatus = 'completed'; // เบิกครบแล้ว
       } else if (issuedQty > 0 && remainingQty > 0) {
-        displayStatus = 'partial'; // เบิกบางส่วน (ยังต้องเบิกเพิ่ม)
+        // ถ้ามี variance queue แยกแล้ว ให้แสดงเป็น completed (เบิกครบตาม issued_qty)
+        // ถ้าไม่มี variance queue ให้แสดงเป็น partial
+        displayStatus = hasVarianceQueue ? 'completed' : 'partial';
+      } else if (issuedQty === 0) {
+        displayStatus = 'pending'; // ยังไม่ได้เบิก
       }
       
       // กำหนด type ตาม category จริงของ SKU
-      // - อาหาร: category='วัตถุดิบ' และ sub_category มีคำว่า 'อาหาร'
-      // - packaging: category='ถุงบรรจุภัณฑ์' หรือไม่ใช่อาหาร
       const category = item.material_sku?.category || '';
       const subCategory = item.material_sku?.sub_category || '';
       const isFood = category === 'วัตถุดิบ' && (subCategory.includes('อาหาร') || subCategory.includes('แมว') || subCategory.includes('สุนัข'));
       
+      // กำหนดจำนวนที่แสดง:
+      // - ถ้ายังไม่ได้เบิก (issued_qty = 0): แสดง remaining_qty (จำนวนที่ต้องเบิก)
+      // - ถ้าเบิกไปแล้ว (issued_qty > 0): แสดง issued_qty (จำนวนที่เบิกไปแล้ว)
+      const displayQty = issuedQty > 0 ? issuedQty : remainingQty;
+      
+      // กำหนด remaining_qty ที่แสดง:
+      // - ถ้ามี variance queue แยกแล้ว: แสดง 0 (ไม่ต้องเบิกเพิ่มจากรายการนี้)
+      // - ถ้าไม่มี variance queue: แสดง remaining_qty จริง
+      const displayRemainingQty = hasVarianceQueue ? 0 : remainingQty;
+      
+      // กำหนด from_location:
+      // - ถ้าเบิกไปแล้ว (issued_qty > 0): ดึงจาก ledger (ประวัติการเบิก)
+      // - ถ้ายังไม่ได้เบิก: ดึงจาก inventory_balances (สต็อกคงเหลือ)
+      let fromLocationId = bestLocation?.location_id || null;
+      let fromLocationZone = bestLocation?.zone || '';
+      
+      if (issuedQty > 0) {
+        // ดึง from_location จาก ledger สำหรับรายการที่เบิกไปแล้ว
+        const ledgerKey = `${item.material_sku_id}|PROD-${productionNo}`;
+        const ledgerLocation = issuedFromLocationMap[ledgerKey];
+        if (ledgerLocation) {
+          fromLocationId = ledgerLocation;
+          // Zone จะไม่มีจาก ledger แต่ไม่เป็นไร เพราะแสดง location_id ก็พอ
+          fromLocationZone = '';
+        }
+      }
+      
       return {
-        type: isFood ? 'food' : 'packaging', // กำหนด type ตาม category จริง
-        source: 'production_order_items', // ระบุแหล่งข้อมูล
+        type: isFood ? 'food' : 'packaging',
+        source: 'production_order_items',
         item_id: item.id,
         production_order_id: item.production_order_id,
         sku_id: item.material_sku_id,
         sku_name: item.material_sku?.sku_name || item.material_sku_id,
         uom: item.uom || item.material_sku?.uom_base || '',
-        // แสดง issued_qty เป็นจำนวนที่เบิกไปแล้ว (สำหรับประวัติ)
-        requested_qty: issuedQty, // จำนวนที่เบิกไปแล้ว
-        total_required_qty: requiredQty, // จำนวนที่ต้องการทั้งหมด (สำหรับ reference)
+        requested_qty: displayQty, // จำนวนที่ต้องเบิก หรือ จำนวนที่เบิกไปแล้ว
+        total_required_qty: requiredQty, // จำนวนที่ต้องการทั้งหมด
         confirmed_qty: issuedQty, // จำนวนที่เบิกไปแล้ว
-        remaining_qty: remainingQty, // จำนวนที่ยังต้องเบิกเพิ่ม
-        from_location_id: bestLocation?.location_id || null,
-        from_location_zone: bestLocation?.zone || '',
-        available_stock_locations: stockLocations, // รายการโลเคชั่นทั้งหมดที่มีสต็อก
+        remaining_qty: displayRemainingQty, // จำนวนที่ยังต้องเบิกเพิ่ม (0 ถ้ามี variance queue)
+        from_location_id: fromLocationId,
+        from_location_zone: fromLocationZone,
+        available_stock_locations: stockLocations,
         to_location_id: 'Repack',
         to_location_zone: 'Zone Repack',
         pallet_id: null,
         expiry_date: null,
-        priority: 5, // default priority
+        priority: 5,
         status: displayStatus,
-        trigger_reference: item.production_order?.production_no || '',
+        trigger_reference: productionNo,
         assigned_to: null,
         assigned_user: null,
         assigned_at: null,

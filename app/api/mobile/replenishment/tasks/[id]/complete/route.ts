@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getCurrentSession } from '@/lib/auth';
+import { stockAdjustmentService } from '@/lib/database/stock-adjustment';
 
 export const dynamic = 'force-dynamic';
+
+// Constants
+const PRODUCTION_VARIANCE_REASON_ID = 40; // reason_code = 'PRODUCTION_VARIANCE'
+const DEFAULT_WAREHOUSE_ID = 'WH001';
 
 /**
  * POST /api/mobile/replenishment/tasks/[id]/complete
@@ -176,6 +181,62 @@ export async function POST(
       return NextResponse.json({ error: 'เกิดข้อผิดพลาดในการอัปเดตสถานะงาน' }, { status: 500 });
     }
 
+    // ตรวจสอบว่าเป็น replenishment จาก production_order และเป็น packaging หรือไม่
+    // ถ้าใช่ → สร้าง stock adjustment decrease อัตโนมัติ (เพราะถุงชำรุด/เสีย)
+    let packagingAdjustmentCreated: any = null;
+    
+    if (task.trigger_source === 'production_order' && task.trigger_reference) {
+      // ตรวจสอบว่าเป็น packaging SKU หรือไม่ (ขึ้นต้นด้วย 01- หรือ 02-)
+      const isPackagingSku = task.sku_id?.startsWith('01-') || task.sku_id?.startsWith('02-');
+      
+      if (isPackagingSku) {
+        console.log(`[Packaging Excess] Creating stock adjustment for damaged packaging: ${task.sku_id}, qty: ${moveQty}`);
+        
+        try {
+          // สร้าง stock adjustment decrease สำหรับ packaging ที่ชำรุด
+          const adjustmentPayload = {
+            adjustment_type: 'decrease' as const,
+            warehouse_id: DEFAULT_WAREHOUSE_ID,
+            reason_id: PRODUCTION_VARIANCE_REASON_ID,
+            reference_no: `PROD-${task.trigger_reference}`,
+            remarks: `ตัด stock วัสดุบรรจุภัณฑ์ชำรุด/เสีย จากการผลิต ${task.trigger_reference} (Replenishment: ${taskId})`,
+            created_by: currentUserId,
+            items: [{
+              sku_id: task.sku_id,
+              location_id: targetLocationId, // Repack
+              pallet_id: null,
+              adjustment_piece_qty: -moveQty, // negative for decrease
+              remarks: `วัสดุบรรจุภัณฑ์ชำรุด/เสีย ${moveQty} ชิ้น`
+            }]
+          };
+
+          console.log('=== Packaging Damage Adjustment Payload ===', JSON.stringify(adjustmentPayload, null, 2));
+
+          const { data: adjustment, error: adjError } = await stockAdjustmentService.createAdjustment(adjustmentPayload);
+          
+          if (adjError) {
+            console.error('Error creating packaging damage adjustment:', adjError);
+          } else if (adjustment) {
+            // Submit for approval
+            await stockAdjustmentService.submitForApproval(adjustment.adjustment_id, currentUserId);
+            
+            packagingAdjustmentCreated = {
+              adjustment_id: adjustment.adjustment_id,
+              adjustment_no: adjustment.adjustment_no,
+              sku_id: task.sku_id,
+              qty: moveQty,
+              message: `สร้าง Stock Adjustment ลด ${moveQty} ชิ้น สำหรับวัสดุบรรจุภัณฑ์ชำรุด`
+            };
+            
+            console.log(`[Packaging Excess] Stock adjustment created: ${adjustment.adjustment_no}`);
+          }
+        } catch (adjError) {
+          console.error('Error in packaging damage adjustment:', adjError);
+          // Don't fail the replenishment - adjustment is optional
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: 'เติมสินค้าสำเร็จ',
@@ -185,6 +246,7 @@ export async function POST(
         from_location: task.from_location?.location_code || fromLocationId,
         to_location: task.to_location?.location_code || targetLocationId,
         qty_moved: moveQty,
+        packaging_adjustment: packagingAdjustmentCreated
       }
     });
 

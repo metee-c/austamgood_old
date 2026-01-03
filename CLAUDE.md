@@ -55,6 +55,13 @@ npm run db:seed            # Seed the database
 npm run recalculate-weights  # Recalculate location weights (ts-node script)
 ```
 
+### Testing
+```bash
+npm run test              # Run Jest tests
+npm run test:watch        # Run tests in watch mode
+npm run test:coverage     # Run tests with coverage report
+```
+
 ### Common Development Workflow
 ```bash
 # 1. Start development
@@ -118,6 +125,7 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
 NEXTAUTH_SECRET=your_nextauth_secret
 NEXTAUTH_URL=http://localhost:3000
+NEXT_PUBLIC_APP_URL=http://localhost:3000  # For internal API calls
 NEXT_PUBLIC_MAPBOX_TOKEN=your_mapbox_token  # Required for route planning/maps
 ```
 
@@ -134,7 +142,7 @@ The application uses Next.js 15 App Router with the following main sections:
 - `/receiving` - Receiving operations (orders, loadlists, picklists, routes, face sheets)
 - `/shipping` - Shipping operations
 - `/reports` - Reporting interface
-- `/production` - Production order management
+- `/production` - Production order management (forecast, planning, orders, material requisition, actual production)
 - `/mobile` - Mobile-optimized interfaces for warehouse operations (pick, loading, receive, transfer, face-sheet)
 - `/online-packing` - **NEW**: E-commerce order packing system (9 sub-pages)
 - `/stock-management` - Stock transfer, count, and adjustment
@@ -174,6 +182,20 @@ Inventory management operations for stock movements and adjustments:
 **Type Definitions:** `types/stock-import.ts`
 **Database Service:** `lib/database/stock-import.ts`
 **Key Features:** Batch processing, validation, error tracking, multi-warehouse support
+
+### Production Module
+Manufacturing and production management operations:
+- `/production/forecast` - Production demand forecasting
+- `/production/planning` - Production planning and scheduling
+- `/production/orders` - Production order management (create, track, complete)
+- `/production/material-requisition` - Material requisition and issues for production
+- `/production/actual` - Actual production recording and reporting
+
+**Database Tables:** Production orders, BOM (Bill of Materials), material issues, production receipts
+**Type Definitions:** Production-related types in `types/`
+**Database Services:** `lib/database/production-orders.ts`, `lib/database/bom-sku.ts`, `lib/database/forecast.ts`, `lib/database/production-planning.ts`
+**Components:** `components/production/` (ProductionOrderForm, ProductionReceiptPrintDocument, etc.)
+**Key Features:** BOM management, material tracking, production receipts with printing
 
 ### Face Sheet Stock Reservation System
 Complete stock reservation and movement system for express delivery face sheets:

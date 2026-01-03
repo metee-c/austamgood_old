@@ -4,11 +4,17 @@
  * - ตรวจสอบสต็อกจริงจาก wms_inventory_balances ก่อนอนุญาตให้เบิก
  * - ย้ายสต็อกจริง: ลดจากต้นทาง + เพิ่มที่ปลายทาง (Repack)
  * - บันทึก wms_inventory_ledger ทั้ง 2 รายการ (OUT จากต้นทาง, IN ที่ปลายทาง)
+ * - สร้าง stock adjustment decrease อัตโนมัติเมื่อเบิก packaging excess จาก replenishment_queue เสร็จ
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getCurrentSession } from '@/lib/auth';
+import { stockAdjustmentService } from '@/lib/database/stock-adjustment';
+
+// Constants
+const PRODUCTION_VARIANCE_REASON_ID = 40; // reason_code = 'PRODUCTION_VARIANCE'
+const DEFAULT_WAREHOUSE_ID = 'WH001';
 
 export const dynamic = 'force-dynamic';
 
@@ -71,6 +77,9 @@ async function checkAndUpdateProductionOrderStatus(supabase: any, productionOrde
 /**
  * POST /api/production/material-requisition/issue
  * เบิกวัสดุบรรจุภัณฑ์ - ย้ายสต็อกจริงจากต้นทางไปปลายทาง (Repack)
+ * รองรับทั้ง:
+ * - item_id: สำหรับ production_order_items
+ * - queue_id: สำหรับ replenishment_queue (variance items)
  */
 export async function POST(request: NextRequest) {
   console.log('📦 [Material Requisition Issue] POST request received');
@@ -79,14 +88,14 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     console.log('📦 [Material Requisition Issue] Request body:', JSON.stringify(body));
 
-    const { item_id, issue_qty, notes, from_location } = body;
+    const { item_id, queue_id, issue_qty, notes, from_location } = body;
 
-    if (!item_id) {
-      console.log('❌ [Material Requisition Issue] item_id is missing');
-      return NextResponse.json({ error: 'item_id is required' }, { status: 400 });
+    if (!item_id && !queue_id) {
+      console.log('❌ [Material Requisition Issue] item_id or queue_id is missing');
+      return NextResponse.json({ error: 'item_id or queue_id is required' }, { status: 400 });
     }
     
-    console.log('📦 [Material Requisition Issue] Looking for item_id:', item_id, 'from_location:', from_location);
+    console.log('📦 [Material Requisition Issue] Looking for item_id:', item_id, 'queue_id:', queue_id, 'from_location:', from_location);
 
     if (!issue_qty || issue_qty <= 0) {
       return NextResponse.json({ error: 'issue_qty must be greater than 0' }, { status: 400 });
@@ -96,30 +105,68 @@ export async function POST(request: NextRequest) {
     const sessionResult = await getCurrentSession();
     const currentUserId = sessionResult.session?.user_id;
 
-    // 1. Get current item data with production order info
-    const { data: item, error: itemError } = await supabase
-      .from('production_order_items')
-      .select(`
-        *,
-        production_order:production_orders!production_order_items_production_order_id_fkey(
-          id,
-          production_no
-        ),
-        material_sku:master_sku!production_order_items_material_sku_id_fkey(
-          sku_id,
-          sku_name,
-          uom_base,
-          qty_per_pack
-        )
-      `)
-      .eq('id', item_id)
-      .single();
+    // Determine source: production_order_items or replenishment_queue
+    let item: any = null;
+    let isFromReplenishmentQueue = false;
 
-    console.log('📦 [Material Requisition Issue] Query result:', { item, itemError });
+    if (queue_id) {
+      // Fetch from replenishment_queue
+      const { data: queueItem, error: queueError } = await supabase
+        .from('replenishment_queue')
+        .select(`
+          *,
+          master_sku:sku_id (sku_id, sku_name, uom_base, qty_per_pack)
+        `)
+        .eq('queue_id', queue_id)
+        .single();
 
-    if (itemError || !item) {
-      console.log('❌ Item not found:', item_id, itemError);
-      return NextResponse.json({ error: 'Item not found', item_id, details: itemError?.message }, { status: 400 });
+      if (queueError || !queueItem) {
+        console.log('❌ Queue item not found:', queue_id, queueError);
+        return NextResponse.json({ error: 'Queue item not found', queue_id, details: queueError?.message }, { status: 400 });
+      }
+
+      // Transform to match production_order_items structure
+      item = {
+        id: queueItem.queue_id,
+        material_sku_id: queueItem.sku_id,
+        required_qty: queueItem.requested_qty,
+        issued_qty: queueItem.confirmed_qty || 0,
+        status: queueItem.status,
+        uom: queueItem.master_sku?.uom_base || 'ชิ้น',
+        production_order: { production_no: queueItem.trigger_reference },
+        production_order_id: queueItem.trigger_reference,
+        material_sku: queueItem.master_sku,
+        from_location_id: queueItem.from_location_id,
+      };
+      isFromReplenishmentQueue = true;
+      console.log('📦 [Material Requisition Issue] Found queue item:', item);
+    } else {
+      // Fetch from production_order_items
+      const { data: poItem, error: itemError } = await supabase
+        .from('production_order_items')
+        .select(`
+          *,
+          production_order:production_orders!production_order_items_production_order_id_fkey(
+            id,
+            production_no
+          ),
+          material_sku:master_sku!production_order_items_material_sku_id_fkey(
+            sku_id,
+            sku_name,
+            uom_base,
+            qty_per_pack
+          )
+        `)
+        .eq('id', item_id)
+        .single();
+
+      console.log('📦 [Material Requisition Issue] Query result:', { poItem, itemError });
+
+      if (itemError || !poItem) {
+        console.log('❌ Item not found:', item_id, itemError);
+        return NextResponse.json({ error: 'Item not found', item_id, details: itemError?.message }, { status: 400 });
+      }
+      item = poItem;
     }
 
     // 2. Check if item is already completed or cancelled
@@ -278,29 +325,108 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 7. Update production_order_items
+    // 7. Update production_order_items or replenishment_queue
     const newIssuedQty = currentIssuedQty + issue_qty;
     const newRemainingQty = requiredQty - newIssuedQty;
     let newStatus = item.status;
 
     if (newRemainingQty <= 0) {
-      newStatus = 'issued'; // เบิกครบแล้ว
+      newStatus = isFromReplenishmentQueue ? 'completed' : 'issued'; // เบิกครบแล้ว
     } else if (newIssuedQty > 0) {
-      newStatus = 'partial'; // เบิกบางส่วน
+      newStatus = isFromReplenishmentQueue ? 'in_progress' : 'partial'; // เบิกบางส่วน
     }
 
-    const { data: updatedItem, error: updateError } = await supabase
-      .from('production_order_items')
-      .update({
-        issued_qty: newIssuedQty,
-        status: newStatus,
-        issued_date: new Date().toISOString(),
-        remarks: notes ? `${item.remarks || ''}\n${notes}`.trim() : item.remarks,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', item_id)
-      .select()
-      .single();
+    let updatedItem: any = null;
+    let updateError: any = null;
+
+    // Variable to track packaging adjustment created
+    let packagingAdjustmentCreated: any = null;
+
+    if (isFromReplenishmentQueue) {
+      // Update replenishment_queue
+      const { data, error } = await supabase
+        .from('replenishment_queue')
+        .update({
+          confirmed_qty: newIssuedQty,
+          status: newStatus,
+          completed_at: newStatus === 'completed' ? new Date().toISOString() : null,
+          notes: notes ? `${item.notes || ''}\n${notes}`.trim() : item.notes,
+        })
+        .eq('queue_id', queue_id)
+        .select('*, trigger_source, trigger_reference')
+        .single();
+      updatedItem = data;
+      updateError = error;
+
+      // ถ้าเบิกครบแล้ว และเป็น replenishment จาก production_order และเป็น packaging SKU
+      // → สร้าง stock adjustment decrease อัตโนมัติ (เพราะถุงชำรุด/เสีย)
+      if (newStatus === 'completed' && data?.trigger_source === 'production_order' && data?.trigger_reference) {
+        const isPackagingSku = skuId?.startsWith('01-') || skuId?.startsWith('02-');
+        
+        if (isPackagingSku) {
+          console.log(`[Packaging Excess] Creating stock adjustment for damaged packaging: ${skuId}, qty: ${issue_qty}`);
+          
+          try {
+            // สร้าง stock adjustment decrease สำหรับ packaging ที่ชำรุด
+            const adjustmentPayload = {
+              adjustment_type: 'decrease' as const,
+              warehouse_id: DEFAULT_WAREHOUSE_ID,
+              reason_id: PRODUCTION_VARIANCE_REASON_ID,
+              reference_no: `PROD-${data.trigger_reference}`,
+              remarks: `ตัด stock วัสดุบรรจุภัณฑ์ชำรุด/เสีย จากการผลิต ${data.trigger_reference} (เบิกเพิ่ม: ${queue_id})`,
+              created_by: currentUserId,
+              items: [{
+                sku_id: skuId,
+                location_id: destLocationId, // Repack
+                pallet_id: null,
+                adjustment_piece_qty: -issue_qty, // negative for decrease
+                remarks: `วัสดุบรรจุภัณฑ์ชำรุด/เสีย ${issue_qty} ชิ้น`
+              }]
+            };
+
+            console.log('=== Packaging Damage Adjustment Payload ===', JSON.stringify(adjustmentPayload, null, 2));
+
+            const { data: adjustment, error: adjError } = await stockAdjustmentService.createAdjustment(adjustmentPayload);
+            
+            if (adjError) {
+              console.error('Error creating packaging damage adjustment:', adjError);
+            } else if (adjustment) {
+              // Submit for approval
+              await stockAdjustmentService.submitForApproval(adjustment.adjustment_id, currentUserId);
+              
+              packagingAdjustmentCreated = {
+                adjustment_id: adjustment.adjustment_id,
+                adjustment_no: adjustment.adjustment_no,
+                sku_id: skuId,
+                qty: issue_qty,
+                message: `สร้าง Stock Adjustment ลด ${issue_qty} ชิ้น สำหรับวัสดุบรรจุภัณฑ์ชำรุด`
+              };
+              
+              console.log(`[Packaging Excess] Stock adjustment created: ${adjustment.adjustment_no}`);
+            }
+          } catch (adjError) {
+            console.error('Error in packaging damage adjustment:', adjError);
+            // Don't fail the issue - adjustment is optional
+          }
+        }
+      }
+    } else {
+      // Update production_order_items
+      const { data, error } = await supabase
+        .from('production_order_items')
+        .update({
+          issued_qty: newIssuedQty,
+          status: newStatus,
+          issued_date: new Date().toISOString(),
+          remarks: notes ? `${item.remarks || ''}\n${notes}`.trim() : item.remarks,
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', item_id)
+        .select()
+        .single();
+      updatedItem = data;
+      updateError = error;
+    }
 
     if (updateError) {
       console.error('Error updating production_order_items:', updateError);
@@ -325,6 +451,7 @@ export async function POST(request: NextRequest) {
       stock_before: totalAvailable,
       stock_after: totalAvailable - issue_qty,
       allocations: allocationSummary,
+      packaging_adjustment: packagingAdjustmentCreated,
     });
   } catch (error: any) {
     console.error('Error in POST /api/production/material-requisition/issue:', error);

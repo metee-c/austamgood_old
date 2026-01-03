@@ -205,6 +205,12 @@ const menuItems = [
         icon: FileCheck,
         label: 'รายงาน 391',
         englishLabel: 'Report 391'
+      },
+      {
+        path: '/reports/production',
+        icon: Factory,
+        label: 'รายงานการผลิต',
+        englishLabel: 'Production Report'
       }
     ]
   },
