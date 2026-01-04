@@ -5,5 +5,11 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return <MainLayout>{children}</MainLayout>;
+  return (
+    <MainLayout>
+      <div className="h-full overflow-auto">
+        {children}
+      </div>
+    </MainLayout>
+  );
 }

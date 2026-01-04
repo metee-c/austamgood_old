@@ -2,14 +2,14 @@
    - Environments: .env.local
 
    Creating an optimized production build ...
- ✓ Compiled successfully in 12.1s
+ ✓ Compiled successfully in 18.3s
    Running TypeScript ...
    Collecting page data using 13 workers ...
-   Generating static pages using 13 workers (0/196) ...
-   Generating static pages using 13 workers (49/196) 
-   Generating static pages using 13 workers (98/196) 
-   Generating static pages using 13 workers (147/196) 
- ✓ Generating static pages using 13 workers (196/196) in 3.3s
+   Generating static pages using 13 workers (0/197) ...
+   Generating static pages using 13 workers (49/197) 
+   Generating static pages using 13 workers (98/197) 
+   Generating static pages using 13 workers (147/197) 
+ ✓ Generating static pages using 13 workers (197/197) in 4.8s
    Finalizing page optimization ...
 
 Route (app)
@@ -228,6 +228,7 @@ Route (app)
 ├ ƒ /api/users/list
 ├ ƒ /api/warehouse/delivery-inventory
 ├ ƒ /api/warehouse/dispatch-inventory
+├ ƒ /api/warehouse/layout-inventory
 ├ ƒ /api/warehouse/prepared-documents
 ├ ƒ /api/warehouses
 ├ ○ /change-password
