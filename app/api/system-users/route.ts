@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from('master_system_user')
-      .select('user_id, username, full_name, email, is_active, role_id')
+      .select('user_id, username, full_name, email, is_active, role_id, employee_id')
       .order('full_name', { ascending: true });
 
     if (activeOnly) {

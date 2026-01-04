@@ -49,6 +49,7 @@ export interface SystemUser {
   full_name: string;
   email?: string;
   is_active: boolean;
+  employee_id?: number | null;
 }
 
 // Hook for suppliers

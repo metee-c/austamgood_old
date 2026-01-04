@@ -149,10 +149,11 @@ export default function MobileReceiveNewPage() {
   // Locations based on selected warehouse
   const { locations, loading: locationsLoading } = useLocations(watchedWarehouseId || '');
 
-  // Auto-set received_by from logged-in user
+  // Auto-set received_by from logged-in user's employee_id
+  // Note: received_by has FK to master_employee.employee_id, not user_id
   useEffect(() => {
-    if (currentUser?.user_id && !watch('received_by')) {
-      setValue('received_by', currentUser.user_id);
+    if (currentUser?.employee_id && !watch('received_by')) {
+      setValue('received_by', currentUser.employee_id);
     }
   }, [currentUser, setValue, watch]);
 
@@ -385,13 +386,13 @@ export default function MobileReceiveNewPage() {
         customer_id: data.customer_id?.trim() || undefined,
         warehouse_id: data.warehouse_id,
         receive_date: data.receive_date,
-        received_by: data.received_by,
+        received_by: data.received_by || undefined, // Only send if has valid employee_id
         status: data.status,
         notes: data.notes?.trim() || undefined,
         receive_images: data.receive_images,
         receive_image_names: data.receive_image_names,
         items: processedItems,
-        created_by: currentUser?.employee_id || data.received_by,
+        created_by: currentUser?.employee_id || data.received_by || undefined,
       };
 
       const { error } = await createReceive(payload as any);
@@ -563,8 +564,8 @@ export default function MobileReceiveNewPage() {
           <label className="block text-sm font-semibold text-gray-700 font-thai mb-2">ผู้รับสินค้า</label>
           <select {...register('received_by', { valueAsNumber: true })} className="w-full px-4 py-3 border border-gray-300 rounded-lg font-thai">
             <option value="">เลือกผู้รับสินค้า</option>
-            {Array.isArray(systemUsers) && systemUsers.map(user => (
-              <option key={user.user_id} value={user.user_id}>{user.full_name}</option>
+            {Array.isArray(systemUsers) && systemUsers.filter(user => user.employee_id).map(user => (
+              <option key={user.user_id} value={user.employee_id!}>{user.full_name}</option>
             ))}
           </select>
         </div>
