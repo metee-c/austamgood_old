@@ -60,7 +60,7 @@ const InventoryLedgerPage = () => {
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
-  const pageSize = 100;
+  const pageSize = 1000;
 
   // Debounce search term
   useEffect(() => {

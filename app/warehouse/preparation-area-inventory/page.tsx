@@ -87,15 +87,16 @@ interface InventoryBalance {
   related_documents?: RelatedDocument[];
 }
 
-type FlowStage = 'preparation' | 'dispatch' | 'delivery';
+type FlowStage = 'preparation' | 'premium' | 'dispatch' | 'delivery';
 
 const InventoryBalancesPage = () => {
   const [balanceData, setBalanceData] = useState<InventoryBalance[]>([]);
+  const [premiumData, setPremiumData] = useState<InventoryBalance[]>([]);
   const [dispatchData, setDispatchData] = useState<InventoryBalance[]>([]);
   const [deliveryData, setDeliveryData] = useState<InventoryBalance[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'preparation' | 'dispatch' | 'delivery'>('preparation');
+  const [activeTab, setActiveTab] = useState<'preparation' | 'premium' | 'dispatch' | 'delivery'>('preparation');
 
   // Modal states
   const [viewModalOpen, setViewModalOpen] = useState(false);
@@ -143,10 +144,13 @@ const InventoryBalancesPage = () => {
   const [warehouses, setWarehouses] = useState<any[]>([]);
 
   const [preparationAreaCodes, setPreparationAreaCodes] = useState<string[]>([]);
+  
+  // Premium zone location (Picking Zone 2)
+  const premiumZoneLocations = ['Picking Zone 2'];
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
-  const pageSize = 100;
+  const pageSize = 1000;
 
   // Reset page when filters change
   useEffect(() => {
@@ -158,6 +162,7 @@ const InventoryBalancesPage = () => {
     fetchWarehouses();
     fetchPreparationAreas();
     fetchBalanceData();
+    fetchPremiumData();
     fetchDispatchData();
     fetchDeliveryData();
     fetchSkuOptions();
@@ -248,6 +253,16 @@ const InventoryBalancesPage = () => {
       setLoading(true);
       const supabase = createClient();
 
+      // First get preparation area codes
+      const { data: prepAreas } = await supabase
+        .from('preparation_area')
+        .select('area_code')
+        .eq('status', 'active');
+      
+      const prepAreaCodes = prepAreas?.map(p => p.area_code) || [];
+      console.log('🔵 [PREP] Fetching balance data for prep areas:', prepAreaCodes.length, 'areas');
+
+      // Fetch only inventory in preparation areas
       const { data, error } = await supabase
         .from('wms_inventory_balances')
         .select(`
@@ -263,8 +278,9 @@ const InventoryBalancesPage = () => {
             weight_per_piece_kg
           )
         `)
+        .in('location_id', prepAreaCodes)
         .order('updated_at', { ascending: false })
-        .limit(1000);
+        .limit(2000);
 
       if (error) {
         setError(error.message);
@@ -277,6 +293,42 @@ const InventoryBalancesPage = () => {
       console.error('Error:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchPremiumData = async () => {
+    try {
+      const supabase = createClient();
+      console.log('🟠 [PREMIUM] Fetching balance data for Picking Zone 2');
+
+      // Fetch only inventory in Picking Zone 2
+      const { data, error } = await supabase
+        .from('wms_inventory_balances')
+        .select(`
+          *,
+          master_location!location_id (
+            location_name
+          ),
+          master_warehouse!warehouse_id (
+            warehouse_name
+          ),
+          master_sku!sku_id (
+            sku_name,
+            weight_per_piece_kg
+          )
+        `)
+        .in('location_id', premiumZoneLocations)
+        .order('updated_at', { ascending: false })
+        .limit(2000);
+
+      if (error) {
+        console.error('Error fetching premium data:', error);
+      } else {
+        console.log('🟠 [PREMIUM] Premium data received:', data?.length, 'items');
+        setPremiumData(data || []);
+      }
+    } catch (err: any) {
+      console.error('Error fetching premium data:', err);
     }
   };
 
@@ -376,6 +428,11 @@ const InventoryBalancesPage = () => {
     // ถ้าเป็น delivery tab ให้ใช้ข้อมูลจาก API ที่มีบริบท
     if (activeTab === 'delivery') {
       return deliveryData;
+    }
+    
+    // ถ้าเป็น premium tab ให้ใช้ข้อมูลจาก premiumData
+    if (activeTab === 'premium') {
+      return premiumData;
     }
     
     const filtered = balanceData.filter(item => {
@@ -522,6 +579,8 @@ const InventoryBalancesPage = () => {
     item.location_id ? preparationAreaCodes.includes(item.location_id) : false
   ).reduce((sum, item) => sum + item.total_piece_qty, 0);
 
+  const premiumCount = premiumData.reduce((sum, item) => sum + item.total_piece_qty, 0);
+
   const dispatchCount = tabFilteredData.length > 0 && activeTab === 'dispatch'
     ? tabFilteredData.reduce((sum, item) => sum + item.total_piece_qty, 0)
     : dispatchData.reduce((sum, item) => sum + item.total_piece_qty, 0);
@@ -612,6 +671,7 @@ const InventoryBalancesPage = () => {
               icon={RefreshCw} 
               onClick={() => {
                 fetchBalanceData();
+                fetchPremiumData();
                 fetchDispatchData();
                 fetchDeliveryData();
               }} 
@@ -784,6 +844,20 @@ const InventoryBalancesPage = () => {
             <span>บ้านหยิบ</span>
             <span className={`text-[10px] font-semibold ${activeTab === 'preparation' ? 'text-blue-100' : 'text-thai-gray-500'}`}>
               {preparationCount.toLocaleString()}
+            </span>
+          </button>
+          <button
+            onClick={() => setActiveTab('premium')}
+            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded font-thai font-medium transition-all text-xs ${
+              activeTab === 'premium'
+                ? 'bg-amber-500 text-white shadow-sm'
+                : 'bg-white text-thai-gray-600 hover:bg-amber-50 border border-thai-gray-200'
+            }`}
+          >
+            <Package className="w-3.5 h-3.5" />
+            <span>บ้านหยิบพรีเมี่ยม</span>
+            <span className={`text-[10px] font-semibold ${activeTab === 'premium' ? 'text-amber-100' : 'text-thai-gray-500'}`}>
+              {premiumCount.toLocaleString()}
             </span>
           </button>
           <button
