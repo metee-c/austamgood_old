@@ -1858,66 +1858,95 @@ const RoutesPage = () => {
                 // ดึง bonus orders สำหรับ trip นี้
                 const tripBonusOrders = bonusOrdersByTrip[tripId] || {};
                 
-                // สร้าง map เพื่อนับจุดส่งตาม customer_id ภายในคันเดียวกัน
-                const customerStopMap = new Map<string, number>();
+                // รวบรวมข้อมูลตาม customer_id (1 customer = 1 แถว)
+                const customerDataMap = new Map<string, {
+                    stopName: string;
+                    latitude: number | null;
+                    longitude: number | null;
+                    totalWeight: number;
+                    orderNos: string[];
+                    stopSequence: number;
+                }>();
+                
                 let customerStopCounter = 0;
                 
                 for (const stop of trip.stops || []) {
-                    // ดึง customer_id จาก order แรกของ stop (ทุก order ใน stop เดียวกันควรเป็น customer เดียวกัน)
+                    // ดึง customer_id จาก order แรกของ stop
                     let customerId = '';
-                    const orderNos: string[] = [];
+                    const stopOrderNos: string[] = [];
                     
                     if (stop.orders && Array.isArray(stop.orders)) {
                         for (const order of stop.orders) {
                             if (order.order_no) {
-                                orderNos.push(order.order_no);
+                                stopOrderNos.push(order.order_no);
                             }
                             if (!customerId && order.customer_id) {
                                 customerId = String(order.customer_id);
                             }
                         }
                     } else if (stop.order_no) {
-                        orderNos.push(stop.order_no);
+                        stopOrderNos.push(stop.order_no);
                         if (stop.customer_id) {
                             customerId = String(stop.customer_id);
                         }
                     }
                     
-                    // เพิ่ม bonus order_no สำหรับ customer นี้ (ถ้ามี)
-                    if (customerId && tripBonusOrders[customerId]) {
+                    if (!customerId) {
+                        customerId = `unknown_${stop.stop_id}`;
+                    }
+                    
+                    // ถ้า customer นี้มีอยู่แล้ว ให้รวม order และน้ำหนัก
+                    if (customerDataMap.has(customerId)) {
+                        const existing = customerDataMap.get(customerId)!;
+                        // รวม order_no ที่ยังไม่มี
+                        for (const orderNo of stopOrderNos) {
+                            if (!existing.orderNos.includes(orderNo)) {
+                                existing.orderNos.push(orderNo);
+                            }
+                        }
+                        // รวมน้ำหนัก
+                        existing.totalWeight += (stop.load_weight_kg || 0);
+                    } else {
+                        // customer ใหม่
+                        customerStopCounter++;
+                        customerDataMap.set(customerId, {
+                            stopName: stop.stop_name || '-',
+                            latitude: stop.latitude || null,
+                            longitude: stop.longitude || null,
+                            totalWeight: stop.load_weight_kg || 0,
+                            orderNos: [...stopOrderNos],
+                            stopSequence: customerStopCounter
+                        });
+                    }
+                }
+                
+                // เพิ่ม bonus order_no สำหรับแต่ละ customer
+                for (const [customerId, customerData] of customerDataMap) {
+                    if (tripBonusOrders[customerId]) {
                         for (const bonusOrderNo of tripBonusOrders[customerId]) {
-                            if (!orderNos.includes(bonusOrderNo)) {
-                                orderNos.push(bonusOrderNo);
+                            if (!customerData.orderNos.includes(bonusOrderNo)) {
+                                customerData.orderNos.push(bonusOrderNo);
                             }
                         }
                     }
-                    
-                    // คำนวณจุดส่งตาม customer_id (ถ้า customer_id ซ้ำกันในคันเดียวกัน ใช้เลขจุดเดิม)
-                    let stopSequence: number;
-                    if (customerId && customerStopMap.has(customerId)) {
-                        stopSequence = customerStopMap.get(customerId)!;
-                    } else {
-                        customerStopCounter++;
-                        stopSequence = customerStopCounter;
-                        if (customerId) {
-                            customerStopMap.set(customerId, stopSequence);
-                        }
-                    }
-                    
-                    // Format วันที่จัดส่ง (DD/MM/YYYY)
-                    const deliveryDate = planDate ? new Date(planDate) : new Date();
-                    const formattedDate = `${deliveryDate.getDate()}/${deliveryDate.getMonth() + 1}/${deliveryDate.getFullYear()}`;
-                    
+                }
+                
+                // Format วันที่จัดส่ง (DD/MM/YYYY)
+                const deliveryDate = planDate ? new Date(planDate) : new Date();
+                const formattedDate = `${deliveryDate.getDate()}/${deliveryDate.getMonth() + 1}/${deliveryDate.getFullYear()}`;
+                
+                // สร้างแถวสำหรับแต่ละ customer
+                for (const [customerId, customerData] of customerDataMap) {
                     excelData.push({
                         'รหัสงานจัดส่ง': deliveryNumber,
-                        'ชื่อร้านค้า': stop.stop_name || '-',
-                        'ละติจูดของร้านค้า': stop.latitude || '',
-                        'ลองจิจูดของร้านค้า': stop.longitude || '',
-                        'น้ำหนักสินค้ารวม': stop.load_weight_kg || 0,
+                        'ชื่อร้านค้า': customerData.stopName,
+                        'ละติจูดของร้านค้า': customerData.latitude || '',
+                        'ลองจิจูดของร้านค้า': customerData.longitude || '',
+                        'น้ำหนักสินค้ารวม': customerData.totalWeight,
                         'กำหนด - วันที่จัดส่ง': formattedDate,
                         'คันที่': tripNumber,
-                        'จุดส่ง': stopSequence,
-                        'เลขออเดอร์': orderNos.join(',')
+                        'จุดส่ง': customerData.stopSequence,
+                        'เลขออเดอร์': customerData.orderNos.join(',')
                     });
                 }
             }
