@@ -37,6 +37,8 @@ interface SupplierSummary {
   supplier_code: string;
   trip_count: number;
   total_cost: number;
+  total_porterage_fee: number;
+  total_other_fees: number;
   trips: Trip[];
 }
 
@@ -207,12 +209,21 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
               supplier_code: supplier?.supplier_code || '',
               trip_count: 0,
               total_cost: 0,
+              total_porterage_fee: 0,
+              total_other_fees: 0,
               trips: []
             };
           }
           
+          // Calculate other fees total for this trip
+          const otherFees: Array<{ label: string; amount: number }> = (trip as any).other_fees || [];
+          const otherFeesTotal = otherFees.reduce((sum, fee) => sum + (fee.amount || 0), 0);
+          const porterageFee = (trip as any).porterage_fee || 0;
+          
           acc[trip.supplier_id].trip_count++;
           acc[trip.supplier_id].total_cost += Number(trip.shipping_cost || 0);
+          acc[trip.supplier_id].total_porterage_fee += porterageFee;
+          acc[trip.supplier_id].total_other_fees += otherFeesTotal;
           acc[trip.supplier_id].trips.push(trip);
           
           return acc;
@@ -328,30 +339,62 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {supplierSummaries.map((summary) => (
-                    <div
-                      key={summary.supplier_id}
-                      className={`border-2 rounded-lg p-3 cursor-pointer transition-all ${
-                        selectedSupplier?.supplier_id === summary.supplier_id
-                          ? 'border-blue-500 bg-blue-50'
-                          : 'border-gray-200 hover:border-blue-300'
-                      }`}
-                      onClick={() => handleSelectSupplier(summary)}
-                    >
-                      <div className="text-sm font-thai">
-                        <p className="font-semibold text-gray-900 text-sm leading-tight mb-1">
-                          {summary.supplier_name}
-                        </p>
-                        <div className="flex items-center justify-between text-xs text-gray-600">
-                          <span className="font-mono">{summary.supplier_code}</span>
-                          <div className="flex items-center gap-2">
+                  {supplierSummaries.map((summary) => {
+                    const hasExtraFees = summary.total_porterage_fee > 0 || summary.total_other_fees > 0;
+                    const grandTotal = summary.total_cost + summary.total_porterage_fee + summary.total_other_fees;
+                    
+                    return (
+                      <div
+                        key={summary.supplier_id}
+                        className={`border-2 rounded-lg p-3 cursor-pointer transition-all ${
+                          selectedSupplier?.supplier_id === summary.supplier_id
+                            ? 'border-blue-500 bg-blue-50'
+                            : 'border-gray-200 hover:border-blue-300'
+                        }`}
+                        onClick={() => handleSelectSupplier(summary)}
+                      >
+                        <div className="text-sm font-thai">
+                          <p className="font-semibold text-gray-900 text-sm leading-tight mb-1">
+                            {summary.supplier_name}
+                          </p>
+                          <div className="flex items-center justify-between text-xs text-gray-600 mb-1">
+                            <span className="font-mono">{summary.supplier_code}</span>
                             <span className="font-medium">{summary.trip_count} คัน</span>
-                            <span className="text-green-700 font-bold">{summary.total_cost.toLocaleString()} ฿</span>
+                          </div>
+                          <div className="text-xs space-y-0.5">
+                            <div className="flex justify-between">
+                              <span className="text-gray-600">ค่าขนส่ง:</span>
+                              <span className="font-semibold">{summary.total_cost.toLocaleString()} ฿</span>
+                            </div>
+                            {summary.total_porterage_fee > 0 && (
+                              <div className="flex justify-between text-orange-600">
+                                <span>ค่าแบก:</span>
+                                <span className="font-semibold">{summary.total_porterage_fee.toLocaleString()} ฿</span>
+                              </div>
+                            )}
+                            {summary.total_other_fees > 0 && (
+                              <div className="flex justify-between text-purple-600">
+                                <span>ค่าอื่นๆ:</span>
+                                <span className="font-semibold">{summary.total_other_fees.toLocaleString()} ฿</span>
+                              </div>
+                            )}
+                            {hasExtraFees && (
+                              <div className="flex justify-between border-t border-gray-300 pt-1 mt-1">
+                                <span className="font-semibold text-gray-700">รวมทั้งหมด:</span>
+                                <span className="text-green-700 font-bold">{grandTotal.toLocaleString()} ฿</span>
+                              </div>
+                            )}
+                            {!hasExtraFees && (
+                              <div className="flex justify-between">
+                                <span className="font-semibold text-gray-700">รวม:</span>
+                                <span className="text-green-700 font-bold">{summary.total_cost.toLocaleString()} ฿</span>
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
@@ -423,20 +466,46 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
             } catch {}
 
             const totalStops = trip.stops?.length || 0;
+            
+            // ดึงค่าใช้จ่ายอื่นๆ
+            const porterageFee = (trip as any).porterage_fee || 0;
+            const otherFees: Array<{ label: string; amount: number }> = (trip as any).other_fees || [];
+            const otherFeesTotal = otherFees.reduce((sum, fee) => sum + (fee.amount || 0), 0);
+            const hasExtraFees = porterageFee > 0 || otherFees.length > 0;
+            const tripGrandTotal = (trip.shipping_cost || 0) + porterageFee + otherFeesTotal;
 
             return (
               <div key={trip.trip_id} className="bg-blue-50 border border-blue-300 rounded px-4 py-2">
-                <div className="flex justify-between items-center">
+                <div className="flex justify-between items-start">
                   <div>
                     <span className="font-bold text-base">คันที่ {tripIndex + 1}</span>
                     <span className="ml-3 text-sm text-gray-700">
                       ({totalStops} ร้านค้า / {totalStops} จุดส่ง)
                     </span>
                   </div>
-                  <div className="text-right">
-                    <span className="text-base font-bold text-green-700">
-                      ค่าขนส่ง: {(trip.shipping_cost || 0).toLocaleString()} บาท
-                    </span>
+                  <div className="text-right text-sm">
+                    <div className="flex justify-between gap-4">
+                      <span className="text-gray-600">ค่าขนส่ง:</span>
+                      <span className="font-semibold">{(trip.shipping_cost || 0).toLocaleString()} บาท</span>
+                    </div>
+                    {porterageFee > 0 && (
+                      <div className="flex justify-between gap-4 text-orange-700">
+                        <span>ค่าแบก:</span>
+                        <span className="font-semibold">{porterageFee.toLocaleString()} บาท</span>
+                      </div>
+                    )}
+                    {otherFees.map((fee, idx) => (
+                      <div key={idx} className="flex justify-between gap-4 text-purple-700">
+                        <span>{fee.label}:</span>
+                        <span className="font-semibold">{fee.amount.toLocaleString()} บาท</span>
+                      </div>
+                    ))}
+                    {hasExtraFees && (
+                      <div className="flex justify-between gap-4 border-t border-gray-300 mt-1 pt-1">
+                        <span className="font-bold text-gray-800">รวมคันนี้:</span>
+                        <span className="font-bold text-green-700">{tripGrandTotal.toLocaleString()} บาท</span>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -507,23 +576,39 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                 } catch {}
 
                 const orderRemarks = notes.order_remarks || {};
+                
+                // คำนวณค่าใช้จ่ายรวมของคันนี้
+                const porterageFee = (trip as any).porterage_fee || 0;
+                const otherFees: Array<{ label: string; amount: number }> = (trip as any).other_fees || [];
+                const otherFeesTotal = otherFees.reduce((sum, fee) => sum + (fee.amount || 0), 0);
+                const tripGrandTotal = (trip.shipping_cost || 0) + porterageFee + otherFeesTotal;
+                const hasExtraFees = porterageFee > 0 || otherFees.length > 0;
 
                 return (
                   <React.Fragment key={trip.trip_id}>
                     {/* Trip Info Header Row */}
                     <tr className="bg-blue-100 border-t-2 border-blue-400">
                       <td colSpan={13} className="border border-gray-300 px-3 py-2">
-                        <div className="flex justify-between items-center">
+                        <div className="flex justify-between items-start">
                           <div>
                             <span className="font-bold text-sm">คันที่ {tripIndex + 1}</span>
                             <span className="ml-3 text-xs text-gray-700">
                               ({trip.stops?.length || 0} ร้านค้า / {trip.stops?.length || 0} จุดส่ง)
                             </span>
                           </div>
-                          <div className="text-right">
-                            <span className="text-sm font-bold text-green-700">
-                              ค่าขนส่ง: {(trip.shipping_cost || 0).toLocaleString()} บาท
-                            </span>
+                          <div className="text-right text-xs">
+                            <div className="flex justify-end gap-3">
+                              <span>ค่าขนส่ง: <span className="font-semibold">{(trip.shipping_cost || 0).toLocaleString()}</span></span>
+                              {porterageFee > 0 && (
+                                <span className="text-orange-700">ค่าแบก: <span className="font-semibold">{porterageFee.toLocaleString()}</span></span>
+                              )}
+                              {otherFees.map((fee, idx) => (
+                                <span key={idx} className="text-purple-700">{fee.label}: <span className="font-semibold">{fee.amount.toLocaleString()}</span></span>
+                              ))}
+                            </div>
+                            <div className="text-sm font-bold text-green-700 mt-1">
+                              รวม: {tripGrandTotal.toLocaleString()} บาท
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -713,17 +798,19 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
         <table className="w-full border-collapse">
           <thead>
             <tr className="bg-gray-100">
-              <th className="border border-gray-300 px-3 py-2 text-xs text-center" style={{ width: '5%' }}>คันที่</th>
-              <th className="border border-gray-300 px-3 py-2 text-xs text-center" style={{ width: '10%' }}>จำนวนจุดส่ง</th>
-              <th className="border border-gray-300 px-3 py-2 text-xs text-center" style={{ width: '10%' }}>ทะเบียนรถ</th>
-              <th className="border border-gray-300 px-3 py-2 text-xs text-center" style={{ width: '12%' }}>ชื่อผู้ขับ</th>
-              <th className="border border-gray-300 px-3 py-2 text-xs text-center" style={{ width: '5%' }}>ประตู</th>
-              <th className="border border-gray-300 px-3 py-2 text-xs text-center" style={{ width: '5%' }}>คิว</th>
-              <th className="border border-gray-300 px-3 py-2 text-xs text-center" style={{ width: '10%' }}>รูปแบบการคิด</th>
-              <th className="border border-gray-300 px-3 py-2 text-xs text-center" style={{ width: '10%' }}>ราคาเริ่มต้น</th>
-              <th className="border border-gray-300 px-3 py-2 text-xs text-center" style={{ width: '10%' }}>ค่าเด็กติดรถ</th>
-              <th className="border border-gray-300 px-3 py-2 text-xs text-center" style={{ width: '13%' }}>ค่าจุดเพิ่ม</th>
-              <th className="border border-gray-300 px-3 py-2 text-xs text-center" style={{ width: '10%' }}>รวมค่าขนส่ง</th>
+              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '4%' }}>คันที่</th>
+              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '8%' }}>จำนวนจุดส่ง</th>
+              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '8%' }}>ทะเบียนรถ</th>
+              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '10%' }}>ชื่อผู้ขับ</th>
+              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '4%' }}>ประตู</th>
+              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '4%' }}>คิว</th>
+              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '7%' }}>รูปแบบ</th>
+              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '8%' }}>ราคาเริ่มต้น</th>
+              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '8%' }}>ค่าเด็กติดรถ</th>
+              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '11%' }}>ค่าจุดเพิ่ม</th>
+              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '7%' }}>ค่าแบก</th>
+              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '12%' }}>ค่าใช้จ่ายอื่นๆ</th>
+              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '9%' }}>รวมค่าขนส่ง</th>
             </tr>
           </thead>
           <tbody>
@@ -734,11 +821,29 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
               } catch {}
 
               const totalStops = trip.stops?.length || 0;
+              
+              // นับจำนวนจุดจาก unique customer_id แทนการนับจาก order
+              const uniqueCustomerIds = new Set<string>();
+              trip.stops?.forEach((stop: any) => {
+                const orders = Array.isArray(stop.orders) && stop.orders.length > 0
+                  ? stop.orders
+                  : (stop.order_id ? [{ customer_id: stop.tags?.customer_id || stop.order_data?.customer_id }] : []);
+                orders.forEach((order: any) => {
+                  if (order.customer_id) {
+                    uniqueCustomerIds.add(order.customer_id);
+                  }
+                });
+              });
+              const uniqueCustomerCount = uniqueCustomerIds.size || totalStops;
+              
               const pricingMode = (trip as any).pricing_mode;
               const basePrice = (trip as any).base_price || 0;
               const helperFee = (trip as any).helper_fee || 0;
               const extraStopFee = (trip as any).extra_stop_fee || 0;
-              const extraStops = Math.max(0, totalStops - 1);
+              const porterageFee = (trip as any).porterage_fee || 0;
+              const otherFees: Array<{ label: string; amount: number }> = (trip as any).other_fees || [];
+              const otherFeesTotal = otherFees.reduce((sum, fee) => sum + (fee.amount || 0), 0);
+              const extraStops = Math.max(0, uniqueCustomerCount - 1);
               const extraStopTotal = extraStops * extraStopFee;
 
               return (
@@ -747,7 +852,7 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                     {tripIndex + 1}
                   </td>
                   <td className="border border-gray-300 px-2 py-3 text-center text-xs">
-                    {totalStops} ร้านค้า / {totalStops} จุดส่ง
+                    {uniqueCustomerCount} ลูกค้า / {totalStops} จุดส่ง
                   </td>
                   <td className="border border-gray-300 px-2 py-3 text-xs">
                     {notes.vehicle_label || '-'}
@@ -762,18 +867,37 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                     {(trip as any).loading_queue_number || '-'}
                   </td>
                   <td className="border border-gray-300 px-2 py-3 text-center text-xs font-semibold">
-                    {pricingMode === 'formula' ? 'แบบคำนวณ' : 'แบบเหมา'}
+                    {pricingMode === 'formula' ? 'คำนวณ' : 'เหมา'}
                   </td>
                   <td className="border border-gray-300 px-2 py-3 text-right text-xs">
-                    {pricingMode === 'formula' ? `${basePrice.toLocaleString()} บาท` : '-'}
+                    {pricingMode === 'formula' ? `${basePrice.toLocaleString()}` : '-'}
                   </td>
                   <td className="border border-gray-300 px-2 py-3 text-right text-xs">
-                    {pricingMode === 'formula' ? `${helperFee.toLocaleString()} บาท` : '-'}
+                    {pricingMode === 'formula' ? `${helperFee.toLocaleString()}` : '-'}
                   </td>
                   <td className="border border-gray-300 px-2 py-3 text-xs">
                     {pricingMode === 'formula' ? (
                       <div className="text-right">
-                        {extraStops} จุด × {extraStopFee.toLocaleString()} = {extraStopTotal.toLocaleString()} บาท
+                        {extraStops} × {extraStopFee.toLocaleString()} = {extraStopTotal.toLocaleString()}
+                      </div>
+                    ) : '-'}
+                  </td>
+                  <td className="border border-gray-300 px-2 py-3 text-right text-xs">
+                    {porterageFee > 0 ? `${porterageFee.toLocaleString()}` : '-'}
+                  </td>
+                  <td className="border border-gray-300 px-2 py-3 text-xs">
+                    {otherFees.length > 0 ? (
+                      <div className="text-left">
+                        {otherFees.map((fee, idx) => (
+                          <div key={idx} className="text-xs">
+                            {fee.label}: {fee.amount.toLocaleString()}
+                          </div>
+                        ))}
+                        {otherFees.length > 1 && (
+                          <div className="font-semibold border-t border-gray-300 mt-1 pt-1">
+                            รวม: {otherFeesTotal.toLocaleString()}
+                          </div>
+                        )}
                       </div>
                     ) : '-'}
                   </td>
@@ -789,11 +913,35 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
 
       {/* Summary */}
       <div className="border-t-2 border-gray-400 mt-6 pt-4">
-        <div className="flex justify-between items-center">
-          <span className="text-base font-bold">รวมค่าขนส่งทั้งหมด ({supplier.trip_count} คัน)</span>
-          <span className="text-lg font-bold">
-            {supplier.total_cost.toLocaleString()} บาท
-          </span>
+        <div className="space-y-1">
+          <div className="flex justify-between items-center">
+            <span className="text-sm">ค่าขนส่ง ({supplier.trip_count} คัน):</span>
+            <span className="text-sm font-semibold">
+              {supplier.total_cost.toLocaleString()} บาท
+            </span>
+          </div>
+          {supplier.total_porterage_fee > 0 && (
+            <div className="flex justify-between items-center text-orange-700">
+              <span className="text-sm">ค่าแบกน้ำหนัก:</span>
+              <span className="text-sm font-semibold">
+                {supplier.total_porterage_fee.toLocaleString()} บาท
+              </span>
+            </div>
+          )}
+          {supplier.total_other_fees > 0 && (
+            <div className="flex justify-between items-center text-purple-700">
+              <span className="text-sm">ค่าใช้จ่ายอื่นๆ:</span>
+              <span className="text-sm font-semibold">
+                {supplier.total_other_fees.toLocaleString()} บาท
+              </span>
+            </div>
+          )}
+          <div className="flex justify-between items-center border-t border-gray-300 pt-2 mt-2">
+            <span className="text-base font-bold">รวมทั้งหมด:</span>
+            <span className="text-lg font-bold text-green-700">
+              {(supplier.total_cost + supplier.total_porterage_fee + supplier.total_other_fees).toLocaleString()} บาท
+            </span>
+          </div>
         </div>
       </div>
     </div>

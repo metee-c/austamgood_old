@@ -40,11 +40,13 @@ export async function PATCH(
       if (body.base_price !== undefined) updateData.base_price = body.base_price;
       if (body.helper_fee !== undefined) updateData.helper_fee = body.helper_fee;
       if (body.extra_stop_fee !== undefined) updateData.extra_stop_fee = body.extra_stop_fee;
-      if (body.porterage_fee !== undefined) updateData.porterage_fee = body.porterage_fee;
-      if (body.other_fees !== undefined) updateData.other_fees = body.other_fees;
       // Add total_stops to trigger the database trigger for extra_stops_count calculation
       if (body.total_stops !== undefined) updateData.total_stops = body.total_stops;
     }
+
+    // porterage_fee and other_fees should be saved regardless of pricing mode
+    if (body.porterage_fee !== undefined) updateData.porterage_fee = body.porterage_fee;
+    if (body.other_fees !== undefined) updateData.other_fees = body.other_fees;
 
     // Handle shipping cost reset fields (from rollback)
     if (body.needs_shipping_cost_update !== undefined) {

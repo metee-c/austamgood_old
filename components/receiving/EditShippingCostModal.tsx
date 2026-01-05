@@ -1343,6 +1343,9 @@ const EditShippingCostModal: React.FC<EditShippingCostModalProps> = ({
             supplier_id: supplierId,
             vehicle_id: vehicleId,
             driver_id: driverId,
+            // porterage_fee and other_fees should be saved regardless of pricing mode
+            porterage_fee: porterage_fee,
+            other_fees: other_fees,
             // Clear the shipping cost update flag when saving
             needs_shipping_cost_update: false,
             shipping_cost_reset_reason: null,
@@ -1354,8 +1357,6 @@ const EditShippingCostModal: React.FC<EditShippingCostModalProps> = ({
             payload.base_price = basePrice;
             payload.helper_fee = helperFee;
             payload.extra_stop_fee = extraStopFee;
-            payload.porterage_fee = porterage_fee;
-            payload.other_fees = other_fees;
             payload.total_stops = totalStops; // Send total_stops to trigger database calculation
           } else {
             // For flat mode, send shipping_cost directly
