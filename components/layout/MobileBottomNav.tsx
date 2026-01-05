@@ -142,8 +142,8 @@ export default function MobileBottomNav() {
         </>
       )}
 
-      {/* Bottom Navigation - Compact */}
-      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-thai-gray-200 shadow-lg z-50">
+      {/* Bottom Navigation - Ultra Compact for small screens */}
+      <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-thai-gray-200 shadow-lg z-50 safe-bottom">
         <nav className="max-w-screen-xl mx-auto">
           <ul className="flex items-center justify-around">
             {visibleNavItems.map((item) => {
@@ -155,7 +155,7 @@ export default function MobileBottomNav() {
                   <Link
                     href={item.path}
                     className={`
-                      flex flex-col items-center justify-center py-1.5 px-1 relative
+                      flex flex-col items-center justify-center py-1 px-0.5 relative
                       transition-all duration-200
                       ${isActive
                         ? 'text-primary-600'
@@ -165,18 +165,18 @@ export default function MobileBottomNav() {
                   >
                     <Icon
                       className={`
-                        w-5 h-5 mb-0.5 transition-all duration-200
-                        ${isActive ? 'scale-110' : ''}
+                        w-4 h-4 mb-0.5 transition-all duration-200
+                        ${isActive ? 'scale-105' : ''}
                       `}
                     />
                     <span className={`
-                      text-[10px] font-thai whitespace-nowrap
+                      text-[9px] font-thai whitespace-nowrap
                       ${isActive ? 'font-semibold' : 'font-normal'}
                     `}>
                       {item.shortLabel || item.label}
                     </span>
                     {isActive && (
-                      <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-8 h-0.5 bg-primary-500 rounded-t-full" />
+                      <div className="absolute bottom-0 left-1/2 transform -translate-x-1/2 w-6 h-0.5 bg-primary-500 rounded-t-full" />
                     )}
                   </Link>
                 </li>

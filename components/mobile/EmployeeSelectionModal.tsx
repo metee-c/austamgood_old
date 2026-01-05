@@ -153,56 +153,56 @@ export default function EmployeeSelectionModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 overflow-y-auto">
-      <div className="bg-white rounded-lg shadow-xl max-w-md w-full max-h-[90vh] my-auto overflow-hidden flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 bg-sky-50 flex-shrink-0">
-          <h2 className="text-lg font-bold text-gray-900 font-thai">{title}</h2>
+    <div className="fixed inset-0 bg-black/50 flex items-end sm:items-center justify-center z-50 p-0 sm:p-4 overflow-y-auto">
+      <div className="bg-white rounded-t-xl sm:rounded-lg shadow-xl w-full sm:max-w-md max-h-[85vh] sm:max-h-[90vh] my-auto overflow-hidden flex flex-col">
+        {/* Header - Compact */}
+        <div className="flex items-center justify-between p-3 border-b border-gray-200 bg-sky-50 flex-shrink-0">
+          <h2 className="text-sm font-bold text-gray-900 font-thai">{title}</h2>
           <button
             onClick={handleClose}
-            className="p-1 hover:bg-gray-200 rounded-lg transition-colors"
+            className="p-1 hover:bg-gray-200 rounded transition-colors"
           >
-            <X className="w-5 h-5 text-gray-600" />
+            <X className="w-4 h-4 text-gray-600" />
           </button>
         </div>
 
-        {/* Content */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4" style={{ WebkitOverflowScrolling: 'touch' }}>
+        {/* Content - Scrollable */}
+        <div className="flex-1 overflow-y-auto p-3 space-y-3" style={{ WebkitOverflowScrolling: 'touch' }}>
           {loading ? (
-            <div className="text-center py-8">
-              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-sky-500 mx-auto"></div>
-              <p className="text-gray-500 mt-2 font-thai text-sm">กำลังโหลด...</p>
+            <div className="text-center py-6">
+              <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-sky-500 mx-auto"></div>
+              <p className="text-gray-500 mt-2 font-thai text-xs">กำลังโหลด...</p>
             </div>
           ) : (
             <>
               {/* Checker Selection */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2 font-thai">
-                  <User className="w-4 h-4 inline mr-1" />
+                <label className="block text-xs font-medium text-gray-700 mb-1.5 font-thai">
+                  <User className="w-3.5 h-3.5 inline mr-1" />
                   {mode === 'checker-only' ? 'เลือกผู้เช็คโหลดใหม่' : 'เลือกผู้เช็คสินค้า'} ({checkerIds.length} คน)
                 </label>
-                <div className="border border-gray-300 rounded-lg max-h-48 overflow-y-auto">
+                <div className="border border-gray-300 rounded max-h-36 overflow-y-auto">
                   {employees.length === 0 && !loading && (
-                    <div className="px-3 py-2 text-sm text-gray-500 font-thai">
+                    <div className="px-2 py-1.5 text-xs text-gray-500 font-thai">
                       ไม่พบข้อมูลพนักงาน
                     </div>
                   )}
                   {employees.map((emp) => (
                     <label
                       key={`checker-${emp.employee_id}`}
-                      className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                      className="flex items-center px-2 py-1.5 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
                     >
                       <input
                         type="radio"
                         name="checker"
                         checked={checkerIds.includes(emp.employee_id.toString())}
                         onChange={() => toggleChecker(emp.employee_id)}
-                        className="w-4 h-4 text-sky-500 border-gray-300 focus:ring-sky-500"
+                        className="w-3.5 h-3.5 text-sky-500 border-gray-300 focus:ring-sky-500"
                       />
-                      <span className="ml-2 text-sm font-thai text-gray-900">
+                      <span className="ml-2 text-xs font-thai text-gray-900">
                         {getEmployeeDisplay(emp)}
                         {emp.wms_role && (
-                          <span className="text-gray-500 text-xs ml-1">({emp.wms_role})</span>
+                          <span className="text-gray-500 text-[10px] ml-1">({emp.wms_role})</span>
                         )}
                       </span>
                     </label>
@@ -215,22 +215,22 @@ export default function EmployeeSelectionModal({
                 <>
                   {/* Checker Info (Read-only) */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2 font-thai">
-                      <User className="w-4 h-4 inline mr-1" />
+                    <label className="block text-xs font-medium text-gray-700 mb-1.5 font-thai">
+                      <User className="w-3.5 h-3.5 inline mr-1" />
                       ผู้เช็คโหลดที่กำหนดไว้
                     </label>
-                    <div className="border border-blue-300 rounded-lg bg-blue-50 px-3 py-2">
+                    <div className="border border-blue-300 rounded bg-blue-50 px-2 py-1.5">
                       {checkerEmployee ? (
                         <>
-                          <span className="text-sm font-thai text-gray-900">
+                          <span className="text-xs font-thai text-gray-900">
                             {checkerEmployee.nickname || `${checkerEmployee.first_name} ${checkerEmployee.last_name}`}
                           </span>
-                          <span className="text-gray-500 text-xs ml-2">
+                          <span className="text-gray-500 text-[10px] ml-1">
                             ({checkerEmployee.employee_code})
                           </span>
                         </>
                       ) : (
-                        <span className="text-sm font-thai text-gray-500 italic">
+                        <span className="text-xs font-thai text-gray-500 italic">
                           ยังไม่ได้กำหนดผู้เช็คโหลด
                         </span>
                       )}
@@ -239,29 +239,29 @@ export default function EmployeeSelectionModal({
 
                   {/* Picker Info (Read-only) */}
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2 font-thai">
-                      <User className="w-4 h-4 inline mr-1" />
+                    <label className="block text-xs font-medium text-gray-700 mb-1.5 font-thai">
+                      <User className="w-3.5 h-3.5 inline mr-1" />
                       พนักงานจัดสินค้า {((pickerEmployees?.length || 0) + (checkerEmployees?.length || 0)) > 0 && `(${(pickerEmployees?.length || 0) + (checkerEmployees?.length || 0)} คน)`}
                     </label>
-                    <div className="border border-gray-300 rounded-lg bg-gray-50 px-3 py-2">
+                    <div className="border border-gray-300 rounded bg-gray-50 px-2 py-1.5">
                       {(pickerEmployees && pickerEmployees.length > 0) || (checkerEmployees && checkerEmployees.length > 0) ? (
-                        <div className="space-y-1">
+                        <div className="space-y-0.5 max-h-20 overflow-y-auto">
                           {pickerEmployees?.map((picker, index) => (
-                            <div key={picker.employee_id} className="flex items-center">
-                              <span className="text-sm font-thai text-gray-900">
+                            <div key={picker.employee_id} className="flex items-center text-xs">
+                              <span className="font-thai text-gray-900">
                                 {index + 1}. {picker.nickname || `${picker.first_name} ${picker.last_name}`}
                               </span>
-                              <span className="text-gray-500 text-xs ml-2">
+                              <span className="text-gray-500 text-[10px] ml-1">
                                 ({picker.employee_code})
                               </span>
                             </div>
                           ))}
                           {checkerEmployees?.map((checker, index) => (
-                            <div key={checker.employee_id} className="flex items-center">
-                              <span className="text-sm font-thai text-gray-900">
+                            <div key={checker.employee_id} className="flex items-center text-xs">
+                              <span className="font-thai text-gray-900">
                                 {(pickerEmployees?.length || 0) + index + 1}. {checker.nickname || `${checker.first_name} ${checker.last_name}`}
                               </span>
-                              <span className="text-gray-500 text-xs ml-2">
+                              <span className="text-gray-500 text-[10px] ml-1">
                                 ({checker.employee_code})
                               </span>
                             </div>
@@ -269,15 +269,15 @@ export default function EmployeeSelectionModal({
                         </div>
                       ) : pickerEmployee ? (
                         <>
-                          <span className="text-sm font-thai text-gray-900">
+                          <span className="text-xs font-thai text-gray-900">
                             {pickerEmployee.nickname || `${pickerEmployee.first_name} ${pickerEmployee.last_name}`}
                           </span>
-                          <span className="text-gray-500 text-xs ml-2">
+                          <span className="text-gray-500 text-[10px] ml-1">
                             ({pickerEmployee.employee_code})
                           </span>
                         </>
                       ) : (
-                        <span className="text-sm font-thai text-gray-500 italic">
+                        <span className="text-xs font-thai text-gray-500 italic">
                           ยังไม่ได้กำหนดผู้จัดสินค้า
                         </span>
                       )}
@@ -289,26 +289,26 @@ export default function EmployeeSelectionModal({
               {/* Picker Selection (for both mode) */}
               {mode === 'both' && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2 font-thai">
-                    <User className="w-4 h-4 inline mr-1" />
+                  <label className="block text-xs font-medium text-gray-700 mb-1.5 font-thai">
+                    <User className="w-3.5 h-3.5 inline mr-1" />
                     พนักงานจัดสินค้า ({pickerIds.length} คน)
                   </label>
-                  <div className="border border-gray-300 rounded-lg max-h-48 overflow-y-auto">
+                  <div className="border border-gray-300 rounded max-h-36 overflow-y-auto">
                     {employees.map((emp) => (
                       <label
                         key={`picker-${emp.employee_id}`}
-                        className="flex items-center px-3 py-2 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
+                        className="flex items-center px-2 py-1.5 hover:bg-gray-50 cursor-pointer border-b border-gray-100 last:border-b-0"
                       >
                         <input
                           type="checkbox"
                           checked={pickerIds.includes(emp.employee_id.toString())}
                           onChange={() => togglePicker(emp.employee_id)}
-                          className="w-4 h-4 text-sky-500 border-gray-300 rounded focus:ring-sky-500"
+                          className="w-3.5 h-3.5 text-sky-500 border-gray-300 rounded focus:ring-sky-500"
                         />
-                        <span className="ml-2 text-sm font-thai text-gray-900">
+                        <span className="ml-2 text-xs font-thai text-gray-900">
                           {getEmployeeDisplay(emp)}
                           {emp.wms_role && (
-                            <span className="text-gray-500 text-xs ml-1">({emp.wms_role})</span>
+                            <span className="text-gray-500 text-[10px] ml-1">({emp.wms_role})</span>
                           )}
                         </span>
                       </label>
@@ -317,9 +317,9 @@ export default function EmployeeSelectionModal({
                 </div>
               )}
 
-              {/* Summary */}
+              {/* Summary - Compact */}
               {mode === 'checker-only' && checkerIds.length > 0 && (
-                <div className="bg-sky-50 border border-sky-200 rounded-lg p-3 text-sm font-thai">
+                <div className="bg-sky-50 border border-sky-200 rounded p-2 text-xs font-thai">
                   <p className="text-gray-700">
                     <span className="font-medium">ผู้เช็คโหลดจริง:</span>{' '}
                     {checkerIds.map(id => {
@@ -330,36 +330,32 @@ export default function EmployeeSelectionModal({
                 </div>
               )}
               {mode === 'both' && checkerIds.length > 0 && pickerIds.length > 0 && (
-                <div className="bg-sky-50 border border-sky-200 rounded-lg p-3 text-sm font-thai">
-                  <p className="text-gray-700 mb-2">
-                    <span className="font-medium">พนักงานเช็ค ({checkerIds.length}):</span>
-                  </p>
-                  <ul className="list-disc list-inside text-gray-600 text-xs mb-2 ml-2">
+                <div className="bg-sky-50 border border-sky-200 rounded p-2 text-xs font-thai">
+                  <p className="text-gray-700 mb-1">
+                    <span className="font-medium">พนักงานเช็ค:</span>{' '}
                     {checkerIds.map(id => {
                       const emp = employees.find(e => e.employee_id.toString() === id);
-                      return emp ? <li key={id}>{getEmployeeDisplay(emp)}</li> : null;
-                    })}
-                  </ul>
-                  <p className="text-gray-700 mb-2">
-                    <span className="font-medium">พนักงานจัดสินค้า ({pickerIds.length}):</span>
+                      return emp ? getEmployeeDisplay(emp) : '';
+                    }).join(', ')}
                   </p>
-                  <ul className="list-disc list-inside text-gray-600 text-xs ml-2">
+                  <p className="text-gray-700">
+                    <span className="font-medium">พนักงานจัด:</span>{' '}
                     {pickerIds.map(id => {
                       const emp = employees.find(e => e.employee_id.toString() === id);
-                      return emp ? <li key={id}>{getEmployeeDisplay(emp)}</li> : null;
-                    })}
-                  </ul>
+                      return emp ? getEmployeeDisplay(emp) : '';
+                    }).join(', ')}
+                  </p>
                 </div>
               )}
             </>
           )}
         </div>
 
-        {/* Footer */}
-        <div className="p-4 border-t border-gray-200 bg-gray-50 flex space-x-3 flex-shrink-0">
+        {/* Footer - Compact */}
+        <div className="p-3 border-t border-gray-200 bg-gray-50 flex space-x-2 flex-shrink-0 pb-6 sm:pb-3">
           <button
             onClick={handleClose}
-            className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg font-thai font-medium hover:bg-gray-100 transition-colors"
+            className="flex-1 px-3 py-2 border border-gray-300 text-gray-700 rounded font-thai font-medium text-sm hover:bg-gray-100 transition-colors"
           >
             ยกเลิก
           </button>
@@ -370,9 +366,9 @@ export default function EmployeeSelectionModal({
               checkerIds.length === 0 || 
               (mode === 'both' && pickerIds.length === 0)
             }
-            className="flex-1 px-4 py-2 bg-sky-500 text-white rounded-lg font-thai font-medium hover:bg-sky-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+            className="flex-1 px-3 py-2 bg-sky-500 text-white rounded font-thai font-medium text-sm hover:bg-sky-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
           >
-            <Check className="w-4 h-4 mr-1" />
+            <Check className="w-3.5 h-3.5 mr-1" />
             ยืนยัน
           </button>
         </div>

@@ -16,7 +16,9 @@ import {
   X,
   Package,
   Truck,
-  User
+  User,
+  Maximize,
+  Minimize,
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Badge from '@/components/ui/Badge';
@@ -85,6 +87,28 @@ function MobilePickPage() {
   const [showFilter, setShowFilter] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Fullscreen handlers
+  useEffect(() => {
+    const checkFullscreen = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', checkFullscreen);
+    return () => document.removeEventListener('fullscreenchange', checkFullscreen);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch (err) {
+      console.error('Error toggling fullscreen:', err);
+    }
+  };
 
   // Fix hydration mismatch
   useEffect(() => {
@@ -244,50 +268,61 @@ function MobilePickPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      {/* Header */}
-      <div className="bg-gradient-to-br from-sky-400 to-sky-500 text-white p-4 sticky top-0 z-10 shadow-lg">
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center space-x-2">
-            <ClipboardList className="w-6 h-6" />
-            <h1 className="text-lg font-bold font-thai">เช็คสินค้า (Pick)</h1>
+    <div className="min-h-screen bg-gray-50 pb-16">
+      {/* Header - Compact */}
+      <div className="bg-gradient-to-br from-sky-400 to-sky-500 text-white p-2 sticky top-0 z-10 shadow-lg mobile-header">
+        <div className="flex items-center justify-between mb-1.5">
+          <div className="flex items-center space-x-1.5">
+            <ClipboardList className="w-4 h-4" />
+            <h1 className="text-sm font-bold font-thai">เช็คสินค้า (Pick)</h1>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1">
+            <button
+              onClick={toggleFullscreen}
+              className="p-1 bg-white/20 rounded hover:bg-white/30 transition-colors active:scale-95 mobile-icon-btn"
+              title={isFullscreen ? 'ออกจากเต็มจอ' : 'เต็มจอ'}
+            >
+              {isFullscreen ? (
+                <Minimize className="w-3.5 h-3.5" />
+              ) : (
+                <Maximize className="w-3.5 h-3.5" />
+              )}
+            </button>
             <button
               onClick={handleRefresh}
               disabled={refreshing}
-              className="p-1.5 bg-white/20 rounded-lg hover:bg-white/30 transition-colors active:scale-95 disabled:opacity-50"
+              className="p-1 bg-white/20 rounded hover:bg-white/30 transition-colors active:scale-95 disabled:opacity-50 mobile-icon-btn"
             >
-              <RefreshCw className={`w-5 h-5 ${refreshing ? 'animate-spin' : ''}`} />
+              <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
             </button>
             <button
               onClick={() => router.push('/profile')}
-              className="p-1.5 bg-white/20 rounded-lg hover:bg-white/30 transition-colors active:scale-95"
+              className="p-1 bg-white/20 rounded hover:bg-white/30 transition-colors active:scale-95 mobile-icon-btn"
             >
-              <User className="w-5 h-5" />
+              <User className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
 
-        {/* Search and Filter - Same Row */}
-        <div className="flex items-center gap-2 mb-2" suppressHydrationWarning>
+        {/* Search and Filter - Same Row - Compact */}
+        <div className="flex items-center gap-1.5 mobile-search" suppressHydrationWarning>
           {/* Search Box */}
           <div className="relative flex-1">
-            <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-gray-400" />
             <input
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder="ค้นหา..."
-              className="w-full pl-9 pr-8 py-2 rounded-lg bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-sky-300 font-thai text-sm"
+              className="w-full pl-7 pr-6 py-1.5 rounded bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-sky-300 font-thai text-xs"
               suppressHydrationWarning
             />
             {searchTerm && (
               <button
                 onClick={() => setSearchTerm('')}
-                className="absolute right-2.5 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
               >
-                <X className="w-4 h-4" />
+                <X className="w-3 h-3" />
               </button>
             )}
           </div>
@@ -295,11 +330,11 @@ function MobilePickPage() {
           {/* Filter Button - Compact */}
           <button
             onClick={() => setShowFilter(!showFilter)}
-            className="relative bg-white/20 rounded-lg p-2 hover:bg-white/30 transition-colors flex-shrink-0"
+            className="relative bg-white/20 rounded p-1.5 hover:bg-white/30 transition-colors flex-shrink-0"
           >
-            <Filter className="w-5 h-5" />
+            <Filter className="w-4 h-4" />
             {selectedStatus !== 'all' && (
-              <span className="absolute -top-1 -right-1 bg-yellow-400 text-gray-900 rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold">
+              <span className="absolute -top-1 -right-1 bg-yellow-400 text-gray-900 rounded-full w-4 h-4 flex items-center justify-center text-[8px] font-bold">
                 1
               </span>
             )}
@@ -307,10 +342,10 @@ function MobilePickPage() {
         </div>
       </div>
 
-      {/* Filter Dropdown */}
+      {/* Filter Dropdown - Compact */}
       {showFilter && (
         <div className="bg-sky-50 border-b border-sky-100 shadow-sm">
-          <div className="p-3 space-y-2">
+          <div className="p-2 space-y-1">
             {PICKLIST_STATUSES.map((status) => (
               <button
                 key={status}
@@ -318,7 +353,7 @@ function MobilePickPage() {
                   setSelectedStatus(status);
                   setShowFilter(false);
                 }}
-                className={`w-full px-3 py-2 rounded-lg text-left font-thai text-sm transition-colors ${
+                className={`w-full px-2 py-1.5 rounded text-left font-thai text-xs transition-colors ${
                   selectedStatus === status
                     ? 'bg-sky-500 text-white font-semibold'
                     : 'bg-white text-gray-700 hover:bg-sky-100'
@@ -326,7 +361,7 @@ function MobilePickPage() {
               >
                 {status === 'all' && 'ทั้งหมด'}
                 {status === 'pending' && 'รอดำเนินการ'}
-                {status === 'assigned' && 'มอบหมายแล้ว (แนะนำ)'}
+                {status === 'assigned' && 'มอบหมายแล้ว'}
                 {status === 'completed' && 'เสร็จสิ้น'}
                 {status === 'cancelled' && 'ยกเลิก'}
               </button>
@@ -335,36 +370,36 @@ function MobilePickPage() {
         </div>
       )}
 
-      {/* Loading State */}
+      {/* Loading State - Compact */}
       {loading && (
-        <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-8 h-8 animate-spin text-sky-500" />
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="w-6 h-6 animate-spin text-sky-500" />
         </div>
       )}
 
-      {/* Empty State */}
+      {/* Empty State - Compact */}
       {!loading && filteredTasks.length === 0 && (
-        <div className="flex flex-col items-center justify-center py-12 text-center px-4">
-          <ClipboardList className="w-16 h-16 text-gray-300 mb-4" />
-          <p className="text-gray-500 font-thai text-lg mb-2">ไม่พบรายการ</p>
-          <p className="text-gray-400 text-sm font-thai">
+        <div className="flex flex-col items-center justify-center py-8 text-center px-4">
+          <ClipboardList className="w-12 h-12 text-gray-300 mb-2" />
+          <p className="text-gray-500 font-thai text-sm mb-1">ไม่พบรายการ</p>
+          <p className="text-gray-400 text-xs font-thai">
             {searchTerm ? 'ลองค้นหาด้วยคำอื่น' : 'ยังไม่มีรายการที่ต้องเช็ค'}
           </p>
         </div>
       )}
 
-      {/* Task List - Table Format */}
+      {/* Task List - Table Format - Compact */}
       {!loading && filteredTasks.length > 0 && (
-        <div className="p-4">
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+        <div className="p-1.5">
+          <div className="bg-white rounded shadow-sm border border-gray-200 overflow-hidden">
             <table className="w-full">
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-700 font-thai">รหัส</th>
-                  <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700 font-thai">สถานะ</th>
-                  <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700 font-thai">จำนวน</th>
-                  <th className="px-3 py-2 text-center text-xs font-semibold text-gray-700 font-thai">อัปเดต</th>
-                  <th className="px-3 py-2 w-10"></th>
+                  <th className="px-1.5 py-1 text-left text-[10px] font-semibold text-gray-700 font-thai">รหัส</th>
+                  <th className="px-1.5 py-1 text-center text-[10px] font-semibold text-gray-700 font-thai">สถานะ</th>
+                  <th className="px-1.5 py-1 text-center text-[10px] font-semibold text-gray-700 font-thai">จำนวน</th>
+                  <th className="px-1.5 py-1 text-center text-[10px] font-semibold text-gray-700 font-thai">อัปเดต</th>
+                  <th className="px-1 py-1 w-6"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100">
@@ -383,57 +418,57 @@ function MobilePickPage() {
                     className="hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer"
                   >
                     {/* รหัส */}
-                    <td className="px-2 py-3">
-                      <div className="flex items-center space-x-1.5">
+                    <td className="px-1.5 py-2">
+                      <div className="flex items-center space-x-1">
                         <div className="flex-shrink-0">
                           {getStatusIcon(task.status)}
                         </div>
                         <div className="min-w-0">
-                          <p className="font-semibold text-gray-900 font-thai text-xs whitespace-nowrap">
+                          <p className="font-semibold text-gray-900 font-thai text-[10px] whitespace-nowrap">
                             {task.type === 'picklist' ? task.picklist_code : task.face_sheet_no}
                           </p>
                           {task.type === 'picklist' && task.receiving_route_trips?.receiving_route_plans && (
-                            <p className="text-[10px] text-gray-500 font-thai whitespace-nowrap">
+                            <p className="text-[9px] text-gray-500 font-thai whitespace-nowrap">
                               {task.receiving_route_trips.receiving_route_plans.plan_code}
                             </p>
                           )}
                           {task.type === 'face_sheet' && (
-                            <p className="text-[10px] text-gray-500 font-thai whitespace-nowrap">ใบปะหน้า</p>
+                            <p className="text-[9px] text-gray-500 font-thai whitespace-nowrap">ใบปะหน้า</p>
                           )}
                           {task.type === 'bonus_face_sheet' && (
-                            <p className="text-[10px] text-gray-500 font-thai whitespace-nowrap">ใบปะหน้าของแถม</p>
+                            <p className="text-[9px] text-gray-500 font-thai whitespace-nowrap">ของแถม</p>
                           )}
                         </div>
                       </div>
                     </td>
 
                     {/* สถานะ */}
-                    <td className="px-3 py-3 text-center">
+                    <td className="px-1.5 py-2 text-center">
                       {getStatusBadge(task.status)}
                     </td>
 
                     {/* จำนวน */}
-                    <td className="px-3 py-3 text-center">
+                    <td className="px-1.5 py-2 text-center">
                       <div>
-                        <p className="font-semibold text-gray-900 font-thai text-sm">
+                        <p className="font-semibold text-gray-900 font-thai text-xs">
                           {task.type === 'picklist' ? `${task.total_lines}` : `${task.total_packages}`}
                         </p>
-                        <p className="text-xs text-gray-500 font-thai">
+                        <p className="text-[9px] text-gray-500 font-thai">
                           {task.type === 'picklist' ? 'รายการ' : 'แพ็ค'}
                         </p>
                       </div>
                     </td>
 
                     {/* อัปเดต */}
-                    <td className="px-3 py-3 text-center" suppressHydrationWarning>
-                      <p className="text-xs text-gray-600 font-thai whitespace-nowrap">
+                    <td className="px-1.5 py-2 text-center" suppressHydrationWarning>
+                      <p className="text-[9px] text-gray-600 font-thai whitespace-nowrap">
                         {formatDate(task.updated_at)}
                       </p>
                     </td>
 
                     {/* Arrow */}
-                    <td className="px-3 py-3 text-center">
-                      <ChevronRight className="w-5 h-5 text-gray-400 mx-auto" />
+                    <td className="px-1 py-2 text-center">
+                      <ChevronRight className="w-3.5 h-3.5 text-gray-400 mx-auto" />
                     </td>
                   </tr>
                 ))}

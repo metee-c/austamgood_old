@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft,
@@ -194,19 +194,19 @@ export default function MobilePickDetailPage() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-sky-500" />
+        <Loader2 className="w-6 h-6 animate-spin text-sky-500" />
       </div>
     );
   }
 
   if (!picklist) {
     return (
-      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
-        <AlertCircle className="w-16 h-16 text-red-500 mb-4" />
-        <p className="text-gray-700 font-thai text-lg">ไม่พบข้อมูลใบหยิบ</p>
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-3">
+        <AlertCircle className="w-12 h-12 text-red-500 mb-3" />
+        <p className="text-gray-700 font-thai text-sm">ไม่พบข้อมูลใบหยิบ</p>
         <button
           onClick={() => router.push('/mobile/pick')}
-          className="mt-4 px-4 py-2 bg-sky-500 text-white rounded-lg font-thai"
+          className="mt-3 px-3 py-1.5 bg-sky-500 text-white rounded-lg font-thai text-sm"
         >
           กลับ
         </button>
@@ -229,38 +229,38 @@ export default function MobilePickDetailPage() {
   }, {} as Record<string, PicklistItem[]>);
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-20">
-      {/* Header */}
-      <div className="bg-gradient-to-br from-sky-400 to-sky-500 text-white p-4 sticky top-0 z-10 shadow-lg">
-        <div className="flex items-center space-x-3 mb-3">
+    <div className="min-h-screen bg-gray-50 pb-16">
+      {/* Compact Header */}
+      <div className="bg-gradient-to-br from-sky-400 to-sky-500 text-white p-2.5 sticky top-0 z-10 shadow-lg">
+        <div className="flex items-center gap-2 mb-2">
           <button
             onClick={() => router.push('/mobile/pick')}
-            className="p-1.5 bg-white/20 rounded-lg hover:bg-white/30 transition-colors"
+            className="p-1 bg-white/20 rounded hover:bg-white/30 transition-colors"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="w-4 h-4" />
           </button>
-          <div className="flex-1">
-            <h1 className="text-lg font-bold font-thai">{picklist.picklist_code}</h1>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-sm font-bold font-thai truncate">{picklist.picklist_code}</h1>
             {picklist.plan && (
-              <p className="text-xs opacity-90 font-thai">{picklist.plan.plan_code}</p>
+              <p className="text-[10px] opacity-90 font-thai truncate">{picklist.plan.plan_code}</p>
             )}
           </div>
         </div>
 
         {/* Progress */}
-        <div className="bg-white/20 rounded-full h-2 mb-2">
+        <div className="bg-white/20 rounded-full h-1.5 mb-1">
           <div
-            className="bg-white rounded-full h-2 transition-all duration-300"
+            className="bg-white rounded-full h-1.5 transition-all duration-300"
             style={{ width: `${progress}%` }}
           />
         </div>
-        <p className="text-xs text-center font-thai">
-          หยิบแล้ว {pickedCount} / {totalCount} รายการ ({progress.toFixed(0)}%)
+        <p className="text-[10px] text-center font-thai">
+          หยิบแล้ว {pickedCount}/{totalCount} ({progress.toFixed(0)}%)
         </p>
       </div>
 
-      {/* Items by Shop */}
-      <div className="p-3 space-y-4">
+      {/* Items by Shop - Compact */}
+      <div className="p-2 space-y-2 overflow-y-auto max-h-[calc(100vh-120px)]">
         {Object.entries(itemsByShop).map(([shopName, items]) => {
           const shopPicked = items.filter(i => i.status === 'picked').length;
           const shopTotal = items.length;
@@ -268,14 +268,14 @@ export default function MobilePickDetailPage() {
 
           return (
             <div key={shopName} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-              {/* Shop Header */}
-              <div className={`p-3 ${allPicked ? 'bg-green-50' : 'bg-gray-50'} border-b border-gray-200`}>
-                <div className="flex items-center justify-between mb-2">
-                  <h3 className="font-bold text-gray-900 font-thai text-sm">{shopName}</h3>
+              {/* Shop Header - Compact */}
+              <div className={`p-2 ${allPicked ? 'bg-green-50' : 'bg-gray-50'} border-b border-gray-200`}>
+                <div className="flex items-center justify-between mb-1.5">
+                  <h3 className="font-bold text-gray-900 font-thai text-xs truncate flex-1 mr-2">{shopName}</h3>
                   {allPicked ? (
                     <Badge variant="success" size="sm">
-                      <CheckCircle className="w-3 h-3 mr-1" />
-                      เสร็จสิ้น
+                      <CheckCircle className="w-2.5 h-2.5 mr-0.5" />
+                      เสร็จ
                     </Badge>
                   ) : (
                     <Badge variant="default" size="sm">
@@ -287,21 +287,21 @@ export default function MobilePickDetailPage() {
                   <button
                     onClick={() => handleConfirmShop(items, shopName)}
                     disabled={scanning}
-                    className="w-full py-2 bg-sky-500 text-white rounded-lg font-thai text-sm font-medium hover:bg-sky-600 active:scale-98 transition-all disabled:opacity-50"
+                    className="w-full py-1.5 bg-sky-500 text-white rounded font-thai text-xs font-medium hover:bg-sky-600 active:scale-98 transition-all disabled:opacity-50"
                   >
-                    ยืนยันการหยิบทั้งหมด
+                    ยืนยันหยิบทั้งหมด
                   </button>
                 )}
               </div>
 
-              {/* Items Table */}
-              <div className="overflow-x-auto">
-                <table className="w-full text-xs">
-                  <thead className="bg-gray-100 border-b border-gray-200">
+              {/* Items Table - Compact */}
+              <div className="overflow-x-auto max-h-48 overflow-y-auto">
+                <table className="w-full text-[10px]">
+                  <thead className="bg-gray-100 border-b border-gray-200 sticky top-0">
                     <tr>
-                      <th className="px-2 py-2 text-left font-thai text-gray-700">สินค้า</th>
-                      <th className="px-2 py-2 text-center font-thai text-gray-700">จำนวน</th>
-                      <th className="px-2 py-2 text-center font-thai text-gray-700">สถานะ</th>
+                      <th className="px-1.5 py-1 text-left font-thai text-gray-700">สินค้า</th>
+                      <th className="px-1.5 py-1 text-center font-thai text-gray-700 w-16">จำนวน</th>
+                      <th className="px-1.5 py-1 text-center font-thai text-gray-700 w-10">✓</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -312,22 +312,22 @@ export default function MobilePickDetailPage() {
                           item.status === 'picked' ? 'bg-green-50/50' : ''
                         }`}
                       >
-                        <td className="px-2 py-2">
-                          <div className="font-thai text-gray-900 font-medium">
+                        <td className="px-1.5 py-1">
+                          <div className="font-thai text-gray-900 font-medium truncate max-w-[140px]">
                             {item.master_sku?.sku_name || item.sku_name}
                           </div>
-                          <div className="text-gray-500 mt-0.5">
+                          <div className="text-gray-500 text-[9px]">
                             {item.sku_id}
                           </div>
                         </td>
-                        <td className="px-2 py-2 text-center font-thai text-gray-700">
-                          {item.quantity_to_pick} {item.uom}
+                        <td className="px-1.5 py-1 text-center font-thai text-gray-700">
+                          {item.quantity_to_pick}
                         </td>
-                        <td className="px-2 py-2 text-center">
+                        <td className="px-1.5 py-1 text-center">
                           {item.status === 'picked' ? (
-                            <CheckCircle className="w-4 h-4 text-green-500 mx-auto" />
+                            <CheckCircle className="w-3.5 h-3.5 text-green-500 mx-auto" />
                           ) : (
-                            <div className="w-4 h-4 border-2 border-gray-300 rounded mx-auto" />
+                            <div className="w-3 h-3 border border-gray-300 rounded mx-auto" />
                           )}
                         </td>
                       </tr>
@@ -351,12 +351,12 @@ export default function MobilePickDetailPage() {
         title="เลือกพนักงาน"
       />
 
-      {/* Scanning Overlay */}
+      {/* Scanning Overlay - Compact */}
       {scanning && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 text-center">
-            <Loader2 className="w-12 h-12 animate-spin text-sky-500 mx-auto mb-3" />
-            <p className="text-gray-700 font-thai">กำลังบันทึก...</p>
+          <div className="bg-white rounded-lg p-4 text-center">
+            <Loader2 className="w-8 h-8 animate-spin text-sky-500 mx-auto mb-2" />
+            <p className="text-gray-700 font-thai text-sm">กำลังบันทึก...</p>
           </div>
         </div>
       )}

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import MobileLayout from '@/components/layout/MobileLayout';
@@ -22,13 +22,21 @@ import {
   Users,
   ChevronRight,
   X,
-  User
+  User,
+  Wifi,
+  WifiOff,
+  Cloud,
+  CloudOff,
+  Maximize,
+  Minimize,
 } from 'lucide-react';
 import { useMoves } from '@/hooks/useMoves';
 import { MoveRecord, MoveStatus, MoveType } from '@/lib/database/move';
 import { useReplenishmentTasks, ReplenishmentStatus } from '@/hooks/useReplenishmentTasks';
 import { ReplenishmentTaskCard } from '@/components/mobile/ReplenishmentTaskCard';
 import { Utensils } from 'lucide-react';
+import { useOfflineTransfer } from '@/hooks/useOfflineTransfer';
+import { OfflineIndicator, OfflineBanner } from '@/components/mobile/OfflineIndicator';
 
 // Type labels
 const MOVE_TYPE_LABELS: Record<MoveType, string> = {
@@ -67,6 +75,28 @@ const STATUS_ICONS: Record<MoveStatus, any> = {
 function MobileTransferListPage() {
   const router = useRouter();
 
+  // Offline support
+  const {
+    isOnline,
+    isSyncing,
+    syncStatus,
+    pendingCount,
+    pendingMoves,
+    fetchPalletData,
+    fetchLocations,
+    validateLocation,
+    executeQuickMove,
+    triggerSync,
+    preCacheLocations,
+  } = useOfflineTransfer({ autoSync: true, syncInterval: 30000 });
+
+  // Pre-cache locations on mount for offline use
+  useEffect(() => {
+    if (isOnline) {
+      preCacheLocations();
+    }
+  }, [isOnline, preCacheLocations]);
+
   // Data fetching
   const { data: allMoves, loading, error, refetch } = useMoves();
   
@@ -97,6 +127,28 @@ function MobileTransferListPage() {
   const [selectedType, setSelectedType] = useState<MoveType | 'all'>('all');
   const [showFilters, setShowFilters] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  // Fullscreen handlers
+  useEffect(() => {
+    const checkFullscreen = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener('fullscreenchange', checkFullscreen);
+    return () => document.removeEventListener('fullscreenchange', checkFullscreen);
+  }, []);
+
+  const toggleFullscreen = async () => {
+    try {
+      if (!document.fullscreenElement) {
+        await document.documentElement.requestFullscreen();
+      } else {
+        await document.exitFullscreen();
+      }
+    } catch (err) {
+      console.error('Error toggling fullscreen:', err);
+    }
+  };
 
   // State for Alerts tab
   const [alertsSearchTerm, setAlertsSearchTerm] = useState('');
@@ -193,18 +245,22 @@ function MobileTransferListPage() {
       setLoadingPalletDetails(true);
       setQuickMoveError(null);
 
-      // Fetch pallet details from inventory balances
-      const response = await fetch(`/api/inventory/balances?pallet_id=${encodeURIComponent(palletId.trim())}`);
-      const result = await response.json();
+      // Use offline-capable fetch
+      const { data, fromCache, error: fetchError } = await fetchPalletData(palletId.trim());
 
-      if (result.error || !result.data || result.data.length === 0) {
-        setQuickMoveError(`ไม่พบ Pallet ID: ${palletId} หรือสต็อกเป็น 0`);
+      if (fetchError || !data || data.length === 0) {
+        setQuickMoveError(fetchError || `ไม่พบ Pallet ID: ${palletId} หรือสต็อกเป็น 0`);
         playErrorSound();
         return;
       }
 
+      // Show cache indicator if data is from cache
+      if (fromCache) {
+        console.log('Using cached pallet data (offline mode)');
+      }
+
       // Filter only items with stock > 0 and group by SKU (keep only latest location)
-      const filteredData = result.data
+      const filteredData = data
         .filter((item: any) => item.total_piece_qty > 0)
         .reduce((acc: any[], item: any) => {
           // Check if SKU already exists
@@ -234,8 +290,8 @@ function MobileTransferListPage() {
       setPalletDetails(filteredData);
       setQuickMoveError(null);
       
-      // Fetch locations for next step
-      await fetchLocations();
+      // Fetch locations for next step (with offline support)
+      await handleFetchLocations();
       
       setQuickMoveStep('location');
       playSuccessSound();
@@ -248,7 +304,30 @@ function MobileTransferListPage() {
     }
   };
 
-  const fetchLocations = async () => {
+  // Offline-capable fetch locations
+  const handleFetchLocations = async () => {
+    try {
+      setLoadingLocations(true);
+      const { data, fromCache, error: fetchError } = await fetchLocations();
+
+      if (fetchError) {
+        console.error('Error fetching locations:', fetchError);
+        return;
+      }
+
+      if (fromCache) {
+        console.log('Using cached locations (offline mode)');
+      }
+
+      setLocations(data || []);
+    } catch (err) {
+      console.error('Error fetching locations:', err);
+    } finally {
+      setLoadingLocations(false);
+    }
+  };
+
+  const fetchLocationsOriginal = async () => {
     try {
       setLoadingLocations(true);
       const response = await fetch('/api/master-location');
@@ -393,28 +472,30 @@ function MobileTransferListPage() {
         return;
       }
 
-      // Call API to create quick move
-      const response = await fetch('/api/moves/quick-move', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          pallet_id: palletId.trim(),
-          to_location_id: locationIdToUse,
-          notes: 'Quick move from mobile',
-        }),
-      });
+      // Execute quick move with offline support
+      const { success, offline, error: moveError } = await executeQuickMove(
+        palletId.trim(),
+        locationIdToUse,
+        selectedLocation.location_code,
+        palletDetails,
+        'Quick move from mobile'
+      );
 
-      const result = await response.json();
-
-      if (result.error) {
-        setQuickMoveError(result.error);
+      if (!success) {
+        setQuickMoveError(moveError || 'เกิดข้อผิดพลาดในการบันทึก');
         playErrorSound();
         return;
       }
 
-      playSuccessSound();
+      // Show different message for offline vs online
+      if (offline) {
+        // Queued for later sync
+        playSuccessSound();
+        alert('✅ บันทึกสำเร็จ (Offline)\n\nข้อมูลจะถูก sync เมื่อกลับมา online');
+      } else {
+        playSuccessSound();
+      }
+
       handleCloseQuickMove();
       refetch();
     } catch (err) {
@@ -629,57 +710,82 @@ function MobileTransferListPage() {
 
   return (
     <MobileLayout>
-      <div className="min-h-screen bg-gray-50 pb-20">
-        {/* Header with Statistics */}
-        <div className="bg-gradient-to-br from-sky-400 to-sky-500 text-white sticky top-0 z-10 shadow-lg">
-          <div className="p-3">
+      {/* Offline Banner */}
+      <OfflineBanner isOnline={isOnline} pendingCount={pendingCount} />
+      
+      <div className={`min-h-screen bg-gray-50 pb-16 ${!isOnline || pendingCount > 0 ? 'pt-6' : ''}`}>
+        {/* Header with Statistics - Compact */}
+        <div className="bg-gradient-to-br from-sky-400 to-sky-500 text-white sticky top-0 z-10 shadow-lg mobile-header">
+          <div className="p-2">
             {/* Title and Action Buttons */}
-            <div className="flex items-center justify-between mb-3">
-              <h1 className="text-lg font-bold font-thai">ย้าย & เติมสต็อก</h1>
-              <div className="flex items-center gap-2">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-1.5">
+                <h1 className="text-sm font-bold font-thai">ย้าย & เติมสต็อก</h1>
+                {/* Offline Indicator */}
+                <OfflineIndicator
+                  isOnline={isOnline}
+                  isSyncing={isSyncing}
+                  syncStatus={syncStatus}
+                  pendingCount={pendingCount}
+                  onSync={triggerSync}
+                  compact={true}
+                />
+              </div>
+              <div className="flex items-center gap-1">
                 {activeTab === 'moves' && (
                   <button
                     onClick={handleOpenQuickMove}
-                    className="px-2.5 py-1.5 bg-white text-sky-600 rounded-lg font-thai text-sm font-semibold hover:bg-sky-50 transition-colors active:scale-95 flex items-center gap-1 shadow-sm"
+                    className="px-2 py-1 bg-white text-sky-600 rounded font-thai text-xs font-semibold hover:bg-sky-50 transition-colors active:scale-95 flex items-center gap-0.5 shadow-sm mobile-btn-sm"
                   >
-                    <Package className="w-4 h-4" />
-                    ย้ายสินค้า
+                    <Package className="w-3 h-3" />
+                    ย้าย
                   </button>
                 )}
                 <button
+                  onClick={toggleFullscreen}
+                  className="p-1 bg-white/20 rounded hover:bg-white/30 transition-colors active:scale-95 mobile-icon-btn"
+                  title={isFullscreen ? 'ออกจากเต็มจอ' : 'เต็มจอ'}
+                >
+                  {isFullscreen ? (
+                    <Minimize className="w-3.5 h-3.5" />
+                  ) : (
+                    <Maximize className="w-3.5 h-3.5" />
+                  )}
+                </button>
+                <button
                   onClick={handleRefresh}
                   disabled={refreshing}
-                  className="p-1.5 bg-white/20 rounded-lg hover:bg-white/30 transition-colors active:scale-95 disabled:opacity-50"
+                  className="p-1 bg-white/20 rounded hover:bg-white/30 transition-colors active:scale-95 disabled:opacity-50 mobile-icon-btn"
                 >
-                  <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+                  <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin' : ''}`} />
                 </button>
                 <button
                   onClick={() => router.push('/profile')}
-                  className="p-1.5 bg-white/20 rounded-lg hover:bg-white/30 transition-colors active:scale-95"
+                  className="p-1 bg-white/20 rounded hover:bg-white/30 transition-colors active:scale-95 mobile-icon-btn"
                 >
-                  <User className="w-4 h-4" />
+                  <User className="w-3.5 h-3.5" />
                 </button>
               </div>
             </div>
 
-            {/* Tabs */}
-            <div className="flex gap-2 mb-3">
+            {/* Tabs - Compact */}
+            <div className="flex gap-1 mb-2 mobile-tabs">
               <button
                 onClick={() => {
                   setActiveTab('alerts');
                   playTapSound();
                 }}
-                className={`flex-1 py-2 px-3 rounded-lg font-thai text-sm font-semibold transition-all ${
+                className={`flex-1 py-1.5 px-2 rounded font-thai text-xs font-semibold transition-all ${
                   activeTab === 'alerts'
                     ? 'bg-white text-sky-600 shadow-md'
                     : 'bg-white/20 text-white hover:bg-white/30'
                 }`}
               >
-                <div className="flex items-center justify-center gap-1.5">
-                  <AlertTriangle className="w-4 h-4" />
-                  <span>งานเติมสต็อก</span>
+                <div className="flex items-center justify-center gap-1">
+                  <AlertTriangle className="w-3 h-3" />
+                  <span>เติมสต็อก</span>
                   {replenishmentTasks.length > 0 && (
-                    <span className="bg-red-500 text-white rounded-full px-1.5 py-0.5 text-[10px] font-bold min-w-[18px] text-center">
+                    <span className="bg-red-500 text-white rounded-full px-1 py-0.5 text-[8px] font-bold min-w-[14px] text-center">
                       {replenishmentTasks.length}
                     </span>
                   )}
@@ -690,17 +796,17 @@ function MobileTransferListPage() {
                   setActiveTab('food_material');
                   playTapSound();
                 }}
-                className={`flex-1 py-2 px-3 rounded-lg font-thai text-sm font-semibold transition-all ${
+                className={`flex-1 py-1.5 px-2 rounded font-thai text-xs font-semibold transition-all ${
                   activeTab === 'food_material'
                     ? 'bg-white text-sky-600 shadow-md'
                     : 'bg-white/20 text-white hover:bg-white/30'
                 }`}
               >
-                <div className="flex items-center justify-center gap-1.5">
-                  <Utensils className="w-4 h-4" />
-                  <span>เติมวัตถุดิบ</span>
+                <div className="flex items-center justify-center gap-1">
+                  <Utensils className="w-3 h-3" />
+                  <span>วัตถุดิบ</span>
                   {foodMaterialTasks.length > 0 && (
-                    <span className="bg-orange-500 text-white rounded-full px-1.5 py-0.5 text-[10px] font-bold min-w-[18px] text-center">
+                    <span className="bg-orange-500 text-white rounded-full px-1 py-0.5 text-[8px] font-bold min-w-[14px] text-center">
                       {foodMaterialTasks.length}
                     </span>
                   )}
@@ -711,15 +817,15 @@ function MobileTransferListPage() {
                   setActiveTab('moves');
                   playTapSound();
                 }}
-                className={`flex-1 py-2 px-3 rounded-lg font-thai text-sm font-semibold transition-all ${
+                className={`flex-1 py-1.5 px-2 rounded font-thai text-xs font-semibold transition-all ${
                   activeTab === 'moves'
                     ? 'bg-white text-sky-600 shadow-md'
                     : 'bg-white/20 text-white hover:bg-white/30'
                 }`}
               >
-                <div className="flex items-center justify-center gap-1.5">
-                  <Package className="w-4 h-4" />
-                  <span>รายการย้าย</span>
+                <div className="flex items-center justify-center gap-1">
+                  <Package className="w-3 h-3" />
+                  <span>ย้าย</span>
                 </div>
               </button>
             </div>
@@ -727,17 +833,17 @@ function MobileTransferListPage() {
             {/* Search and Filter - Show only for Moves tab */}
             {activeTab === 'moves' && (
               <>
-                {/* Search and Filter - Same Row */}
-                <div className="flex items-center gap-2 mb-2">
+                {/* Search and Filter - Same Row - Compact */}
+                <div className="flex items-center gap-1.5 mb-1.5 mobile-search">
                   {/* Search Box */}
                   <div className="relative flex-1">
-                    <Search className="absolute left-2.5 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                    <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3 h-3 text-gray-400" />
                     <input
                       type="text"
                       placeholder="ค้นหา..."
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
-                      className="w-full pl-9 pr-8 py-2 rounded-lg bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-sky-300 font-thai text-sm"
+                      className="w-full pl-7 pr-6 py-1.5 rounded bg-white text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-sky-300 font-thai text-xs"
                     />
                     {searchTerm && (
                       <button
@@ -1253,43 +1359,43 @@ function MobileTransferListPage() {
         </div>
       )}
 
-      {/* Quick Move Modal */}
+      {/* Quick Move Modal - Opens from top for small screens */}
       {showQuickMoveModal && (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-end animate-fade-in">
-          <div className="bg-white w-full rounded-t-2xl shadow-2xl animate-slide-up">
-            {/* Modal Header */}
-            <div className="bg-gradient-to-br from-sky-400 to-sky-500 text-white p-4 rounded-t-2xl">
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-start pt-2 animate-fade-in">
+          <div className="bg-white w-full mx-2 rounded-xl shadow-2xl animate-slide-down max-h-[85vh] flex flex-col">
+            {/* Modal Header - Compact */}
+            <div className="bg-gradient-to-br from-sky-400 to-sky-500 text-white p-3 rounded-t-xl flex-shrink-0">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold font-thai">
-                  {quickMoveStep === 'pallet' ? 'สแกน Pallet ID' : 'สแกน Location ปลายทาง'}
+                <h2 className="text-sm font-bold font-thai">
+                  {quickMoveStep === 'pallet' ? 'สแกน Pallet ID' : 'สแกน Location'}
                 </h2>
                 <button
                   onClick={handleCloseQuickMove}
-                  className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"
+                  className="p-1 hover:bg-white/20 rounded transition-colors"
                 >
-                  <X className="w-5 h-5" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
 
-            {/* Modal Content */}
-            <div className="p-4 pb-24 space-y-4">
+            {/* Modal Content - Scrollable */}
+            <div className="flex-1 overflow-y-auto p-3 space-y-3" style={{ WebkitOverflowScrolling: 'touch' }}>
               {/* Error Message */}
               {quickMoveError && (
-                <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                  <p className="text-sm text-red-600 font-thai">{quickMoveError}</p>
+                <div className="bg-red-50 border border-red-200 rounded p-2">
+                  <p className="text-xs text-red-600 font-thai">{quickMoveError}</p>
                 </div>
               )}
 
               {/* Step 1: Scan Pallet */}
               {quickMoveStep === 'pallet' && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-center py-6">
-                    <Package className="w-20 h-20 text-sky-500" />
+                <div className="space-y-3">
+                  <div className="flex items-center justify-center py-4">
+                    <Package className="w-14 h-14 text-sky-500" />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2 font-thai">
+                    <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">
                       Pallet ID <span className="text-red-500">*</span>
                     </label>
                     <input
@@ -1298,7 +1404,7 @@ function MobileTransferListPage() {
                       onChange={(e) => setPalletId(e.target.value)}
                       onKeyPress={(e) => e.key === 'Enter' && handleScanPallet()}
                       placeholder="สแกนหรือพิมพ์ Pallet ID"
-                      className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-base font-thai"
+                      className="w-full px-3 py-2.5 border-2 border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-sm font-thai"
                       autoFocus
                     />
                   </div>
@@ -1306,11 +1412,11 @@ function MobileTransferListPage() {
                   <button
                     onClick={handleScanPallet}
                     disabled={loadingPalletDetails}
-                    className="w-full px-4 py-3 bg-sky-500 text-white rounded-lg font-semibold hover:bg-sky-600 transition-colors active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-thai text-base"
+                    className="w-full px-3 py-2.5 bg-sky-500 text-white rounded font-semibold hover:bg-sky-600 transition-colors active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-thai text-sm"
                   >
                     {loadingPalletDetails ? (
                       <>
-                        <Loader2 className="w-5 h-5 animate-spin" />
+                        <Loader2 className="w-4 h-4 animate-spin" />
                         กำลังตรวจสอบ...
                       </>
                     ) : (
@@ -1322,66 +1428,43 @@ function MobileTransferListPage() {
 
               {/* Step 2: Scan Location */}
               {quickMoveStep === 'location' && (
-                <div className="space-y-4">
-                  {/* Show scanned pallet */}
-                  <div className="bg-sky-50 border border-sky-200 rounded-lg p-3">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Package className="w-5 h-5 text-sky-600" />
+                <div className="space-y-3">
+                  {/* Show scanned pallet - Compact */}
+                  <div className="bg-sky-50 border border-sky-200 rounded p-2">
+                    <div className="flex items-center gap-2 mb-1.5">
+                      <Package className="w-4 h-4 text-sky-600" />
                       <div>
-                        <p className="text-xs text-sky-600 font-thai">Pallet ID</p>
-                        <p className="text-sm font-semibold text-gray-900 font-mono">{palletId}</p>
+                        <p className="text-[10px] text-sky-600 font-thai">Pallet ID</p>
+                        <p className="text-xs font-semibold text-gray-900 font-mono">{palletId}</p>
                       </div>
                     </div>
                     
-                    {/* Pallet Details */}
+                    {/* Pallet Details - Compact */}
                     {palletDetails.length > 0 && (
-                      <div className="mt-3 pt-3 border-t border-sky-200">
-                        <p className="text-xs font-semibold text-sky-700 mb-2 font-thai">รายละเอียดสินค้า:</p>
-                        <div className="space-y-2 max-h-40 overflow-y-auto">
+                      <div className="mt-2 pt-2 border-t border-sky-200">
+                        <p className="text-[10px] font-semibold text-sky-700 mb-1.5 font-thai">รายละเอียด:</p>
+                        <div className="space-y-1.5 max-h-28 overflow-y-auto">
                           {palletDetails.map((item, idx) => (
-                            <div key={idx} className="bg-white rounded p-2 text-xs">
-                              <div className="flex items-start justify-between gap-2">
+                            <div key={idx} className="bg-white rounded p-1.5 text-[10px]">
+                              <div className="flex items-start justify-between gap-1">
                                 <div className="flex-1 min-w-0">
                                   <p className="font-semibold text-gray-900 truncate font-thai">
                                     {item.master_sku?.sku_name || item.sku_id}
                                   </p>
-                                  <p className="text-gray-600 font-mono text-[10px]">{item.sku_id}</p>
-                                  <p className="text-gray-500 text-[10px] font-thai">
+                                  <p className="text-gray-500 font-thai">
                                     ตำแหน่ง: {item.master_location?.location_name || item.location_id}
                                   </p>
-                                  {(item.production_date || item.expiry_date) && (
-                                    <div className="mt-1 space-y-0.5">
-                                      {item.production_date && (
-                                        <p className="text-blue-600 text-[10px] font-thai">
-                                          ผลิต: {new Date(item.production_date).toLocaleDateString('th-TH', { 
-                                            year: 'numeric', 
-                                            month: 'short', 
-                                            day: 'numeric' 
-                                          })}
-                                        </p>
-                                      )}
-                                      {item.expiry_date && (
-                                        <p className="text-orange-600 text-[10px] font-thai">
-                                          หมดอายุ: {new Date(item.expiry_date).toLocaleDateString('th-TH', { 
-                                            year: 'numeric', 
-                                            month: 'short', 
-                                            day: 'numeric' 
-                                          })}
-                                        </p>
-                                      )}
-                                    </div>
-                                  )}
                                 </div>
                                 <div className="text-right flex-shrink-0">
                                   <p className="font-bold text-green-600">{item.total_piece_qty}</p>
-                                  <p className="text-gray-500 text-[10px]">ชิ้น</p>
+                                  <p className="text-gray-500">ชิ้น</p>
                                 </div>
                               </div>
                             </div>
                           ))}
                         </div>
-                        <div className="mt-2 pt-2 border-t border-sky-200">
-                          <p className="text-xs text-sky-700 font-thai">
+                        <div className="mt-1.5 pt-1.5 border-t border-sky-200">
+                          <p className="text-[10px] text-sky-700 font-thai">
                             รวม: <span className="font-bold">{palletDetails.length}</span> รายการ, 
                             <span className="font-bold ml-1">
                               {palletDetails.reduce((sum, item) => sum + (item.total_piece_qty || 0), 0)}
@@ -1392,19 +1475,19 @@ function MobileTransferListPage() {
                     )}
                   </div>
 
-                  <div className="flex items-center justify-center py-4">
-                    <MapPin className="w-16 h-16 text-sky-500" />
+                  <div className="flex items-center justify-center py-2">
+                    <MapPin className="w-12 h-12 text-sky-500" />
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2 font-thai">
+                    <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">
                       Location ปลายทาง <span className="text-red-500">*</span>
                     </label>
                     
                     {loadingLocations ? (
-                      <div className="flex items-center justify-center py-4">
-                        <Loader2 className="w-5 h-5 animate-spin text-sky-500" />
-                        <span className="ml-2 text-sm text-gray-600 font-thai">กำลังโหลด...</span>
+                      <div className="flex items-center justify-center py-3">
+                        <Loader2 className="w-4 h-4 animate-spin text-sky-500" />
+                        <span className="ml-2 text-xs text-gray-600 font-thai">กำลังโหลด...</span>
                       </div>
                     ) : (
                       <>
@@ -1415,51 +1498,31 @@ function MobileTransferListPage() {
                           onChange={(e) => setLocationCode(e.target.value)}
                           onKeyPress={(e) => e.key === 'Enter' && handleConfirmQuickMove()}
                           placeholder="สแกนหรือพิมพ์ Location Code"
-                          className="w-full px-4 py-3 border-2 border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-base font-thai"
+                          className="w-full px-3 py-2.5 border-2 border-gray-300 rounded focus:outline-none focus:ring-2 focus:ring-sky-500 focus:border-sky-500 text-sm font-thai"
                           autoFocus
                         />
                         <datalist id="location-list">
-                          {locations.map((loc) => {
-                            const capacityInfo = [];
-                            if (loc.max_capacity_qty) {
-                              capacityInfo.push(`${loc.max_capacity_qty} ชิ้น`);
-                            }
-                            if (loc.max_capacity_weight_kg) {
-                              capacityInfo.push(`${loc.max_capacity_weight_kg} กก.`);
-                            }
-                            const capacityText = capacityInfo.length > 0 ? ` [${capacityInfo.join(', ')}]` : '';
-                            
-                            return (
-                              <option key={loc.location_id} value={loc.location_code}>
-                                {loc.location_name}
-                                {loc.zone ? ` (${loc.zone})` : ''}
-                                {capacityText}
-                              </option>
-                            );
-                          })}
+                          {locations.map((loc) => (
+                            <option key={loc.location_id} value={loc.location_code}>
+                              {loc.location_name} {loc.zone ? `(${loc.zone})` : ''}
+                            </option>
+                          ))}
                         </datalist>
                         
-                        {/* Show selected location info */}
+                        {/* Show selected location info - Compact */}
                         {locationCode && locations.find(loc => loc.location_code === locationCode || loc.location_id === locationCode) && (
-                          <div className="mt-2 p-2 bg-green-50 border border-green-200 rounded-lg">
+                          <div className="mt-1.5 p-1.5 bg-green-50 border border-green-200 rounded">
                             {(() => {
                               const selectedLoc = locations.find(loc => loc.location_code === locationCode || loc.location_id === locationCode);
                               if (!selectedLoc) return null;
                               
                               return (
-                                <div className="text-xs">
+                                <div className="text-[10px]">
                                   <p className="font-semibold text-green-700 font-thai">
                                     ✓ {selectedLoc.location_code} - {selectedLoc.location_name}
                                   </p>
                                   {selectedLoc.zone && (
                                     <p className="text-green-600 font-thai">โซน: {selectedLoc.zone}</p>
-                                  )}
-                                  {(selectedLoc.max_capacity_qty || selectedLoc.max_capacity_weight_kg) && (
-                                    <p className="text-green-600 font-thai">
-                                      ความจุ: 
-                                      {selectedLoc.max_capacity_qty && ` ${selectedLoc.max_capacity_qty} ชิ้น`}
-                                      {selectedLoc.max_capacity_weight_kg && ` / ${selectedLoc.max_capacity_weight_kg} กก.`}
-                                    </p>
                                   )}
                                 </div>
                               );
@@ -1469,36 +1532,41 @@ function MobileTransferListPage() {
                       </>
                     )}
                   </div>
-
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => {
-                        setQuickMoveStep('pallet');
-                        setLocationCode('');
-                        setQuickMoveError(null);
-                      }}
-                      className="flex-1 px-4 py-3 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300 transition-colors active:scale-95 font-thai text-base"
-                    >
-                      ย้อนกลับ
-                    </button>
-                    <button
-                      onClick={handleConfirmQuickMove}
-                      disabled={savingQuickMove}
-                      className="flex-1 px-4 py-3 bg-green-500 text-white rounded-lg font-semibold hover:bg-green-600 transition-colors active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-thai text-base"
-                    >
-                      {savingQuickMove ? (
-                        <>
-                          <Loader2 className="w-5 h-5 animate-spin" />
-                          กำลังบันทึก...
-                        </>
-                      ) : (
-                        'บันทึก'
-                      )}
-                    </button>
-                  </div>
                 </div>
               )}
             </div>
+
+            {/* Modal Footer - Fixed buttons */}
+            {quickMoveStep === 'location' && (
+              <div className="flex-shrink-0 p-3 border-t border-gray-200 bg-gray-50 rounded-b-xl">
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setQuickMoveStep('pallet');
+                      setLocationCode('');
+                      setQuickMoveError(null);
+                    }}
+                    className="flex-1 px-3 py-2.5 bg-gray-200 text-gray-700 rounded font-semibold hover:bg-gray-300 transition-colors active:scale-95 font-thai text-sm"
+                  >
+                    ย้อนกลับ
+                  </button>
+                  <button
+                    onClick={handleConfirmQuickMove}
+                    disabled={savingQuickMove}
+                    className="flex-1 px-3 py-2.5 bg-green-500 text-white rounded font-semibold hover:bg-green-600 transition-colors active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 font-thai text-sm"
+                  >
+                    {savingQuickMove ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        บันทึก...
+                      </>
+                    ) : (
+                      'บันทึก'
+                    )}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

@@ -206,20 +206,20 @@ export default function MobileLoadingDetailPage() {
   const totalItems = loadlist.orders.reduce((sum, order) => sum + order.items.length, 0);
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-32">
-      {/* Header */}
-      <div className="bg-gradient-to-br from-sky-400 to-sky-500 text-white p-4 sticky top-0 z-10 shadow-lg">
-        <div className="flex items-center space-x-3 mb-3">
+    <div className="min-h-screen bg-gray-50 pb-28">
+      {/* Header - Compact */}
+      <div className="bg-gradient-to-br from-sky-400 to-sky-500 text-white p-3 sticky top-0 z-10 shadow-lg">
+        <div className="flex items-center space-x-2 mb-2">
           <button
             onClick={() => router.push('/mobile/loading')}
-            className="p-1.5 bg-white/20 rounded-lg hover:bg-white/30 transition-colors"
+            className="p-1 bg-white/20 rounded hover:bg-white/30 transition-colors"
           >
-            <ArrowLeft className="w-5 h-5" />
+            <ArrowLeft className="w-4 h-4" />
           </button>
           <div className="flex-1">
-            <h1 className="text-lg font-bold font-thai">{loadlist.loadlist_code}</h1>
+            <h1 className="text-sm font-bold font-thai">{loadlist.loadlist_code}</h1>
             {loadlist.vehicle && (
-              <p className="text-xs opacity-90 font-thai">{loadlist.vehicle.plate_number}</p>
+              <p className="text-[10px] opacity-90 font-thai">{loadlist.vehicle.plate_number}</p>
             )}
           </div>
           <Badge variant={loadlist.status === 'loaded' ? 'success' : 'warning'} size="sm">
@@ -227,65 +227,65 @@ export default function MobileLoadingDetailPage() {
           </Badge>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-3 gap-2">
-          <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
-            <div className="text-lg font-bold">{totalOrders}</div>
-            <div className="text-[10px] opacity-90">ออเดอร์</div>
+        {/* Stats - Compact */}
+        <div className="grid grid-cols-3 gap-1.5">
+          <div className="bg-white/15 backdrop-blur-sm rounded p-1 text-center">
+            <div className="text-sm font-bold">{totalOrders}</div>
+            <div className="text-[9px] opacity-90">ออเดอร์</div>
           </div>
-          <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
-            <div className="text-lg font-bold">{totalItems}</div>
-            <div className="text-[10px] opacity-90">รายการ</div>
+          <div className="bg-white/15 backdrop-blur-sm rounded p-1 text-center">
+            <div className="text-sm font-bold">{totalItems}</div>
+            <div className="text-[9px] opacity-90">รายการ</div>
           </div>
-          <div className="bg-white/15 backdrop-blur-sm rounded-md p-1.5 text-center">
-            <div className="text-lg font-bold">{loadlist.total_weight.toFixed(0)}</div>
-            <div className="text-[10px] opacity-90">กก.</div>
+          <div className="bg-white/15 backdrop-blur-sm rounded p-1 text-center">
+            <div className="text-sm font-bold">{loadlist.total_weight.toFixed(0)}</div>
+            <div className="text-[9px] opacity-90">กก.</div>
           </div>
         </div>
       </div>
 
-      {/* Messages */}
-      <div className="p-4 space-y-3">
+      {/* Messages - Compact */}
+      <div className="p-2 space-y-2">
         {successMessage && (
-          <div className="bg-green-50 border border-green-200 rounded-lg p-3 flex items-start gap-2">
-            <CheckCircle className="w-5 h-5 text-green-500 flex-shrink-0 mt-0.5" />
-            <span className="text-green-700 text-sm font-thai">{successMessage}</span>
+          <div className="bg-green-50 border border-green-200 rounded p-2 flex items-start gap-1.5">
+            <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0 mt-0.5" />
+            <span className="text-green-700 text-xs font-thai">{successMessage}</span>
           </div>
         )}
 
         {errorMessage && (
-          <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2">
-            <AlertCircle className="w-5 h-5 text-red-500 flex-shrink-0 mt-0.5" />
-            <span className="text-red-700 text-sm font-thai">{errorMessage}</span>
+          <div className="bg-red-50 border border-red-200 rounded p-2 flex items-start gap-1.5">
+            <AlertCircle className="w-4 h-4 text-red-500 flex-shrink-0 mt-0.5" />
+            <span className="text-red-700 text-xs font-thai">{errorMessage}</span>
           </div>
         )}
       </div>
 
-      {/* Orders by Shop */}
-      <div className="p-4 space-y-4">
+      {/* Orders by Shop - Compact */}
+      <div className="p-2 space-y-2">
         {loadlist.orders.map((order, orderIdx) => (
-          <div key={orderIdx} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-            {/* Order Header */}
-            <div className="p-3 bg-sky-50 border-b border-sky-100">
-              <div className="flex items-center justify-between mb-1">
-                <h3 className="font-bold text-gray-900 font-thai text-sm">
+          <div key={orderIdx} className="bg-white rounded shadow-sm border border-gray-200 overflow-hidden">
+            {/* Order Header - Compact */}
+            <div className="p-2 bg-sky-50 border-b border-sky-100">
+              <div className="flex items-center justify-between mb-0.5">
+                <h3 className="font-bold text-gray-900 font-thai text-xs">
                   {orderIdx + 1}. {order.order_code}
                 </h3>
                 <Badge variant="info" size="sm">
                   {order.items.length} รายการ
                 </Badge>
               </div>
-              <p className="text-xs text-gray-600 font-thai">{order.customer_name}</p>
+              <p className="text-[10px] text-gray-600 font-thai">{order.customer_name}</p>
             </div>
 
-            {/* Items Table */}
+            {/* Items Table - Compact */}
             <div className="overflow-x-auto">
-              <table className="w-full text-xs">
+              <table className="w-full text-[10px]">
                 <thead className="bg-gray-100 border-b border-gray-200">
                   <tr>
-                    <th className="px-2 py-2 text-left font-thai text-gray-700">สินค้า</th>
-                    <th className="px-2 py-2 text-center font-thai text-gray-700">แพ็ค</th>
-                    <th className="px-2 py-2 text-center font-thai text-gray-700">จำนวน</th>
+                    <th className="px-1.5 py-1 text-left font-thai text-gray-700">สินค้า</th>
+                    <th className="px-1.5 py-1 text-center font-thai text-gray-700">แพ็ค</th>
+                    <th className="px-1.5 py-1 text-center font-thai text-gray-700">จำนวน</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -294,22 +294,22 @@ export default function MobileLoadingDetailPage() {
                       key={itemIdx}
                       className="border-b border-gray-100 last:border-0"
                     >
-                      <td className="px-2 py-2">
+                      <td className="px-1.5 py-1.5">
                         <div className="font-thai text-gray-900 font-medium">
                           {item.sku_name}
                         </div>
-                        <div className="text-gray-500 mt-0.5">
+                        <div className="text-gray-500 mt-0.5 text-[9px]">
                           {item.sku_id}
                         </div>
                       </td>
-                      <td className="px-2 py-2 text-center">
+                      <td className="px-1.5 py-1.5 text-center">
                         {item.package_number && (
-                          <span className="inline-block bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded text-xs font-medium">
+                          <span className="inline-block bg-amber-100 text-amber-700 px-1 py-0.5 rounded text-[9px] font-medium">
                             #{item.package_number}
                           </span>
                         )}
                       </td>
-                      <td className="px-2 py-2 text-center">
+                      <td className="px-1.5 py-1.5 text-center">
                         <span className="font-semibold text-sky-600 font-thai">
                           {item.quantity}
                         </span>
@@ -323,19 +323,19 @@ export default function MobileLoadingDetailPage() {
         ))}
       </div>
 
-      {/* Confirm Button - Fixed at bottom */}
+      {/* Confirm Button - Fixed at bottom - Compact */}
       {loadlist.status !== 'loaded' && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-3 pb-20 shadow-lg z-30">
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 p-2 pb-16 shadow-lg z-30">
           <button
             onClick={handleConfirmLoading}
             disabled={confirming}
-            className="w-full bg-green-500 hover:bg-green-600 text-white py-2.5 rounded-lg font-thai font-medium text-base flex items-center justify-center gap-2 active:scale-98 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+            className="w-full bg-green-500 hover:bg-green-600 text-white py-2 rounded font-thai font-medium text-sm flex items-center justify-center gap-1.5 active:scale-98 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {confirming ? (
-              <Loader2 className="w-5 h-5 animate-spin" />
+              <Loader2 className="w-4 h-4 animate-spin" />
             ) : (
               <>
-                <CheckCircle className="w-5 h-5" />
+                <CheckCircle className="w-4 h-4" />
                 ยืนยันโหลดสินค้า
               </>
             )}
@@ -343,17 +343,17 @@ export default function MobileLoadingDetailPage() {
         </div>
       )}
 
-      {/* Loading Overlay */}
+      {/* Loading Overlay - Compact */}
       {confirming && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-xl p-8 shadow-2xl max-w-sm mx-4">
-            <div className="flex flex-col items-center space-y-4">
-              <Loader2 className="w-16 h-16 text-sky-500 animate-spin" />
+          <div className="bg-white rounded-lg p-6 shadow-2xl max-w-xs mx-4">
+            <div className="flex flex-col items-center space-y-3">
+              <Loader2 className="w-12 h-12 text-sky-500 animate-spin" />
               <div className="text-center">
-                <h3 className="text-lg font-bold text-gray-900 font-thai mb-2">
+                <h3 className="text-sm font-bold text-gray-900 font-thai mb-1">
                   กำลังบันทึกข้อมูล
                 </h3>
-                <p className="text-sm text-gray-600 font-thai">
+                <p className="text-xs text-gray-600 font-thai">
                   กรุณารอสักครู่...
                 </p>
               </div>
