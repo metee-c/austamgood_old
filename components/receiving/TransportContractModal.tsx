@@ -753,11 +753,35 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
 
       {/* Grand Total */}
       <div className="border-t-2 border-gray-400 mt-6 pt-4">
-        <div className="flex justify-between items-center">
-          <span className="text-base font-bold">รวมทั้งสิ้น ({supplier.trip_count} คัน)</span>
-          <span className="text-lg font-bold">
-            {supplier.total_cost.toLocaleString()} บาท
-          </span>
+        <div className="space-y-1">
+          <div className="flex justify-between items-center">
+            <span className="text-sm">ค่าขนส่ง ({supplier.trip_count} คัน):</span>
+            <span className="text-sm font-semibold">
+              {supplier.total_cost.toLocaleString()} บาท
+            </span>
+          </div>
+          {supplier.total_porterage_fee > 0 && (
+            <div className="flex justify-between items-center text-orange-700">
+              <span className="text-sm">ค่าแบกน้ำหนัก:</span>
+              <span className="text-sm font-semibold">
+                {supplier.total_porterage_fee.toLocaleString()} บาท
+              </span>
+            </div>
+          )}
+          {supplier.total_other_fees > 0 && (
+            <div className="flex justify-between items-center text-purple-700">
+              <span className="text-sm">ค่าใช้จ่ายอื่นๆ:</span>
+              <span className="text-sm font-semibold">
+                {supplier.total_other_fees.toLocaleString()} บาท
+              </span>
+            </div>
+          )}
+          <div className="flex justify-between items-center border-t border-gray-300 pt-2 mt-2">
+            <span className="text-base font-bold">รวมทั้งสิ้น:</span>
+            <span className="text-lg font-bold text-green-700">
+              {(supplier.total_cost + supplier.total_porterage_fee + supplier.total_other_fees).toLocaleString()} บาท
+            </span>
+          </div>
         </div>
       </div>
 
@@ -902,7 +926,7 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                     ) : '-'}
                   </td>
                   <td className="border border-gray-300 px-2 py-3 text-right text-xs font-bold text-green-700">
-                    {(trip.shipping_cost || 0).toLocaleString()} บาท
+                    {((trip.shipping_cost || 0) + porterageFee + otherFeesTotal).toLocaleString()} บาท
                   </td>
                 </tr>
               );
