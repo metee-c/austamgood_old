@@ -20,8 +20,10 @@ import {
     Trash2,
     PlayCircle,
     CheckCircle,
-    AlertTriangle
+    AlertTriangle,
+    FileSpreadsheet
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
@@ -114,6 +116,7 @@ interface EditorTrip {
     trip_id: number;
     trip_number?: number;
     trip_sequence: number;
+    daily_trip_number?: number; // เลขคันที่ไม่ซ้ำกันทั้งวัน
     trip_code: string;
     trip_status: string;
     vehicle_id?: string | number | null;
@@ -726,6 +729,7 @@ const RoutesPage = () => {
     const [selectedPlanIdForShippingCost, setSelectedPlanIdForShippingCost] = useState<number | null>(null);
     
     const [showTransportContractModal, setShowTransportContractModal] = useState(false);
+    const [selectedPlanIdForContract, setSelectedPlanIdForContract] = useState<number | null>(null);
     const [selectedPreviewTripIndex, setSelectedPreviewTripIndex] = useState<number | null>(null);
     const [selectedPreviewTripIndices, setSelectedPreviewTripIndices] = useState<number[]>([]);
     const [editorDraftOrders, setEditorDraftOrders] = useState<DraftOrder[]>([]);
@@ -876,7 +880,7 @@ const RoutesPage = () => {
 
                 const normalizedTrip: EditorTrip = {
                     ...trip,
-                    trip_number: trip.trip_number ?? trip.trip_sequence ?? index + 1,
+                    trip_number: trip.daily_trip_number ?? trip.trip_number ?? trip.trip_sequence ?? index + 1,
                     stops: normalizedStops
                 };
 
@@ -1317,7 +1321,7 @@ const RoutesPage = () => {
                 return {
                     ...trip,
                     driver_name: driverName,
-                    trip_number: trip.trip_number ?? trip.trip_sequence ?? index + 1,
+                    trip_number: trip.daily_trip_number ?? trip.trip_number ?? trip.trip_sequence ?? index + 1,
                     total_distance_km: Number(trip.total_distance_km ?? 0),
                     warehouse: warehouseData,
                     stops: sanitizedStops
@@ -1799,7 +1803,8 @@ const RoutesPage = () => {
     };
 
     const handlePrintPlan = async (planId: number) => {
-        // Open Transport Contract Modal
+        // Open Transport Contract Modal with planId
+        setSelectedPlanIdForContract(planId);
         setShowTransportContractModal(true);
         
         // เปลี่ยนสถานะเป็น pending_approval หลังจากพิมพ์ใบว่าจ้าง
@@ -1816,6 +1821,138 @@ const RoutesPage = () => {
             }
         } catch (err) {
             console.error('Error updating status:', err);
+        }
+    };
+
+    // Export TMS Excel สำหรับระบบจัดส่ง
+    const handleExportTMS = async (planId: number, planCode: string, planDate: string) => {
+        try {
+            // Fetch plan details with trips and stops
+            const [editorRes, bonusRes] = await Promise.all([
+                fetch(`/api/route-plans/${planId}/editor`),
+                fetch(`/api/route-plans/${planId}/bonus-orders`)
+            ]);
+            
+            const { data, error } = await editorRes.json();
+            const { data: bonusData } = await bonusRes.json();
+            
+            if (error || !data?.trips) {
+                alert('ไม่สามารถโหลดข้อมูลแผนได้');
+                return;
+            }
+
+            // bonusData format: { bonusOrders: { trip_id: { customer_id: [order_no, ...] } }, deliveryNumbers: { trip_id: delivery_number } }
+            const bonusOrdersByTrip: Record<number, Record<string, string[]>> = bonusData?.bonusOrders || {};
+            const deliveryNumbersByTrip: Record<number, string> = bonusData?.deliveryNumbers || {};
+
+            // สร้างข้อมูลสำหรับ Excel
+            const excelData: any[] = [];
+            
+            for (const trip of data.trips) {
+                const tripId = trip.trip_id;
+                const tripNumber = trip.daily_trip_number || trip.trip_sequence;
+                
+                // ดึง delivery_number สำหรับ trip นี้
+                const deliveryNumber = deliveryNumbersByTrip[tripId] || '';
+                
+                // ดึง bonus orders สำหรับ trip นี้
+                const tripBonusOrders = bonusOrdersByTrip[tripId] || {};
+                
+                // สร้าง map เพื่อนับจุดส่งตาม customer_id ภายในคันเดียวกัน
+                const customerStopMap = new Map<string, number>();
+                let customerStopCounter = 0;
+                
+                for (const stop of trip.stops || []) {
+                    // ดึง customer_id จาก order แรกของ stop (ทุก order ใน stop เดียวกันควรเป็น customer เดียวกัน)
+                    let customerId = '';
+                    const orderNos: string[] = [];
+                    
+                    if (stop.orders && Array.isArray(stop.orders)) {
+                        for (const order of stop.orders) {
+                            if (order.order_no) {
+                                orderNos.push(order.order_no);
+                            }
+                            if (!customerId && order.customer_id) {
+                                customerId = String(order.customer_id);
+                            }
+                        }
+                    } else if (stop.order_no) {
+                        orderNos.push(stop.order_no);
+                        if (stop.customer_id) {
+                            customerId = String(stop.customer_id);
+                        }
+                    }
+                    
+                    // เพิ่ม bonus order_no สำหรับ customer นี้ (ถ้ามี)
+                    if (customerId && tripBonusOrders[customerId]) {
+                        for (const bonusOrderNo of tripBonusOrders[customerId]) {
+                            if (!orderNos.includes(bonusOrderNo)) {
+                                orderNos.push(bonusOrderNo);
+                            }
+                        }
+                    }
+                    
+                    // คำนวณจุดส่งตาม customer_id (ถ้า customer_id ซ้ำกันในคันเดียวกัน ใช้เลขจุดเดิม)
+                    let stopSequence: number;
+                    if (customerId && customerStopMap.has(customerId)) {
+                        stopSequence = customerStopMap.get(customerId)!;
+                    } else {
+                        customerStopCounter++;
+                        stopSequence = customerStopCounter;
+                        if (customerId) {
+                            customerStopMap.set(customerId, stopSequence);
+                        }
+                    }
+                    
+                    // Format วันที่จัดส่ง (DD/MM/YYYY)
+                    const deliveryDate = planDate ? new Date(planDate) : new Date();
+                    const formattedDate = `${deliveryDate.getDate()}/${deliveryDate.getMonth() + 1}/${deliveryDate.getFullYear()}`;
+                    
+                    excelData.push({
+                        'รหัสงานจัดส่ง': deliveryNumber,
+                        'ชื่อร้านค้า': stop.stop_name || '-',
+                        'ละติจูดของร้านค้า': stop.latitude || '',
+                        'ลองจิจูดของร้านค้า': stop.longitude || '',
+                        'น้ำหนักสินค้ารวม': stop.load_weight_kg || 0,
+                        'กำหนด - วันที่จัดส่ง': formattedDate,
+                        'คันที่': tripNumber,
+                        'จุดส่ง': stopSequence,
+                        'เลขออเดอร์': orderNos.join(',')
+                    });
+                }
+            }
+
+            if (excelData.length === 0) {
+                alert('ไม่มีข้อมูลจุดส่งในแผนนี้');
+                return;
+            }
+
+            // สร้าง workbook และ worksheet
+            const ws = XLSX.utils.json_to_sheet(excelData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'TMS Export');
+
+            // ปรับความกว้างคอลัมน์
+            ws['!cols'] = [
+                { wch: 20 }, // รหัสงานจัดส่ง
+                { wch: 35 }, // ชื่อร้านค้า
+                { wch: 15 }, // ละติจูด
+                { wch: 15 }, // ลองจิจูด
+                { wch: 15 }, // น้ำหนัก
+                { wch: 18 }, // วันที่จัดส่ง
+                { wch: 8 },  // คันที่
+                { wch: 8 },  // จุดส่ง
+                { wch: 50 }  // เลขออเดอร์ (เพิ่มความกว้างเพราะมี bonus orders)
+            ];
+
+            // Download file
+            const fileName = `TMS_${planCode}_${planDate}.xlsx`;
+            XLSX.writeFile(wb, fileName);
+            
+            alert(`✅ ส่งออกไฟล์ ${fileName} สำเร็จ`);
+        } catch (err: any) {
+            console.error('Error exporting TMS:', err);
+            alert('เกิดข้อผิดพลาดในการส่งออกไฟล์: ' + err.message);
         }
     };
 
@@ -1841,7 +1978,7 @@ const RoutesPage = () => {
         return editorTrips.map(trip => ({
             ...trip,
             trip_id: String(trip.trip_id),
-            trip_number: trip.trip_number ?? trip.trip_sequence,
+            trip_number: trip.daily_trip_number ?? trip.trip_number ?? trip.trip_sequence,
             total_distance_km: trip.total_distance_km ?? 0,
             total_drive_minutes: trip.total_drive_minutes ?? undefined,
             total_service_minutes: trip.total_service_minutes ?? undefined,
@@ -1995,7 +2132,7 @@ const RoutesPage = () => {
             return {
                 ...trip,
                 trip_id: String(trip.trip_id),
-                trip_number: trip.trip_number ?? trip.trip_sequence ?? 1,
+                trip_number: trip.daily_trip_number ?? trip.trip_number ?? trip.trip_sequence ?? 1,
                 total_distance_km: Number(trip.total_distance_km ?? 0),
                 stops: stopsForMap
             };
@@ -2323,6 +2460,15 @@ const RoutesPage = () => {
                                                                         onClick={() => handlePrintPlan(plan.plan_id)}
                                                                     >
                                                                         <Printer className="w-3 h-3" />
+                                                                    </button>
+
+                                                                    {/* ปุ่มจัดส่ง - Export TMS Excel */}
+                                                                    <button
+                                                                        className="p-1 rounded hover:bg-teal-50 hover:text-teal-600 transition-colors text-teal-600"
+                                                                        title="ส่งออก Excel สำหรับ TMS"
+                                                                        onClick={() => handleExportTMS(plan.plan_id, plan.plan_code, plan.plan_date)}
+                                                                    >
+                                                                        <FileSpreadsheet className="w-3 h-3" />
                                                                     </button>
 
                                                                     {/* ปุ่มอนุมัติ - แสดงเฉพาะเมื่อรออนุมัติ */}
@@ -3423,7 +3569,11 @@ const RoutesPage = () => {
             />
             <TransportContractModal
                 isOpen={showTransportContractModal}
-                onClose={() => setShowTransportContractModal(false)}
+                onClose={() => {
+                    setShowTransportContractModal(false);
+                    setSelectedPlanIdForContract(null);
+                }}
+                planId={selectedPlanIdForContract}
             />
         </PageContainer>
     );

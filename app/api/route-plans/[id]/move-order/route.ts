@@ -254,15 +254,34 @@ export async function POST(
       })
       .eq('trip_id', toTripId);
 
+    // 6. ลบ trip ที่ไม่มี stop เหลืออยู่
+    let deletedEmptyTrip = false;
+    if (!fromTripStops || fromTripStops.length === 0) {
+      const { error: deleteTripError } = await supabase
+        .from('receiving_route_trips')
+        .delete()
+        .eq('trip_id', fromTripId);
+
+      if (deleteTripError) {
+        console.error('Error deleting empty trip:', deleteTripError);
+      } else {
+        deletedEmptyTrip = true;
+        console.log(`Deleted empty trip ${fromTripId}`);
+      }
+    }
+
     return NextResponse.json({
       success: true,
-      message: 'Order moved successfully',
+      message: deletedEmptyTrip 
+        ? 'Order moved successfully and empty trip was deleted' 
+        : 'Order moved successfully',
       data: {
         movedStopId,
         fromTripId,
         toTripId,
         newSequenceNo,
-        wasConsolidated: isConsolidatedStop
+        wasConsolidated: isConsolidatedStop,
+        deletedEmptyTrip
       }
     });
 

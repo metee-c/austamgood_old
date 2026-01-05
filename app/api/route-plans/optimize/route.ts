@@ -371,6 +371,13 @@ export async function POST(request: Request) {
 
     // 10. Save trips to database
     try {
+      // ดึงเลขคันสูงสุดของวันนี้เพื่อกำหนด daily_trip_number
+      const planDate = new Date(plan.plan_date).toISOString().split('T')[0];
+      const { data: maxDailyNumber } = await supabase
+        .rpc('get_next_daily_trip_number', { p_plan_date: planDate });
+      
+      let nextDailyNumber = maxDailyNumber || 1;
+
       const tripsToInsert = allTrips.map((trip: any, index: number) => {
         const vehicleCapacity = settings.vehicleCapacityKg || 1000;
         const capacityUtil = vehicleCapacity > 0 ? ((trip.totalWeight || 0) / vehicleCapacity) * 100 : 0;
@@ -396,7 +403,8 @@ export async function POST(request: Request) {
           helper_fee: null,
           extra_stop_fee: null,
           is_overweight: trip.isOverweight || false,
-          notes: trip.zoneName ? `โซน: ${trip.zoneName}` : null
+          notes: trip.zoneName ? `โซน: ${trip.zoneName}` : null,
+          daily_trip_number: nextDailyNumber + index // เลขคันที่ไม่ซ้ำกันทั้งวัน
         };
       });
 

@@ -185,6 +185,7 @@ export async function POST(
 
     // Update source stop weight
     const newSourceWeight = (sourceStop.load_weight_kg || 0) - totalMoveWeight;
+    const sourceTripId = sourceStop.trip_id;
 
     if (newSourceWeight <= 0) {
       // Delete source stop if no weight remaining
@@ -202,13 +203,37 @@ export async function POST(
         .eq('stop_id', sourceStopId);
     }
 
+    // ลบ trip ที่ไม่มี stop เหลืออยู่
+    let deletedEmptyTrip = false;
+    if (sourceTripId) {
+      const { data: remainingStops } = await supabase
+        .from('receiving_route_stops')
+        .select('stop_id')
+        .eq('trip_id', sourceTripId);
+
+      if (!remainingStops || remainingStops.length === 0) {
+        const { error: deleteTripError } = await supabase
+          .from('receiving_route_trips')
+          .delete()
+          .eq('trip_id', sourceTripId);
+
+        if (deleteTripError) {
+          console.error('Error deleting empty trip:', deleteTripError);
+        } else {
+          deletedEmptyTrip = true;
+          console.log(`Deleted empty trip ${sourceTripId}`);
+        }
+      }
+    }
+
     // TODO: Update order items allocation if needed
     // This depends on how the system tracks which items are allocated to which stops
 
     return NextResponse.json({
       success: true,
       newStopId: newStop.stop_id,
-      newTripId: finalTargetTripId
+      newTripId: finalTargetTripId,
+      deletedEmptyTrip
     });
 
   } catch (error: any) {

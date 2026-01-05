@@ -48,6 +48,7 @@ interface Picklist {
   picker_employees?: Array<{ first_name: string; last_name: string; nickname?: string }>;
   receiving_route_trips?: {
     trip_sequence: number;
+    daily_trip_number?: number;
     vehicle_id: string;
     receiving_route_plans?: {
       plan_code: string;
@@ -286,7 +287,7 @@ const PicklistsPage = () => {
                 <Table.Head onClick={() => handleSort('picklist_code')}>เลขที่รายการหยิบ{getSortIcon('picklist_code')}</Table.Head>
                 <Table.Head width="120px">สถานะ</Table.Head>
                 <Table.Head>แผนการส่ง</Table.Head>
-                <Table.Head>รถที่</Table.Head>
+                <Table.Head>คันที่</Table.Head>
                 <Table.Head>ประตูโหลด</Table.Head>
                 <Table.Head>จำนวนรายการ</Table.Head>
                 <Table.Head>จำนวนชิ้น</Table.Head>
@@ -396,7 +397,7 @@ const PicklistsPage = () => {
                       {picklist.receiving_route_trips ? (
                         <div className="flex items-center space-x-1">
                           <Truck className="w-3.5 h-3.5 text-green-600" />
-                          <span className="font-semibold text-gray-900">รถที่ {picklist.receiving_route_trips.trip_sequence}</span>
+                          <span className="font-semibold text-gray-900">คันที่ {picklist.receiving_route_trips.daily_trip_number || picklist.receiving_route_trips.trip_sequence}</span>
                           {picklist.receiving_route_trips.vehicle_id && (
                             <span className="text-xs text-gray-500">({picklist.receiving_route_trips.vehicle_id})</span>
                           )}
@@ -534,7 +535,7 @@ const PicklistsPage = () => {
                                 checked={plan.trips?.every((t: any) => selectedPicklists.includes(t.trip_id))}
                               />
                             </th>
-                            <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รถที่</th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">คันที่</th>
                             <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">จุดส่ง</th>
                             <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ออเดอร์</th>
                             <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">สินค้า (ชิ้น)</th>
@@ -563,7 +564,7 @@ const PicklistsPage = () => {
                                 <td className="px-3 py-2 border-r border-gray-100 whitespace-nowrap">
                                   <div className="flex items-center space-x-2">
                                     <Truck className="w-4 h-4 text-green-600" />
-                                    <span className="font-semibold text-gray-900">รถที่ {trip.trip_sequence}</span>
+                                    <span className="font-semibold text-gray-900">คันที่ {trip.daily_trip_number || trip.trip_sequence}</span>
                                     {trip.vehicle_id && (
                                       <span className="text-xs text-gray-500 font-mono">({trip.vehicle_id})</span>
                                     )}
@@ -675,7 +676,7 @@ const PicklistsPage = () => {
                     for (const plan of publishedPlans?.data || []) {
                       const trip = plan.trips?.find((t: any) => t.trip_id === tripId);
                       if (trip) {
-                        return `รถที่ ${trip.trip_sequence}${trip.vehicle_id ? ` (${trip.vehicle_id})` : ''}`;
+                        return `คันที่ ${trip.daily_trip_number || trip.trip_sequence}${trip.vehicle_id ? ` (${trip.vehicle_id})` : ''}`;
                       }
                     }
                     return `Trip ID: ${tripId}`;

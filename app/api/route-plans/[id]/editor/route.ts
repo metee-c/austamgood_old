@@ -34,6 +34,11 @@ export async function GET(
       .from('receiving_route_trips')
       .select(`
         *,
+        supplier:master_supplier!fk_receiving_route_trips_supplier (
+          supplier_id,
+          supplier_name,
+          supplier_code
+        ),
         picklists (
           loading_door_number,
           wms_loadlist_picklists (
@@ -259,10 +264,15 @@ export async function GET(
       // Extract loading_queue_number from loadlist (first loadlist)
       const loadingQueueNumber = trip.picklists?.[0]?.wms_loadlist_picklists?.[0]?.loadlist?.loading_queue_number || null;
       
+      // Extract supplier info
+      const supplierInfo = trip.supplier as any;
+      
       return {
         ...trip,
         loading_door_number: loadingDoorNumber,
         loading_queue_number: loadingQueueNumber,
+        supplier_name: supplierInfo?.supplier_name || null,
+        supplier_code: supplierInfo?.supplier_code || null,
         stops: stopsByTrip[trip.trip_id] || []
       };
     }) || [];

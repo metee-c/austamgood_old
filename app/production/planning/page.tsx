@@ -1038,9 +1038,30 @@ function CreatePlanModal({ onClose, onSuccess }: { onClose: () => void; onSucces
   const [planDescription, setPlanDescription] = useState('');
   const [planDate, setPlanDate] = useState(new Date().toISOString().split('T')[0]);
   const [selectedSku, setSelectedSku] = useState('');
+  const [skuSearchTerm, setSkuSearchTerm] = useState('');
+  const [showSkuDropdown, setShowSkuDropdown] = useState(false);
   const [quantity, setQuantity] = useState<number>(0);
   const [items, setItems] = useState<{ sku_id: string; sku_name: string; required_qty: number; materials: (CalculatedMaterial & { selected: boolean })[] }[]>([]);
   const [selectedMaterials, setSelectedMaterials] = useState<Record<string, boolean>>({});
+
+  // Filter SKUs based on search term
+  const filteredSkus = skus.filter(sku => 
+    skuSearchTerm === '' || 
+    sku.sku_name.toLowerCase().includes(skuSearchTerm.toLowerCase()) ||
+    sku.sku_id.toLowerCase().includes(skuSearchTerm.toLowerCase())
+  );
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('.sku-dropdown-container')) {
+        setShowSkuDropdown(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // Auto-generate plan name on mount
   useEffect(() => {
@@ -1204,19 +1225,69 @@ function CreatePlanModal({ onClose, onSuccess }: { onClose: () => void; onSucces
           <div className="bg-gray-50 rounded-lg p-4 mb-6">
             <h3 className="text-sm font-semibold text-gray-700 font-thai mb-3">เพิ่มสินค้าที่ต้องการผลิต</h3>
             <div className="flex items-end gap-3">
-              <div className="flex-1">
+              <div className="flex-1 relative sku-dropdown-container">
                 <label className="block text-xs text-gray-600 font-thai mb-1">เลือก SKU</label>
-                <select
-                  value={selectedSku}
-                  onChange={(e) => setSelectedSku(e.target.value)}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-thai focus:outline-none focus:ring-2 focus:ring-primary-500/50"
-                  disabled={loadingSkus}
-                >
-                  <option value="">-- เลือกสินค้า --</option>
-                  {skus.map(sku => (
-                    <option key={sku.sku_id} value={sku.sku_id}>{sku.sku_name} ({sku.sku_id})</option>
-                  ))}
-                </select>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={selectedSku ? skus.find(s => s.sku_id === selectedSku)?.sku_name || skuSearchTerm : skuSearchTerm}
+                    onChange={(e) => {
+                      setSkuSearchTerm(e.target.value);
+                      setSelectedSku('');
+                      setShowSkuDropdown(true);
+                    }}
+                    onFocus={() => setShowSkuDropdown(true)}
+                    placeholder="พิมพ์ค้นหาหรือเลือกสินค้า..."
+                    className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-thai focus:outline-none focus:ring-2 focus:ring-primary-500/50 pr-8"
+                    disabled={loadingSkus}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSkuDropdown(!showSkuDropdown)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
+                  >
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {showSkuDropdown && (
+                    <div className="fixed z-[99999] bg-white border border-gray-300 rounded-lg shadow-2xl max-h-60 overflow-y-auto" 
+                         style={{ 
+                           width: 'calc(100% - 2rem)',
+                           maxWidth: '500px',
+                           marginTop: '4px'
+                         }}>
+                      {loadingSkus ? (
+                        <div className="p-3 text-center text-gray-500 text-sm font-thai">กำลังโหลด...</div>
+                      ) : filteredSkus.length === 0 ? (
+                        <div className="p-3 text-center text-gray-500 text-sm font-thai">ไม่พบสินค้าที่ค้นหา</div>
+                      ) : (
+                        filteredSkus.slice(0, 50).map(sku => (
+                          <button
+                            key={sku.sku_id}
+                            type="button"
+                            onClick={() => {
+                              setSelectedSku(sku.sku_id);
+                              setSkuSearchTerm('');
+                              setShowSkuDropdown(false);
+                            }}
+                            className={`w-full px-3 py-2 text-left text-sm font-thai hover:bg-primary-50 transition-colors ${
+                              selectedSku === sku.sku_id ? 'bg-primary-100 text-primary-700' : 'text-gray-700'
+                            }`}
+                          >
+                            <div className="font-medium">{sku.sku_name}</div>
+                            <div className="text-xs text-gray-500 font-mono">{sku.sku_id}</div>
+                          </button>
+                        ))
+                      )}
+                      {filteredSkus.length > 50 && (
+                        <div className="p-2 text-center text-xs text-gray-400 font-thai border-t">
+                          แสดง 50 รายการแรก พิมพ์เพิ่มเพื่อกรอง
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="w-32">
                 <label className="block text-xs text-gray-600 font-thai mb-1">จำนวน</label>

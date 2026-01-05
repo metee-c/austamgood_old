@@ -11,6 +11,7 @@ interface Plan {
   plan_code: string;
   plan_name: string;
   plan_date: string;
+  status?: string;
   warehouse_id: string;
   warehouse?: {
     warehouse_name: string;
@@ -21,8 +22,12 @@ interface Plan {
 interface Trip {
   trip_id: number;
   trip_sequence: number;
+  daily_trip_number?: number; // เลขคันที่ไม่ซ้ำกันทั้งวัน
   supplier_id?: string;
+  supplier_name?: string;
   shipping_cost?: number;
+  porterage_fee?: number;
+  other_fees?: Array<{ label: string; amount: number }>;
   vehicle_label?: string;
   driver_label?: string;
   total_distance_km?: number;
@@ -34,9 +39,11 @@ interface Trip {
 interface SupplierSummary {
   supplier_id: string;
   supplier_name: string;
-  supplier_code: string;
+  supplier_code?: string;
   trip_count: number;
+  total_trips: number;
   total_cost: number;
+  total_shipping_cost: number;
   total_porterage_fee: number;
   total_other_fees: number;
   trips: Trip[];
@@ -45,9 +52,10 @@ interface SupplierSummary {
 interface TransportContractModalProps {
   isOpen: boolean;
   onClose: () => void;
+  planId?: number | null;
 }
 
-const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen, onClose }) => {
+const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen, onClose, planId }) => {
   const [step, setStep] = useState<'select-plan' | 'select-supplier'>('select-plan');
   const [plans, setPlans] = useState<Plan[]>([]);
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null);
@@ -126,12 +134,98 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
   };
 
   useEffect(() => {
-    if (isOpen && step === 'select-plan') {
+    if (isOpen && planId) {
+      // ถ้ามี planId ให้โหลดแผนนั้นโดยตรง
+      loadPlanDirectly(planId);
+      fetchSuppliers();
+      fetchCurrentUser();
+    } else if (isOpen && step === 'select-plan') {
       fetchPublishedPlans();
       fetchSuppliers();
       fetchCurrentUser();
     }
-  }, [isOpen, step, selectedSupplier, selectedPlan]);
+  }, [isOpen, planId]);
+
+  // โหลดแผนโดยตรงจาก planId
+  const loadPlanDirectly = async (id: number) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/route-plans/${id}/editor`);
+      const { data } = await res.json();
+      
+      if (data?.trips) {
+        // สร้าง plan object จากข้อมูลที่ได้
+        const plan: Plan = {
+          plan_id: id,
+          plan_code: data.plan?.plan_code || '',
+          plan_name: data.plan?.plan_name || '',
+          plan_date: data.plan?.plan_date || '',
+          status: data.plan?.status || '',
+          warehouse_id: data.plan?.warehouse_id || '',
+          trips: data.trips
+        };
+        
+        setSelectedPlan(plan);
+        
+        // Group trips by supplier
+        const supplierMap = new Map<string, SupplierSummary>();
+        
+        for (const trip of data.trips) {
+          const supplierId = trip.supplier_id || 'unknown';
+          const supplierName = trip.supplier_name || 'ไม่ระบุผู้ให้บริการ';
+          
+          if (!supplierMap.has(supplierId)) {
+            supplierMap.set(supplierId, {
+              supplier_id: supplierId,
+              supplier_name: supplierName,
+              trips: [],
+              trip_count: 0,
+              total_trips: 0,
+              total_shipping_cost: 0,
+              total_porterage_fee: 0,
+              total_other_fees: 0,
+              total_cost: 0
+            });
+          }
+          
+          const summary = supplierMap.get(supplierId)!;
+          summary.trips.push(trip);
+          summary.trip_count++;
+          summary.total_trips++;
+          summary.total_shipping_cost += trip.shipping_cost || 0;
+          summary.total_porterage_fee += trip.porterage_fee || 0;
+          
+          // Calculate other fees
+          if (trip.other_fees && Array.isArray(trip.other_fees)) {
+            const otherFeesTotal = trip.other_fees.reduce((sum: number, fee: any) => sum + (fee.amount || 0), 0);
+            summary.total_other_fees += otherFeesTotal;
+          }
+          
+          summary.total_cost = summary.total_shipping_cost + summary.total_porterage_fee + summary.total_other_fees;
+        }
+        
+        setSupplierSummaries(Array.from(supplierMap.values()));
+        setStep('select-supplier');
+      }
+    } catch (err: any) {
+      setError('เกิดข้อผิดพลาดในการโหลดข้อมูลแผน');
+      console.error('Error loading plan:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Reset state when modal closes
+  useEffect(() => {
+    if (!isOpen) {
+      setStep('select-plan');
+      setSelectedPlan(null);
+      setSelectedSupplier(null);
+      setSupplierSummaries([]);
+      setError(null);
+    }
+  }, [isOpen]);
 
   const fetchCurrentUser = async () => {
     try {
@@ -202,10 +296,12 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
           if (!trip.supplier_id) return acc;
           
           if (!acc[trip.supplier_id]) {
+            // ใช้ supplier_name จาก trip โดยตรง (จาก API) ก่อน ถ้าไม่มีค่อยหาจาก suppliers list
+            const supplierNameFromTrip = trip.supplier_name;
             const supplier = suppliers.find(s => s.supplier_id === trip.supplier_id);
             acc[trip.supplier_id] = {
               supplier_id: trip.supplier_id,
-              supplier_name: supplier?.supplier_name || 'ไม่ระบุ',
+              supplier_name: supplierNameFromTrip || supplier?.supplier_name || 'ไม่ระบุ',
               supplier_code: supplier?.supplier_code || '',
               trip_count: 0,
               total_cost: 0,
@@ -473,12 +569,15 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
             const otherFeesTotal = otherFees.reduce((sum, fee) => sum + (fee.amount || 0), 0);
             const hasExtraFees = porterageFee > 0 || otherFees.length > 0;
             const tripGrandTotal = (trip.shipping_cost || 0) + porterageFee + otherFeesTotal;
+            
+            // ใช้ daily_trip_number ถ้ามี ไม่งั้นใช้ tripIndex + 1
+            const displayTripNumber = trip.daily_trip_number || (tripIndex + 1);
 
             return (
               <div key={trip.trip_id} className="bg-blue-50 border border-blue-300 rounded px-4 py-2">
                 <div className="flex justify-between items-start">
                   <div>
-                    <span className="font-bold text-base">คันที่ {tripIndex + 1}</span>
+                    <span className="font-bold text-base">คันที่ {displayTripNumber}</span>
                     <span className="ml-3 text-sm text-gray-700">
                       ({totalStops} ร้านค้า / {totalStops} จุดส่ง)
                     </span>
@@ -583,6 +682,9 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                 const otherFeesTotal = otherFees.reduce((sum, fee) => sum + (fee.amount || 0), 0);
                 const tripGrandTotal = (trip.shipping_cost || 0) + porterageFee + otherFeesTotal;
                 const hasExtraFees = porterageFee > 0 || otherFees.length > 0;
+                
+                // ใช้ daily_trip_number ถ้ามี ไม่งั้นใช้ tripIndex + 1
+                const displayTripNumber = trip.daily_trip_number || (tripIndex + 1);
 
                 return (
                   <React.Fragment key={trip.trip_id}>
@@ -591,7 +693,7 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                       <td colSpan={13} className="border border-gray-300 px-3 py-2">
                         <div className="flex justify-between items-start">
                           <div>
-                            <span className="font-bold text-sm">คันที่ {tripIndex + 1}</span>
+                            <span className="font-bold text-sm">คันที่ {displayTripNumber}</span>
                             <span className="ml-3 text-xs text-gray-700">
                               ({trip.stops?.length || 0} ร้านค้า / {trip.stops?.length || 0} จุดส่ง)
                             </span>
@@ -651,7 +753,7 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                                 className="border border-gray-300 px-1 py-2 text-xs text-center font-semibold bg-gray-50"
                                 rowSpan={orders.length}
                               >
-                                {tripIndex + 1}
+                                {displayTripNumber}
                               </td>
                             )}
                             {isFirstOrderInStop && (
@@ -728,7 +830,7 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                     {/* Subtotal row for each trip */}
                     <tr className="bg-blue-50 font-semibold">
                       <td colSpan={6} className="border border-gray-300 px-2 py-2 text-xs text-right">
-                        รวมคันที่ {tripIndex + 1}:
+                        รวมคันที่ {displayTripNumber}:
                       </td>
                       <td className="border border-gray-300 px-2 py-2 text-xs text-right">
                         {(trip.total_weight_kg || 0).toFixed(1)}
@@ -869,11 +971,14 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
               const otherFeesTotal = otherFees.reduce((sum, fee) => sum + (fee.amount || 0), 0);
               const extraStops = Math.max(0, uniqueCustomerCount - 1);
               const extraStopTotal = extraStops * extraStopFee;
+              
+              // ใช้ daily_trip_number ถ้ามี ไม่งั้นใช้ tripIndex + 1
+              const displayTripNumber = trip.daily_trip_number || (tripIndex + 1);
 
               return (
                 <tr key={trip.trip_id} className="hover:bg-gray-50">
                   <td className="border border-gray-300 px-2 py-3 text-center font-semibold text-sm">
-                    {tripIndex + 1}
+                    {displayTripNumber}
                   </td>
                   <td className="border border-gray-300 px-2 py-3 text-center text-xs">
                     {uniqueCustomerCount} ลูกค้า / {totalStops} จุดส่ง
