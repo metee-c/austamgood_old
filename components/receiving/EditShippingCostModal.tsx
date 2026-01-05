@@ -362,7 +362,9 @@ const TripEditForm: React.FC<TripEditFormProps> = ({ trip, tripIndex, suppliers,
   };
 
   // Calculate totals
-  const totalStops = trip.stops?.length || 0;
+  // จำนวนจุดส่ง = จำนวนรหัสลูกค้าที่ไม่ซ้ำกัน (1 จุด = 1 customer_id)
+  const uniqueCustomerIds = new Set(allOrders.map(order => order.customer_id));
+  const totalStops = uniqueCustomerIds.size;
   const totalUnits = allOrders.reduce((sum, order) => sum + order.total_qty, 0);
   const totalWeight = trip.total_weight_kg || allOrders.reduce((sum, order) => sum + (order.allocated_weight_kg || order.weight || 0), 0);
   const distance = trip.total_distance_km || 0;
@@ -1331,7 +1333,10 @@ const EditShippingCostModal: React.FC<EditShippingCostModalProps> = ({
           };
 
           // Prepare payload based on pricing mode
-          const totalStops = trip.stops?.length || 0;
+          // จำนวนจุดส่ง = จำนวนรหัสลูกค้าที่ไม่ซ้ำกัน (1 จุด = 1 customer_id)
+          const allOrdersForTrip = trip.stops?.flatMap(stop => stop.orders || []) || [];
+          const uniqueCustomerIdsForTrip = new Set(allOrdersForTrip.map(order => order.customer_id));
+          const totalStops = uniqueCustomerIdsForTrip.size;
           const payload: any = {
             notes: JSON.stringify(notesData),
             pricing_mode: pricingMode,

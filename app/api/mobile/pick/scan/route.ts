@@ -181,22 +181,20 @@ export async function POST(request: NextRequest) {
         sourceExpiryDate = balance.expiry_date;
       }
 
-      // ตรวจสอบว่ามีสต็อคเพียงพอ
+      // ตรวจสอบว่ามีสต็อคเพียงพอ - ✅ อนุญาตให้หักติดลบได้
+      // ไม่ block การหยิบแม้สต็อคไม่พอ เพื่อให้งานดำเนินต่อได้
       if (balance.total_piece_qty < qtyToDeduct) {
-        return NextResponse.json(
-          { error: `สต็อคไม่เพียงพอ: ต้องการ ${qtyToDeduct} แต่มีเพียง ${balance.total_piece_qty} ชิ้น` },
-          { status: 400 }
-        );
+        console.warn(`⚠️ สต็อคไม่พอ: ต้องการ ${qtyToDeduct} แต่มีเพียง ${balance.total_piece_qty} ชิ้น - จะหักติดลบ`);
       }
 
-      // ลดยอดจองและสต็อคจริง
+      // ลดยอดจองและสต็อคจริง (อนุญาตติดลบ)
       const { error: updateError } = await supabase
         .from('wms_inventory_balances')
         .update({
           reserved_piece_qty: Math.max(0, balance.reserved_piece_qty - qtyToDeduct),
           reserved_pack_qty: Math.max(0, balance.reserved_pack_qty - packToDeduct),
-          total_piece_qty: Math.max(0, balance.total_piece_qty - qtyToDeduct),
-          total_pack_qty: Math.max(0, balance.total_pack_qty - packToDeduct),
+          total_piece_qty: balance.total_piece_qty - qtyToDeduct, // ✅ อนุญาตติดลบ
+          total_pack_qty: balance.total_pack_qty - packToDeduct,   // ✅ อนุญาตติดลบ
           updated_at: now
         })
         .eq('balance_id', balance.balance_id);
@@ -234,11 +232,9 @@ export async function POST(request: NextRequest) {
         remainingQty -= qtyToDeduct;
       }
 
+      // ✅ อนุญาตให้หยิบได้แม้ reservation ไม่พอ (จะหักติดลบ)
       if (remainingQty > 0) {
-        return NextResponse.json(
-          { error: `สต็อคที่จองไว้ไม่เพียงพอ ขาดอีก ${remainingQty} ชิ้น` },
-          { status: 400 }
-        );
+        console.warn(`⚠️ สต็อคที่จองไว้ไม่เพียงพอ ขาดอีก ${remainingQty} ชิ้น - ดำเนินการต่อ`);
       }
 
       // อัปเดตสถานะการจอง
@@ -290,13 +286,50 @@ export async function POST(request: NextRequest) {
         .order('created_at', { ascending: true });
 
       if (!balances || balances.length === 0) {
-        return NextResponse.json(
-          { error: 'ไม่พบสต็อคในพื้นที่หยิบ' },
-          { status: 400 }
-        );
-      }
+        console.warn('⚠️ ไม่พบสต็อคในพื้นที่หยิบ - จะสร้าง balance ติดลบ');
+        // สร้าง balance ใหม่ที่ติดลบ
+        const { data: newBalance, error: createError } = await supabase
+          .from('wms_inventory_balances')
+          .insert({
+            warehouse_id: warehouseId,
+            location_id: item.source_location_id,
+            sku_id: item.sku_id,
+            total_pack_qty: -packQty,
+            total_piece_qty: -quantity_picked,
+            reserved_pack_qty: 0,
+            reserved_piece_qty: 0,
+            last_movement_at: now
+          })
+          .select()
+          .single();
 
-      for (const balance of balances) {
+        if (createError) {
+          console.error('Error creating negative balance:', createError);
+        }
+
+        // บันทึก ledger: OUT จาก source_location (ติดลบ)
+        ledgerEntries.push({
+          movement_at: now,
+          transaction_type: 'pick',
+          direction: 'out',
+          warehouse_id: warehouseId,
+          location_id: item.source_location_id,
+          sku_id: item.sku_id,
+          pack_qty: packQty,
+          piece_qty: quantity_picked,
+          reference_no: item.picklists.picklist_code,
+          reference_doc_type: 'picklist',
+          reference_doc_id: picklist_id,
+          order_id: item.order_id,
+          order_item_id: item.order_item_id,
+          remarks: `หยิบจาก ${item.source_location_id} (สต็อกติดลบ) - ${item.picklists.picklist_code}`,
+          created_by: userId,
+          skip_balance_sync: true
+        });
+
+        remainingQty = 0; // ถือว่าหยิบครบแล้ว
+      } else {
+        for (const balance of balances) {
         if (remainingQty <= 0) break;
 
         const availableQty = (balance.total_piece_qty || 0) - (balance.reserved_piece_qty || 0);
@@ -345,12 +378,11 @@ export async function POST(request: NextRequest) {
         remainingQty -= qtyToDeduct;
       }
 
-      if (remainingQty > 0) {
-        return NextResponse.json(
-          { error: `สต็อคไม่เพียงพอ ขาดอีก ${remainingQty} ชิ้น` },
-          { status: 400 }
-        );
-      }
+      // ✅ อนุญาตให้หยิบได้แม้สต็อคไม่พอ (จะหักติดลบ)
+        if (remainingQty > 0) {
+          console.warn(`⚠️ สต็อคไม่เพียงพอ ขาดอีก ${remainingQty} ชิ้น - ดำเนินการต่อ`);
+        }
+      } // ปิด else block
     }
 
     // 7. เพิ่มสต็อคที่ Dispatch

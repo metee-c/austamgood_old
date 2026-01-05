@@ -159,6 +159,18 @@ interface Vehicle {
   driver_id?: number;
 }
 
+// Interface สำหรับเก็บค่าแยกต่างหากแต่ละ picklist
+interface PicklistFormData {
+  checkerEmployeeId: number | '';
+  vehicleType: string;
+  vehicleId: string;
+  driverEmployeeId: number | '';
+  driverName: string;
+  loadingDoorNumber: string;
+  loadingQueueNumber: string;
+  deliveryNumber: string;
+}
+
 const statusMap: Record<string, { label: string; variant: 'default' | 'info' | 'warning' | 'success' | 'danger' }> = {
   pending: { label: 'รอโหลด', variant: 'warning' },
   loaded: { label: 'โหลดเสร็จ', variant: 'success' },
@@ -184,7 +196,10 @@ const LoadlistsPage = () => {
   const [selectedBonusFaceSheets, setSelectedBonusFaceSheets] = useState<number[]>([]);
   const [activeTab, setActiveTab] = useState<'picklists' | 'face-sheets' | 'bonus-face-sheets'>('picklists');
 
-  // Form fields
+  // ✅ NEW: เก็บค่าแยกต่างหากแต่ละ picklist (key = picklist_id)
+  const [picklistFormData, setPicklistFormData] = useState<Record<number, PicklistFormData>>({});
+
+  // Form fields (ใช้สำหรับ face sheets และ bonus face sheets)
   const [checkerEmployeeId, setCheckerEmployeeId] = useState<number | ''>('');
   const [vehicleType, setVehicleType] = useState('');
   const [deliveryNumber, setDeliveryNumber] = useState('');
@@ -203,6 +218,12 @@ const LoadlistsPage = () => {
   const [showDeliveryDocModal, setShowDeliveryDocModal] = useState(false);
   const [createdLoadlistId, setCreatedLoadlistId] = useState<number | null>(null);
 
+  // State สำหรับ modal เลือก loadlist ที่จะปริ้นใบปะหน้าของแถม
+  const [isBonusPrintModalOpen, setIsBonusPrintModalOpen] = useState(false);
+  const [bonusFaceSheetToPrint, setBonusFaceSheetToPrint] = useState<{ id: number; face_sheet_no: string } | null>(null);
+  const [loadlistsWithPicklists, setLoadlistsWithPicklists] = useState<Loadlist[]>([]);
+  const [selectedLoadlistsForPrint, setSelectedLoadlistsForPrint] = useState<number[]>([]);
+  const [bonusPackageCounts, setBonusPackageCounts] = useState<Record<number, { packageCount: number; orderCount: number }>>({});
   const fetchLoadlists = async () => {
     setLoading(true);
     setError(null);
@@ -428,7 +449,8 @@ const LoadlistsPage = () => {
     setDriverEmployeeId('');
     setDriverName('');
     setLoadingQueueNumber('');
-    setLoadingDoorNumber(''); // Reset loading door to allow useEffect to set it
+    setLoadingDoorNumber('');
+    setPicklistFormData({}); // ✅ Reset picklist form data
     await Promise.all([
       fetchAvailablePicklists(),
       fetchAvailableFaceSheets(),
@@ -441,6 +463,36 @@ const LoadlistsPage = () => {
       employees: employees.length,
       availablePicklists: availablePicklists.length
     });
+  };
+
+  // ✅ Helper function สำหรับอัปเดตค่าแต่ละ picklist
+  const updatePicklistFormData = (picklistId: number, field: keyof PicklistFormData, value: any) => {
+    setPicklistFormData(prev => ({
+      ...prev,
+      [picklistId]: {
+        ...prev[picklistId],
+        [field]: value
+      }
+    }));
+  };
+
+  // ✅ Helper function สำหรับดึงค่าของ picklist (ใช้ค่า default จาก picklist ถ้ายังไม่ได้เลือก)
+  const getPicklistFormValue = (picklist: AvailablePicklist, field: keyof PicklistFormData): any => {
+    const formData = picklistFormData[picklist.id];
+    if (formData && formData[field] !== undefined && formData[field] !== '') {
+      return formData[field];
+    }
+    // Default values from picklist data
+    switch (field) {
+      case 'vehicleId':
+        return picklist.trip?.vehicle_id ? String(picklist.trip.vehicle_id) : '';
+      case 'driverName':
+        return picklist.trip?.driver_name || '';
+      case 'loadingDoorNumber':
+        return (picklist as any).loading_door_number || '';
+      default:
+        return '';
+    }
   };
 
   const handleTogglePicklist = (picklistId: number) => {
@@ -469,20 +521,44 @@ const LoadlistsPage = () => {
       return;
     }
 
-    // Validate required fields
-    if (!checkerEmployeeId) {
-      setCreateError('กรุณาเลือกผู้เช็คโหลดสินค้า');
-      return;
-    }
-    
-    // For picklists, require vehicle type and delivery number
+    // For picklists: validate each selected picklist has required fields
     if (hasPicklists) {
-      if (!vehicleType) {
-        setCreateError('กรุณาเลือกประเภทรถ');
-        return;
+      for (const picklistId of selectedPicklists) {
+        const picklist = availablePicklists.find(p => p.id === picklistId);
+        const formData: PicklistFormData = picklistFormData[picklistId] || {
+          checkerEmployeeId: '',
+          vehicleType: '',
+          vehicleId: '',
+          driverEmployeeId: '',
+          driverName: '',
+          loadingDoorNumber: '',
+          loadingQueueNumber: '',
+          deliveryNumber: ''
+        };
+        const picklistCode = picklist?.picklist_code || `ID:${picklistId}`;
+        
+        // Check checker employee
+        if (!formData.checkerEmployeeId) {
+          setCreateError(`กรุณาเลือกผู้เช็คโหลดสินค้าสำหรับ ${picklistCode}`);
+          return;
+        }
+        // Check vehicle type
+        if (!formData.vehicleType) {
+          setCreateError(`กรุณาเลือกประเภทรถสำหรับ ${picklistCode}`);
+          return;
+        }
+        // Check delivery number
+        if (!formData.deliveryNumber) {
+          setCreateError(`กรุณาระบุเลขงานจัดส่งสำหรับ ${picklistCode}`);
+          return;
+        }
       }
-      if (!deliveryNumber) {
-        setCreateError('กรุณาระบุเลขงานจัดส่ง');
+    }
+
+    // For face sheets and bonus face sheets: use shared checkerEmployeeId
+    if ((hasFaceSheets || hasBonusFaceSheets) && !hasPicklists) {
+      if (!checkerEmployeeId) {
+        setCreateError('กรุณาเลือกผู้เช็คโหลดสินค้า');
         return;
       }
     }
@@ -491,6 +567,60 @@ const LoadlistsPage = () => {
     setCreateError(null);
 
     try {
+      // For picklists: create one loadlist per picklist (each has different values)
+      if (hasPicklists) {
+        const results = [];
+        for (const picklistId of selectedPicklists) {
+          const picklist = availablePicklists.find(p => p.id === picklistId);
+          const formData: PicklistFormData = picklistFormData[picklistId] || {
+            checkerEmployeeId: '',
+            vehicleType: '',
+            vehicleId: '',
+            driverEmployeeId: '',
+            driverName: '',
+            loadingDoorNumber: '',
+            loadingQueueNumber: '',
+            deliveryNumber: ''
+          };
+          
+          const requestBody: any = {
+            checker_employee_id: formData.checkerEmployeeId,
+            vehicle_type: formData.vehicleType || 'N/A',
+            delivery_number: formData.deliveryNumber || `PL-${Date.now()}`,
+            vehicle_id: formData.vehicleId || picklist?.trip?.vehicle_id || null,
+            driver_employee_id: formData.driverEmployeeId || null,
+            loading_queue_number: formData.loadingQueueNumber || null,
+            loading_door_number: formData.loadingDoorNumber || picklist?.loading_door_number || null,
+            picklist_ids: [picklistId]
+          };
+
+          console.log(`🚀 Creating loadlist for ${picklist?.picklist_code}:`, {
+            vehicle_id: requestBody.vehicle_id,
+            driver_employee_id: requestBody.driver_employee_id,
+            loading_door_number: requestBody.loading_door_number,
+            checker_employee_id: requestBody.checker_employee_id
+          });
+
+          const response = await fetch('/api/loadlists', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+          });
+          const result = await response.json();
+          if (!response.ok) {
+            throw new Error(result.error || `ไม่สามารถสร้างใบโหลดสำหรับ ${picklist?.picklist_code}`);
+          }
+          results.push(result);
+        }
+        
+        setIsCreateModalOpen(false);
+        setSelectedPicklists([]);
+        setPicklistFormData({});
+        await fetchLoadlists();
+        return;
+      }
+
+      // For face sheets and bonus face sheets: create single loadlist with shared values
       const requestBody: any = {
         checker_employee_id: checkerEmployeeId,
         vehicle_type: vehicleType || 'N/A',
@@ -507,10 +637,6 @@ const LoadlistsPage = () => {
         loading_door_number: requestBody.loading_door_number,
         checker_employee_id: requestBody.checker_employee_id
       });
-      
-      if (hasPicklists) {
-        requestBody.picklist_ids = selectedPicklists;
-      }
       
       if (hasFaceSheets) {
         requestBody.face_sheet_ids = selectedFaceSheets;
@@ -531,7 +657,6 @@ const LoadlistsPage = () => {
       }
       
       setIsCreateModalOpen(false);
-      setSelectedPicklists([]);
       setSelectedFaceSheets([]);
       setSelectedBonusFaceSheets([]);
       await fetchLoadlists();
@@ -553,28 +678,50 @@ const LoadlistsPage = () => {
     const hasPicklists = loadlist.picklists && loadlist.picklists.length > 0;
     const hasFaceSheets = (loadlist as any).face_sheets && (loadlist as any).face_sheets.length > 0;
     const hasBonusFaceSheets = (loadlist as any).bonus_face_sheets && (loadlist as any).bonus_face_sheets.length > 0;
-    
+
     // Check if loadlist is empty
     if (!hasPicklists && !hasFaceSheets && !hasBonusFaceSheets) {
       alert('ใบโหลดนี้ไม่มีรายการสินค้า ไม่สามารถพิมพ์ได้');
       return;
     }
-    
+
+    // Priority: Check Bonus Face Sheets FIRST (ตรวจสอบของแถมก่อน)
+    if (hasBonusFaceSheets) {
+      // แสดง modal ให้เลือก loadlist ที่จะปริ้น (1 คัน = 1 ใบ)
+      const firstBonusFaceSheet = (loadlist as any).bonus_face_sheets[0];
+      setBonusFaceSheetToPrint({
+        id: firstBonusFaceSheet.id,
+        face_sheet_no: firstBonusFaceSheet.face_sheet_no
+      });
+      
+      // ดึง loadlists ที่มี picklists (loadlist ที่สร้างจากใบหยิบ)
+      const loadlistsWithPL = loadlists.filter(l => l.picklists && l.picklists.length > 0);
+      setLoadlistsWithPicklists(loadlistsWithPL);
+      setSelectedLoadlistsForPrint([]);
+      setBonusPackageCounts({});
+      
+      // ดึงจำนวน bonus packages ที่ตรงกับแต่ละ loadlist
+      if (loadlistsWithPL.length > 0) {
+        const loadlistIds = loadlistsWithPL.map(l => l.id).join(',');
+        fetch(`/api/bonus-face-sheets/loadlist-counts?bonus_face_sheet_id=${firstBonusFaceSheet.id}&loadlist_ids=${loadlistIds}`)
+          .then(res => res.json())
+          .then(result => {
+            if (result.success && result.data) {
+              setBonusPackageCounts(result.data);
+            }
+          })
+          .catch(err => console.error('Failed to fetch bonus package counts:', err));
+      }
+      
+      setIsBonusPrintModalOpen(true);
+      return;
+    }
+
     if (hasFaceSheets) {
       // Open delivery document for face sheets
       const faceSheetIds = (loadlist as any).face_sheets.map((fs: any) => fs.id).join(',');
       window.open(
         `/api/face-sheets/delivery-document?face_sheet_ids=${faceSheetIds}`,
-        '_blank'
-      );
-      return;
-    }
-
-    if (hasBonusFaceSheets) {
-      // Open delivery document for bonus face sheets
-      const bonusFaceSheetIds = (loadlist as any).bonus_face_sheets.map((bfs: any) => bfs.id).join(',');
-      window.open(
-        `/api/bonus-face-sheets/delivery-document?bonus_face_sheet_ids=${bonusFaceSheetIds}&loadlist_id=${loadlist.id}`,
         '_blank'
       );
       return;
@@ -651,6 +798,26 @@ const LoadlistsPage = () => {
         }, 500);
       });
     }, 100);
+  };
+
+  // ฟังก์ชันปริ้นใบปะหน้าของแถมตาม loadlist ที่เลือก
+  const handlePrintBonusFaceSheetByLoadlists = () => {
+    if (!bonusFaceSheetToPrint || selectedLoadlistsForPrint.length === 0) {
+      alert('กรุณาเลือกใบโหลดอย่างน้อย 1 รายการ');
+      return;
+    }
+
+    // เปิดหน้าปริ้นสำหรับแต่ละ loadlist ที่เลือก
+    selectedLoadlistsForPrint.forEach((loadlistId) => {
+      window.open(
+        `/api/bonus-face-sheets/print?id=${bonusFaceSheetToPrint.id}&loadlist_id=${loadlistId}`,
+        '_blank'
+      );
+    });
+
+    setIsBonusPrintModalOpen(false);
+    setBonusFaceSheetToPrint(null);
+    setSelectedLoadlistsForPrint([]);
   };
 
   return (
@@ -1057,7 +1224,7 @@ const LoadlistsPage = () => {
                       </td>
                     </tr>
                   ) : (
-                    availablePicklists.map((picklist, index) => (
+                    availablePicklists.map((picklist) => (
                       <tr
                         key={picklist.id}
                         className={`hover:bg-blue-50/30 transition-colors duration-150 ${
@@ -1084,188 +1251,150 @@ const LoadlistsPage = () => {
                           {picklist.total_weight ? picklist.total_weight.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          {index === 0 ? (
-                            <select
-                              value={checkerEmployeeId}
-                              onChange={(e) => setCheckerEmployeeId(e.target.value ? Number(e.target.value) : '')}
-                              className="w-32 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
-                            >
-                              <option value="">-- เลือก --</option>
-                              {employees.map((emp) => (
-                                <option key={emp.employee_id} value={emp.employee_id}>
-                                  {emp.first_name} {emp.last_name}
-                                </option>
-                              ))}
-                            </select>
-                          ) : checkerEmployeeId ? (
-                            <span className="text-gray-400 text-xs">
-                              {employees.find(e => e.employee_id === checkerEmployeeId)?.first_name || '-'}
-                            </span>
-                          ) : (
-                            <span className="text-gray-400 text-xs">-</span>
-                          )}
-                        </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          {index === 0 ? (
-                            <select
-                              value={vehicleType}
-                              onChange={(e) => setVehicleType(e.target.value)}
-                              className="w-24 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
-                            >
-                              <option value="">-- เลือก --</option>
-                              <option value="4 ล้อ">4 ล้อ</option>
-                              <option value="6 ล้อ">6 ล้อ</option>
-                              <option value="10 ล้อ">10 ล้อ</option>
-                              <option value="กระบะ">กระบะ</option>
-                              <option value="ตู้">ตู้</option>
-                              <option value="เทรลเลอร์">เทรลเลอร์</option>
-                            </select>
-                          ) : (
-                            <span className="text-gray-400 text-xs">{vehicleType || '-'}</span>
-                          )}
-                        </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          {index === 0 ? (
-                            <select
-                              value={vehicleId || (picklist.trip?.vehicle_id ? String(picklist.trip.vehicle_id) : '')}
-                              onChange={(e) => {
-                                const selectedVehicleId = e.target.value;
-                                setVehicleId(selectedVehicleId);
-                                // Auto-update driver name from vehicle.model when vehicle is selected
-                                if (selectedVehicleId) {
-                                  const selectedVehicle = vehicles.find(v => String(v.vehicle_id) === selectedVehicleId);
-                                  if (selectedVehicle) {
-                                    // Set driver name from vehicle.model
-                                    const driverNameFromVehicle = selectedVehicle.model || '';
-                                    setDriverName(driverNameFromVehicle);
-                                    
-                                    // Try to find matching employee by name
-                                    if (driverNameFromVehicle) {
-                                      const matchingEmployee = employees.find(emp => {
-                                        const fullName = `${emp.first_name} ${emp.last_name}`.trim();
-                                        return fullName.includes(driverNameFromVehicle) || driverNameFromVehicle.includes(emp.first_name);
-                                      });
-                                      
-                                      if (matchingEmployee) {
-                                        setDriverEmployeeId(matchingEmployee.employee_id);
-                                        console.log('✅ Auto-matched driver:', matchingEmployee.first_name, matchingEmployee.last_name);
-                                      } else {
-                                        // No matching employee found, keep driver_employee_id empty
-                                        setDriverEmployeeId('');
-                                        console.log('⚠️ No matching employee found for driver name:', driverNameFromVehicle);
-                                      }
-                                    } else {
-                                      setDriverEmployeeId('');
-                                    }
-                                  }
-                                } else {
-                                  setDriverName('');
-                                  setDriverEmployeeId('');
-                                }
-                              }}
-                              className="w-28 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
-                            >
-                              <option value="">-- เลือก --</option>
-                              {vehicles.map((vehicle) => (
-                                <option key={vehicle.vehicle_id} value={String(vehicle.vehicle_id)}>
-                                  {vehicle.plate_number}
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <span className="text-gray-700 text-xs">{picklist.trip?.vehicle?.plate_number || '-'}</span>
-                          )}
-                        </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          {index === 0 ? (
-                            <select
-                              value={driverEmployeeId || ''}
-                              onChange={(e) => {
-                                const selectedDriverId = e.target.value ? parseInt(e.target.value, 10) : '';
-                                setDriverEmployeeId(selectedDriverId);
-                                // Update driver name when employee is selected
-                                if (selectedDriverId) {
-                                  const selectedEmployee = employees.find(emp => emp.employee_id === selectedDriverId);
-                                  if (selectedEmployee) {
-                                    setDriverName(`${selectedEmployee.first_name} ${selectedEmployee.last_name}`.trim());
-                                  }
-                                }
-                              }}
-                              className="w-32 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
-                            >
-                              <option value="">
-                                {driverName || picklist.trip?.driver_name || '-- เลือก --'}
+                          <select
+                            value={getPicklistFormValue(picklist, 'checkerEmployeeId')}
+                            onChange={(e) => updatePicklistFormData(picklist.id, 'checkerEmployeeId', e.target.value ? Number(e.target.value) : '')}
+                            className="w-32 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                          >
+                            <option value="">-- เลือก --</option>
+                            {employees.map((emp) => (
+                              <option key={emp.employee_id} value={emp.employee_id}>
+                                {emp.first_name} {emp.last_name}
                               </option>
-                              {employees
-                                .filter(emp => emp.position?.includes('ขับ') || emp.position?.toLowerCase().includes('driver'))
-                                .map((employee) => (
-                                  <option key={employee.employee_id} value={employee.employee_id}>
-                                    {`${employee.first_name} ${employee.last_name}`.trim()}
-                                  </option>
-                                ))}
-                            </select>
-                          ) : (
-                            <span className="text-gray-700 text-xs">{picklist.trip?.driver_name || '-'}</span>
-                          )}
+                            ))}
+                          </select>
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          {index === 0 ? (
-                            <select
-                              value={loadingDoorNumber || (picklist as any).loading_door_number || ''}
-                              onChange={(e) => setLoadingDoorNumber(e.target.value)}
-                              className="w-20 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
-                            >
-                              <option value="">-- เลือก --</option>
-                              <option value="D01">D01</option>
-                              <option value="D02">D02</option>
-                              <option value="D03">D03</option>
-                              <option value="D04">D04</option>
-                              <option value="D05">D05</option>
-                              <option value="D06">D06</option>
-                              <option value="D07">D07</option>
-                              <option value="D08">D08</option>
-                              <option value="D09">D09</option>
-                              <option value="D10">D10</option>
-                            </select>
-                          ) : (
-                            <span className="text-gray-400 text-xs">{loadingDoorNumber || (picklist as any).loading_door_number || '-'}</span>
-                          )}
+                          <select
+                            value={getPicklistFormValue(picklist, 'vehicleType')}
+                            onChange={(e) => updatePicklistFormData(picklist.id, 'vehicleType', e.target.value)}
+                            className="w-24 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                          >
+                            <option value="">-- เลือก --</option>
+                            <option value="4 ล้อ">4 ล้อ</option>
+                            <option value="6 ล้อ">6 ล้อ</option>
+                            <option value="10 ล้อ">10 ล้อ</option>
+                            <option value="กระบะ">กระบะ</option>
+                            <option value="ตู้">ตู้</option>
+                            <option value="เทรลเลอร์">เทรลเลอร์</option>
+                          </select>
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          {index === 0 ? (
-                            <select
-                              value={loadingQueueNumber}
-                              onChange={(e) => setLoadingQueueNumber(e.target.value)}
-                              className="w-20 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
-                            >
-                              <option value="">-- เลือก --</option>
-                              <option value="Q-01">Q-01</option>
-                              <option value="Q-02">Q-02</option>
-                              <option value="Q-03">Q-03</option>
-                              <option value="Q-04">Q-04</option>
-                              <option value="Q-05">Q-05</option>
-                              <option value="Q-06">Q-06</option>
-                              <option value="Q-07">Q-07</option>
-                              <option value="Q-08">Q-08</option>
-                              <option value="Q-09">Q-09</option>
-                              <option value="Q-10">Q-10</option>
-                            </select>
-                          ) : (
-                            <span className="text-gray-400 text-xs">{loadingQueueNumber || '-'}</span>
-                          )}
+                          <select
+                            value={getPicklistFormValue(picklist, 'vehicleId')}
+                            onChange={(e) => {
+                              const selectedVehicleId = e.target.value;
+                              updatePicklistFormData(picklist.id, 'vehicleId', selectedVehicleId);
+                              // Auto-update driver name from vehicle.model when vehicle is selected
+                              if (selectedVehicleId) {
+                                const selectedVehicle = vehicles.find(v => String(v.vehicle_id) === selectedVehicleId);
+                                if (selectedVehicle) {
+                                  const driverNameFromVehicle = selectedVehicle.model || '';
+                                  updatePicklistFormData(picklist.id, 'driverName', driverNameFromVehicle);
+                                  
+                                  // Try to find matching employee by name
+                                  if (driverNameFromVehicle) {
+                                    const matchingEmployee = employees.find(emp => {
+                                      const fullName = `${emp.first_name} ${emp.last_name}`.trim();
+                                      return fullName.includes(driverNameFromVehicle) || driverNameFromVehicle.includes(emp.first_name);
+                                    });
+                                    if (matchingEmployee) {
+                                      updatePicklistFormData(picklist.id, 'driverEmployeeId', matchingEmployee.employee_id);
+                                    } else {
+                                      updatePicklistFormData(picklist.id, 'driverEmployeeId', '');
+                                    }
+                                  } else {
+                                    updatePicklistFormData(picklist.id, 'driverEmployeeId', '');
+                                  }
+                                }
+                              } else {
+                                updatePicklistFormData(picklist.id, 'driverName', '');
+                                updatePicklistFormData(picklist.id, 'driverEmployeeId', '');
+                              }
+                            }}
+                            className="w-28 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                          >
+                            <option value="">-- เลือก --</option>
+                            {vehicles.map((vehicle) => (
+                              <option key={vehicle.vehicle_id} value={String(vehicle.vehicle_id)}>
+                                {vehicle.plate_number}
+                              </option>
+                            ))}
+                          </select>
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          {index === 0 ? (
-                            <input
-                              type="text"
-                              value={deliveryNumber}
-                              onChange={(e) => setDeliveryNumber(e.target.value)}
-                              placeholder="S002855"
-                              className="w-24 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
-                            />
-                          ) : (
-                            <span className="text-gray-400 text-xs">{deliveryNumber || '-'}</span>
-                          )}
+                          <select
+                            value={getPicklistFormValue(picklist, 'driverEmployeeId')}
+                            onChange={(e) => {
+                              const selectedDriverId = e.target.value ? parseInt(e.target.value, 10) : '';
+                              updatePicklistFormData(picklist.id, 'driverEmployeeId', selectedDriverId);
+                              if (selectedDriverId) {
+                                const selectedEmployee = employees.find(emp => emp.employee_id === selectedDriverId);
+                                if (selectedEmployee) {
+                                  updatePicklistFormData(picklist.id, 'driverName', `${selectedEmployee.first_name} ${selectedEmployee.last_name}`.trim());
+                                }
+                              }
+                            }}
+                            className="w-32 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                          >
+                            <option value="">
+                              {getPicklistFormValue(picklist, 'driverName') || picklist.trip?.driver_name || '-- เลือก --'}
+                            </option>
+                            {employees
+                              .filter(emp => emp.position?.includes('ขับ') || emp.position?.toLowerCase().includes('driver'))
+                              .map((employee) => (
+                                <option key={employee.employee_id} value={employee.employee_id}>
+                                  {`${employee.first_name} ${employee.last_name}`.trim()}
+                                </option>
+                              ))}
+                          </select>
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <select
+                            value={getPicklistFormValue(picklist, 'loadingDoorNumber')}
+                            onChange={(e) => updatePicklistFormData(picklist.id, 'loadingDoorNumber', e.target.value)}
+                            className="w-20 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                          >
+                            <option value="">-- เลือก --</option>
+                            <option value="D01">D01</option>
+                            <option value="D02">D02</option>
+                            <option value="D03">D03</option>
+                            <option value="D04">D04</option>
+                            <option value="D05">D05</option>
+                            <option value="D06">D06</option>
+                            <option value="D07">D07</option>
+                            <option value="D08">D08</option>
+                            <option value="D09">D09</option>
+                            <option value="D10">D10</option>
+                          </select>
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <select
+                            value={getPicklistFormValue(picklist, 'loadingQueueNumber')}
+                            onChange={(e) => updatePicklistFormData(picklist.id, 'loadingQueueNumber', e.target.value)}
+                            className="w-20 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                          >
+                            <option value="">-- เลือก --</option>
+                            <option value="Q-01">Q-01</option>
+                            <option value="Q-02">Q-02</option>
+                            <option value="Q-03">Q-03</option>
+                            <option value="Q-04">Q-04</option>
+                            <option value="Q-05">Q-05</option>
+                            <option value="Q-06">Q-06</option>
+                            <option value="Q-07">Q-07</option>
+                            <option value="Q-08">Q-08</option>
+                            <option value="Q-09">Q-09</option>
+                            <option value="Q-10">Q-10</option>
+                          </select>
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          <input
+                            type="text"
+                            value={getPicklistFormValue(picklist, 'deliveryNumber')}
+                            onChange={(e) => updatePicklistFormData(picklist.id, 'deliveryNumber', e.target.value)}
+                            placeholder="S002855"
+                            className="w-24 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                          />
                         </td>
                         <td className="px-3 py-2 text-gray-700">
                           <Badge variant="success" size="sm">เสร็จสิ้น</Badge>
@@ -1669,6 +1798,170 @@ const LoadlistsPage = () => {
             >
               พิมพ์ใบส่งมอบ
             </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal เลือก Loadlist สำหรับปริ้นใบปะหน้าของแถม */}
+      <Modal
+        isOpen={isBonusPrintModalOpen}
+        onClose={() => {
+          setIsBonusPrintModalOpen(false);
+          setBonusFaceSheetToPrint(null);
+          setSelectedLoadlistsForPrint([]);
+        }}
+        title={`พิมพ์ใบเช็คของแถม: ${bonusFaceSheetToPrint?.face_sheet_no || ''}`}
+        size="lg"
+      >
+        <div className="space-y-4">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+            <p className="text-sm text-blue-800">
+              <strong>คำแนะนำ:</strong> เลือกใบโหลด (คัน) ที่ต้องการปริ้นใบเช็คของแถม แต่ละใบโหลดจะปริ้นแยก 1 ใบ โดยแสดงเฉพาะรายการของแถมที่ตรงกับออเดอร์ในใบโหลดนั้น
+            </p>
+            <p className="text-sm text-blue-600 mt-2">
+              <strong>หมายเหตุ:</strong> หากไม่พบรายการที่ตรงกัน สามารถกดปุ่ม "พิมพ์ทั้งหมด (ไม่กรอง)" ด้านล่างเพื่อปริ้นใบเช็คของแถมทั้งหมดได้
+            </p>
+          </div>
+
+          <div className="flex items-center justify-between bg-gray-50 px-4 py-2 rounded">
+            <label className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={
+                  loadlistsWithPicklists.filter(l => bonusPackageCounts[l.id]?.packageCount > 0).length > 0 &&
+                  selectedLoadlistsForPrint.length === loadlistsWithPicklists.filter(l => bonusPackageCounts[l.id]?.packageCount > 0).length
+                }
+                onChange={() => {
+                  const loadlistsWithBonus = loadlistsWithPicklists.filter(l => bonusPackageCounts[l.id]?.packageCount > 0);
+                  if (selectedLoadlistsForPrint.length === loadlistsWithBonus.length) {
+                    setSelectedLoadlistsForPrint([]);
+                  } else {
+                    setSelectedLoadlistsForPrint(loadlistsWithBonus.map(l => l.id));
+                  }
+                }}
+                className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+              />
+              <span className="text-sm font-medium text-gray-700">
+                เลือกทั้งหมดที่มีของแถม ({selectedLoadlistsForPrint.length}/{loadlistsWithPicklists.filter(l => bonusPackageCounts[l.id]?.packageCount > 0).length})
+              </span>
+            </label>
+          </div>
+
+          <div className="max-h-80 overflow-y-auto border rounded-lg">
+            <table className="w-full border-collapse text-sm">
+              <thead className="sticky top-0 z-10 bg-gray-100">
+                <tr>
+                  <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 w-12"></th>
+                  <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">รหัสใบโหลด</th>
+                  <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">ทะเบียนรถ</th>
+                  <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">คนขับ</th>
+                  <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200">ใบจัด</th>
+                  <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 bg-yellow-50">รายการของแถม</th>
+                  <th className="px-2 py-2 text-left text-xs font-semibold border-b">สถานะ</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
+                {loadlistsWithPicklists.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                      ไม่พบใบโหลดที่สร้างจากใบหยิบ
+                    </td>
+                  </tr>
+                ) : (
+                  loadlistsWithPicklists.map((ll) => {
+                    const counts = bonusPackageCounts[ll.id];
+                    const hasMatchingBonus = counts && counts.packageCount > 0;
+                    return (
+                      <tr
+                        key={ll.id}
+                        className={`hover:bg-blue-50/30 transition-colors duration-150 ${
+                          selectedLoadlistsForPrint.includes(ll.id) ? 'bg-green-50' : ''
+                        } ${!hasMatchingBonus ? 'opacity-50' : ''}`}
+                      >
+                        <td className="px-2 py-1 border-r border-gray-100">
+                          <input
+                            type="checkbox"
+                            checked={selectedLoadlistsForPrint.includes(ll.id)}
+                            onChange={() => {
+                              if (selectedLoadlistsForPrint.includes(ll.id)) {
+                                setSelectedLoadlistsForPrint(selectedLoadlistsForPrint.filter(id => id !== ll.id));
+                              } else {
+                                setSelectedLoadlistsForPrint([...selectedLoadlistsForPrint, ll.id]);
+                              }
+                            }}
+                            disabled={!hasMatchingBonus}
+                            className="w-4 h-4 text-green-600 rounded focus:ring-green-500 disabled:opacity-50"
+                          />
+                        </td>
+                        <td className="px-2 py-1 border-r border-gray-100 font-mono text-blue-600 font-semibold">
+                          {ll.loadlist_code}
+                        </td>
+                        <td className="px-2 py-1 border-r border-gray-100 text-gray-700">
+                          {ll.vehicle?.plate_number || '-'}
+                        </td>
+                        <td className="px-2 py-1 border-r border-gray-100 text-gray-700">
+                          {ll.driver ? `${ll.driver.first_name} ${ll.driver.last_name}` : '-'}
+                        </td>
+                        <td className="px-2 py-1 text-center border-r border-gray-100 font-semibold text-purple-600">
+                          {ll.total_picklists}
+                        </td>
+                        <td className="px-2 py-1 text-center border-r border-gray-100 bg-yellow-50">
+                          {counts ? (
+                            <span className={`font-semibold ${hasMatchingBonus ? 'text-green-600' : 'text-gray-400'}`}>
+                              {counts.packageCount} แพ็ค
+                              <span className="text-xs text-gray-500 ml-1">({counts.orderCount} ร้าน)</span>
+                            </span>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-2 py-1">
+                          {getStatusBadge(ll.status)}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex gap-3 justify-between pt-4 border-t">
+            <Button
+              variant="outline"
+              onClick={() => {
+                // ปริ้นใบเช็คของแถมทั้งหมด (ไม่กรองตาม loadlist)
+                if (bonusFaceSheetToPrint) {
+                  window.open(
+                    `/api/bonus-face-sheets/print?id=${bonusFaceSheetToPrint.id}`,
+                    '_blank'
+                  );
+                }
+              }}
+              className="text-blue-600 border-blue-300 hover:bg-blue-50"
+            >
+              พิมพ์ทั้งหมด (ไม่กรอง)
+            </Button>
+            <div className="flex gap-3">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setIsBonusPrintModalOpen(false);
+                  setBonusFaceSheetToPrint(null);
+                  setSelectedLoadlistsForPrint([]);
+                }}
+              >
+                ยกเลิก
+              </Button>
+              <Button
+                variant="primary"
+                onClick={handlePrintBonusFaceSheetByLoadlists}
+                disabled={selectedLoadlistsForPrint.length === 0}
+                className="bg-green-500 hover:bg-green-600"
+              >
+                พิมพ์ ({selectedLoadlistsForPrint.length} ใบ)
+              </Button>
+            </div>
           </div>
         </div>
       </Modal>

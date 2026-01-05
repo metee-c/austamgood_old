@@ -28,6 +28,42 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // ============================================================
+    // ✅ CHECK: ตรวจสอบว่ามี picklist สำหรับ trip นี้แล้วหรือยัง
+    // ============================================================
+    const { data: existingPicklistForTrip } = await supabase
+      .from('picklists')
+      .select('id, picklist_code, status')
+      .eq('trip_id', trip_id)
+      .maybeSingle();
+
+    if (existingPicklistForTrip) {
+      // ถ้ามี picklist อยู่แล้ว ให้ลบงานเติมเก่าก่อน แล้ว return picklist เดิม
+      console.log(`⚠️ Picklist already exists for trip ${trip_id}: ${existingPicklistForTrip.picklist_code}`);
+      
+      // ลบงานเติมเก่าที่ยังไม่ได้ทำ
+      const { data: deletedReplen } = await supabase
+        .from('replenishment_queue')
+        .delete()
+        .eq('trigger_reference', existingPicklistForTrip.picklist_code)
+        .eq('status', 'pending')
+        .select();
+      
+      if (deletedReplen && deletedReplen.length > 0) {
+        console.log(`✅ Deleted ${deletedReplen.length} old pending replenishment tasks`);
+      }
+
+      return NextResponse.json({
+        success: true,
+        picklist_id: existingPicklistForTrip.id,
+        picklist_code: existingPicklistForTrip.picklist_code,
+        picklist_no: existingPicklistForTrip.picklist_code,
+        already_exists: true,
+        message: `ใบหยิบ ${existingPicklistForTrip.picklist_code} มีอยู่แล้วสำหรับเที่ยวนี้`,
+        deleted_old_replenishments: deletedReplen?.length || 0
+      });
+    }
+
     // 1. Fetch trip details with plan info
     const { data: trip, error: tripError } = await supabase
       .from('receiving_route_trips')
@@ -317,15 +353,11 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ❌ FAIL only if truly insufficient (no replenishment possible)
+    // ⚠️ WARNING only - still create picklist but log shortage
+    // สร้าง picklist ได้เสมอ แม้สต็อกไม่พอ - แต่ไม่สร้างงานเติมถ้าหาสต็อกไม่เจอ
     if (insufficientStockItems.length > 0) {
-      console.error('❌ Cannot create picklist: Insufficient stock:', insufficientStockItems);
-      const skuList = insufficientStockItems.map(s => `${s.sku_name || s.sku_id} (ต้องการ ${s.required} มี ${s.available + s.bulk_available})`).join(', ');
-      return NextResponse.json({
-        error: `สต็อกไม่เพียงพอ: ${skuList}`,
-        insufficient_items: insufficientStockItems,
-        total_items_with_shortage: insufficientStockItems.length
-      }, { status: 400 });
+      console.warn('⚠️ Creating picklist with insufficient stock - no replenishment source found:', insufficientStockItems);
+      // ไม่สร้างงานเติมถ้าไม่มี pallet_id (หาสต็อกไม่เจอ)
     }
 
     // ============================================================
@@ -481,11 +513,17 @@ export async function POST(request: NextRequest) {
     }
 
     // ============================================================
-    // ✅ Create replenishment tasks if needed
+    // ✅ Create replenishment tasks if needed (only with valid pallet_id)
     // ============================================================
     const createdReplenishments: any[] = [];
     if (replenishmentNeeded.length > 0) {
       for (const replen of replenishmentNeeded) {
+        // ไม่สร้างงานเติมถ้าไม่มี pallet_id
+        if (!replen.pallet_id) {
+          console.log(`⚠️ Skipping replenishment for ${replen.sku_id} - no pallet_id`);
+          continue;
+        }
+        
         const { data: replenTask, error: replenError } = await supabase
           .from('replenishment_queue')
           .insert({
@@ -495,7 +533,7 @@ export async function POST(request: NextRequest) {
             to_location_id: replen.to_location_id,
             requested_qty: replen.shortage_qty,
             pallet_id: replen.pallet_id,
-            expiry_date: replen.expiry_date,
+            expiry_date: replen.expiry_date || null,
             priority: 3,
             status: 'pending',
             trigger_source: 'picklist',
@@ -524,9 +562,13 @@ export async function POST(request: NextRequest) {
       reservations_created: reservationsToInsert.length,
       replenishments: createdReplenishments,
       replenishment_count: createdReplenishments.length,
-      message: replenishmentNeeded.length > 0 
-        ? `Picklist created with ${createdReplenishments.length} replenishment tasks`
-        : 'Picklist created successfully with stock reserved'
+      has_stock_shortage: insufficientStockItems.length > 0,
+      shortage_items: insufficientStockItems,
+      message: insufficientStockItems.length > 0
+        ? `สร้างใบหยิบสำเร็จ แต่มี ${insufficientStockItems.length} รายการที่สต็อกไม่พอและหาแหล่งเติมไม่ได้`
+        : createdReplenishments.length > 0 
+          ? `สร้างใบหยิบสำเร็จ พร้อมงานเติม ${createdReplenishments.length} รายการ`
+          : 'สร้างใบหยิบสำเร็จ จองสต็อกเรียบร้อย'
     });
 
   } catch (error: any) {

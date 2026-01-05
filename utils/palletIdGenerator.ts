@@ -23,9 +23,9 @@ export class PalletIdGenerator {
       const currentYear = now.getFullYear();
       const yearPrefix = `ATG${currentYear}`;
 
-      // Get the last pallet ID from this year
+      // Get the last pallet ID from this year (from wms_receive_items table)
       const { data: lastPallet, error: queryError } = await this.supabase
-        .from('wms_receive_pallet')
+        .from('wms_receive_items')
         .select('pallet_id')
         .ilike('pallet_id', `${yearPrefix}%`)
         .order('pallet_id', { ascending: false })
@@ -74,7 +74,7 @@ export class PalletIdGenerator {
   async isPalletIdExists(palletId: string): Promise<{ exists: boolean; error: string | null }> {
     try {
       const { data, error } = await this.supabase
-        .from('wms_receive_pallet')
+        .from('wms_receive_items')
         .select('pallet_id')
         .eq('pallet_id', palletId)
         .limit(1)

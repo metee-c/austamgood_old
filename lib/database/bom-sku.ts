@@ -17,14 +17,7 @@ export class BomSkuService {
         .order('bom_id', { ascending: true })
         .order('step_order', { ascending: true });
 
-      // Apply filters
-      if (filters.search) {
-        const hasSpecialChars = /[|,()\\]/.test(filters.search);
-        if (!hasSpecialChars) {
-          query = query.or(`bom_id.ilike.%${filters.search}%,step_name.ilike.%${filters.search}%`);
-        }
-      }
-
+      // Apply non-search filters first
       if (filters.bom_id) {
         query = query.eq('bom_id', filters.bom_id);
       }
@@ -48,7 +41,29 @@ export class BomSkuService {
         return { data: [], error: error.message };
       }
 
-      return { data: data as BomSkuWithDetails[], error: null };
+      // Apply search filter on client-side to include SKU names
+      let filteredData = data as BomSkuWithDetails[];
+      
+      if (filters.search) {
+        const searchLower = filters.search.toLowerCase();
+        filteredData = filteredData.filter(record => {
+          // Search in bom_id
+          if (record.bom_id?.toLowerCase().includes(searchLower)) return true;
+          // Search in step_name
+          if (record.step_name?.toLowerCase().includes(searchLower)) return true;
+          // Search in finished_sku_id
+          if (record.finished_sku_id?.toLowerCase().includes(searchLower)) return true;
+          // Search in finished_sku name
+          if (record.finished_sku?.sku_name?.toLowerCase().includes(searchLower)) return true;
+          // Search in material_sku_id
+          if (record.material_sku_id?.toLowerCase().includes(searchLower)) return true;
+          // Search in material_sku name
+          if (record.material_sku?.sku_name?.toLowerCase().includes(searchLower)) return true;
+          return false;
+        });
+      }
+
+      return { data: filteredData, error: null };
     } catch (err) {
       console.error('Error in getAllBomSkus:', err);
       return { data: [], error: 'เกิดข้อผิดพลาดในการดึงข้อมูล BOM' };
