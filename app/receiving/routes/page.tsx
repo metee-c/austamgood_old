@@ -36,6 +36,7 @@ import EditShippingCostModal from '@/components/receiving/EditShippingCostModal'
 import TransportContractModal from '@/components/receiving/TransportContractModal';
 import DraggableStopList from '@/components/receiving/DraggableStopList';
 import EditorDraftOrdersPanel from '@/components/receiving/EditorDraftOrdersPanel';
+import ExcelStyleRouteEditor from '@/components/receiving/ExcelStyleRouteEditor';
 // import { CreditCard } from 'lucide-react'; // ลบออกเนื่องจากไม่ได้ใช้งาน
 
 // --- Interfaces และ Types ย้ายมาไว้ข้างนอก ---
@@ -3298,261 +3299,56 @@ const RoutesPage = () => {
                 )}
             </Modal>
 
+            {/* Excel-Style Route Editor Modal */}
             <Modal
                 isOpen={isEditorOpen}
                 onClose={handleCloseEditor}
-                title={editorPlan ? `จัดการเส้นทาง: ${editorPlan.plan_name || editorPlan.plan_code}` : 'จัดการเส้นทาง'}
-                size="4xl"
-                contentClassName="max-h-[85vh]"
+                title=""
+                size="full"
+                contentClassName="p-0 h-[90vh]"
+                hideCloseButton
             >
                 {editorLoading && editorTrips.length === 0 ? (
                     <div className="py-10 text-center text-gray-500">กำลังโหลดข้อมูล...</div>
                 ) : editorError && editorTrips.length === 0 ? (
                     <div className="py-10 text-center text-red-500">{editorError}</div>
-                ) : editorPlan ? (
-                    <div className="relative">
-                        {editorLoading && editorTrips.length > 0 && (
-                            <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-white/70">
-                                <svg
-                                    className="animate-spin h-10 w-10 text-blue-600"
-                                    xmlns="http://www.w3.org/2000/svg"
-                                    fill="none"
-                                    viewBox="0 0 24 24"
-                                >
-                                    <circle
-                                        className="opacity-25"
-                                        cx="12"
-                                        cy="12"
-                                        r="10"
-                                        stroke="currentColor"
-                                        strokeWidth="4"
-                                    ></circle>
-                                    <path
-                                        className="opacity-75"
-                                        fill="currentColor"
-                                        d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                                    ></path>
-                                </svg>
-                                <p className="mt-2 text-sm text-gray-600">กำลังประมวลผล...</p>
-                            </div>
-                        )}
-
-                        <div className="space-y-4">
-                            {editorError && (
-                                <div className="text-sm text-red-500 bg-red-50 border border-red-200 rounded-md px-3 py-2">
-                                    {editorError}
-                                </div>
-                            )}
-
-                            <div className="grid md:grid-cols-5 gap-4">
-                                <div className="md:col-span-3 space-y-3">
-                                    {editorTrips.length === 0 ? (
-                                        <div className="border border-dashed border-gray-300 rounded-lg p-6 text-center text-sm text-gray-500">
-                                            ไม่มีเที่ยวรถในแผนนี้
-                                        </div>
-                                    ) : (
-                                        editorTrips.map(trip => (
-                                            <div
-                                                key={trip.trip_id}
-                                                className={`border rounded-lg transition ${trip.trip_id === selectedEditorTripId
-                                                    ? 'border-blue-500 bg-blue-50/30'
-                                                    : trip.is_overweight
-                                                    ? 'border-red-300 bg-red-50/30'
-                                                    : 'border-gray-200 bg-white'
-                                                    }`}
-                                            >
-                                                <div className={`p-3 ${trip.is_overweight ? 'bg-red-50/50' : ''}`}>
-                                                    <div className="flex items-center justify-between gap-2">
-                                                        <div>
-                                                            <div className="text-sm font-semibold text-gray-800 flex items-center gap-2">
-                                                                เที่ยวที่ {trip.trip_number}
-                                                                {trip.is_overweight && (
-                                                                    <span className="text-xs font-medium text-red-600 bg-red-100 px-2 py-0.5 rounded">
-                                                                        ⚠️ น้ำหนักเกิน
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                            <div className="text-xs text-gray-500 space-x-2">
-                                                                <span>รถ: {trip.vehicle_label || '-'}</span>
-                                                                <span>| คนขับ: {trip.driver_label || '-'}</span>
-                                                            </div>
-                                                        </div>
-                                                        <div className="text-xs text-gray-500 text-right">
-                                                            {trip.total_distance_km?.toFixed(1) || 0} km • {trip.stops.length} จุด
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                                <div className="overflow-x-auto">
-                                                    <DraggableStopList
-                                                        stops={trip.stops}
-                                                        selectedStopId={selectedEditorStopId}
-                                                        selectedOrderId={selectedEditorOrderId}
-                                                        onReorder={(reorderedStops) => handleReorderStops(trip.trip_id, reorderedStops)}
-                                                        onSelectStop={(stopId, orderId) => handleSelectEditorStop(trip.trip_id, stopId, orderId)}
-                                                    />
-                                                </div>
-                                            </div>
-                                        ))
-                                    )}
-                                </div>
-
-                                <div className="md:col-span-2 space-y-3">
-                                    <div className="sticky top-4 space-y-3">
-                                        {/* Draft Orders Panel */}
-                                        <EditorDraftOrdersPanel
-                                            draftOrders={editorDraftOrders}
-                                            trips={editorTrips}
-                                            loading={editorDraftOrdersLoading}
-                                            onAddOrder={handleAddOrderToEditor}
-                                        />
-
-                                        {/* Selected Stop Details */}
-                                        {editorActiveStop && editorActiveTrip ? (
-                                            <div className="border rounded-lg bg-white p-3 space-y-3">
-                                                <div>
-                                                    <h4 className="font-semibold text-gray-800">จุดที่ {editorActiveStop.sequence_no}</h4>
-                                                    <p className="text-sm text-gray-700">{editorActiveStop.stop_name}</p>
-                                                    <p className="text-xs text-gray-500">{editorActiveStop.address || '—'}</p>
-                                                    {editorActiveOrder && (
-                                                        <p className="text-xs font-mono text-blue-600 mt-1">เลขออเดอร์: {editorActiveOrder.order_no || '-'}</p>
-                                                    )}
-                                                </div>
-
-                                                <table className="w-full text-xs bg-gray-50 rounded-md overflow-hidden">
-                                                    <tbody>
-                                                        <tr>
-                                                            <th className="px-3 py-2 text-left text-gray-600">น้ำหนัก</th>
-                                                            <td className="px-3 py-2 text-gray-800">
-                                                                {editorActiveOrder
-                                                                    ? Number(editorActiveOrder.allocated_weight_kg ?? editorActiveOrder.total_order_weight_kg ?? 0).toFixed(2)
-                                                                    : Number(editorActiveStop.load_weight_kg ?? 0).toFixed(2)
-                                                                } kg
-                                                            </td>
-                                                        </tr>
-                                                        <tr>
-                                                            <th className="px-3 py-2 text-left text-gray-600">หน่วย</th>
-                                                            <td className="px-3 py-2 text-gray-800">{editorActiveStop.load_units ?? 0}</td>
-                                                        </tr>
-                                                        <tr>
-                                                            <th className="px-3 py-2 text-left text-gray-600">ปริมาตร</th>
-                                                            <td className="px-3 py-2 text-gray-800">
-                                                                {Number(editorActiveStop.load_volume_cbm ?? 0).toFixed(2)} cbm
-                                                            </td>
-                                                        </tr>
-                                                        <tr>
-                                                            <th className="px-3 py-2 text-left text-gray-600">เวลาบริการ</th>
-                                                            <td className="px-3 py-2 text-gray-800">
-                                                                {editorActiveStop.service_duration_minutes ?? 0} นาที
-                                                            </td>
-                                                        </tr>
-                                                    </tbody>
-                                                </table>
-
-                                                <div className="space-y-3">
-                                                    <div className="flex gap-2">
-                                                        <Button
-                                                            size="sm"
-                                                            variant="outline"
-                                                            onClick={() => handleMoveStop(editorActiveTrip.trip_id, editorActiveStop.stop_id, 'up')}
-                                                            disabled={editorActiveStop.sequence_no <= 1}
-                                                        >
-                                                            เลื่อนขึ้น
-                                                        </Button>
-                                                        <Button
-                                                            size="sm"
-                                                            variant="outline"
-                                                            onClick={() => handleMoveStop(editorActiveTrip.trip_id, editorActiveStop.stop_id, 'down')}
-                                                            disabled={editorActiveStop.sequence_no >= editorActiveTrip.stops.length}
-                                                        >
-                                                            เลื่อนลง
-                                                        </Button>
-                                                    </div>
-
-                                                    <div className="space-y-1">
-                                                        <label className="text-xs text-gray-600">ย้ายไปคันอื่น</label>
-                                                        <div className="flex items-center gap-2">
-                                                            <select
-                                                                className="flex-1 border border-gray-300 rounded-md px-2 py-1 text-sm"
-                                                                value={transferTripId ?? ''}
-                                                                onChange={event => {
-                                                                    const value = event.target.value;
-                                                                    setTransferTripId(value === '' ? null : Number(value));
-                                                                }}
-                                                            >
-                                                                <option value="">เลือกเที่ยว</option>
-                                                                {editorTrips.map(trip => (
-                                                                    <option key={trip.trip_id} value={trip.trip_id}>
-                                                                        เที่ยวที่ {trip.trip_number}
-                                                                    </option>
-                                                                ))}
-                                                            </select>
-                                                            <Button
-                                                                size="sm"
-                                                                variant="outline"
-                                                                disabled={!transferTripId || transferTripId === editorActiveTrip.trip_id}
-                                                                onClick={() =>
-                                                                    transferTripId && handleTransferStop(editorActiveStop.stop_id, transferTripId)
-                                                                }
-                                                            >
-                                                                ย้ายคัน
-                                                            </Button>
-                                                        </div>
-                                                    </div>
-
-                                                    <Button size="sm" variant="outline" onClick={handleOpenSplitModal}>
-                                                        แบ่งออเดอร์ไปคันอื่น
-                                                    </Button>
-
-                                                    <div className="border-t border-gray-200 pt-3 mt-3">
-                                                        <Button
-                                                            size="sm"
-                                                            variant="danger"
-                                                            icon={Trash2}
-                                                            onClick={() => handleCancelStop(editorActiveStop)}
-                                                        >
-                                                            ยกเลิกจุดส่งนี้
-                                                        </Button>
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        ) : (
-                                            <div className="border border-dashed border-gray-300 rounded-lg p-4 text-sm text-gray-500 bg-white">
-                                                เลือกจุดในรายการเพื่อดูรายละเอียดและแก้ไข
-                                            </div>
-                                        )}
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="border rounded-lg bg-white p-3">
-                                <h4 className="font-semibold text-gray-800 mb-3">แผนที่ตัวอย่าง (อัปเดตหลังบันทึก)</h4>
-                                {editorWarehouse ? (
-                                    <RouteMap
-                                        warehouse={{ ...editorWarehouse, name: editorWarehouse.name || undefined }}
-                                        trips={editorTripsForMap as any}
-                                        height="360px"
-                                    />
-                                ) : (
-                                    <div className="h-60 flex items-center justify-center text-sm text-gray-500">
-                                        ไม่มีข้อมูลพิกัดคลังสินค้า
-                                    </div>
-                                )}
-                            </div>
-
-                            <div className="flex justify-end gap-3">
-                                <Button variant="outline" onClick={handleCloseEditor} disabled={editorLoading}>
-                                    ปิด
-                                </Button>
-                                <Button
-                                    variant="primary"
-                                    onClick={handleSaveEditor}
-                                    disabled={editorLoading || editorTrips.length === 0}
-                                >
-                                    บันทึกการแก้ไข
-                                </Button>
-                            </div>
-                        </div>
-                    </div>
+                ) : editorPlan && editorPlanId ? (
+                    <ExcelStyleRouteEditor
+                        planId={editorPlanId}
+                        planName={editorPlan.plan_name || editorPlan.plan_code}
+                        trips={editorTrips}
+                        onSave={async (changes) => {
+                            try {
+                                setEditorLoading(true);
+                                setEditorError(null);
+                                
+                                const res = await fetch(`/api/route-plans/${editorPlanId}/batch-update`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify(changes)
+                                });
+                                
+                                const result = await res.json();
+                                
+                                if (result.error) {
+                                    throw new Error(result.error);
+                                }
+                                
+                                // Refresh data
+                                await fetchEditorData(editorPlanId);
+                                await fetchRoutePlans();
+                                setStatusMessage('บันทึกการแก้ไขเส้นทางเรียบร้อย');
+                            } catch (error: any) {
+                                console.error('Error saving changes:', error);
+                                setEditorError(error.message || 'ไม่สามารถบันทึกการเปลี่ยนแปลงได้');
+                                throw error;
+                            } finally {
+                                setEditorLoading(false);
+                            }
+                        }}
+                        onClose={handleCloseEditor}
+                        loading={editorLoading}
+                    />
                 ) : (
                     <div className="py-6 text-center text-gray-500">เลือกแผนเพื่อจัดการเส้นทาง</div>
                 )}

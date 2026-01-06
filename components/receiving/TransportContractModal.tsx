@@ -693,6 +693,11 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
 
             const totalStops = trip.stops?.length || 0;
             
+            // ✅ FIX: นับจำนวนร้านค้า (unique customer_id) แทนจำนวน stops
+            const allOrders = trip.stops?.flatMap((stop: any) => stop.orders || []) || [];
+            const uniqueCustomerIds = new Set(allOrders.map((order: any) => order.customer_id).filter(Boolean));
+            const customerCount = uniqueCustomerIds.size || totalStops;
+            
             // ✅ FIX: แปลงเป็น number เพราะ database อาจส่งมาเป็น string
             const porterageFee = Number((trip as any).porterage_fee) || 0;
             const otherFees: Array<{ label: string; amount: number }> = (trip as any).other_fees || [];
@@ -718,7 +723,7 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                   <div>
                     <span className="font-bold text-base">คันที่ {displayTripNumber}</span>
                     <span className="ml-3 text-sm text-gray-700">
-                      ({totalStops} ร้านค้า / {totalStops} จุดส่ง)
+                      ({customerCount} ร้านค้า / {totalStops} จุดส่ง)
                     </span>
                   </div>
                   <div className="text-right text-sm">
@@ -838,6 +843,12 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                 
                 // ใช้ daily_trip_number ถ้ามี ไม่งั้นใช้ tripIndex + 1
                 const displayTripNumber = trip.daily_trip_number || (tripIndex + 1);
+                
+                // ✅ FIX: นับจำนวนร้านค้า (unique customer_id) แทนจำนวน stops
+                const totalStops = trip.stops?.length || 0;
+                const allTripOrders = trip.stops?.flatMap((stop: any) => stop.orders || []) || [];
+                const uniqueTripCustomerIds = new Set(allTripOrders.map((order: any) => order.customer_id).filter(Boolean));
+                const tripCustomerCount = uniqueTripCustomerIds.size || totalStops;
 
                 return (
                   <React.Fragment key={trip.trip_id}>
@@ -848,7 +859,7 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                           <div>
                             <span className="font-bold text-sm">คันที่ {displayTripNumber}</span>
                             <span className="ml-3 text-xs text-gray-700">
-                              ({trip.stops?.length || 0} ร้านค้า / {trip.stops?.length || 0} จุดส่ง)
+                              ({tripCustomerCount} ร้านค้า / {totalStops} จุดส่ง)
                             </span>
                           </div>
                           <div className="text-right text-xs">

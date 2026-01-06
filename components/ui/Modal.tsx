@@ -6,7 +6,7 @@ interface ModalProps {
   onClose: () => void;
   title: string;
   children: React.ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl' | '3xl' | '4xl' | 'full';
   contentClassName?: string;
   hideCloseButton?: boolean;
 }
@@ -29,7 +29,8 @@ const Modal: React.FC<ModalProps> = ({
     xl: 'max-w-4xl',
     '2xl': 'max-w-6xl',
     '3xl': 'max-w-7xl',
-    '4xl': 'max-w-screen-xl'
+    '4xl': 'max-w-screen-xl',
+    'full': 'max-w-[95vw] w-[95vw]'
   };
 
   return (
@@ -47,23 +48,27 @@ const Modal: React.FC<ModalProps> = ({
           transform transition-all
         `}>
           {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-thai-gray-200">
-            <h3 className="text-lg font-semibold text-thai-gray-900 font-thai">
-              {title}
-            </h3>
-            <button
-              onClick={onClose}
-              className="
-                p-2 text-thai-gray-400 hover:text-thai-gray-600
-                hover:bg-thai-gray-100 rounded-lg transition-colors
-              "
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
+          {(title || !hideCloseButton) && (
+            <div className="flex items-center justify-between p-6 border-b border-thai-gray-200">
+              <h3 className="text-lg font-semibold text-thai-gray-900 font-thai">
+                {title}
+              </h3>
+              {!hideCloseButton && (
+                <button
+                  onClick={onClose}
+                  className="
+                    p-2 text-thai-gray-400 hover:text-thai-gray-600
+                    hover:bg-thai-gray-100 rounded-lg transition-colors
+                  "
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              )}
+            </div>
+          )}
           
           {/* Content */}
-          <div className="p-6 max-h-[80vh] overflow-y-auto" style={{ overflowX: 'visible' }}>
+          <div className={contentClassName || "p-6 max-h-[80vh] overflow-y-auto"} style={{ overflowX: 'visible' }}>
             {children}
           </div>
         </div>
