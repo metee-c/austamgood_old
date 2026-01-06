@@ -253,28 +253,32 @@ export async function GET(
             // Determine which items to use for this stop
             let itemsForStop: any[] = [];
             let totalQty = 0;
+            let allocatedWeight = 0;
 
             if (hasStopItems) {
               // Use items from receiving_route_stop_items (split tracking)
               itemsForStop = stopItemsMap[stop.stop_id] || [];
               totalQty = itemsForStop.reduce((sum, item) => sum + (item.order_qty || 0), 0);
+              // Calculate weight from split items
+              allocatedWeight = itemsForStop.reduce((sum, item) => sum + (item.order_weight || 0), 0);
             } else if (hasSplitItems) {
               // This stop was created from a split - only show split items
               const allItems = orderItemsDetailMap[order.order_id] || [];
               itemsForStop = allItems.filter((item: any) => splitItemIds.includes(item.order_item_id));
               totalQty = itemsForStop.reduce((sum, item) => sum + (item.order_qty || 0), 0);
+              // Calculate weight from split items
+              allocatedWeight = itemsForStop.reduce((sum, item) => sum + (item.order_weight || 0), 0);
             } else {
               // No split tracking - use all items from order
               itemsForStop = orderItemsDetailMap[order.order_id] || [];
               totalQty = orderItemsMap[order.order_id] || 0;
+              // Use weight from input if available, otherwise use order total weight, or split evenly
+              allocatedWeight = input?.demand_weight_kg != null && input.demand_weight_kg > 0
+                ? input.demand_weight_kg
+                : (order.total_weight != null && order.total_weight > 0
+                  ? order.total_weight
+                  : (stop.load_weight_kg || 0) / orderIds.length);
             }
-
-            // Use weight from input if available, otherwise use order total weight, or split evenly
-            const allocatedWeight = input?.demand_weight_kg != null && input.demand_weight_kg > 0
-              ? input.demand_weight_kg
-              : (order.total_weight != null && order.total_weight > 0
-                ? order.total_weight
-                : (stop.load_weight_kg || 0) / orderIds.length);
 
             // Debug log for first order
             if (index === 0 && stop.stop_id === allStops[0]?.stop_id) {
@@ -282,11 +286,13 @@ export async function GET(
                 order_id: order.order_id,
                 order_no: order.order_no,
                 totalQty,
+                allocatedWeight,
                 hasStopItems,
                 hasSplitItems,
                 itemsForStopCount: itemsForStop.length,
                 orderItemsMapHasKey: orderItemsMap.hasOwnProperty(order.order_id),
-                orderItemsMapValue: orderItemsMap[order.order_id]
+                orderItemsMapValue: orderItemsMap[order.order_id],
+                stopLoadWeightKg: stop.load_weight_kg
               });
             }
 

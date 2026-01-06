@@ -32,6 +32,7 @@ interface OrderRow {
   isSplit: boolean;
   splitFromOrderNo?: string;
   originalWeightKg?: number;
+  splitItemsData?: { orderItemId: number; quantity: number; weightKg: number }[];
 }
 
 interface TripSummary {
@@ -74,6 +75,7 @@ interface RouteChanges {
     sourceStopId: number | string;
     targetTripId: number | string | 'new';
     splitWeightKg: number;
+    splitItems?: { orderItemId: number; quantity: number; weightKg: number }[];
   }>;
   newTrips: Array<{
     tripName?: string;
@@ -278,12 +280,29 @@ export default function ExcelStyleRouteEditor({
   const handleSplitConfirm = useCallback(() => {
     if (!splitModalData) return;
     
-    const { row, splitWeight, targetTripNumber } = splitModalData;
+    const { row, splitWeight, targetTripNumber, splitItems } = splitModalData;
     const splitWeightNum = parseFloat(splitWeight);
     
     if (isNaN(splitWeightNum) || splitWeightNum <= 0 || splitWeightNum >= row.weightKg) {
       return;
     }
+
+    // Calculate split items with their weights
+    const splitItemsArray: { orderItemId: number; quantity: number; weightKg: number }[] = [];
+    Object.entries(splitItems).forEach(([orderItemIdStr, qty]) => {
+      if (qty > 0) {
+        const orderItemId = parseInt(orderItemIdStr);
+        const item = row.items.find(i => i.order_item_id === orderItemId);
+        if (item) {
+          const unitWeight = item.order_qty > 0 ? item.order_weight / item.order_qty : 0;
+          splitItemsArray.push({
+            orderItemId,
+            quantity: qty,
+            weightKg: qty * unitWeight
+          });
+        }
+      }
+    });
     
     setRows(prev => {
       // Update original row weight
@@ -304,7 +323,10 @@ export default function ExcelStyleRouteEditor({
       const targetRows = updated.filter(r => r.tripNumber === actualTargetTrip);
       const maxSeq = Math.max(0, ...targetRows.map(r => r.stopSequence));
       
-      // Add new split row
+      // Calculate total quantity from split items
+      const totalSplitQty = splitItemsArray.reduce((sum, item) => sum + item.quantity, 0);
+      
+      // Add new split row with splitItems data
       const newRow: OrderRow = {
         rowId: `${row.rowId}-split-${Date.now()}`,
         stopId: `new-${Date.now()}`,
@@ -314,14 +336,15 @@ export default function ExcelStyleRouteEditor({
         customerName: `${row.customerName} (แบ่ง)`,
         province: row.province,
         weightKg: splitWeightNum,
-        totalQty: 0,
+        totalQty: totalSplitQty,
         tripNumber: actualTargetTrip as number,
         stopSequence: maxSeq + 1,
         note: `แบ่งจาก ${row.orderNo}`,
         items: [], // Split row doesn't have items detail
         isSplit: true,
         splitFromOrderNo: row.orderNo,
-        originalWeightKg: row.weightKg + splitWeightNum
+        originalWeightKg: row.weightKg + splitWeightNum,
+        splitItemsData: splitItemsArray // Store split items for API
       };
       
       return [...updated, newRow];
@@ -428,7 +451,8 @@ export default function ExcelStyleRouteEditor({
             orderId: row.orderId,
             sourceStopId: originalRow.stopId,
             targetTripId: targetTripId,
-            splitWeightKg: row.weightKg
+            splitWeightKg: row.weightKg,
+            splitItems: row.splitItemsData || []
           });
         }
       });
