@@ -29,6 +29,7 @@ export async function GET(
         receiving_route_trips (
           trip_id,
           trip_sequence,
+          daily_trip_number,
           vehicle_id,
           receiving_route_plans (
             plan_id,

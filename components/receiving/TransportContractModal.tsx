@@ -1248,6 +1248,8 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
               const extraDeliveryStopsPage2: Array<{ name: string; description: string; cost: number }> = (trip as any).extra_delivery_stops || [];
               const extraDeliveryStopsCost = extraDeliveryStopsPage2.reduce((sum, stop) => sum + (Number(stop.cost) || 0), 0);
               const shippingCost = Number(trip.shipping_cost) || 0;
+              // ✅ FIX: ใช้ base_shipping_cost สำหรับโหมดเหมา
+              const baseShippingCostFlat = Number((trip as any).base_shipping_cost) || 0;
               const extraStops = Math.max(0, uniqueCustomerCount - 1);
               const extraStopTotal = extraStops * extraStopFee;
               
@@ -1278,7 +1280,7 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                     {pricingMode === 'formula' ? 'คำนวณ' : 'เหมา'}
                   </td>
                   <td className="border border-gray-300 px-2 py-3 text-right text-xs">
-                    {pricingMode === 'formula' ? `${basePrice.toLocaleString()}` : '-'}
+                    {pricingMode === 'formula' ? `${basePrice.toLocaleString()}` : (baseShippingCostFlat > 0 ? `${baseShippingCostFlat.toLocaleString()}` : '-')}
                   </td>
                   <td className="border border-gray-300 px-2 py-3 text-right text-xs">
                     {pricingMode === 'formula' ? `${helperFee.toLocaleString()}` : '-'}

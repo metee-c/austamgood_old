@@ -289,25 +289,54 @@ export async function POST(request: NextRequest) {
         .order('created_at', { ascending: true });
 
       if (!balances || balances.length === 0) {
-        console.warn('⚠️ ไม่พบสต็อคในพื้นที่หยิบ - จะสร้าง balance ติดลบ');
-        // สร้าง balance ใหม่ที่ติดลบ
-        const { data: newBalance, error: createError } = await supabase
+        console.warn('⚠️ ไม่พบสต็อคในพื้นที่หยิบ - จะสร้าง/อัปเดต balance ติดลบ');
+        
+        // ✅ FIX: ตรวจสอบว่ามี balance อยู่แล้วหรือไม่ (อาจมียอด 0 หรือติดลบ)
+        const { data: existingBalance } = await supabase
           .from('wms_inventory_balances')
-          .insert({
-            warehouse_id: warehouseId,
-            location_id: item.source_location_id,
-            sku_id: item.sku_id,
-            total_pack_qty: -packQty,
-            total_piece_qty: -quantity_picked,
-            reserved_pack_qty: 0,
-            reserved_piece_qty: 0,
-            last_movement_at: now
-          })
-          .select()
-          .single();
+          .select('balance_id, total_piece_qty, total_pack_qty')
+          .eq('warehouse_id', warehouseId)
+          .eq('location_id', item.source_location_id)
+          .eq('sku_id', item.sku_id)
+          .is('pallet_id', null)
+          .is('lot_no', null)
+          .is('production_date', null)
+          .is('expiry_date', null)
+          .maybeSingle();
 
-        if (createError) {
-          console.error('Error creating negative balance:', createError);
+        if (existingBalance) {
+          // อัปเดต balance ที่มีอยู่ (หักติดลบ)
+          const { error: updateError } = await supabase
+            .from('wms_inventory_balances')
+            .update({
+              total_pack_qty: existingBalance.total_pack_qty - packQty,
+              total_piece_qty: existingBalance.total_piece_qty - quantity_picked,
+              last_movement_at: now,
+              updated_at: now
+            })
+            .eq('balance_id', existingBalance.balance_id);
+
+          if (updateError) {
+            console.error('Error updating negative balance:', updateError);
+          }
+        } else {
+          // สร้าง balance ใหม่ที่ติดลบ
+          const { error: createError } = await supabase
+            .from('wms_inventory_balances')
+            .insert({
+              warehouse_id: warehouseId,
+              location_id: item.source_location_id,
+              sku_id: item.sku_id,
+              total_pack_qty: -packQty,
+              total_piece_qty: -quantity_picked,
+              reserved_pack_qty: 0,
+              reserved_piece_qty: 0,
+              last_movement_at: now
+            });
+
+          if (createError) {
+            console.error('Error creating negative balance:', createError);
+          }
         }
 
         // บันทึก ledger: OUT จาก source_location (ติดลบ)
@@ -392,17 +421,22 @@ export async function POST(request: NextRequest) {
     }
 
     // 7. เพิ่มสต็อคที่ Dispatch
-    const { data: dispatchBalance, error: dispatchBalanceError } = await supabase
+    // ✅ FIX: Query โดยไม่รวม production_date/expiry_date เพื่อหลีกเลี่ยง multiple rows
+    // ใช้ balance แรกที่เจอ หรือสร้างใหม่ถ้าไม่มี
+    const { data: dispatchBalances, error: dispatchBalanceError } = await supabase
       .from('wms_inventory_balances')
-      .select('balance_id, total_piece_qty, total_pack_qty')
+      .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date')
       .eq('warehouse_id', warehouseId)
       .eq('location_id', dispatchLocation.location_id)
       .eq('sku_id', item.sku_id)
-      .maybeSingle();
+      .order('created_at', { ascending: true })
+      .limit(1);
 
     if (dispatchBalanceError) {
       console.error('Error fetching dispatch balance:', dispatchBalanceError);
     }
+
+    const dispatchBalance = dispatchBalances && dispatchBalances.length > 0 ? dispatchBalances[0] : null;
 
     if (dispatchBalance) {
       // อัปเดตยอดที่มีอยู่

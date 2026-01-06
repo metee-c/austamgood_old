@@ -12,7 +12,6 @@ export async function PATCH(
 
     // Prepare update object with base fields
     const updateData: any = {
-      shipping_cost: body.shipping_cost,
       notes: body.notes,
       updated_at: new Date().toISOString()
     };
@@ -42,6 +41,12 @@ export async function PATCH(
       if (body.extra_stop_fee !== undefined) updateData.extra_stop_fee = body.extra_stop_fee;
       // Add total_stops to trigger the database trigger for extra_stops_count calculation
       if (body.total_stops !== undefined) updateData.total_stops = body.total_stops;
+    } else if (body.pricing_mode === 'flat') {
+      // For flat mode, use base_shipping_cost to store the base flat rate
+      // The trigger will calculate shipping_cost = base_shipping_cost + porterage_fee + other_fees + extra_delivery_stops
+      if (body.shipping_cost !== undefined) {
+        updateData.base_shipping_cost = body.shipping_cost;
+      }
     }
 
     // porterage_fee and other_fees should be saved regardless of pricing mode
@@ -60,12 +65,6 @@ export async function PATCH(
     }
     if (body.shipping_cost_reset_at !== undefined) {
       updateData.shipping_cost_reset_at = body.shipping_cost_reset_at;
-    }
-
-    // In formula mode, let the database trigger calculate shipping_cost
-    // by removing the manual shipping_cost override
-    if (body.pricing_mode === 'formula') {
-      delete updateData.shipping_cost;
     }
 
     // Update trip with shipping cost and other details

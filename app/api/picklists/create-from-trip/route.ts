@@ -129,9 +129,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Failed to fetch stops' }, { status: 500 });
     }
 
-    // 4. Collect order IDs
+    // 4. Collect order IDs and stop IDs
     const orderIds = new Set<number>();
+    const stopIds: number[] = [];
     (stops || []).forEach((stop) => {
+      stopIds.push(stop.stop_id);
       if (stop.order_id) orderIds.add(stop.order_id);
       if (stop.tags?.order_ids) {
         stop.tags.order_ids.forEach((id: number) => orderIds.add(id));
@@ -142,7 +144,28 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'No orders found in this trip' }, { status: 400 });
     }
 
-    // 5. Fetch order items
+    // ✅ FIX: Check if stops have split items in receiving_route_stop_items
+    const { data: splitItems, error: splitItemsError } = await supabase
+      .from('receiving_route_stop_items')
+      .select('stop_item_id, stop_id, order_id, order_item_id, sku_id, sku_name, allocated_quantity, allocated_weight_kg')
+      .in('stop_id', stopIds);
+
+    if (splitItemsError) {
+      console.error('Error fetching split items:', splitItemsError);
+    }
+
+    // Group split items by stop_id
+    const splitItemsByStop = new Map<number, any[]>();
+    (splitItems || []).forEach(item => {
+      if (!splitItemsByStop.has(item.stop_id)) {
+        splitItemsByStop.set(item.stop_id, []);
+      }
+      splitItemsByStop.get(item.stop_id)!.push(item);
+    });
+
+    console.log(`📦 Found ${splitItems?.length || 0} split items for ${stopIds.length} stops`);
+
+    // 5. Fetch order items (for stops without split items)
     const { data: orderItems, error: orderItemsError } = await supabase
       .from('wms_order_items')
       .select(`order_item_id, order_id, sku_id, order_qty, order_weight`)
@@ -174,52 +197,99 @@ export async function POST(request: NextRequest) {
 
     // ============================================================
     // ✅ FIX #1: Validate source_location_id BEFORE creating picklist
+    // ✅ FIX: Use split items from receiving_route_stop_items when available
     // ============================================================
     const missingLocationSkus: any[] = [];
     const itemsToInsert: any[] = [];
 
-    (orderItems || []).forEach((item) => {
-      const sku = skuMap.get(item.sku_id);
-      if (!sku) {
-        missingLocationSkus.push({
-          sku_id: item.sku_id,
-          reason: 'SKU not found in master_sku'
-        });
-        return;
-      }
+    // Process each stop
+    for (const stop of stops || []) {
+      const stopSplitItems = splitItemsByStop.get(stop.stop_id);
+      
+      if (stopSplitItems && stopSplitItems.length > 0) {
+        // ✅ CASE 1: Stop has split items - use receiving_route_stop_items
+        console.log(`📦 Stop ${stop.stop_id} has ${stopSplitItems.length} split items`);
+        
+        for (const splitItem of stopSplitItems) {
+          const sku = skuMap.get(splitItem.sku_id);
+          if (!sku) {
+            missingLocationSkus.push({
+              sku_id: splitItem.sku_id,
+              reason: 'SKU not found in master_sku'
+            });
+            continue;
+          }
 
-      // ✅ ตรวจสอบ default_location ก่อน
-      if (!sku.default_location) {
-        missingLocationSkus.push({
-          sku_id: item.sku_id,
-          sku_name: sku.sku_name,
-          reason: 'SKU does not have preparation area (default_location) configured'
-        });
-        return;
-      }
+          if (!sku.default_location) {
+            missingLocationSkus.push({
+              sku_id: splitItem.sku_id,
+              sku_name: sku.sku_name,
+              reason: 'SKU does not have preparation area (default_location) configured'
+            });
+            continue;
+          }
 
-      const stop = stops?.find(s => {
-        if (s.order_id === item.order_id) return true;
-        if (s.tags?.order_ids?.includes(item.order_id)) return true;
-        return false;
-      });
+          const order = orderMap.get(splitItem.order_id);
+          itemsToInsert.push({
+            order_item_id: splitItem.order_item_id,
+            sku_id: splitItem.sku_id,
+            sku_name: splitItem.sku_name || sku.sku_name || splitItem.sku_id,
+            uom: sku.uom_base || 'ชิ้น',
+            order_no: order?.order_no || '-',
+            order_id: splitItem.order_id,
+            stop_id: stop.stop_id,
+            quantity_to_pick: splitItem.allocated_quantity,
+            source_location_id: sku.default_location,
+            qty_per_pack: sku.qty_per_pack || 1
+          });
+        }
+      } else {
+        // ✅ CASE 2: Stop has no split items - use wms_order_items (original logic)
+        const stopOrderIds: number[] = [];
+        if (stop.order_id) stopOrderIds.push(stop.order_id);
+        if (stop.tags?.order_ids) {
+          stopOrderIds.push(...stop.tags.order_ids);
+        }
 
-      if (stop) {
-        const order = orderMap.get(item.order_id);
-        itemsToInsert.push({
-          order_item_id: item.order_item_id,
-          sku_id: item.sku_id,
-          sku_name: sku.sku_name || item.sku_id,
-          uom: sku.uom_base || 'ชิ้น',
-          order_no: order?.order_no || '-',
-          order_id: item.order_id,
-          stop_id: stop.stop_id,
-          quantity_to_pick: item.order_qty,
-          source_location_id: sku.default_location,
-          qty_per_pack: sku.qty_per_pack || 1
-        });
+        for (const orderId of stopOrderIds) {
+          const orderItemsForOrder = (orderItems || []).filter(item => item.order_id === orderId);
+          
+          for (const item of orderItemsForOrder) {
+            const sku = skuMap.get(item.sku_id);
+            if (!sku) {
+              missingLocationSkus.push({
+                sku_id: item.sku_id,
+                reason: 'SKU not found in master_sku'
+              });
+              continue;
+            }
+
+            if (!sku.default_location) {
+              missingLocationSkus.push({
+                sku_id: item.sku_id,
+                sku_name: sku.sku_name,
+                reason: 'SKU does not have preparation area (default_location) configured'
+              });
+              continue;
+            }
+
+            const order = orderMap.get(item.order_id);
+            itemsToInsert.push({
+              order_item_id: item.order_item_id,
+              sku_id: item.sku_id,
+              sku_name: sku.sku_name || item.sku_id,
+              uom: sku.uom_base || 'ชิ้น',
+              order_no: order?.order_no || '-',
+              order_id: item.order_id,
+              stop_id: stop.stop_id,
+              quantity_to_pick: item.order_qty,
+              source_location_id: sku.default_location,
+              qty_per_pack: sku.qty_per_pack || 1
+            });
+          }
+        }
       }
-    });
+    }
 
     // ❌ FAIL if any SKU missing source_location
     if (missingLocationSkus.length > 0) {

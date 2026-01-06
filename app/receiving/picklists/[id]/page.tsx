@@ -49,6 +49,7 @@ interface Picklist {
   loading_door_number?: string;
   receiving_route_trips?: {
     trip_sequence: number;
+    daily_trip_number?: number;
     vehicle_id: string;
     receiving_route_plans?: {
       plan_code: string;
@@ -294,10 +295,10 @@ const PicklistDetailPage = ({ params }: { params: Promise<{ id: string }> }) => 
                     <div style="font-size: 13px; font-weight: bold; color: #1e3a8a; line-height: 1;">ใบหยิบสินค้า</div>
                     <div style="font-family: monospace; color: #4b5563; font-size: 10px; margin-top: 2px; line-height: 1;">${picklist.picklist_code} | ${new Date(picklist.created_at).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}${picklist.receiving_route_trips?.receiving_route_plans?.plan_name ? ` | ${picklist.receiving_route_trips.receiving_route_plans.plan_name}` : ''}</div>
                   </div>
-                  ${picklist.receiving_route_trips?.trip_sequence ? `
+                  ${picklist.receiving_route_trips?.daily_trip_number ? `
                   <!-- Trip & Door -->
                   <div style="border-left: 1px solid #d1d5db; padding-left: 8px; display: flex; align-items: center; gap: 8px;">
-                    <div style="font-size: 16px; font-weight: bold; color: #1e40af;">รถที่ ${picklist.receiving_route_trips.trip_sequence}${picklist.receiving_route_trips.vehicle_id ? ` <span style="font-size: 10px; color: #3b82f6;">(${picklist.receiving_route_trips.vehicle_id})</span>` : ''}</div>
+                    <div style="font-size: 16px; font-weight: bold; color: #1e40af;">รถที่ ${picklist.receiving_route_trips.daily_trip_number}${picklist.receiving_route_trips.vehicle_id ? ` <span style="font-size: 10px; color: #3b82f6;">(${picklist.receiving_route_trips.vehicle_id})</span>` : ''}</div>
                     ${(picklist as any).loading_door_number ? `
                     <div style="height: 20px; width: 1px; background: #d1d5db;"></div>
                     <div style="display: flex; align-items: center; gap: 4px;">
@@ -522,7 +523,7 @@ const PicklistDetailPage = ({ params }: { params: Promise<{ id: string }> }) => 
                   <div>
                     <span className="text-sm text-gray-600 font-thai">รถที่ </span>
                     <span className="font-bold text-gray-900 text-2xl">
-                      {picklist.receiving_route_trips.trip_sequence}
+                      {picklist.receiving_route_trips.daily_trip_number || picklist.receiving_route_trips.trip_sequence}
                     </span>
                     {picklist.receiving_route_trips.vehicle_id && (
                       <span className="text-sm text-gray-500 ml-2 font-mono">
