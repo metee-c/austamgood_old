@@ -2,15 +2,17 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
 /**
- * GET /api/bonus-face-sheets/print?id=xxx&loadlist_id=yyy
+ * GET /api/bonus-face-sheets/print?id=xxx&trip_number=yyy
  * สร้างเอกสารปริ้นแบบใบหยิบสำหรับใบปะหน้าของแถม
- * ถ้ามี loadlist_id จะกรองเฉพาะ packages ที่มี order_id ตรงกับ orders ใน loadlist นั้น
+ * ถ้ามี trip_number จะกรองเฉพาะ packages ที่มี trip_number ตรงกัน
  */
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
+    const tripNumber = searchParams.get('trip_number');
+    // Legacy support: loadlist_id (deprecated, use trip_number instead)
     const loadlistId = searchParams.get('loadlist_id');
 
     if (!id) {
@@ -45,11 +47,41 @@ export async function GET(request: NextRequest) {
       return new NextResponse('ไม่พบใบปะหน้าของแถม', { status: 404 });
     }
 
-    // ถ้ามี loadlist_id ให้ดึง order_ids จาก loadlist นั้น
-    let filterOrderIds: number[] | null = null;
-    let loadlistCode: string | null = null;
-    
-    if (loadlistId) {
+    // ตัวแปรสำหรับแสดงในเอกสาร
+    let filterLabel: string | null = null;
+
+    // ดึงข้อมูล packages และ items
+    let packagesQuery = supabase
+      .from('bonus_face_sheet_packages')
+      .select(`
+        id,
+        package_number,
+        order_id,
+        order_no,
+        shop_name,
+        barcode_id,
+        trip_number,
+        bonus_face_sheet_items (
+          id,
+          sku_id,
+          product_name,
+          quantity_to_pick,
+          quantity_picked,
+          status,
+          source_location_id
+        )
+      `)
+      .eq('face_sheet_id', bonusFaceSheetId)
+      .order('package_number', { ascending: true });
+
+    // กรองตาม trip_number ถ้ามี (วิธีใหม่ - แนะนำ)
+    if (tripNumber) {
+      packagesQuery = packagesQuery.eq('trip_number', tripNumber);
+      filterLabel = `สายรถ: ${tripNumber}`;
+      console.log(`🔍 Filtering bonus face sheet packages by trip_number: ${tripNumber}`);
+    }
+    // Legacy: กรองตาม loadlist_id (deprecated)
+    else if (loadlistId) {
       const loadlistIdNum = parseInt(loadlistId);
       if (!isNaN(loadlistIdNum)) {
         // ดึง loadlist_code
@@ -59,11 +91,11 @@ export async function GET(request: NextRequest) {
           .eq('id', loadlistIdNum)
           .single();
         
-        loadlistCode = loadlist?.loadlist_code || null;
+        filterLabel = loadlist?.loadlist_code ? `ใบโหลด: ${loadlist.loadlist_code}` : null;
 
         const orderIds = new Set<number>();
 
-        // แหล่งที่ 1: ดึง order_ids จาก loadlist_items โดยตรง (กรณีข้ามขั้นตอน)
+        // แหล่งที่ 1: ดึง order_ids จาก loadlist_items โดยตรง
         const { data: directItems } = await supabase
           .from('loadlist_items')
           .select('order_id')
@@ -77,7 +109,7 @@ export async function GET(request: NextRequest) {
           });
         }
 
-        // แหล่งที่ 2: ดึง order_ids จาก picklist_items ที่เชื่อมกับ loadlist นี้ (flow ปกติ)
+        // แหล่งที่ 2: ดึง order_ids จาก picklist_items
         const { data: picklistItems } = await supabase
           .from('wms_loadlist_picklists')
           .select(`
@@ -101,7 +133,7 @@ export async function GET(request: NextRequest) {
           });
         }
 
-        // แหล่งที่ 3: ดึง order_ids จาก face_sheet_packages ที่เชื่อมกับ loadlist (ผ่าน face_sheets)
+        // แหล่งที่ 3: ดึง order_ids จาก face_sheet_packages
         const { data: faceSheetData } = await supabase
           .from('loadlist_face_sheets')
           .select(`
@@ -126,38 +158,10 @@ export async function GET(request: NextRequest) {
         }
 
         if (orderIds.size > 0) {
-          filterOrderIds = Array.from(orderIds);
-          console.log(`🔍 Filtering bonus face sheet packages by ${filterOrderIds.length} order IDs from loadlist ${loadlistIdNum}`);
+          packagesQuery = packagesQuery.in('order_id', Array.from(orderIds));
+          console.log(`🔍 Filtering bonus face sheet packages by ${orderIds.size} order IDs from loadlist ${loadlistIdNum}`);
         }
       }
-    }
-
-    // ดึงข้อมูล packages และ items
-    let packagesQuery = supabase
-      .from('bonus_face_sheet_packages')
-      .select(`
-        id,
-        package_number,
-        order_id,
-        order_no,
-        shop_name,
-        barcode_id,
-        bonus_face_sheet_items (
-          id,
-          sku_id,
-          product_name,
-          quantity_to_pick,
-          quantity_picked,
-          status,
-          source_location_id
-        )
-      `)
-      .eq('face_sheet_id', bonusFaceSheetId)
-      .order('package_number', { ascending: true });
-
-    // กรองตาม order_ids ถ้ามี
-    if (filterOrderIds && filterOrderIds.length > 0) {
-      packagesQuery = packagesQuery.in('order_id', filterOrderIds);
     }
 
     const { data: packages, error: packagesError } = await packagesQuery;
@@ -293,7 +297,7 @@ export async function GET(request: NextRequest) {
             <div style="display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 13px; padding: 8px 10px; background-color: #f5f5f5; border: 1px solid #ccc;">
               <div>
                 <div style="margin-bottom: 5px;"><strong>เลขที่ใบปะหน้า:</strong> <span style="font-size: 15px; font-weight: bold;">${bonusFaceSheet.face_sheet_no}</span></div>
-                ${loadlistCode ? `<div style="margin-bottom: 5px;"><strong>ใบโหลด:</strong> <span style="font-size: 14px; font-weight: bold; color: #0066cc;">${loadlistCode}</span></div>` : ''}
+                ${filterLabel ? `<div style="margin-bottom: 5px;"><strong>${filterLabel.includes('สายรถ') ? 'สายรถ' : 'ใบโหลด'}:</strong> <span style="font-size: 14px; font-weight: bold; color: #0066cc;">${filterLabel.split(': ')[1]}</span></div>` : ''}
                 <div style="margin-bottom: 5px;"><strong>คลังสินค้า:</strong> ${bonusFaceSheet.warehouse_id}</div>
                 <div><strong>วันที่สร้าง:</strong> ${formatDate(bonusFaceSheet.created_date)}</div>
               </div>

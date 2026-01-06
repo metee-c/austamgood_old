@@ -185,15 +185,53 @@ export async function GET(
           }
         }
 
+        // Fetch allocated items from receiving_route_stop_items for split tracking
+        const stopIds = (stops || []).map((s: any) => s.stop_id);
+        let stopItemsMap: Record<number, any[]> = {};
+        if (stopIds.length > 0) {
+          const { data: stopItemsData, error: stopItemsError } = await supabase
+            .from('receiving_route_stop_items')
+            .select('*')
+            .in('stop_id', stopIds);
+
+          if (!stopItemsError && stopItemsData && stopItemsData.length > 0) {
+            // Group by stop_id
+            stopItemsData.forEach((item: any) => {
+              if (!stopItemsMap[item.stop_id]) {
+                stopItemsMap[item.stop_id] = [];
+              }
+              stopItemsMap[item.stop_id].push({
+                order_item_id: item.order_item_id,
+                sku_id: item.sku_id,
+                sku_name: item.sku_name,
+                order_qty: Number(item.allocated_quantity) || 0,
+                order_weight: Number(item.allocated_weight_kg) || 0
+              });
+            });
+            console.log('📦 Stop items map created from receiving_route_stop_items:', {
+              stopItemsMapSize: Object.keys(stopItemsMap).length,
+              sampleStopId: Object.keys(stopItemsMap)[0],
+              sampleItemsCount: stopItemsMap[Number(Object.keys(stopItemsMap)[0])]?.length || 0
+            });
+          }
+        }
+
         // Map stops with their orders
         allStops = (stops || []).map((stop: any) => {
           const orderIds = stop.tags?.order_ids || (stop.order_id ? [stop.order_id] : []);
           const inputIds = stop.tags?.input_ids || (stop.input_id ? [stop.input_id] : []);
 
+          // Check if this stop has specific item allocations
+          const hasStopItems = stopItemsMap[stop.stop_id] && stopItemsMap[stop.stop_id].length > 0;
+          const splitItemIds = stop.tags?.split_item_ids;
+          const hasSplitItems = splitItemIds && Array.isArray(splitItemIds) && splitItemIds.length > 0;
+
           // Debug: log order lookup
           console.log('🔍 Stop order lookup:', {
             stop_id: stop.stop_id,
             orderIds,
+            hasStopItems,
+            hasSplitItems,
             ordersMapKeys: Object.keys(ordersMap).slice(0, 5),
             orderItemsDetailMapKeys: Object.keys(orderItemsDetailMap).slice(0, 5),
             orderItemsDetailMapSample: orderIds.length > 0 ? {
@@ -212,6 +250,25 @@ export async function GET(
             const inputId = inputIds[index];
             const input = inputId ? inputsMap[inputId] : null;
 
+            // Determine which items to use for this stop
+            let itemsForStop: any[] = [];
+            let totalQty = 0;
+
+            if (hasStopItems) {
+              // Use items from receiving_route_stop_items (split tracking)
+              itemsForStop = stopItemsMap[stop.stop_id] || [];
+              totalQty = itemsForStop.reduce((sum, item) => sum + (item.order_qty || 0), 0);
+            } else if (hasSplitItems) {
+              // This stop was created from a split - only show split items
+              const allItems = orderItemsDetailMap[order.order_id] || [];
+              itemsForStop = allItems.filter((item: any) => splitItemIds.includes(item.order_item_id));
+              totalQty = itemsForStop.reduce((sum, item) => sum + (item.order_qty || 0), 0);
+            } else {
+              // No split tracking - use all items from order
+              itemsForStop = orderItemsDetailMap[order.order_id] || [];
+              totalQty = orderItemsMap[order.order_id] || 0;
+            }
+
             // Use weight from input if available, otherwise use order total weight, or split evenly
             const allocatedWeight = input?.demand_weight_kg != null && input.demand_weight_kg > 0
               ? input.demand_weight_kg
@@ -219,15 +276,15 @@ export async function GET(
                 ? order.total_weight
                 : (stop.load_weight_kg || 0) / orderIds.length);
 
-            // Get quantity from order items (sum of all items in this order)
-            const totalQty = orderItemsMap[order.order_id] || 0;
-
             // Debug log for first order
             if (index === 0 && stop.stop_id === allStops[0]?.stop_id) {
               console.log('🔍 Order quantity debug:', {
                 order_id: order.order_id,
                 order_no: order.order_no,
                 totalQty,
+                hasStopItems,
+                hasSplitItems,
+                itemsForStopCount: itemsForStop.length,
                 orderItemsMapHasKey: orderItemsMap.hasOwnProperty(order.order_id),
                 orderItemsMapValue: orderItemsMap[order.order_id]
               });
@@ -245,7 +302,8 @@ export async function GET(
               total_qty: totalQty,
               note: order.notes || null,
               text_field_long_1: order.text_field_long_1 || null,
-              items: orderItemsDetailMap[order.order_id] || []
+              items: itemsForStop,
+              is_split: hasStopItems || hasSplitItems
             };
           }).filter((order: any) => order != null);
 

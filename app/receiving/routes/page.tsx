@@ -207,6 +207,7 @@ interface SplitModalItem {
     unitWeight: number | null;
     moveWeight: string;
     moveQty: string;
+    movePieces: string; // จำนวนชิ้นที่ต้องการย้าย
 }
 
 function SplitStopModal({ isOpen, stop, orderId, trips, currentTripId, onClose, onSubmit }: SplitStopModalProps) {
@@ -267,7 +268,8 @@ function SplitStopModal({ isOpen, stop, orderId, trips, currentTripId, onClose, 
                         availableQty: Number(item.available_qty ?? 0),
                         unitWeight: item.unit_weight ?? null,
                         moveWeight: '',
-                        moveQty: ''
+                        moveQty: '',
+                        movePieces: ''
                     }));
 
                     setOrderInfo(data);
@@ -335,12 +337,35 @@ function SplitStopModal({ isOpen, stop, orderId, trips, currentTripId, onClose, 
         );
     };
 
+    // Handler สำหรับเลือกจำนวนชิ้นที่ต้องการย้าย
+    const handlePiecesChange = (orderItemId: number, value: string) => {
+        setFormError(null);
+        setItems(prev =>
+            prev.map(item => {
+                if (item.orderItemId !== orderItemId) return item;
+                const numeric = value === '' ? 0 : Math.floor(Number(value));
+                // จำกัดไม่ให้เกินจำนวนที่มี (availableQty)
+                const clampedPieces = Math.max(0, Math.min(Math.floor(item.availableQty), Number.isFinite(numeric) ? numeric : 0));
+                const unitWeight = item.unitWeight && item.unitWeight > 0 ? item.unitWeight : null;
+                // คำนวณน้ำหนักจากจำนวนชิ้น
+                const weight = unitWeight ? clampedPieces * unitWeight : 0;
+                return {
+                    ...item,
+                    movePieces: clampedPieces === 0 && value === '' ? '' : clampedPieces.toString(),
+                    moveQty: clampedPieces.toString(),
+                    moveWeight: weight.toFixed(3)
+                };
+            })
+        );
+    };
+
     const handleFillAll = (orderItemId: number) => {
         setFormError(null);
         setItems(prev =>
             prev.map(item => {
                 if (item.orderItemId !== orderItemId) return item;
                 const weight = Number(item.availableWeight.toFixed(3));
+                const pieces = Math.floor(item.availableQty);
                 const qtyString =
                     item.unitWeight && item.unitWeight > 0
                         ? (weight / item.unitWeight).toFixed(3)
@@ -348,13 +373,15 @@ function SplitStopModal({ isOpen, stop, orderId, trips, currentTripId, onClose, 
                 return {
                     ...item,
                     moveWeight: weight.toString(),
-                    moveQty: qtyString
+                    moveQty: qtyString,
+                    movePieces: pieces.toString()
                 };
             })
         );
     };
 
     const totalSelectedWeight = items.reduce((sum, item) => sum + (item.moveWeight ? Number(item.moveWeight) : 0), 0);
+    const totalSelectedPieces = items.reduce((sum, item) => sum + (item.movePieces ? Number(item.movePieces) : 0), 0);
 
     const handleSubmit = () => {
         if (!stop) return;
@@ -364,11 +391,11 @@ function SplitStopModal({ isOpen, stop, orderId, trips, currentTripId, onClose, 
         }
 
         const selectedItems = items
-            .filter(item => item.moveWeight && Number(item.moveWeight) > 0)
+            .filter(item => (item.movePieces && Number(item.movePieces) > 0) || (item.moveWeight && Number(item.moveWeight) > 0))
             .map(item => ({
                 orderItemId: item.orderItemId,
                 moveWeightKg: Number(item.moveWeight),
-                moveQuantity: item.moveQty ? Number(item.moveQty) : null
+                moveQuantity: item.movePieces ? Number(item.movePieces) : (item.moveQty ? Number(item.moveQty) : null)
             }));
 
         if (selectedItems.length === 0) {
@@ -382,8 +409,9 @@ function SplitStopModal({ isOpen, stop, orderId, trips, currentTripId, onClose, 
         }
 
         const stopWeight = Number(stop.load_weight_kg ?? 0);
-        if (totalSelectedWeight >= stopWeight) {
-            setFormError('น้ำหนักที่ย้ายต้องน้อยกว่าน้ำหนักทั้งหมดของออเดอร์');
+        const totalAvailablePieces = items.reduce((sum, item) => sum + Math.floor(item.availableQty), 0);
+        if (totalSelectedPieces >= totalAvailablePieces) {
+            setFormError('จำนวนชิ้นที่ย้ายต้องน้อยกว่าจำนวนทั้งหมดของออเดอร์');
             return;
         }
 
@@ -439,10 +467,10 @@ function SplitStopModal({ isOpen, stop, orderId, trips, currentTripId, onClose, 
                                 <tr>
                                     <th className="px-3 py-2 text-left">SKU</th>
                                     <th className="px-3 py-2 text-left">รายการ</th>
+                                    <th className="px-3 py-2 text-right">คงเหลือ (ชิ้น)</th>
                                     <th className="px-3 py-2 text-right">คงเหลือ (kg)</th>
-                                    <th className="px-3 py-2 text-right">คงเหลือ (หน่วย)</th>
-                                    <th className="px-3 py-2 text-right">ย้าย (kg)</th>
-                                    <th className="px-3 py-2 text-right">ย้าย (หน่วย)</th>
+                                    <th className="px-3 py-2 text-right">ย้าย (ชิ้น)</th>
+                                    <th className="px-3 py-2 text-right">น้ำหนัก (kg)</th>
                                     <th className="px-3 py-2"></th>
                                 </tr>
                             </thead>
@@ -457,30 +485,23 @@ function SplitStopModal({ isOpen, stop, orderId, trips, currentTripId, onClose, 
                                     items.map(item => (
                                         <tr key={item.orderItemId}>
                                             <td className="px-3 py-2 text-gray-700">{item.skuId || '-'}</td>
-                                            <td className="px-3 py-2 text-gray-700">{item.skuName || '-'}</td>
-                                            <td className="px-3 py-2 text-right text-gray-700">{item.availableWeight.toFixed(2)}</td>
-                                            <td className="px-3 py-2 text-right text-gray-700">{item.availableQty.toFixed(2)}</td>
+                                            <td className="px-3 py-2 text-gray-700 max-w-[150px] truncate" title={item.skuName || '-'}>{item.skuName || '-'}</td>
+                                            <td className="px-3 py-2 text-right text-gray-700 font-medium">{Math.floor(item.availableQty)}</td>
+                                            <td className="px-3 py-2 text-right text-gray-500">{item.availableWeight.toFixed(2)}</td>
                                             <td className="px-3 py-2 text-right">
                                                 <input
                                                     type="number"
                                                     min={0}
-                                                    max={item.availableWeight}
-                                                    step="0.01"
-                                                    value={item.moveWeight}
-                                                    onChange={event => handleWeightChange(item.orderItemId, event.target.value)}
-                                                    className="w-24 border border-gray-300 rounded-md px-2 py-1 text-right"
+                                                    max={Math.floor(item.availableQty)}
+                                                    step="1"
+                                                    value={item.movePieces}
+                                                    onChange={event => handlePiecesChange(item.orderItemId, event.target.value)}
+                                                    className="w-20 border border-gray-300 rounded-md px-2 py-1 text-right focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                                    placeholder="0"
                                                 />
                                             </td>
-                                            <td className="px-3 py-2 text-right">
-                                                <input
-                                                    type="number"
-                                                    min={0}
-                                                    step="0.01"
-                                                    value={item.moveQty}
-                                                    onChange={event => handleQtyChange(item.orderItemId, event.target.value)}
-                                                    className="w-20 border border-gray-300 rounded-md px-2 py-1 text-right"
-                                                    disabled={!item.unitWeight}
-                                                />
+                                            <td className="px-3 py-2 text-right text-gray-500">
+                                                {item.moveWeight ? Number(item.moveWeight).toFixed(2) : '-'}
                                             </td>
                                             <td className="px-3 py-2 text-right">
                                                 <button
@@ -497,8 +518,9 @@ function SplitStopModal({ isOpen, stop, orderId, trips, currentTripId, onClose, 
                         </table>
                     </div>
 
-                    <div className="text-sm text-gray-700">
-                        น้ำหนักที่จะย้ายรวม: <span className="font-semibold">{totalSelectedWeight.toFixed(2)} kg</span>
+                    <div className="text-sm text-gray-700 flex gap-4">
+                        <span>จำนวนที่จะย้าย: <span className="font-semibold text-blue-600">{totalSelectedPieces} ชิ้น</span></span>
+                        <span>น้ำหนักรวม: <span className="font-semibold">{totalSelectedWeight.toFixed(2)} kg</span></span>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
@@ -567,7 +589,7 @@ function SplitStopModal({ isOpen, stop, orderId, trips, currentTripId, onClose, 
                         <Button variant="outline" onClick={onClose}>
                             ยกเลิก
                         </Button>
-                        <Button variant="primary" onClick={handleSubmit} disabled={totalSelectedWeight <= 0}>
+                        <Button variant="primary" onClick={handleSubmit} disabled={totalSelectedPieces <= 0}>
                             แยกออเดอร์
                         </Button>
                     </div>

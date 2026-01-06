@@ -218,12 +218,11 @@ const LoadlistsPage = () => {
   const [showDeliveryDocModal, setShowDeliveryDocModal] = useState(false);
   const [createdLoadlistId, setCreatedLoadlistId] = useState<number | null>(null);
 
-  // State สำหรับ modal เลือก loadlist ที่จะปริ้นใบปะหน้าของแถม
+  // State สำหรับ modal เลือก trip ที่จะปริ้นใบปะหน้าของแถม
   const [isBonusPrintModalOpen, setIsBonusPrintModalOpen] = useState(false);
   const [bonusFaceSheetToPrint, setBonusFaceSheetToPrint] = useState<{ id: number; face_sheet_no: string } | null>(null);
-  const [loadlistsWithPicklists, setLoadlistsWithPicklists] = useState<Loadlist[]>([]);
-  const [selectedLoadlistsForPrint, setSelectedLoadlistsForPrint] = useState<number[]>([]);
-  const [bonusPackageCounts, setBonusPackageCounts] = useState<Record<number, { packageCount: number; orderCount: number }>>({});
+  const [bonusTripCounts, setBonusTripCounts] = useState<Array<{ trip_number: string; packageCount: number; orderCount: number }>>([]);
+  const [selectedTripsForPrint, setSelectedTripsForPrint] = useState<string[]>([]);
   const fetchLoadlists = async () => {
     setLoading(true);
     setError(null);
@@ -687,31 +686,25 @@ const LoadlistsPage = () => {
 
     // Priority: Check Bonus Face Sheets FIRST (ตรวจสอบของแถมก่อน)
     if (hasBonusFaceSheets) {
-      // แสดง modal ให้เลือก loadlist ที่จะปริ้น (1 คัน = 1 ใบ)
+      // แสดง modal ให้เลือก trip ที่จะปริ้น (1 trip = 1 ใบ)
       const firstBonusFaceSheet = (loadlist as any).bonus_face_sheets[0];
       setBonusFaceSheetToPrint({
         id: firstBonusFaceSheet.id,
         face_sheet_no: firstBonusFaceSheet.face_sheet_no
       });
       
-      // ดึง loadlists ที่มี picklists (loadlist ที่สร้างจากใบหยิบ)
-      const loadlistsWithPL = loadlists.filter(l => l.picklists && l.picklists.length > 0);
-      setLoadlistsWithPicklists(loadlistsWithPL);
-      setSelectedLoadlistsForPrint([]);
-      setBonusPackageCounts({});
+      // ดึงจำนวน bonus packages แยกตาม trip
+      setSelectedTripsForPrint([]);
+      setBonusTripCounts([]);
       
-      // ดึงจำนวน bonus packages ที่ตรงกับแต่ละ loadlist
-      if (loadlistsWithPL.length > 0) {
-        const loadlistIds = loadlistsWithPL.map(l => l.id).join(',');
-        fetch(`/api/bonus-face-sheets/loadlist-counts?bonus_face_sheet_id=${firstBonusFaceSheet.id}&loadlist_ids=${loadlistIds}`)
-          .then(res => res.json())
-          .then(result => {
-            if (result.success && result.data) {
-              setBonusPackageCounts(result.data);
-            }
-          })
-          .catch(err => console.error('Failed to fetch bonus package counts:', err));
-      }
+      fetch(`/api/bonus-face-sheets/trip-counts?bonus_face_sheet_id=${firstBonusFaceSheet.id}`)
+        .then(res => res.json())
+        .then(result => {
+          if (result.success && result.data) {
+            setBonusTripCounts(result.data);
+          }
+        })
+        .catch(err => console.error('Failed to fetch bonus trip counts:', err));
       
       setIsBonusPrintModalOpen(true);
       return;
@@ -800,24 +793,24 @@ const LoadlistsPage = () => {
     }, 100);
   };
 
-  // ฟังก์ชันปริ้นใบปะหน้าของแถมตาม loadlist ที่เลือก
-  const handlePrintBonusFaceSheetByLoadlists = () => {
-    if (!bonusFaceSheetToPrint || selectedLoadlistsForPrint.length === 0) {
-      alert('กรุณาเลือกใบโหลดอย่างน้อย 1 รายการ');
+  // ฟังก์ชันปริ้นใบปะหน้าของแถมตาม trip ที่เลือก
+  const handlePrintBonusFaceSheetByTrips = () => {
+    if (!bonusFaceSheetToPrint || selectedTripsForPrint.length === 0) {
+      alert('กรุณาเลือกสายรถอย่างน้อย 1 รายการ');
       return;
     }
 
-    // เปิดหน้าปริ้นสำหรับแต่ละ loadlist ที่เลือก
-    selectedLoadlistsForPrint.forEach((loadlistId) => {
+    // เปิดหน้าปริ้นสำหรับแต่ละ trip ที่เลือก
+    selectedTripsForPrint.forEach((tripNumber) => {
       window.open(
-        `/api/bonus-face-sheets/print?id=${bonusFaceSheetToPrint.id}&loadlist_id=${loadlistId}`,
+        `/api/bonus-face-sheets/print?id=${bonusFaceSheetToPrint.id}&trip_number=${encodeURIComponent(tripNumber)}`,
         '_blank'
       );
     });
 
     setIsBonusPrintModalOpen(false);
     setBonusFaceSheetToPrint(null);
-    setSelectedLoadlistsForPrint([]);
+    setSelectedTripsForPrint([]);
   };
 
   return (
@@ -1802,13 +1795,13 @@ const LoadlistsPage = () => {
         </div>
       </Modal>
 
-      {/* Modal เลือก Loadlist สำหรับปริ้นใบปะหน้าของแถม */}
+      {/* Modal เลือก Trip สำหรับปริ้นใบปะหน้าของแถม */}
       <Modal
         isOpen={isBonusPrintModalOpen}
         onClose={() => {
           setIsBonusPrintModalOpen(false);
           setBonusFaceSheetToPrint(null);
-          setSelectedLoadlistsForPrint([]);
+          setSelectedTripsForPrint([]);
         }}
         title={`พิมพ์ใบเช็คของแถม: ${bonusFaceSheetToPrint?.face_sheet_no || ''}`}
         size="lg"
@@ -1816,10 +1809,10 @@ const LoadlistsPage = () => {
         <div className="space-y-4">
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
             <p className="text-sm text-blue-800">
-              <strong>คำแนะนำ:</strong> เลือกใบโหลด (คัน) ที่ต้องการปริ้นใบเช็คของแถม แต่ละใบโหลดจะปริ้นแยก 1 ใบ โดยแสดงเฉพาะรายการของแถมที่ตรงกับออเดอร์ในใบโหลดนั้น
+              <strong>คำแนะนำ:</strong> เลือกสายรถที่ต้องการปริ้นใบเช็คของแถม แต่ละสายรถจะปริ้นแยก 1 ใบ โดยแสดงเฉพาะรายการของแถมที่อยู่ในสายรถนั้น
             </p>
             <p className="text-sm text-blue-600 mt-2">
-              <strong>หมายเหตุ:</strong> หากไม่พบรายการที่ตรงกัน สามารถกดปุ่ม "พิมพ์ทั้งหมด (ไม่กรอง)" ด้านล่างเพื่อปริ้นใบเช็คของแถมทั้งหมดได้
+              <strong>หมายเหตุ:</strong> สายรถถูกกำหนดตอนสร้างใบปะหน้าของแถม (ขั้นตอนที่ 2: ตรวจสอบแผนการจัดส่ง)
             </p>
           </div>
 
@@ -1828,21 +1821,20 @@ const LoadlistsPage = () => {
               <input
                 type="checkbox"
                 checked={
-                  loadlistsWithPicklists.filter(l => bonusPackageCounts[l.id]?.packageCount > 0).length > 0 &&
-                  selectedLoadlistsForPrint.length === loadlistsWithPicklists.filter(l => bonusPackageCounts[l.id]?.packageCount > 0).length
+                  bonusTripCounts.length > 0 &&
+                  selectedTripsForPrint.length === bonusTripCounts.length
                 }
                 onChange={() => {
-                  const loadlistsWithBonus = loadlistsWithPicklists.filter(l => bonusPackageCounts[l.id]?.packageCount > 0);
-                  if (selectedLoadlistsForPrint.length === loadlistsWithBonus.length) {
-                    setSelectedLoadlistsForPrint([]);
+                  if (selectedTripsForPrint.length === bonusTripCounts.length) {
+                    setSelectedTripsForPrint([]);
                   } else {
-                    setSelectedLoadlistsForPrint(loadlistsWithBonus.map(l => l.id));
+                    setSelectedTripsForPrint(bonusTripCounts.map(t => t.trip_number));
                   }
                 }}
                 className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
               />
               <span className="text-sm font-medium text-gray-700">
-                เลือกทั้งหมดที่มีของแถม ({selectedLoadlistsForPrint.length}/{loadlistsWithPicklists.filter(l => bonusPackageCounts[l.id]?.packageCount > 0).length})
+                เลือกทั้งหมด ({selectedTripsForPrint.length}/{bonusTripCounts.length})
               </span>
             </label>
           </div>
@@ -1852,75 +1844,52 @@ const LoadlistsPage = () => {
               <thead className="sticky top-0 z-10 bg-gray-100">
                 <tr>
                   <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 w-12"></th>
-                  <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">รหัสใบโหลด</th>
-                  <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">ทะเบียนรถ</th>
-                  <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">คนขับ</th>
-                  <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200">ใบจัด</th>
-                  <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 bg-yellow-50">รายการของแถม</th>
-                  <th className="px-2 py-2 text-left text-xs font-semibold border-b">สถานะ</th>
+                  <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">สายรถ</th>
+                  <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200">จำนวนแพ็ค</th>
+                  <th className="px-2 py-2 text-center text-xs font-semibold border-b">จำนวนร้าน</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
-                {loadlistsWithPicklists.length === 0 ? (
+                {bonusTripCounts.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
-                      ไม่พบใบโหลดที่สร้างจากใบหยิบ
+                    <td colSpan={4} className="px-4 py-8 text-center text-gray-500">
+                      <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
+                      กำลังโหลดข้อมูล...
                     </td>
                   </tr>
                 ) : (
-                  loadlistsWithPicklists.map((ll) => {
-                    const counts = bonusPackageCounts[ll.id];
-                    const hasMatchingBonus = counts && counts.packageCount > 0;
-                    return (
-                      <tr
-                        key={ll.id}
-                        className={`hover:bg-blue-50/30 transition-colors duration-150 ${
-                          selectedLoadlistsForPrint.includes(ll.id) ? 'bg-green-50' : ''
-                        } ${!hasMatchingBonus ? 'opacity-50' : ''}`}
-                      >
-                        <td className="px-2 py-1 border-r border-gray-100">
-                          <input
-                            type="checkbox"
-                            checked={selectedLoadlistsForPrint.includes(ll.id)}
-                            onChange={() => {
-                              if (selectedLoadlistsForPrint.includes(ll.id)) {
-                                setSelectedLoadlistsForPrint(selectedLoadlistsForPrint.filter(id => id !== ll.id));
-                              } else {
-                                setSelectedLoadlistsForPrint([...selectedLoadlistsForPrint, ll.id]);
-                              }
-                            }}
-                            disabled={!hasMatchingBonus}
-                            className="w-4 h-4 text-green-600 rounded focus:ring-green-500 disabled:opacity-50"
-                          />
-                        </td>
-                        <td className="px-2 py-1 border-r border-gray-100 font-mono text-blue-600 font-semibold">
-                          {ll.loadlist_code}
-                        </td>
-                        <td className="px-2 py-1 border-r border-gray-100 text-gray-700">
-                          {ll.vehicle?.plate_number || '-'}
-                        </td>
-                        <td className="px-2 py-1 border-r border-gray-100 text-gray-700">
-                          {ll.driver ? `${ll.driver.first_name} ${ll.driver.last_name}` : '-'}
-                        </td>
-                        <td className="px-2 py-1 text-center border-r border-gray-100 font-semibold text-purple-600">
-                          {ll.total_picklists}
-                        </td>
-                        <td className="px-2 py-1 text-center border-r border-gray-100 bg-yellow-50">
-                          {counts ? (
-                            <span className={`font-semibold ${hasMatchingBonus ? 'text-green-600' : 'text-gray-400'}`}>
-                              {counts.packageCount} แพ็ค
-                              <span className="text-xs text-gray-500 ml-1">({counts.orderCount} ร้าน)</span>
-                            </span>
-                          ) : (
-                            <span className="text-gray-400">-</span>
-                          )}
-                        </td>
-                        <td className="px-2 py-1">
-                          {getStatusBadge(ll.status)}
-                        </td>
-                      </tr>
-                    );
-                  })
+                  bonusTripCounts.map((trip) => (
+                    <tr
+                      key={trip.trip_number}
+                      className={`hover:bg-blue-50/30 transition-colors duration-150 ${
+                        selectedTripsForPrint.includes(trip.trip_number) ? 'bg-green-50' : ''
+                      }`}
+                    >
+                      <td className="px-2 py-1 border-r border-gray-100">
+                        <input
+                          type="checkbox"
+                          checked={selectedTripsForPrint.includes(trip.trip_number)}
+                          onChange={() => {
+                            if (selectedTripsForPrint.includes(trip.trip_number)) {
+                              setSelectedTripsForPrint(selectedTripsForPrint.filter(t => t !== trip.trip_number));
+                            } else {
+                              setSelectedTripsForPrint([...selectedTripsForPrint, trip.trip_number]);
+                            }
+                          }}
+                          className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                        />
+                      </td>
+                      <td className="px-2 py-1 border-r border-gray-100 font-mono text-purple-600 font-semibold">
+                        {trip.trip_number}
+                      </td>
+                      <td className="px-2 py-1 text-center border-r border-gray-100 font-semibold text-blue-600">
+                        {trip.packageCount} แพ็ค
+                      </td>
+                      <td className="px-2 py-1 text-center font-semibold text-green-600">
+                        {trip.orderCount} ร้าน
+                      </td>
+                    </tr>
+                  ))
                 )}
               </tbody>
             </table>
@@ -1930,7 +1899,7 @@ const LoadlistsPage = () => {
             <Button
               variant="outline"
               onClick={() => {
-                // ปริ้นใบเช็คของแถมทั้งหมด (ไม่กรองตาม loadlist)
+                // ปริ้นใบเช็คของแถมทั้งหมด (ไม่กรองตาม trip)
                 if (bonusFaceSheetToPrint) {
                   window.open(
                     `/api/bonus-face-sheets/print?id=${bonusFaceSheetToPrint.id}`,
@@ -1948,18 +1917,18 @@ const LoadlistsPage = () => {
                 onClick={() => {
                   setIsBonusPrintModalOpen(false);
                   setBonusFaceSheetToPrint(null);
-                  setSelectedLoadlistsForPrint([]);
+                  setSelectedTripsForPrint([]);
                 }}
               >
                 ยกเลิก
               </Button>
               <Button
                 variant="primary"
-                onClick={handlePrintBonusFaceSheetByLoadlists}
-                disabled={selectedLoadlistsForPrint.length === 0}
+                onClick={handlePrintBonusFaceSheetByTrips}
+                disabled={selectedTripsForPrint.length === 0}
                 className="bg-green-500 hover:bg-green-600"
               >
-                พิมพ์ ({selectedLoadlistsForPrint.length} ใบ)
+                พิมพ์ ({selectedTripsForPrint.length} ใบ)
               </Button>
             </div>
           </div>

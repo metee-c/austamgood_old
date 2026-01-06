@@ -46,6 +46,7 @@ interface SplitModalData {
   row: OrderRow;
   splitWeight: string;
   targetTripNumber: number | 'new';
+  splitItems: { [orderItemId: number]: number }; // จำนวนชิ้นที่เลือกแต่ละ item
 }
 
 interface ExcelStyleRouteEditorProps {
@@ -259,10 +260,16 @@ export default function ExcelStyleRouteEditor({
       items: row.items,
       itemsCount: row.items?.length || 0
     });
+    // Initialize splitItems with 0 for each item
+    const initialSplitItems: { [orderItemId: number]: number } = {};
+    (row.items || []).forEach(item => {
+      initialSplitItems[item.order_item_id] = 0;
+    });
     setSplitModalData({
       row,
       splitWeight: '',
-      targetTripNumber: tripNumbers[0] !== row.tripNumber ? tripNumbers[0] : (tripNumbers[1] || 'new')
+      targetTripNumber: tripNumbers[0] !== row.tripNumber ? tripNumbers[0] : (tripNumbers[1] || 'new'),
+      splitItems: initialSplitItems
     });
     setShowSplitModal(true);
   }, [tripNumbers]);
@@ -686,27 +693,79 @@ export default function ExcelStyleRouteEditor({
             {splitModalData.row.items && splitModalData.row.items.length > 0 ? (
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  รายการสินค้าในออเดอร์ ({splitModalData.row.items.length} รายการ)
+                  เลือกจำนวนชิ้นที่ต้องการย้าย ({splitModalData.row.items.length} รายการ)
                 </label>
-                <div className="max-h-48 overflow-auto border rounded-lg">
+                <div className="max-h-64 overflow-auto border rounded-lg">
                   <table className="w-full text-sm">
                     <thead className="bg-gray-100 sticky top-0">
                       <tr>
                         <th className="px-2 py-1 text-left">SKU</th>
                         <th className="px-2 py-1 text-left">ชื่อสินค้า</th>
-                        <th className="px-2 py-1 text-right">จำนวน</th>
-                        <th className="px-2 py-1 text-right">น้ำหนัก (kg)</th>
+                        <th className="px-2 py-1 text-right">คงเหลือ</th>
+                        <th className="px-2 py-1 text-right">ย้าย (ชิ้น)</th>
+                        <th className="px-2 py-1 text-center"></th>
                       </tr>
                     </thead>
                     <tbody>
-                      {splitModalData.row.items.map((item, idx) => (
-                        <tr key={item.order_item_id || idx} className="border-t hover:bg-gray-50">
-                          <td className="px-2 py-1 font-mono text-xs">{item.sku_id}</td>
-                          <td className="px-2 py-1 text-xs truncate max-w-[150px]">{item.sku_name || '-'}</td>
-                          <td className="px-2 py-1 text-right font-mono">{item.order_qty}</td>
-                          <td className="px-2 py-1 text-right font-mono">{(item.order_weight || 0).toFixed(2)}</td>
-                        </tr>
-                      ))}
+                      {splitModalData.row.items.map((item, idx) => {
+                        const selectedQty = splitModalData.splitItems[item.order_item_id] || 0;
+                        return (
+                          <tr key={item.order_item_id || idx} className="border-t hover:bg-gray-50">
+                            <td className="px-2 py-1 font-mono text-xs">{item.sku_id}</td>
+                            <td className="px-2 py-1 text-xs truncate max-w-[120px]" title={item.sku_name || '-'}>{item.sku_name || '-'}</td>
+                            <td className="px-2 py-1 text-right font-mono font-medium">{item.order_qty}</td>
+                            <td className="px-2 py-1 text-right">
+                              <input
+                                type="number"
+                                min={0}
+                                max={item.order_qty}
+                                step={1}
+                                value={selectedQty || ''}
+                                onChange={(e) => {
+                                  const val = parseInt(e.target.value) || 0;
+                                  const clamped = Math.max(0, Math.min(item.order_qty, val));
+                                  setSplitModalData(prev => {
+                                    if (!prev) return null;
+                                    const newSplitItems = { ...prev.splitItems, [item.order_item_id]: clamped };
+                                    // คำนวณน้ำหนักรวมจากจำนวนชิ้นที่เลือก
+                                    let totalWeight = 0;
+                                    prev.row.items.forEach(it => {
+                                      const qty = newSplitItems[it.order_item_id] || 0;
+                                      const unitWeight = it.order_qty > 0 ? it.order_weight / it.order_qty : 0;
+                                      totalWeight += qty * unitWeight;
+                                    });
+                                    return { ...prev, splitItems: newSplitItems, splitWeight: totalWeight.toFixed(2) };
+                                  });
+                                }}
+                                className="w-16 border rounded px-2 py-1 text-right text-sm focus:ring-2 focus:ring-blue-500"
+                                placeholder="0"
+                              />
+                            </td>
+                            <td className="px-2 py-1 text-center">
+                              <button
+                                type="button"
+                                className="text-xs text-blue-600 hover:underline"
+                                onClick={() => {
+                                  setSplitModalData(prev => {
+                                    if (!prev) return null;
+                                    const newSplitItems = { ...prev.splitItems, [item.order_item_id]: item.order_qty };
+                                    // คำนวณน้ำหนักรวมจากจำนวนชิ้นที่เลือก
+                                    let totalWeight = 0;
+                                    prev.row.items.forEach(it => {
+                                      const qty = newSplitItems[it.order_item_id] || 0;
+                                      const unitWeight = it.order_qty > 0 ? it.order_weight / it.order_qty : 0;
+                                      totalWeight += qty * unitWeight;
+                                    });
+                                    return { ...prev, splitItems: newSplitItems, splitWeight: totalWeight.toFixed(2) };
+                                  });
+                                }}
+                              >
+                                ทั้งหมด
+                              </button>
+                            </td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -714,22 +773,6 @@ export default function ExcelStyleRouteEditor({
             ) : (
               <div className="text-sm text-gray-500 italic">ไม่พบรายการสินค้าในออเดอร์นี้</div>
             )}
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                น้ำหนักที่ต้องการแบ่ง (kg)
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                min="0.01"
-                max={splitModalData.row.weightKg - 0.01}
-                value={splitModalData.splitWeight}
-                onChange={(e) => setSplitModalData(prev => prev ? { ...prev, splitWeight: e.target.value } : null)}
-                className="w-full border rounded-lg px-3 py-2"
-                placeholder="กรอกน้ำหนัก..."
-              />
-            </div>
             
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -754,6 +797,13 @@ export default function ExcelStyleRouteEditor({
               <div>
                 <div className="text-gray-600">คงเหลือในคันเดิม:</div>
                 <div className="font-semibold">
+                  {(() => {
+                    const totalSelectedQty = Object.values(splitModalData.splitItems).reduce((sum, qty) => sum + qty, 0);
+                    const totalQty = splitModalData.row.items.reduce((sum, item) => sum + item.order_qty, 0);
+                    return `${totalQty - totalSelectedQty} ชิ้น`;
+                  })()}
+                </div>
+                <div className="text-xs text-gray-500">
                   {(splitModalData.row.weightKg - (parseFloat(splitModalData.splitWeight) || 0)).toFixed(2)} kg
                 </div>
               </div>
@@ -761,6 +811,9 @@ export default function ExcelStyleRouteEditor({
               <div>
                 <div className="text-gray-600">ย้ายไปคันใหม่:</div>
                 <div className="font-semibold text-blue-600">
+                  {Object.values(splitModalData.splitItems).reduce((sum, qty) => sum + qty, 0)} ชิ้น
+                </div>
+                <div className="text-xs text-gray-500">
                   {parseFloat(splitModalData.splitWeight) || 0} kg
                 </div>
               </div>
@@ -773,11 +826,11 @@ export default function ExcelStyleRouteEditor({
               <Button 
                 variant="primary" 
                 onClick={handleSplitConfirm}
-                disabled={
-                  !splitModalData.splitWeight || 
-                  parseFloat(splitModalData.splitWeight) <= 0 ||
-                  parseFloat(splitModalData.splitWeight) >= splitModalData.row.weightKg
-                }
+                disabled={(() => {
+                  const totalSelectedQty = Object.values(splitModalData.splitItems).reduce((sum, qty) => sum + qty, 0);
+                  const totalQty = splitModalData.row.items.reduce((sum, item) => sum + item.order_qty, 0);
+                  return totalSelectedQty <= 0 || totalSelectedQty >= totalQty;
+                })()}
               >
                 แบ่งออเดอร์
               </Button>

@@ -60,17 +60,20 @@ export async function POST(
       );
     }
 
-    // Validate all items belong to the same order
+    // Validate all items belong to the same order and get item details
     const orderIds = new Set<number>();
+    const itemDetailsMap: Record<number, any> = {};
+    
     for (const item of items) {
       const { data: orderItem } = await supabase
         .from('wms_order_items')
-        .select('order_id')
+        .select('order_id, sku_id, sku_name, order_qty, order_weight')
         .eq('order_item_id', item.orderItemId)
         .single();
 
       if (orderItem) {
         orderIds.add(orderItem.order_id);
+        itemDetailsMap[item.orderItemId] = orderItem;
       }
     }
 
@@ -85,7 +88,7 @@ export async function POST(
 
     // Calculate total weight and quantity being moved
     const totalMoveWeight = items.reduce((sum, item) => sum + item.moveWeightKg, 0);
-    const totalMoveQty = items.reduce((sum, item) => sum + item.moveQuantity, 0);
+    const totalMoveQty = items.reduce((sum, item) => sum + (item.moveQuantity || 0), 0);
 
     // Determine target trip
     let finalTargetTripId = targetTripId;
@@ -105,26 +108,27 @@ export async function POST(
         );
       }
 
-      // Get max trip_order for this plan
-      const { data: maxOrderData } = await supabase
+      // Get max trip_sequence for this plan
+      const { data: maxSeqData } = await supabase
         .from('receiving_route_trips')
-        .select('trip_order')
+        .select('trip_sequence')
         .eq('plan_id', planId)
-        .order('trip_order', { ascending: false })
+        .order('trip_sequence', { ascending: false })
         .limit(1)
         .single();
 
-      const nextTripOrder = (maxOrderData?.trip_order ?? 0) + 1;
+      const nextTripSeq = (maxSeqData?.trip_sequence ?? 0) + 1;
 
       // Create new trip
       const { data: newTripData, error: newTripError } = await supabase
         .from('receiving_route_trips')
         .insert({
           plan_id: Number(planId),
-          trip_order: nextTripOrder,
-          trip_name: newTrip.trip_name || `Trip ${nextTripOrder}`,
-          vehicle_id: plan.vehicle_id,
-          plan_date: plan.plan_date
+          trip_sequence: nextTripSeq,
+          daily_trip_number: nextTripSeq,
+          trip_code: `TRIP-${String(nextTripSeq).padStart(3, '0')}`,
+          trip_status: 'planned',
+          notes: newTrip.trip_name || `คันที่ ${nextTripSeq} (แบ่ง)`
         })
         .select()
         .single();
@@ -146,64 +150,206 @@ export async function POST(
       );
     }
 
-    // Get max stop_order for target trip
-    const { data: maxStopOrder } = await supabase
+    // Get max sequence_no for target trip
+    const { data: maxSeqStop } = await supabase
       .from('receiving_route_stops')
-      .select('stop_order')
+      .select('sequence_no')
       .eq('trip_id', finalTargetTripId)
-      .order('stop_order', { ascending: false })
+      .order('sequence_no', { ascending: false })
       .limit(1)
       .single();
 
-    const nextStopOrder = (maxStopOrder?.stop_order ?? 0) + 1;
+    const nextSeqNo = (maxSeqStop?.sequence_no ?? 0) + 1;
 
-    // Create new stop in target trip
+    // Create new stop in target trip with split_from_stop_id to track origin
     const { data: newStop, error: newStopError } = await supabase
       .from('receiving_route_stops')
       .insert({
         trip_id: finalTargetTripId,
+        plan_id: Number(planId),
         order_id: orderId,
-        stop_order: nextStopOrder,
+        sequence_no: nextSeqNo,
         stop_name: sourceStop.stop_name,
+        address: sourceStop.address,
         latitude: sourceStop.latitude,
         longitude: sourceStop.longitude,
         load_weight_kg: totalMoveWeight,
-        service_duration_minutes: serviceDurationMinutes,
+        service_duration_minutes: serviceDurationMinutes ?? sourceStop.service_duration_minutes,
         notes: note,
-        zone: sourceStop.zone,
-        subzone: sourceStop.subzone
+        tags: {
+          order_ids: [orderId],
+          split_from_stop_id: sourceStopId,
+          split_item_ids: items.map(i => i.orderItemId)
+        }
       })
       .select()
       .single();
 
     if (newStopError || !newStop) {
+      console.error('Error creating new stop:', newStopError);
       return NextResponse.json(
         { error: 'ไม่สามารถสร้าง stop ใหม่ได้' },
         { status: 500 }
       );
     }
 
-    // Update source stop weight
+    // Insert records into receiving_route_stop_items for the NEW stop (moved items)
+    const newStopItems = items.map(item => {
+      const itemDetail = itemDetailsMap[item.orderItemId];
+      return {
+        plan_id: Number(planId),
+        trip_id: finalTargetTripId,
+        stop_id: newStop.stop_id,
+        order_id: orderId,
+        order_item_id: item.orderItemId,
+        sku_id: itemDetail?.sku_id || null,
+        sku_name: itemDetail?.sku_name || null,
+        allocated_quantity: item.moveQuantity || 0,
+        allocated_weight_kg: item.moveWeightKg || 0,
+        allocated_volume_cbm: item.moveVolumeCbm || null,
+        allocated_pallets: item.movePallets || null,
+        notes: `แบ่งจาก stop ${sourceStopId}`
+      };
+    });
+
+    const { error: insertItemsError } = await supabase
+      .from('receiving_route_stop_items')
+      .insert(newStopItems);
+
+    if (insertItemsError) {
+      console.error('Error inserting stop items for new stop:', insertItemsError);
+    }
+
+    // Check if source stop already has records in receiving_route_stop_items
+    const { data: existingSourceItems } = await supabase
+      .from('receiving_route_stop_items')
+      .select('*')
+      .eq('stop_id', sourceStopId);
+
+    if (!existingSourceItems || existingSourceItems.length === 0) {
+      // Source stop doesn't have item records yet - create them for remaining items
+      // Get all order items for this order
+      const { data: allOrderItems } = await supabase
+        .from('wms_order_items')
+        .select('order_item_id, sku_id, sku_name, order_qty, order_weight')
+        .eq('order_id', orderId);
+
+      if (allOrderItems) {
+        // Create a map of moved item quantities
+        const movedItemsMap: Record<number, { qty: number; weight: number }> = {};
+        items.forEach(item => {
+          movedItemsMap[item.orderItemId] = {
+            qty: item.moveQuantity || 0,
+            weight: item.moveWeightKg || 0
+          };
+        });
+
+        // Create records for remaining quantities in source stop
+        const sourceStopItems = allOrderItems
+          .map(orderItem => {
+            const moved = movedItemsMap[orderItem.order_item_id];
+            const originalQty = Number(orderItem.order_qty) || 0;
+            const originalWeight = Number(orderItem.order_weight) || 0;
+            
+            const remainingQty = moved ? originalQty - moved.qty : originalQty;
+            const remainingWeight = moved ? originalWeight - moved.weight : originalWeight;
+
+            // Only create record if there's remaining quantity
+            if (remainingQty > 0) {
+              return {
+                plan_id: Number(planId),
+                trip_id: sourceStop.trip_id,
+                stop_id: sourceStopId,
+                order_id: orderId,
+                order_item_id: orderItem.order_item_id,
+                sku_id: orderItem.sku_id,
+                sku_name: orderItem.sku_name,
+                allocated_quantity: remainingQty,
+                allocated_weight_kg: remainingWeight,
+                notes: 'คงเหลือหลังแบ่ง'
+              };
+            }
+            return null;
+          })
+          .filter(item => item !== null);
+
+        if (sourceStopItems.length > 0) {
+          const { error: insertSourceItemsError } = await supabase
+            .from('receiving_route_stop_items')
+            .insert(sourceStopItems);
+
+          if (insertSourceItemsError) {
+            console.error('Error inserting stop items for source stop:', insertSourceItemsError);
+          }
+        }
+      }
+    } else {
+      // Source stop already has item records - update them
+      for (const item of items) {
+        const existingItem = existingSourceItems.find(
+          ei => ei.order_item_id === item.orderItemId
+        );
+
+        if (existingItem) {
+          const newQty = (existingItem.allocated_quantity || 0) - (item.moveQuantity || 0);
+          const newWeight = (existingItem.allocated_weight_kg || 0) - (item.moveWeightKg || 0);
+
+          if (newQty <= 0) {
+            // Delete the record if no quantity remaining
+            await supabase
+              .from('receiving_route_stop_items')
+              .delete()
+              .eq('stop_item_id', existingItem.stop_item_id);
+          } else {
+            // Update with remaining quantity
+            await supabase
+              .from('receiving_route_stop_items')
+              .update({
+                allocated_quantity: newQty,
+                allocated_weight_kg: newWeight
+              })
+              .eq('stop_item_id', existingItem.stop_item_id);
+          }
+        }
+      }
+    }
+
+    // Update source stop weight and tags
     const newSourceWeight = (sourceStop.load_weight_kg || 0) - totalMoveWeight;
     const sourceTripId = sourceStop.trip_id;
 
+    // Update tags to track which items were split out
+    const existingSplitItemIds = sourceStop.tags?.split_out_item_ids || [];
+    const newSplitOutItemIds = [...existingSplitItemIds, ...items.map(i => i.orderItemId)];
+
     if (newSourceWeight <= 0) {
       // Delete source stop if no weight remaining
+      // First delete any remaining stop_items
+      await supabase
+        .from('receiving_route_stop_items')
+        .delete()
+        .eq('stop_id', sourceStopId);
+
       await supabase
         .from('receiving_route_stops')
         .delete()
         .eq('stop_id', sourceStopId);
     } else {
-      // Update source stop weight
+      // Update source stop weight and tags
       await supabase
         .from('receiving_route_stops')
         .update({
-          load_weight_kg: newSourceWeight
+          load_weight_kg: newSourceWeight,
+          tags: {
+            ...sourceStop.tags,
+            split_out_item_ids: newSplitOutItemIds,
+            has_split: true
+          }
         })
         .eq('stop_id', sourceStopId);
     }
 
-    // ลบ trip ที่ไม่มี stop เหลืออยู่
+    // Delete empty trip if source trip has no stops left
     let deletedEmptyTrip = false;
     if (sourceTripId) {
       const { data: remainingStops } = await supabase
@@ -226,14 +372,44 @@ export async function POST(
       }
     }
 
-    // TODO: Update order items allocation if needed
-    // This depends on how the system tracks which items are allocated to which stops
+    // Recalculate trip weights
+    for (const tripId of [sourceTripId, finalTargetTripId]) {
+      if (!tripId) continue;
+      
+      const { data: tripStops } = await supabase
+        .from('receiving_route_stops')
+        .select('load_weight_kg')
+        .eq('trip_id', tripId);
+
+      const totalWeight = tripStops?.reduce((sum, s) => sum + Number(s.load_weight_kg || 0), 0) || 0;
+      const totalStops = tripStops?.length || 0;
+
+      await supabase
+        .from('receiving_route_trips')
+        .update({
+          total_weight_kg: totalWeight,
+          total_stops: totalStops
+        })
+        .eq('trip_id', tripId);
+    }
+
+    console.log('✅ Split stop completed:', {
+      sourceStopId,
+      newStopId: newStop.stop_id,
+      targetTripId: finalTargetTripId,
+      movedItems: items.length,
+      totalMoveWeight,
+      totalMoveQty
+    });
 
     return NextResponse.json({
       success: true,
       newStopId: newStop.stop_id,
       newTripId: finalTargetTripId,
-      deletedEmptyTrip
+      deletedEmptyTrip,
+      movedItems: items.length,
+      totalMoveWeight,
+      totalMoveQty
     });
 
   } catch (error: any) {

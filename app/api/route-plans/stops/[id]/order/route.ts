@@ -57,7 +57,87 @@ export async function GET(
         );
       }
 
-      // Get order items
+      // First, check if this stop has allocated items in receiving_route_stop_items
+      const { data: allocatedItems, error: allocatedError } = await supabase
+        .from('receiving_route_stop_items')
+        .select('*')
+        .eq('stop_id', stopId)
+        .eq('order_id', targetOrderId);
+
+      if (!allocatedError && allocatedItems && allocatedItems.length > 0) {
+        // This stop has specific item allocations - use them
+        console.log('📦 Using allocated items from receiving_route_stop_items:', {
+          stopId,
+          targetOrderId,
+          allocatedItemsCount: allocatedItems.length
+        });
+
+        const itemsWithAvailable = allocatedItems.map(item => ({
+          order_item_id: item.order_item_id,
+          sku_id: item.sku_id,
+          sku_name: item.sku_name,
+          order_qty: Number(item.allocated_quantity) || 0,
+          order_weight: Number(item.allocated_weight_kg) || 0,
+          available_weight: Number(item.allocated_weight_kg) || 0,
+          available_qty: Number(item.allocated_quantity) || 0,
+          unit_weight: item.allocated_quantity && Number(item.allocated_quantity) > 0
+            ? (Number(item.allocated_weight_kg) / Number(item.allocated_quantity))
+            : null
+        }));
+
+        return NextResponse.json({
+          data: {
+            ...order,
+            items: itemsWithAvailable,
+            has_split_allocation: true
+          },
+          error: null
+        });
+      }
+
+      // No specific allocations - check if this stop was created from a split
+      // If so, only show the items that were split to this stop
+      const splitItemIds = stop.tags?.split_item_ids;
+      if (splitItemIds && Array.isArray(splitItemIds) && splitItemIds.length > 0) {
+        // This stop was created from a split - only show the split items
+        const { data: splitItems, error: splitItemsError } = await supabase
+          .from('wms_order_items')
+          .select('*')
+          .in('order_item_id', splitItemIds)
+          .order('line_no', { ascending: true });
+
+        if (!splitItemsError && splitItems) {
+          console.log('📦 Using split_item_ids from tags:', {
+            stopId,
+            targetOrderId,
+            splitItemIds,
+            itemsCount: splitItems.length
+          });
+
+          const itemsWithAvailable = splitItems.map(item => ({
+            ...item,
+            available_weight: Number(item.order_weight) || 0,
+            available_qty: Number(item.order_qty) || 0,
+            unit_weight: item.order_weight && item.order_qty && Number(item.order_qty) > 0
+              ? (Number(item.order_weight) / Number(item.order_qty))
+              : null
+          }));
+
+          return NextResponse.json({
+            data: {
+              ...order,
+              items: itemsWithAvailable,
+              is_split_stop: true
+            },
+            error: null
+          });
+        }
+      }
+
+      // Check if this stop has items that were split out to other stops
+      const splitOutItemIds = stop.tags?.split_out_item_ids;
+      
+      // Get all order items
       const { data: items, error: itemsError } = await supabase
         .from('wms_order_items')
         .select('*')
@@ -72,22 +152,34 @@ export async function GET(
         );
       }
 
+      // Filter out items that were split to other stops
+      let filteredItems = items || [];
+      if (splitOutItemIds && Array.isArray(splitOutItemIds) && splitOutItemIds.length > 0) {
+        // Check if there are other stops with these items
+        // For now, we'll still show all items but mark which ones were split
+        console.log('📦 Stop has split_out_item_ids:', {
+          stopId,
+          splitOutItemIds
+        });
+      }
+
       console.log('📦 Fetched order items for split modal:', {
         stopId,
         targetOrderId,
         orderNo: order.order_no,
-        itemsCount: items?.length || 0
+        itemsCount: filteredItems.length,
+        hasSplitOutItems: !!splitOutItemIds
       });
 
-      // Calculate available weight and qty (total order - already allocated)
-      const itemsWithAvailable = items?.map(item => ({
+      // Calculate available weight and qty
+      const itemsWithAvailable = filteredItems.map(item => ({
         ...item,
         available_weight: Number(item.order_weight) || 0,
         available_qty: Number(item.order_qty) || 0,
         unit_weight: item.order_weight && item.order_qty && Number(item.order_qty) > 0
           ? (Number(item.order_weight) / Number(item.order_qty))
           : null
-      })) || [];
+      }));
 
       return NextResponse.json({
         data: {
