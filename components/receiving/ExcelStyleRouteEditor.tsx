@@ -164,6 +164,13 @@ export default function ExcelStyleRouteEditor({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Sync rows with initialRows when trips change (but only if no user changes)
+  useEffect(() => {
+    if (!hasChanges) {
+      setRows(initialRows);
+    }
+  }, [initialRows, hasChanges]);
+
   // Get unique trip numbers
   const tripNumbers = useMemo(() => {
     const numbers = new Set(rows.map(r => r.tripNumber));

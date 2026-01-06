@@ -65,12 +65,26 @@ export async function GET(
         };
       })
     );
+
+    // ดึง original quantities จาก wms_order_items
+    const orderIds = [...new Set(packages?.map(p => p.order_id) || [])];
+    const { data: originalItems } = await supabase
+      .from('wms_order_items')
+      .select('order_item_id, order_id, order_qty, sku_id, sku_name')
+      .in('order_id', orderIds);
+
+    // สร้าง map ของ original quantities
+    const originalQtyMap: Record<number, number> = {};
+    (originalItems || []).forEach((item: any) => {
+      originalQtyMap[item.order_item_id] = parseFloat(item.order_qty) || 0;
+    });
     
     return NextResponse.json({
       success: true,
       data: {
         ...faceSheet,
-        packages: packagesWithItems
+        packages: packagesWithItems,
+        originalQuantities: originalQtyMap
       }
     });
   } catch (error: any) {
@@ -226,17 +240,30 @@ export async function PUT(
       );
     }
 
+    // ดึง face_sheet_no สำหรับสร้าง barcode_id
+    const { data: faceSheetData } = await supabase
+      .from('bonus_face_sheets')
+      .select('face_sheet_no')
+      .eq('id', id)
+      .single();
+    
+    const face_sheet_no = faceSheetData?.face_sheet_no || `BFS-${id}`;
+
     // สร้าง packages ใหม่
     let packageNumber = 1;
     for (const pkg of packages) {
+      // สร้าง barcode_id
+      const barcode_id = `${face_sheet_no}-P${String(packageNumber).padStart(3, '0')}`;
+      
       const { data: newPackage, error: pkgError } = await supabase
         .from('bonus_face_sheet_packages')
         .insert({
           face_sheet_id: id,
-          package_number: packageNumber++,
+          package_number: packageNumber,
+          barcode_id,
           order_id: pkg.order_id,
           order_no: pkg.order_no,
-          customer_code: pkg.customer_code,
+          customer_id: pkg.customer_code,
           shop_name: pkg.shop_name,
           address: pkg.address,
           province: pkg.province,
@@ -247,10 +274,13 @@ export async function PUT(
           delivery_type: pkg.delivery_type,
           sales_territory: pkg.sales_territory,
           trip_number: pkg.trip_number,
-          pack_no: pkg.pack_no
+          pack_no: pkg.pack_no,
+          total_items: pkg.items?.length || 0
         })
         .select()
         .single();
+      
+      packageNumber++;
 
       if (pkgError || !newPackage) {
         console.error('Error creating package:', pkgError);
@@ -265,12 +295,18 @@ export async function PUT(
         const { error: itemError } = await supabase
           .from('bonus_face_sheet_items')
           .insert({
+            face_sheet_id: id,
             package_id: newPackage.id,
             order_item_id: item.order_item_id,
+            sku_id: item.product_code,
             product_code: item.product_code,
             product_name: item.product_name,
             quantity: item.quantity,
-            weight: item.weight
+            quantity_to_pick: item.quantity,
+            weight: item.weight,
+            unit: 'ชิ้น',
+            uom: 'ชิ้น',
+            status: 'pending'
           });
 
         if (itemError) {

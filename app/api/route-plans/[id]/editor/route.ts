@@ -157,8 +157,11 @@ export async function GET(
 
             console.log('📦 Order items map created:', {
               orderItemsMapSize: Object.keys(orderItemsMap).length,
+              orderItemsDetailMapSize: Object.keys(orderItemsDetailMap).length,
               sampleOrderId: Object.keys(orderItemsMap)[0],
               sampleQty: orderItemsMap[Object.keys(orderItemsMap)[0]],
+              sampleItemsCount: orderItemsDetailMap[Number(Object.keys(orderItemsDetailMap)[0])]?.length || 0,
+              allOrderIds: Array.from(allOrderIds).slice(0, 10),
               allQuantities: Object.entries(orderItemsMap).slice(0, 5)
             });
           } else {
@@ -186,6 +189,19 @@ export async function GET(
         allStops = (stops || []).map((stop: any) => {
           const orderIds = stop.tags?.order_ids || (stop.order_id ? [stop.order_id] : []);
           const inputIds = stop.tags?.input_ids || (stop.input_id ? [stop.input_id] : []);
+
+          // Debug: log order lookup
+          console.log('🔍 Stop order lookup:', {
+            stop_id: stop.stop_id,
+            orderIds,
+            ordersMapKeys: Object.keys(ordersMap).slice(0, 5),
+            orderItemsDetailMapKeys: Object.keys(orderItemsDetailMap).slice(0, 5),
+            orderItemsDetailMapSample: orderIds.length > 0 ? {
+              firstOrderId: orderIds[0],
+              hasItems: !!orderItemsDetailMap[orderIds[0]],
+              itemsCount: orderItemsDetailMap[orderIds[0]]?.length || 0
+            } : null
+          });
 
           // Build orders array with weights from inputs
           const orders = orderIds.map((orderId: number, index: number) => {
@@ -250,7 +266,8 @@ export async function GET(
           orderItemsDetailMapSize: Object.keys(orderItemsDetailMap).length,
           sampleOrderItems: Object.entries(orderItemsDetailMap).slice(0, 2).map(([k, v]) => ({
             order_id: k,
-            items_count: (v as any[]).length
+            items_count: (v as any[]).length,
+            first_item: (v as any[])[0]
           })),
           firstStop: allStops[0] ? {
             stop_id: allStops[0].stop_id,
@@ -263,7 +280,8 @@ export async function GET(
               order_id: o.order_id,
               order_no: o.order_no,
               weight: o.allocated_weight_kg,
-              items_count: o.items?.length || 0
+              items_count: o.items?.length || 0,
+              first_item: o.items?.[0]
             })),
             tags: allStops[0].tags
           } : null
@@ -501,9 +519,26 @@ export async function GET(
           stop_name: finalTrips[0].stops[0].stop_name,
           latitude: finalTrips[0].stops[0].latitude,
           longitude: finalTrips[0].stops[0].longitude,
-          sequence_no: finalTrips[0].stops[0].sequence_no
+          sequence_no: finalTrips[0].stops[0].sequence_no,
+          orders_count: finalTrips[0].stops[0].orders?.length || 0,
+          first_order_items: finalTrips[0].stops[0].orders?.[0]?.items?.length || 0,
+          first_order_items_sample: finalTrips[0].stops[0].orders?.[0]?.items?.[0] || null
         } : null
       } : null
+    });
+
+    // Final verification log
+    console.log('🚀 Final API response verification:', {
+      tripsCount: finalTrips.length,
+      allOrdersWithItems: finalTrips.flatMap((t: any) => 
+        (t.stops || []).flatMap((s: any) => 
+          (s.orders || []).map((o: any) => ({
+            order_id: o.order_id,
+            order_no: o.order_no,
+            items_count: o.items?.length || 0
+          }))
+        )
+      )
     });
 
     return NextResponse.json({

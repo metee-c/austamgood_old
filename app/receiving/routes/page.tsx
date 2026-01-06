@@ -79,12 +79,21 @@ interface DraftOrder {
     };
 }
 
+interface OrderItemDetail {
+    order_item_id: number;
+    sku_id: string;
+    sku_name: string;
+    order_qty: number;
+    order_weight: number;
+}
+
 interface StopOrderDetail {
     order_id: number | null;
     order_no?: string | null;
     customer_name?: string | null;
     allocated_weight_kg?: number | null;
     total_order_weight_kg?: number | null;
+    items?: OrderItemDetail[];
 }
 
 interface EditorStop {
@@ -847,6 +856,25 @@ const RoutesPage = () => {
                 }
             }
 
+            // Debug: Log raw API response to see items
+            console.log('📥 Raw API trips data:', {
+                tripsCount: data.trips?.length || 0,
+                firstTrip: data.trips?.[0] ? {
+                    trip_id: data.trips[0].trip_id,
+                    stopsCount: data.trips[0].stops?.length || 0,
+                    firstStop: data.trips[0].stops?.[0] ? {
+                        stop_id: data.trips[0].stops[0].stop_id,
+                        ordersCount: data.trips[0].stops[0].orders?.length || 0,
+                        firstOrder: data.trips[0].stops[0].orders?.[0] ? {
+                            order_id: data.trips[0].stops[0].orders[0].order_id,
+                            order_no: data.trips[0].stops[0].orders[0].order_no,
+                            items: data.trips[0].stops[0].orders[0].items,
+                            itemsCount: data.trips[0].stops[0].orders[0].items?.length || 0
+                        } : null
+                    } : null
+                } : null
+            });
+
             const tripsFromApi: EditorTrip[] = (data.trips || []).map((trip: any, index: number) => {
                 const normalizedStops: EditorStop[] = (trip.stops || []).map((stop: any) => {
                     const normalizedOrders: StopOrderDetail[] = Array.isArray(stop.orders)
@@ -876,11 +904,26 @@ const RoutesPage = () => {
                                     order_no: orderNo,
                                     customer_name: customerName,
                                     allocated_weight_kg: allocatedWeight,
-                                    total_order_weight_kg: totalOrderWeight
+                                    total_order_weight_kg: totalOrderWeight,
+                                    items: Array.isArray(order.items) ? order.items : []
                                 } as StopOrderDetail;
                             })
                             .filter((order: StopOrderDetail | null): order is StopOrderDetail => order !== null)
                         : [];
+
+                    // Debug: Log normalized orders with items
+                    if (normalizedOrders.length > 0) {
+                        console.log('📋 Normalized orders for stop:', {
+                            stop_id: stop.stop_id,
+                            ordersCount: normalizedOrders.length,
+                            firstOrder: {
+                                order_id: normalizedOrders[0].order_id,
+                                order_no: normalizedOrders[0].order_no,
+                                items: normalizedOrders[0].items,
+                                itemsCount: normalizedOrders[0].items?.length || 0
+                            }
+                        });
+                    }
 
                     return {
                         ...stop,

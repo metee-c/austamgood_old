@@ -81,7 +81,9 @@ const BonusFaceSheetPackFormPage = () => {
 
       if (result.success) {
         const faceSheet = result.data;
+        const originalQuantities = faceSheet.originalQuantities || {};
         console.log('Loaded face sheet:', faceSheet);
+        console.log('Original quantities:', originalQuantities);
         console.log('Packages:', faceSheet.packages);
         
         // แปลง packages กลับเป็น orders format
@@ -112,17 +114,18 @@ const BonusFaceSheetPackFormPage = () => {
           const order = ordersMap.get(pkg.order_id)!;
           pkg.items.forEach((item: any) => {
             const existingItem = order.items.find(i => i.order_item_id === item.order_item_id);
-            if (existingItem) {
-              existingItem.quantity += item.quantity;
-            } else {
+            if (!existingItem) {
+              // ใช้ original quantity จาก wms_order_items แทน quantity ที่แบ่งแล้ว
+              const originalQty = originalQuantities[item.order_item_id] || item.quantity;
               order.items.push({
                 order_item_id: item.order_item_id,
                 product_code: item.product_code,
                 product_name: item.product_name,
-                quantity: item.quantity,
+                quantity: originalQty,
                 weight: item.weight
               });
             }
+            // ไม่ต้อง += quantity อีกแล้ว เพราะใช้ original quantity
           });
         });
         
@@ -154,9 +157,20 @@ const BonusFaceSheetPackFormPage = () => {
                 console.log('Pack data:', { pack_no: pkg.pack_no, package_number: pkg.package_number, used: packNo, quantity: pkgItem?.quantity });
                 return {
                   pack_no: packNo,
-                  quantity: pkgItem?.quantity || 0
+                  quantity: parseFloat(pkgItem?.quantity) || 0
                 };
               });
+              
+              const savedTotalQty = packs.reduce((sum, p) => sum + p.quantity, 0);
+              const originalQty = item.quantity; // นี่คือ original quantity จาก wms_order_items แล้ว
+              
+              // ถ้า savedTotalQty ไม่ตรงกับ originalQty แสดงว่ามี pack ที่หายไป
+              // ให้ปรับ quantity ของ pack แรกให้รวมแล้วเท่ากับ originalQty
+              if (savedTotalQty !== originalQty && packs.length > 0) {
+                console.log('⚠️ Quantity mismatch:', { savedTotalQty, originalQty, diff: originalQty - savedTotalQty });
+                // เพิ่ม quantity ที่หายไปให้ pack แรก
+                packs[0].quantity += (originalQty - savedTotalQty);
+              }
               
               initialPackData[order.order_id][item.order_item_id] = {
                 packs,
@@ -253,15 +267,43 @@ const BonusFaceSheetPackFormPage = () => {
         itemData.packs = [{ pack_no: packNos[0], quantity: item.quantity }];
         itemData.totalQty = item.quantity;
       } else {
-        // Multiple packs - distribute evenly or keep existing
+        // Multiple packs - distribute evenly or keep existing quantities
         const existingPacks = itemData.packs;
-        itemData.packs = packNos.map((packNo) => {
-          const existing = existingPacks.find(p => p.pack_no === packNo);
-          return {
-            pack_no: packNo,
-            quantity: existing?.quantity || 0
-          };
-        });
+        const totalQty = item.quantity;
+        
+        // Check if we have existing quantities that sum correctly
+        const existingTotal = existingPacks
+          .filter(p => packNos.includes(p.pack_no))
+          .reduce((sum, p) => sum + p.quantity, 0);
+        
+        if (existingTotal === totalQty) {
+          // Keep existing distribution
+          itemData.packs = packNos.map((packNo) => {
+            const existing = existingPacks.find(p => p.pack_no === packNo);
+            return {
+              pack_no: packNo,
+              quantity: existing?.quantity || 0
+            };
+          });
+        } else {
+          // Auto-distribute evenly
+          const baseQty = Math.floor(totalQty / packNos.length);
+          const remainder = totalQty % packNos.length;
+          
+          itemData.packs = packNos.map((packNo, idx) => {
+            const existing = existingPacks.find(p => p.pack_no === packNo);
+            // If existing has a non-zero quantity, keep it; otherwise distribute
+            if (existing && existing.quantity > 0) {
+              return { pack_no: packNo, quantity: existing.quantity };
+            }
+            // Give remainder to first packs
+            return {
+              pack_no: packNo,
+              quantity: baseQty + (idx < remainder ? 1 : 0)
+            };
+          });
+        }
+        
         itemData.totalQty = itemData.packs.reduce((sum, p) => sum + p.quantity, 0);
       }
 
@@ -381,7 +423,20 @@ const BonusFaceSheetPackFormPage = () => {
           const key = `${order.order_id}-${item.order_item_id}`;
           const itemDeliveryType = deliveryTypes[key] || order.delivery_type;
           
+          console.log('📦 Processing item:', {
+            order_no: order.order_no,
+            item_id: item.order_item_id,
+            product_name: item.product_name,
+            total_qty: item.quantity,
+            packs: itemData.packs
+          });
+          
           itemData.packs.forEach(pack => {
+            if (!pack.pack_no) {
+              console.warn('⚠️ Skipping pack with empty pack_no');
+              return;
+            }
+            
             if (!packGroups[pack.pack_no]) {
               packGroups[pack.pack_no] = {
                 order_id: order.order_id,
@@ -402,25 +457,66 @@ const BonusFaceSheetPackFormPage = () => {
               };
             }
 
-            packGroups[pack.pack_no].items.push({
-              order_item_id: item.order_item_id,
-              product_code: item.product_code,
-              product_name: item.product_name,
-              quantity: pack.quantity,
-              weight: item.weight
-            });
+            // Only add item if quantity > 0
+            if (pack.quantity > 0) {
+              packGroups[pack.pack_no].items.push({
+                order_item_id: item.order_item_id,
+                product_code: item.product_code,
+                product_name: item.product_name,
+                quantity: pack.quantity,
+                weight: item.weight
+              });
+              
+              console.log('✅ Added item to pack:', {
+                pack_no: pack.pack_no,
+                product_name: item.product_name,
+                quantity: pack.quantity
+              });
+            } else {
+              console.warn('⚠️ Skipping item with 0 quantity:', {
+                pack_no: pack.pack_no,
+                product_name: item.product_name
+              });
+            }
           });
         });
 
+        console.log('📋 Pack groups for order', order.order_no, ':', 
+          Object.entries(packGroups).map(([k, v]: [string, any]) => ({
+            pack_no: k,
+            items_count: v.items.length,
+            items: v.items.map((i: any) => ({ name: i.product_name, qty: i.quantity }))
+          }))
+        );
+
         packages.push(...Object.values(packGroups));
       });
+
+      console.log('📦 Final packages to save:', packages.length, packages.map(p => ({
+        order_no: p.order_no,
+        pack_no: p.pack_no,
+        items_count: p.items.length
+      })));
+
+      // Filter out packages with no items
+      const validPackages = packages.filter(pkg => pkg.items && pkg.items.length > 0);
+      
+      if (validPackages.length !== packages.length) {
+        console.warn('⚠️ Filtered out', packages.length - validPackages.length, 'packages with no items');
+      }
+
+      if (validPackages.length === 0) {
+        setError('ไม่มีแพ็คที่มีสินค้า กรุณาตรวจสอบการกรอกข้อมูล');
+        setSaving(false);
+        return;
+      }
 
       if (isEditMode && editId) {
         // อัพเดทข้อมูลเดิม
         const response = await fetch(`/api/bonus-face-sheets/${editId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ packages })
+          body: JSON.stringify({ packages: validPackages })
         });
 
         const result = await response.json();
@@ -439,7 +535,7 @@ const BonusFaceSheetPackFormPage = () => {
             warehouse_id: 'WH001',
             created_by: 'System',
             delivery_date: deliveryDate,
-            packages
+            packages: validPackages
           })
         });
 

@@ -185,6 +185,7 @@ export async function POST(request: NextRequest) {
           remark: pkg.remark || '',
           sales_territory: pkg.sales_territory || '',
           trip_number: pkg.trip_number || '',
+          pack_no: pkg.pack_no || '', // เก็บค่าที่ผู้ใช้กรอก
           total_items: pkg.items?.length || 0
         })
         .select()

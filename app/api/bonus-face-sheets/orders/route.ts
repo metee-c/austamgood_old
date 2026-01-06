@@ -71,7 +71,71 @@ export async function GET(request: NextRequest) {
       (customers || []).map(c => [c.customer_id, c])
     );
     
-    // ดึงข้อมูล trip ทั้งหมดที่เกี่ยวข้อง
+    // ดึงข้อมูล trip โดยแมพจาก customer_id ผ่าน route stops
+    // เนื่องจากออเดอร์ของแถม (order_type = 'special') ไม่มี matched_trip_id
+    // ต้องหา trip จาก route plan ที่มี delivery_date เดียวกัน และมี customer_id ตรงกัน
+    const customerTripMap = new Map<string, { trip_id: number; trip_code: string; plate_number?: string }>();
+    
+    if (customerIds.length > 0) {
+      // ดึง route stops ที่มี customer_id ตรงกับออเดอร์ของแถม
+      // โดยหา trip จาก route plan ที่มี plan_date = delivery_date และ status = 'approved'
+      const { data: routeStopsWithTrips } = await supabase
+        .from('receiving_route_stops')
+        .select(`
+          stop_id,
+          trip_id,
+          order_id,
+          receiving_route_trips!inner (
+            trip_id,
+            trip_code,
+            vehicle_id,
+            plan_id,
+            master_vehicle (
+              plate_number
+            ),
+            receiving_route_plans!inner (
+              plan_id,
+              plan_date,
+              status
+            )
+          )
+        `)
+        .eq('receiving_route_trips.receiving_route_plans.plan_date', delivery_date)
+        .eq('receiving_route_trips.receiving_route_plans.status', 'approved');
+      
+      if (routeStopsWithTrips && routeStopsWithTrips.length > 0) {
+        // ดึง order_ids จาก route stops
+        const stopOrderIds = routeStopsWithTrips.map(s => s.order_id).filter(Boolean);
+        
+        if (stopOrderIds.length > 0) {
+          // ดึง customer_id จาก orders ที่อยู่ใน route stops
+          const { data: stopOrders } = await supabase
+            .from('wms_orders')
+            .select('order_id, customer_id')
+            .in('order_id', stopOrderIds);
+          
+          // สร้าง map: order_id -> customer_id
+          const orderCustomerMap = new Map(
+            (stopOrders || []).map(o => [o.order_id, o.customer_id])
+          );
+          
+          // สร้าง map: customer_id -> trip info
+          for (const stop of routeStopsWithTrips) {
+            const customerId = orderCustomerMap.get(stop.order_id);
+            if (customerId && !customerTripMap.has(customerId)) {
+              const tripInfo = stop.receiving_route_trips as any;
+              customerTripMap.set(customerId, {
+                trip_id: tripInfo.trip_id,
+                trip_code: tripInfo.trip_code,
+                plate_number: tripInfo.master_vehicle?.plate_number
+              });
+            }
+          }
+        }
+      }
+    }
+    
+    // Fallback: ดึงข้อมูล trip จาก matched_trip_id (สำหรับออเดอร์ที่มี matched_trip_id อยู่แล้ว)
     const tripIds = [...new Set(orders.map(o => o.matched_trip_id).filter(Boolean))];
     let tripMap = new Map();
     
@@ -79,7 +143,6 @@ export async function GET(request: NextRequest) {
       const { data: trips } = await supabase
         .from('receiving_route_trips')
         .select(`
-          id,
           trip_id,
           trip_code,
           vehicle_id,
@@ -87,10 +150,10 @@ export async function GET(request: NextRequest) {
             plate_number
           )
         `)
-        .in('id', tripIds);
+        .in('trip_id', tripIds);
       
       tripMap = new Map(
-        (trips || []).map(t => [t.id, t])
+        (trips || []).map(t => [t.trip_id, t])
       );
     }
     
@@ -112,10 +175,26 @@ export async function GET(request: NextRequest) {
         // ดึงข้อมูล customer
         const customer = customerMap.get(order.customer_id);
         
-        // ดึงข้อมูล trip
-        const tripInfo = order.matched_trip_id ? tripMap.get(order.matched_trip_id) : null;
-        const tripNumber = tripInfo?.trip_code || 
-                          (tripInfo?.master_vehicle?.plate_number ? `รถ ${tripInfo.master_vehicle.plate_number}` : '');
+        // ดึงข้อมูล trip - ลองจาก customerTripMap ก่อน (แมพจาก route stops)
+        // ถ้าไม่เจอ ลองจาก matched_trip_id
+        let tripNumber = '';
+        let matchedTripId = order.matched_trip_id;
+        
+        // 1. ลองหาจาก customerTripMap (แมพจาก customer_id ใน route stops)
+        const customerTrip = customerTripMap.get(order.customer_id);
+        if (customerTrip) {
+          tripNumber = customerTrip.trip_code || 
+                      (customerTrip.plate_number ? `รถ ${customerTrip.plate_number}` : '');
+          matchedTripId = customerTrip.trip_id;
+        }
+        // 2. Fallback: ใช้ matched_trip_id ถ้ามี
+        else if (order.matched_trip_id) {
+          const tripInfo = tripMap.get(order.matched_trip_id);
+          if (tripInfo) {
+            tripNumber = tripInfo.trip_code || 
+                        (tripInfo.master_vehicle?.plate_number ? `รถ ${tripInfo.master_vehicle.plate_number}` : '');
+          }
+        }
         
         return {
           order_id: order.order_id,
@@ -134,7 +213,7 @@ export async function GET(request: NextRequest) {
           delivery_type: order.notes_additional || 'จัดส่งพร้อมออเดอร์',
           sales_territory: order.sales_territory || '',
           trip_number: tripNumber,
-          matched_trip_id: order.matched_trip_id,
+          matched_trip_id: matchedTripId,
           total_items: order.total_items || 0,
           total_qty: order.total_qty || 0,
           items: (items || []).map(item => ({
