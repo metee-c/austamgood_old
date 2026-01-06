@@ -660,7 +660,7 @@ const InboundPage = () => {
                       </tr>
                       {isExpanded && (
                         <tr className="bg-gray-50">
-                          <td colSpan={14} className="px-4 py-3 border border-gray-100">
+                          <td colSpan={15} className="px-4 py-3 border border-gray-100">
                             <div className="space-y-4">
                               <div className="flex flex-wrap justify-between gap-3">
                                 <div className="text-[11px] font-semibold text-thai-gray-700 font-thai">
@@ -706,6 +706,7 @@ const InboundPage = () => {
                                         <th className="px-2 py-0.5 text-left font-medium">สถานะสแกน</th>
                                         <th className="px-2 py-0.5 text-left font-medium">พาเลทภายนอก</th>
                                         <th className="px-2 py-0.5 text-left font-medium">ที่จัดเก็บ</th>
+                                        <th className="px-2 py-0.5 text-left font-medium">ปลายทาง</th>
                                         <th className="px-2 py-0.5 text-center font-medium">พิมพ์ลาเบล</th>
                                       </tr>
                                     </thead>
@@ -803,6 +804,15 @@ const InboundPage = () => {
                                               <span className="text-[11px] font-mono">{item.master_location.location_code}</span>
                                             ) : item.location_id ? (
                                               <span className="text-[11px] text-gray-500">{item.location_id}</span>
+                                            ) : (
+                                              <span className="text-gray-400">-</span>
+                                            )}
+                                          </td>
+                                          <td className="px-2 py-0.5">
+                                            {(item as any).current_location_code ? (
+                                              <span className="text-[11px] font-mono text-green-600 font-semibold">
+                                                {(item as any).current_location_code}
+                                              </span>
                                             ) : (
                                               <span className="text-gray-400">-</span>
                                             )}

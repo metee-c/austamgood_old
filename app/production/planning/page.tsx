@@ -1153,6 +1153,14 @@ function CreatePlanModal({ onClose, onSuccess }: { onClose: () => void; onSucces
       items: items.map(item => ({
         sku_id: item.sku_id,
         required_qty: item.required_qty,
+        // ส่งเฉพาะ materials ที่ถูกเลือก (selected = true)
+        selected_materials: item.materials
+          .filter(m => m.selected)
+          .map(m => ({
+            bom_id: m.bom_id,
+            material_sku_id: m.material_sku_id,
+            include: true,
+          })),
       })),
     };
 

@@ -207,7 +207,7 @@ export async function GET(request: NextRequest) {
       
       // แยกวัตถุดิบอาหาร vs packaging
       // วัตถุดิบอาหาร: SKU ขึ้นต้นด้วย 00- หรือ category = 'วัตถุดิบ'
-      // Packaging: SKU ขึ้นต้นด้วย 01- หรือ 02- หรือ category = 'ถุงบรรจุภัณฑ์'
+      // Packaging: SKU ขึ้นต้นด้วย 01- หรือ 02- หรือ OTHERS หรือ category = 'ถุงบรรจุภัณฑ์' หรือ 'สติ๊กเกอร์ติดบรรจุภัณฑ์'
       const foodMaterials = materials.filter((m: any) => 
         m.material_sku_id?.startsWith('00-') || 
         m.material_sku?.category === 'วัตถุดิบ'
@@ -215,7 +215,9 @@ export async function GET(request: NextRequest) {
       const packagingMaterials = materials.filter((m: any) => 
         m.material_sku_id?.startsWith('01-') || 
         m.material_sku_id?.startsWith('02-') ||
-        m.material_sku?.category === 'ถุงบรรจุภัณฑ์'
+        m.material_sku_id?.startsWith('OTHERS') ||
+        m.material_sku?.category === 'ถุงบรรจุภัณฑ์' ||
+        m.material_sku?.category === 'สติ๊กเกอร์ติดบรรจุภัณฑ์'
       );
 
       // คำนวณอาหารที่ใช้จริง (กก.)

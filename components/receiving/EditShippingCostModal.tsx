@@ -303,14 +303,19 @@ const TripEditForm: React.FC<TripEditFormProps> = ({ trip, tripIndex, suppliers,
 
   // Calculate shipping cost based on formula
   const calculateShippingCost = () => {
+    // คำนวณค่าขนส่งรวมทั้งหมดเพื่อแสดงในฟอร์ม
+    // หมายเหตุ: shipping_cost ใน database เก็บเฉพาะค่าขนส่งพื้นฐาน (ไม่รวมค่าเพิ่มเติม)
+    // ดังนั้นต้องบวกค่าเพิ่มเติมตอนแสดงผลเสมอ
+    const otherFeesTotal = otherFees.reduce((sum, fee) => sum + fee.amount, 0);
+    const extraDeliveryStopsTotal = extraDeliveryStops.reduce((sum, stop) => sum + stop.cost, 0);
+    
     if (pricingMode === 'flat') {
-      return formData.shipping_cost;
+      // Flat mode: ค่าขนส่งเหมา + ค่าแบกน้ำหนัก + ค่าใช้จ่ายอื่นๆ + จุดส่งพิเศษ
+      return formData.shipping_cost + formData.porterage_fee + otherFeesTotal + extraDeliveryStopsTotal;
     }
 
     // Formula mode: base_price + helper_fee + (extra stops × extra_stop_fee) + porterage_fee + other_fees + extra_delivery_stops
     const extraStops = Math.max(0, totalStops - 1);
-    const otherFeesTotal = otherFees.reduce((sum, fee) => sum + fee.amount, 0);
-    const extraDeliveryStopsTotal = extraDeliveryStops.reduce((sum, stop) => sum + stop.cost, 0);
     const calculated = formData.base_price + formData.helper_fee + (extraStops * formData.extra_stop_fee) + formData.porterage_fee + otherFeesTotal + extraDeliveryStopsTotal;
     return calculated;
   };
@@ -1576,7 +1581,9 @@ const EditShippingCostModal: React.FC<EditShippingCostModalProps> = ({
             payload.extra_stop_fee = extraStopFee;
             payload.total_stops = totalStops; // Send total_stops to trigger database calculation
           } else {
-            // For flat mode, send shipping_cost directly
+            // For flat mode, send shipping_cost directly (ค่าขนส่งพื้นฐาน ไม่รวมค่าเพิ่มเติม)
+            // ค่าเพิ่มเติม (porterage_fee, other_fees, extra_delivery_stops) จะถูกบันทึกแยกต่างหาก
+            // และจะถูกบวกรวมตอนแสดงผลใน TransportContractModal
             payload.shipping_cost = tripData?.shipping_cost ?? trip.shipping_cost ?? 0;
           }
 

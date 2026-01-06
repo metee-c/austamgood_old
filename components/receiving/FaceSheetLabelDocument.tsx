@@ -184,10 +184,17 @@ const FaceSheetLabelDocument: React.FC<FaceSheetLabelDocumentProps> = ({ faceShe
                 <tr style={{ borderBottom: '1px solid #ddd' }}>
                   <td style={{ padding: '3px 0', fontWeight: 'bold', width: '85px' }}>ขนาด/ชิ้น:</td>
                   <td style={{ padding: '3px 0' }}>
-                    {pkg.product_items && pkg.product_items.length > 0
-                      ? `${pkg.product_items[0].size} กก.`
-                      : `${(parseFloat(pkg.size) / pkg.pieces_per_pack).toFixed(1)} กก.`
-                    }
+                    {(() => {
+                      // ลำดับความสำคัญ: 1. ดึงจากชื่อสินค้า 2. คำนวณจาก package_weight/pieces_per_pack
+                      const sizeFromName = extractSizeFromProductName(pkg.product_name);
+                      if (sizeFromName) {
+                        return `${sizeFromName} กก.`;
+                      }
+                      // Fallback: คำนวณจาก package_weight หารด้วยจำนวนชิ้น
+                      const packageWeight = pkg.product_items?.[0]?.size || parseFloat(pkg.size);
+                      const perPieceWeight = packageWeight / pkg.pieces_per_pack;
+                      return `${perPieceWeight.toFixed(1)} กก.`;
+                    })()}
                   </td>
                 </tr>
                 <tr style={{ borderBottom: '1px solid #000' }}>

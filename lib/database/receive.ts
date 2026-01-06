@@ -437,6 +437,66 @@ export class ReceiveService {
         return { data: null, error: error.message };
       }
 
+      // Fetch current locations from inventory_balances for all pallet_ids
+      if (data && data.length > 0) {
+        // Collect all pallet_ids from all items
+        const allPalletIds: string[] = [];
+        data.forEach((receive: any) => {
+          if (receive.wms_receive_items) {
+            receive.wms_receive_items.forEach((item: any) => {
+              if (item.pallet_id) {
+                allPalletIds.push(item.pallet_id);
+              }
+            });
+          }
+        });
+
+        if (allPalletIds.length > 0) {
+          // Fetch current locations from inventory_balances
+          const { data: balanceData, error: balanceError } = await this.supabase
+            .from('wms_inventory_balances')
+            .select('pallet_id, location_id')
+            .in('pallet_id', allPalletIds);
+
+          if (!balanceError && balanceData) {
+            // Create a map of pallet_id -> current_location
+            const palletLocationMap = new Map<string, string>();
+            balanceData.forEach((balance: any) => {
+              palletLocationMap.set(balance.pallet_id, balance.location_id);
+            });
+
+            // Fetch location codes for all unique locations
+            const uniqueLocations = [...new Set(balanceData.map((b: any) => b.location_id))];
+            const { data: locationData } = await this.supabase
+              .from('master_location')
+              .select('location_id, location_code')
+              .in('location_id', uniqueLocations);
+
+            const locationCodeMap = new Map<string, string>();
+            if (locationData) {
+              locationData.forEach((loc: any) => {
+                locationCodeMap.set(loc.location_id, loc.location_code);
+              });
+            }
+
+            // Add current_location to each item
+            data.forEach((receive: any) => {
+              if (receive.wms_receive_items) {
+                receive.wms_receive_items.forEach((item: any) => {
+                  if (item.pallet_id) {
+                    const currentLocationId = palletLocationMap.get(item.pallet_id);
+                    if (currentLocationId && currentLocationId !== 'Receiving' && currentLocationId !== item.location_id) {
+                      item.current_location_id = currentLocationId;
+                      item.current_location_code = locationCodeMap.get(currentLocationId) || currentLocationId;
+                    }
+                  }
+                });
+              }
+            });
+          }
+        }
+      }
+
       return { data, error: null };
     } catch (err) {
       console.error('Error fetching receive records:', err);

@@ -235,7 +235,10 @@ function MobileTransferListPage() {
   };
 
   const handleScanPallet = async () => {
-    if (!palletId.trim()) {
+    // Clean pallet ID - remove any extra text that might come from barcode scanner
+    const cleanPalletId = palletId.trim().split(/\s+/)[0]; // Take only first word/token
+    
+    if (!cleanPalletId) {
       setQuickMoveError('กรุณาสแกน Pallet ID');
       playErrorSound();
       return;
@@ -245,8 +248,8 @@ function MobileTransferListPage() {
       setLoadingPalletDetails(true);
       setQuickMoveError(null);
 
-      // Use offline-capable fetch
-      const { data, fromCache, error: fetchError } = await fetchPalletData(palletId.trim());
+      // Use offline-capable fetch with cleaned pallet ID
+      const { data, fromCache, error: fetchError } = await fetchPalletData(cleanPalletId);
 
       if (fetchError || !data || data.length === 0) {
         setQuickMoveError(fetchError || `ไม่พบ Pallet ID: ${palletId} หรือสต็อกเป็น 0`);

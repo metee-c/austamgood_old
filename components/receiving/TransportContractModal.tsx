@@ -406,8 +406,8 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
     // Get or create transport contract number
     if (selectedPlan) {
       try {
-        const grandTotal = summary.total_cost + (summary.total_porterage_fee || 0) + 
-                          (summary.total_other_fees || 0) + (summary.total_extra_delivery_stops_cost || 0);
+        // total_cost รวมค่าเพิ่มเติมแล้ว (shipping_cost + porterage_fee + other_fees + extra_delivery_stops)
+        const grandTotal = summary.total_cost;
         
         const response = await fetch('/api/transport-contracts', {
           method: 'POST',
@@ -533,7 +533,8 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {supplierSummaries.map((summary) => {
                     const hasExtraFees = summary.total_porterage_fee > 0 || summary.total_other_fees > 0 || summary.total_extra_delivery_stops_cost > 0;
-                    const grandTotal = summary.total_cost + summary.total_porterage_fee + summary.total_other_fees + summary.total_extra_delivery_stops_cost;
+                    // total_cost รวมค่าเพิ่มเติมแล้ว (shipping_cost + porterage_fee + other_fees + extra_delivery_stops)
+                    const grandTotal = summary.total_cost;
                     
                     return (
                       <div
@@ -556,7 +557,7 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
                           <div className="text-xs space-y-0.5">
                             <div className="flex justify-between">
                               <span className="text-gray-600">ค่าขนส่ง:</span>
-                              <span className="font-semibold">{summary.total_cost.toLocaleString()} ฿</span>
+                              <span className="font-semibold">{summary.total_shipping_cost.toLocaleString()} ฿</span>
                             </div>
                             {summary.total_porterage_fee > 0 && (
                               <div className="flex justify-between text-orange-600">
@@ -585,7 +586,7 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
                             {!hasExtraFees && (
                               <div className="flex justify-between">
                                 <span className="font-semibold text-gray-700">รวม:</span>
-                                <span className="text-green-700 font-bold">{summary.total_cost.toLocaleString()} ฿</span>
+                                <span className="text-green-700 font-bold">{summary.total_shipping_cost.toLocaleString()} ฿</span>
                               </div>
                             )}
                           </div>
@@ -733,29 +734,27 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
             <thead className="page-header-repeat">
               {/* Header Info Row - Will repeat on every page */}
               <tr>
-                <th colSpan={13} className="border-b-2 border-gray-300 px-4 py-3">
-                  <div className="flex justify-between items-start mb-2">
-                    <div className="flex items-center gap-3">
-                      <Image
-                        src="/images/austam-logo.png"
-                        alt="Austam Logo"
-                        width={40}
-                        height={40}
-                        className="object-contain flex-shrink-0"
-                      />
-                      <div className="text-xs leading-relaxed text-left">
-                        <p className="font-bold text-sm mb-0.5">AUSTAM GOODS CORP., LTD.</p>
-                        <p className="text-gray-700 font-normal">350, 352 Udomsuk Road, Bangna, Bangnanuea, Bangkok 10260, Thailand.</p>
-                        <p className="text-gray-700 font-normal">E-mail: austamgoods@yahoo.com | Tel. 662-749-4667-72</p>
-                      </div>
+                <th colSpan={14} className="border-b-2 border-gray-300 px-2 py-3" style={{ position: 'relative' }}>
+                  <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                    <Image
+                      src="/images/austam-logo.png"
+                      alt="Austam Logo"
+                      width={40}
+                      height={40}
+                      className="object-contain flex-shrink-0"
+                    />
+                    <div className="text-xs leading-relaxed text-left">
+                      <p className="font-bold text-sm mb-0.5">AUSTAM GOODS CORP., LTD.</p>
+                      <p className="text-gray-700 font-normal">350, 352 Udomsuk Road, Bangna, Bangnanuea, Bangkok 10260, Thailand.</p>
+                      <p className="text-gray-700 font-normal">E-mail: austamgoods@yahoo.com | Tel. 662-749-4667-72</p>
                     </div>
+                  </div>
 
-                    <div className="text-xs text-right leading-relaxed flex-shrink-0">
-                      <p className="text-gray-700 font-normal">เลขที่: {contractNo || '-'}</p>
-                      <p className="text-gray-700 font-normal">พิมพ์วันที่: {contractDate}</p>
-                      <p className="text-gray-700 font-normal">วันที่ส่ง: {plan.plan_name || new Date(plan.plan_date).toLocaleDateString('th-TH')}</p>
-                      <p className="text-gray-700 font-normal">ผู้ออกเอกสาร: {currentUser}</p>
-                    </div>
+                  <div className="text-xs leading-relaxed pr-2" style={{ position: 'absolute', top: '12px', right: '0', textAlign: 'right' }}>
+                    <p className="text-gray-700 font-normal">เลขที่: {contractNo || '-'}</p>
+                    <p className="text-gray-700 font-normal">พิมพ์วันที่: {contractDate}</p>
+                    <p className="text-gray-700 font-normal">วันที่ส่ง: {plan.plan_name || new Date(plan.plan_date).toLocaleDateString('th-TH')}</p>
+                    <p className="text-gray-700 font-normal">ผู้ออกเอกสาร: {currentUser}</p>
                   </div>
 
                   <div className="text-center text-xs leading-relaxed mt-2">
@@ -1062,17 +1061,17 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
 
       {/* Grand Total */}
       <div className="border-t-2 border-gray-400 mt-6 pt-4">
-        <div className="space-y-1">
+        <div className="space-y-1 max-w-xs">
           <div className="flex justify-between items-center">
             <span className="text-sm">ค่าขนส่ง ({supplier.trip_count} คัน):</span>
-            <span className="text-sm font-semibold">
-              {supplier.total_cost.toLocaleString()} บาท
+            <span className="text-sm font-semibold text-right min-w-[100px]">
+              {supplier.total_shipping_cost.toLocaleString()} บาท
             </span>
           </div>
           {supplier.total_porterage_fee > 0 && (
             <div className="flex justify-between items-center text-orange-700">
               <span className="text-sm">ค่าแบกน้ำหนัก:</span>
-              <span className="text-sm font-semibold">
+              <span className="text-sm font-semibold text-right min-w-[100px]">
                 {supplier.total_porterage_fee.toLocaleString()} บาท
               </span>
             </div>
@@ -1080,7 +1079,7 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
           {supplier.total_other_fees > 0 && (
             <div className="flex justify-between items-center text-purple-700">
               <span className="text-sm">ค่าใช้จ่ายอื่นๆ:</span>
-              <span className="text-sm font-semibold">
+              <span className="text-sm font-semibold text-right min-w-[100px]">
                 {supplier.total_other_fees.toLocaleString()} บาท
               </span>
             </div>
@@ -1088,15 +1087,15 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
           {supplier.total_extra_delivery_stops_cost > 0 && (
             <div className="flex justify-between items-center text-pink-700">
               <span className="text-sm">ค่าจุดส่งพิเศษ:</span>
-              <span className="text-sm font-semibold">
+              <span className="text-sm font-semibold text-right min-w-[100px]">
                 {supplier.total_extra_delivery_stops_cost.toLocaleString()} บาท
               </span>
             </div>
           )}
           <div className="flex justify-between items-center border-t border-gray-300 pt-2 mt-2">
             <span className="text-base font-bold">รวมทั้งสิ้น:</span>
-            <span className="text-lg font-bold text-green-700">
-              {(supplier.total_cost + supplier.total_porterage_fee + supplier.total_other_fees + supplier.total_extra_delivery_stops_cost).toLocaleString()} บาท
+            <span className="text-lg font-bold text-green-700 text-right min-w-[100px]">
+              {supplier.total_cost.toLocaleString()} บาท
             </span>
           </div>
         </div>
@@ -1292,7 +1291,7 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
           <div className="flex justify-between items-center">
             <span className="text-sm">ค่าขนส่ง ({supplier.trip_count} คัน):</span>
             <span className="text-sm font-semibold">
-              {supplier.total_cost.toLocaleString()} บาท
+              {supplier.total_shipping_cost.toLocaleString()} บาท
             </span>
           </div>
           {supplier.total_porterage_fee > 0 && (
@@ -1322,7 +1321,7 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
           <div className="flex justify-between items-center border-t border-gray-300 pt-2 mt-2">
             <span className="text-base font-bold">รวมทั้งหมด:</span>
             <span className="text-lg font-bold text-green-700">
-              {(supplier.total_cost + supplier.total_porterage_fee + supplier.total_other_fees + supplier.total_extra_delivery_stops_cost).toLocaleString()} บาท
+              {supplier.total_cost.toLocaleString()} บาท
             </span>
           </div>
         </div>

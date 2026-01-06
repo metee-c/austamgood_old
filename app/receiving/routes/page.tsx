@@ -2644,12 +2644,19 @@ const RoutesPage = () => {
                                                                                                     </td>
                                                                                                     {/* ค่าแบกน้ำหนัก */}
                                                                                                     <td className="px-2 py-2 text-xs text-center text-gray-700">
-                                                                                                        {trip.porterage_fee ? `฿${trip.porterage_fee.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '-'}
+                                                                                                        {trip.porterage_fee ? `฿${Number(trip.porterage_fee).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '-'}
                                                                                                     </td>
-                                                                                                    {/* รวมค่าขนส่ง */}
+                                                                                                    {/* รวมค่าขนส่ง - คำนวณรวม shipping_cost + porterage_fee + other_fees + extra_delivery_stops */}
                                                                                                     <td className="px-2 py-2 text-xs text-center bg-blue-50">
                                                                                                         <div className="font-bold text-blue-700">
-                                                                                                            {trip.shipping_cost ? `฿${trip.shipping_cost.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '-'}
+                                                                                                            {(() => {
+                                                                                                                const baseShippingCost = Number(trip.shipping_cost) || 0;
+                                                                                                                const porterageFee = Number(trip.porterage_fee) || 0;
+                                                                                                                const otherFeesTotal = (trip.other_fees || []).reduce((sum: number, fee: any) => sum + (Number(fee.amount) || 0), 0);
+                                                                                                                const extraDeliveryStopsTotal = (trip.extra_delivery_stops || []).reduce((sum: number, stop: any) => sum + (Number(stop.cost) || 0), 0);
+                                                                                                                const totalShippingCost = baseShippingCost + porterageFee + otherFeesTotal + extraDeliveryStopsTotal;
+                                                                                                                return totalShippingCost > 0 ? `฿${totalShippingCost.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '-';
+                                                                                                            })()}
                                                                                                         </div>
                                                                                                     </td>
                                                                                                     <td className="px-2 py-2 text-xs text-center">

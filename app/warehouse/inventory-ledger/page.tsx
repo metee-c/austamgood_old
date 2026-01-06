@@ -110,14 +110,13 @@ const InventoryLedgerPage = () => {
 
         const conditions = [
           // Text fields - case insensitive search
+          // Note: transaction_type and direction are ENUM types, cannot use ilike
           `sku_id.ilike.%${debouncedSearchTerm}%`,
           `pallet_id.ilike.%${debouncedSearchTerm}%`,
           `location_id.ilike.%${debouncedSearchTerm}%`,
           `warehouse_id.ilike.%${debouncedSearchTerm}%`,
           `reference_no.ilike.%${debouncedSearchTerm}%`,
           `remarks.ilike.%${debouncedSearchTerm}%`,
-          `transaction_type.ilike.%${debouncedSearchTerm}%`,
-          `direction.ilike.%${debouncedSearchTerm}%`,
         ];
 
         // Date fields - only search if input looks like a date

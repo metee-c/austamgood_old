@@ -373,35 +373,55 @@ export async function createProductionPlan(
     let totalMaterialsRequired = 0;
     let totalShortageItems = 0;
 
-    for (const item of items || []) {
+    for (let i = 0; i < (items || []).length; i++) {
+      const item = items![i];
+      const inputItem = input.items[i];
+      
       const bomResult = await calculateBomRequirements({
         sku_id: item.sku_id,
         quantity: item.required_qty,
       });
 
       if (bomResult && bomResult.materials.length > 0) {
-        // Note: available_stock, net_requirement, shortage_qty are generated columns
-        // so we don't include them in the insert
-        const materialReqs = bomResult.materials.map(mat => ({
-          plan_id: plan.plan_id,
-          plan_item_id: item.plan_item_id,
-          material_sku_id: mat.material_sku_id,
-          finished_sku_id: item.sku_id,
-          bom_id: mat.bom_id,
-          material_qty_per_unit: mat.qty_per_unit,
-          waste_qty_per_unit: mat.waste_per_unit,
-          production_qty: item.required_qty,
-          gross_requirement: mat.gross_requirement,
-          current_stock: mat.current_stock,
-          allocated_stock: mat.allocated_stock,
-          material_uom: mat.material_uom,
-          status: 'needed',
-        }));
+        // Filter materials based on user selection (if provided)
+        let filteredMaterials = bomResult.materials;
+        
+        if (inputItem.selected_materials && inputItem.selected_materials.length > 0) {
+          // User selected specific materials - only include those
+          const selectedSkuIds = new Set(
+            inputItem.selected_materials
+              .filter(m => m.include)
+              .map(m => m.material_sku_id)
+          );
+          filteredMaterials = bomResult.materials.filter(mat => 
+            selectedSkuIds.has(mat.material_sku_id)
+          );
+        }
+        
+        if (filteredMaterials.length > 0) {
+          // Note: available_stock, net_requirement, shortage_qty are generated columns
+          // so we don't include them in the insert
+          const materialReqs = filteredMaterials.map(mat => ({
+            plan_id: plan.plan_id,
+            plan_item_id: item.plan_item_id,
+            material_sku_id: mat.material_sku_id,
+            finished_sku_id: item.sku_id,
+            bom_id: mat.bom_id,
+            material_qty_per_unit: mat.qty_per_unit,
+            waste_qty_per_unit: mat.waste_per_unit,
+            production_qty: item.required_qty,
+            gross_requirement: mat.gross_requirement,
+            current_stock: mat.current_stock,
+            allocated_stock: mat.allocated_stock,
+            material_uom: mat.material_uom,
+            status: 'needed',
+          }));
 
-        await supabase.from('material_requirements').insert(materialReqs);
+          await supabase.from('material_requirements').insert(materialReqs);
 
-        totalMaterialsRequired += bomResult.materials.length;
-        totalShortageItems += bomResult.shortage_count;
+          totalMaterialsRequired += filteredMaterials.length;
+          totalShortageItems += filteredMaterials.filter(m => m.has_shortage).length;
+        }
       }
     }
 
