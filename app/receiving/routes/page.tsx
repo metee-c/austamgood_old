@@ -233,6 +233,16 @@ function SplitStopModal({ isOpen, stop, orderId, trips, currentTripId, onClose, 
                         : `/api/route-plans/stops/${stop.stop_id}/order`;
                     const res = await fetch(url);
                     const { data, error } = await res.json();
+
+                    console.log('🔍 Split Modal - API Response:', {
+                        url,
+                        hasData: !!data,
+                        hasItems: !!data?.items,
+                        itemsLength: data?.items?.length,
+                        orderNo: data?.order_no,
+                        error
+                    });
+
                     if (error) {
                         setFetchError(error);
                         setOrderInfo(null);

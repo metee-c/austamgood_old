@@ -66,7 +66,8 @@ const BonusFaceSheetLabelDocument: React.FC<BonusFaceSheetLabelDocumentProps> = 
         const totalPacksForOrder = packCountByOrder[pkg.order_no];
         const totalItems = pkg.items.length;
         const ITEMS_PER_PAGE = 10;
-        const totalPages = Math.ceil(totalItems / ITEMS_PER_PAGE);
+        // ถ้าไม่มี items ก็ยังต้องแสดงอย่างน้อย 1 หน้า
+        const totalPages = Math.max(1, Math.ceil(totalItems / ITEMS_PER_PAGE));
 
         // แบ่งรายการสินค้าเป็นหลายหน้า
         const pages = [];

@@ -55,6 +55,7 @@ export async function POST(
     };
 
     // 1. Create new trips first (if any)
+    // Map from index (0, 1, 2...) to actual trip_id
     const newTripIds: Map<number, number> = new Map();
     
     if (newTrips && newTrips.length > 0) {
@@ -76,9 +77,10 @@ export async function POST(
           .insert({
             plan_id: Number(planId),
             trip_sequence: nextSeq,
+            daily_trip_number: nextSeq,
             trip_code: `TRIP-${String(nextSeq).padStart(3, '0')}`,
             trip_status: 'planned',
-            trip_name: newTrip.tripName || `คันที่ ${nextSeq}`
+            notes: newTrip.tripName || `คันที่ ${nextSeq}`
           })
           .select()
           .single();
@@ -88,26 +90,42 @@ export async function POST(
           continue;
         }
 
-        // Map the virtual trip number to actual trip_id
-        newTripIds.set(nextSeq, createdTrip.trip_id);
+        // Map the index (i) to actual trip_id - frontend sends "new-{index}"
+        newTripIds.set(i, createdTrip.trip_id);
         results.newTrips.push({
+          index: i,
           virtualTripNumber: nextSeq,
           actualTripId: createdTrip.trip_id
         });
         nextSeq++;
       }
+      
+      console.log('Created new trips:', {
+        count: newTripIds.size,
+        mapping: Array.from(newTripIds.entries())
+      });
     }
 
-    // Helper function to resolve trip ID (handles both real IDs and virtual new trip numbers)
-    const resolveTripId = (tripIdOrNumber: number | string): number | null => {
-      if (typeof tripIdOrNumber === 'string' && tripIdOrNumber.startsWith('fallback-')) {
-        return null; // Can't process fallback trips
+    // Helper function to resolve trip ID (handles both real IDs and virtual new trip markers)
+    const resolveTripId = (tripIdOrMarker: number | string): number | null => {
+      // Handle "new-{index}" format for new trips
+      if (typeof tripIdOrMarker === 'string') {
+        if (tripIdOrMarker.startsWith('new-')) {
+          const index = parseInt(tripIdOrMarker.replace('new-', ''));
+          if (!isNaN(index) && newTripIds.has(index)) {
+            return newTripIds.get(index)!;
+          }
+          // New trip not yet created - will be handled in newTrips processing
+          return null;
+        }
+        if (tripIdOrMarker.startsWith('fallback-')) {
+          return null; // Can't process fallback trips
+        }
+        // Try to parse as number
+        const parsed = parseInt(tripIdOrMarker);
+        return isNaN(parsed) ? null : parsed;
       }
-      const num = Number(tripIdOrNumber);
-      if (newTripIds.has(num)) {
-        return newTripIds.get(num)!;
-      }
-      return num;
+      return tripIdOrMarker;
     };
 
     // 2. Process moves (order transfers between trips)
@@ -252,9 +270,10 @@ export async function POST(
             .insert({
               plan_id: Number(planId),
               trip_sequence: nextSeq,
+              daily_trip_number: nextSeq,
               trip_code: `TRIP-${String(nextSeq).padStart(3, '0')}`,
               trip_status: 'planned',
-              trip_name: `คันที่ ${nextSeq} (แบ่ง)`
+              notes: `คันที่ ${nextSeq} (แบ่ง)`
             })
             .select()
             .single();

@@ -17,7 +17,10 @@ import {
   ChevronsLeft,
   ChevronsRight,
   RotateCcw,
-  Trash2
+  Trash2,
+  CheckSquare,
+  Square,
+  X
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
@@ -77,9 +80,17 @@ const OrdersPage = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const pageSize = 100;
 
+  // Multi-select state for bulk actions
+  const [selectedOrderIds, setSelectedOrderIds] = useState<Set<string>>(new Set());
+  const [bulkOrderType, setBulkOrderType] = useState<OrderType | ''>('');
+  const [bulkDeliveryDate, setBulkDeliveryDate] = useState('');
+  const [isBulkUpdating, setIsBulkUpdating] = useState(false);
+
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
+    // Clear selection when filters change
+    setSelectedOrderIds(new Set());
   }, [searchTerm, selectedType, selectedLocationFilter, selectedStatus, startDate, endDate]);
 
   // Fetcher function for SWR
@@ -545,6 +556,114 @@ const OrdersPage = () => {
     }
   };
 
+  // Multi-select handlers
+  const toggleSelectOrder = (orderId: string) => {
+    setSelectedOrderIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(orderId)) {
+        newSet.delete(orderId);
+      } else {
+        newSet.add(orderId);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    const currentPageOrders = sortedOrders.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+    const allSelected = currentPageOrders.every((order: any) => selectedOrderIds.has(order.order_id.toString()));
+    
+    if (allSelected) {
+      // Deselect all on current page
+      setSelectedOrderIds(prev => {
+        const newSet = new Set(prev);
+        currentPageOrders.forEach((order: any) => newSet.delete(order.order_id.toString()));
+        return newSet;
+      });
+    } else {
+      // Select all on current page
+      setSelectedOrderIds(prev => {
+        const newSet = new Set(prev);
+        currentPageOrders.forEach((order: any) => newSet.add(order.order_id.toString()));
+        return newSet;
+      });
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedOrderIds(new Set());
+    setBulkOrderType('');
+    setBulkDeliveryDate('');
+  };
+
+  // Bulk update handler
+  const handleBulkUpdate = async () => {
+    if (selectedOrderIds.size === 0) {
+      alert('กรุณาเลือกออเดอร์ก่อน');
+      return;
+    }
+
+    if (!bulkOrderType && !bulkDeliveryDate) {
+      alert('กรุณาเลือกประเภทคำสั่งซื้อ หรือ วันที่แผนส่ง');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `ยืนยันการอัพเดท ${selectedOrderIds.size} ออเดอร์?\n\n` +
+      (bulkOrderType ? `ประเภท: ${getTypeText(bulkOrderType)}\n` : '') +
+      (bulkDeliveryDate ? `วันที่แผนส่ง: ${bulkDeliveryDate}` : '')
+    );
+
+    if (!confirmed) return;
+
+    setIsBulkUpdating(true);
+
+    try {
+      const updateData: any = {
+        order_ids: Array.from(selectedOrderIds).map(id => parseInt(id))
+      };
+
+      if (bulkOrderType) {
+        updateData.order_type = bulkOrderType;
+      }
+      if (bulkDeliveryDate) {
+        updateData.delivery_date = bulkDeliveryDate;
+      }
+
+      const response = await fetch('/api/orders/batch-update', {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updateData),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to batch update orders');
+      }
+
+      alert(result.message || `อัพเดท ${result.updated_count} ออเดอร์สำเร็จ`);
+      
+      // Clear selection and refresh
+      clearSelection();
+      refetch();
+    } catch (error: any) {
+      console.error('Error batch updating orders:', error);
+      alert(`เกิดข้อผิดพลาด: ${error.message || 'ไม่สามารถอัพเดทออเดอร์ได้'}`);
+    } finally {
+      setIsBulkUpdating(false);
+    }
+  };
+
+  // Check if all orders on current page are selected
+  const isAllCurrentPageSelected = useMemo(() => {
+    if (!sortedOrders || sortedOrders.length === 0) return false;
+    const currentPageOrders = sortedOrders.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+    return currentPageOrders.length > 0 && currentPageOrders.every((order: any) => selectedOrderIds.has(order.order_id.toString()));
+  }, [sortedOrders, currentPage, pageSize, selectedOrderIds]);
+
   // Handle import - ถูกเรียกเฉพาะเมื่อไม่มี conflicts เท่านั้น
   const handleImport = async (type: string, file: File, warehouse: string, orderDate: string): Promise<void> => {
     // ฟังก์ชันนี้จะถูกเรียกจาก ImportOrderModal เมื่อไม่มี conflicts
@@ -626,6 +745,73 @@ const OrdersPage = () => {
         </Button>
       </PageHeaderWithFilters>
 
+      {/* Bulk Action Toolbar - แสดงเมื่อมีการเลือกออเดอร์ */}
+      {selectedOrderIds.size > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3 flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <CheckSquare className="w-5 h-5 text-blue-600" />
+            <span className="text-sm font-thai font-semibold text-blue-800">
+              เลือก {selectedOrderIds.size} ออเดอร์
+            </span>
+            <button
+              onClick={clearSelection}
+              className="p-1 text-blue-600 hover:bg-blue-100 rounded"
+              title="ยกเลิกการเลือก"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Bulk Order Type */}
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-thai text-gray-600">ประเภท:</label>
+              <select
+                value={bulkOrderType}
+                onChange={(e) => setBulkOrderType(e.target.value as OrderType | '')}
+                className="px-2 py-1 border border-gray-300 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="">-- ไม่เปลี่ยน --</option>
+                <option value="route_planning">จัดเส้นทาง</option>
+                <option value="express">ส่งรายชิ้น</option>
+                <option value="special">สินค้าพิเศษ</option>
+              </select>
+            </div>
+
+            {/* Bulk Delivery Date */}
+            <div className="flex items-center gap-2">
+              <label className="text-xs font-thai text-gray-600">วันที่แผนส่ง:</label>
+              <input
+                type="date"
+                value={bulkDeliveryDate}
+                onChange={(e) => setBulkDeliveryDate(e.target.value)}
+                className="px-2 py-1 border border-gray-300 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              {bulkDeliveryDate && (
+                <button
+                  onClick={() => setBulkDeliveryDate('')}
+                  className="p-0.5 text-gray-400 hover:text-gray-600"
+                  title="ล้างวันที่"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              )}
+            </div>
+
+            {/* Apply Button */}
+            <Button
+              variant="primary"
+              size="sm"
+              onClick={handleBulkUpdate}
+              disabled={isBulkUpdating || (!bulkOrderType && !bulkDeliveryDate)}
+              className="text-xs py-1 px-3"
+            >
+              {isBulkUpdating ? 'กำลังอัพเดท...' : 'อัพเดททั้งหมด'}
+            </Button>
+          </div>
+        </div>
+      )}
+
       {/* Table Container */}
       <div className="flex-1 min-h-0 bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col overflow-hidden">
         {ordersLoading ? (
@@ -638,6 +824,19 @@ const OrdersPage = () => {
           <Table>
             <Table.Header>
               <tr>
+                <Table.Head className="w-8">
+                  <button
+                    onClick={toggleSelectAll}
+                    className="p-1 hover:bg-gray-100 rounded"
+                    title={isAllCurrentPageSelected ? 'ยกเลิกเลือกทั้งหมด' : 'เลือกทั้งหมดในหน้านี้'}
+                  >
+                    {isAllCurrentPageSelected ? (
+                      <CheckSquare className="w-4 h-4 text-blue-600" />
+                    ) : (
+                      <Square className="w-4 h-4 text-gray-400" />
+                    )}
+                  </button>
+                </Table.Head>
                 <Table.Head>ดู</Table.Head>
                 <Table.Head onClick={() => handleSort('order_no')}>เลขที่คำสั่งซื้อ{getSortIcon('order_no')}</Table.Head>
                 <Table.Head width="180px" onClick={() => handleSort('order_type')}>ประเภทคำสั่งซื้อ{getSortIcon('order_type')}</Table.Head>
@@ -665,7 +864,7 @@ const OrdersPage = () => {
             <Table.Body>
               {ordersLoading ? (
                 <tr>
-                  <Table.Cell colSpan={21} className="px-4 py-8 text-center">
+                  <Table.Cell colSpan={22} className="px-4 py-8 text-center">
                     <div className="flex flex-col items-center justify-center text-thai-gray-400">
                       <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
                       <p className="text-sm font-thai">กำลังโหลดข้อมูล...</p>
@@ -674,7 +873,7 @@ const OrdersPage = () => {
                 </tr>
               ) : ordersError ? (
                 <tr>
-                  <Table.Cell colSpan={21} className="px-4 py-8 text-center">
+                  <Table.Cell colSpan={22} className="px-4 py-8 text-center">
                     <div className="flex flex-col items-center justify-center text-red-500">
                       <AlertTriangle className="w-12 h-12 mb-2" />
                       <p className="text-sm font-thai">เกิดข้อผิดพลาด: {ordersError?.message || String(ordersError)}</p>
@@ -689,7 +888,7 @@ const OrdersPage = () => {
                 </tr>
               ) : sortedOrders.length === 0 ? (
                 <tr>
-                  <Table.Cell colSpan={21} className="px-4 py-8 text-center">
+                  <Table.Cell colSpan={22} className="px-4 py-8 text-center">
                     <div className="flex flex-col items-center justify-center text-thai-gray-400">
                       <ShoppingCart className="w-12 h-12 mb-2" />
                       <p className="text-sm font-thai">ไม่พบข้อมูลคำสั่งซื้อ</p>
@@ -700,11 +899,23 @@ const OrdersPage = () => {
                   sortedOrders.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((order: any) => (
                     <React.Fragment key={order.order_id}>
                       {/* Main Row */}
-                      <Table.Row className={
+                      <Table.Row className={`${
                         !order.customer?.latitude || !order.customer?.longitude
                           ? 'bg-red-100'
                           : ''
-                      }>
+                      } ${selectedOrderIds.has(order.order_id.toString()) ? 'bg-blue-50' : ''}`}>
+                        <Table.Cell className="w-8">
+                          <button
+                            onClick={() => toggleSelectOrder(order.order_id.toString())}
+                            className="p-1 hover:bg-gray-100 rounded"
+                          >
+                            {selectedOrderIds.has(order.order_id.toString()) ? (
+                              <CheckSquare className="w-4 h-4 text-blue-600" />
+                            ) : (
+                              <Square className="w-4 h-4 text-gray-400" />
+                            )}
+                          </button>
+                        </Table.Cell>
                         <Table.Cell>
                           <button
                             onClick={() => toggleExpandOrder(order.order_id)}
@@ -910,7 +1121,7 @@ const OrdersPage = () => {
                       {/* Expanded Row - Order Items */}
                       {expandedOrders.has(order.order_id) && (
                         <tr className="bg-gray-50">
-                          <td colSpan={21} className="px-4 py-3 border border-gray-100">
+                          <td colSpan={22} className="px-4 py-3 border border-gray-100">
                             <div className="space-y-2">
                               <div className="flex items-center justify-between">
                                 <h4 className="text-sm font-semibold text-thai-gray-900 font-thai">

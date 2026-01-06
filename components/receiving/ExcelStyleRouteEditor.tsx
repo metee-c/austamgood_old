@@ -6,6 +6,14 @@ import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 
 // Types
+interface OrderItem {
+  order_item_id: number;
+  sku_id: string;
+  sku_name: string;
+  order_qty: number;
+  order_weight: number;
+}
+
 interface OrderRow {
   rowId: string; // unique identifier for this row
   stopId: number | string;
@@ -19,6 +27,7 @@ interface OrderRow {
   tripNumber: number; // เลขคัน
   stopSequence: number; // ลำดับจุดส่ง
   note: string | null;
+  items: OrderItem[]; // รายการสินค้าในออเดอร์
   // For split tracking
   isSplit: boolean;
   splitFromOrderNo?: string;
@@ -82,6 +91,19 @@ export default function ExcelStyleRouteEditor({
   const initialRows = useMemo(() => {
     const rows: OrderRow[] = [];
     
+    console.log('🔄 Converting trips to rows:', {
+      tripsCount: trips.length,
+      firstTrip: trips[0] ? {
+        trip_id: trips[0].trip_id,
+        stopsCount: trips[0].stops?.length,
+        firstStop: trips[0].stops?.[0] ? {
+          stop_id: trips[0].stops[0].stop_id,
+          orders: trips[0].stops[0].orders,
+          ordersCount: trips[0].stops[0].orders?.length
+        } : null
+      } : null
+    });
+    
     trips.forEach((trip, tripIndex) => {
       const tripNumber = trip.daily_trip_number || trip.trip_sequence || tripIndex + 1;
       
@@ -94,11 +116,22 @@ export default function ExcelStyleRouteEditor({
           customer_name: stop.stop_name,
           province: null,
           allocated_weight_kg: stop.load_weight_kg,
-          total_qty: 0
+          total_qty: 0,
+          items: [] // fallback has no items
         }];
         
         orders.forEach((order: any, orderIndex: number) => {
           if (!order || !order.order_id) return;
+          
+          // Debug log for first order
+          if (rows.length === 0) {
+            console.log('📦 First order being added:', {
+              order_id: order.order_id,
+              order_no: order.order_no,
+              items: order.items,
+              itemsCount: order.items?.length || 0
+            });
+          }
           
           rows.push({
             rowId: `${trip.trip_id}-${stop.stop_id}-${order.order_id}`,
@@ -113,6 +146,7 @@ export default function ExcelStyleRouteEditor({
             tripNumber,
             stopSequence: stop.sequence_no || stopIndex + 1,
             note: order.note || stop.notes || null,
+            items: order.items || [],
             isSplit: false
           });
         });
@@ -128,12 +162,28 @@ export default function ExcelStyleRouteEditor({
   const [splitModalData, setSplitModalData] = useState<SplitModalData | null>(null);
   const [expandedTrips, setExpandedTrips] = useState<Set<number>>(new Set(trips.map((_, i) => i + 1)));
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
 
   // Get unique trip numbers
   const tripNumbers = useMemo(() => {
     const numbers = new Set(rows.map(r => r.tripNumber));
     return Array.from(numbers).sort((a, b) => a - b);
   }, [rows]);
+
+  // Create mapping from tripNumber to trip_id
+  const tripNumberToIdMap = useMemo(() => {
+    const map = new Map<number, number | string>();
+    trips.forEach((trip, i) => {
+      const tripNumber = trip.daily_trip_number || trip.trip_sequence || i + 1;
+      map.set(tripNumber, trip.trip_id);
+    });
+    return map;
+  }, [trips]);
+
+  // Get existing trip numbers from database
+  const existingTripNumbers = useMemo(() => {
+    return new Set(trips.map((t, i) => t.daily_trip_number || t.trip_sequence || i + 1));
+  }, [trips]);
 
   // Calculate trip summaries
   const tripSummaries = useMemo((): TripSummary[] => {
@@ -196,6 +246,12 @@ export default function ExcelStyleRouteEditor({
 
   // Open split modal
   const handleOpenSplit = useCallback((row: OrderRow) => {
+    console.log('🔍 Opening split modal for row:', {
+      orderId: row.orderId,
+      orderNo: row.orderNo,
+      items: row.items,
+      itemsCount: row.items?.length || 0
+    });
     setSplitModalData({
       row,
       splitWeight: '',
@@ -248,6 +304,7 @@ export default function ExcelStyleRouteEditor({
         tripNumber: actualTargetTrip as number,
         stopSequence: maxSeq + 1,
         note: `แบ่งจาก ${row.orderNo}`,
+        items: [], // Split row doesn't have items detail
         isSplit: true,
         splitFromOrderNo: row.orderNo,
         originalWeightKg: row.weightKg + splitWeightNum
@@ -290,6 +347,7 @@ export default function ExcelStyleRouteEditor({
   // Build changes object and save
   const handleSave = useCallback(async () => {
     setSaveError(null);
+    setIsSaving(true);
     
     try {
       // Compare with initial rows to find changes
@@ -299,22 +357,40 @@ export default function ExcelStyleRouteEditor({
         splits: [],
         newTrips: []
       };
+
+      // First, identify new trips that need to be created
+      const newTripNumbers = tripNumbers.filter(n => !existingTripNumbers.has(n));
+      newTripNumbers.forEach(n => {
+        changes.newTrips.push({ tripName: `คันที่ ${n}` });
+      });
+
+      // Create a mapping for new trip numbers to their index in newTrips array
+      const newTripIndexMap = new Map<number, number>();
+      newTripNumbers.forEach((n, idx) => {
+        newTripIndexMap.set(n, idx);
+      });
       
       // Detect moves (trip changes)
       rows.forEach(row => {
         const initial = initialRows.find(r => r.rowId === row.rowId);
         if (initial && initial.tripNumber !== row.tripNumber) {
-          const fromTrip = trips.find((t, i) => 
-            (t.daily_trip_number || t.trip_sequence || i + 1) === initial.tripNumber
-          );
-          const toTrip = trips.find((t, i) => 
-            (t.daily_trip_number || t.trip_sequence || i + 1) === row.tripNumber
-          );
+          // Get from trip_id (should always exist in database)
+          const fromTripId = tripNumberToIdMap.get(initial.tripNumber);
+          
+          // Get to trip_id - could be existing or new
+          let toTripId: number | string;
+          if (existingTripNumbers.has(row.tripNumber)) {
+            toTripId = tripNumberToIdMap.get(row.tripNumber) || row.tripNumber;
+          } else {
+            // This is a new trip - use marker format "new-{index}"
+            const newTripIndex = newTripIndexMap.get(row.tripNumber);
+            toTripId = `new-${newTripIndex}`;
+          }
           
           changes.moves.push({
             orderId: row.orderId,
-            fromTripId: fromTrip?.trip_id || initial.tripNumber,
-            toTripId: toTrip?.trip_id || row.tripNumber,
+            fromTripId: fromTripId || initial.tripNumber,
+            toTripId: toTripId,
             newSequence: row.stopSequence
           });
         }
@@ -324,21 +400,30 @@ export default function ExcelStyleRouteEditor({
       rows.filter(r => r.isSplit).forEach(row => {
         const originalRow = initialRows.find(r => r.orderId === row.orderId && !r.isSplit);
         if (originalRow) {
-          const targetTrip = trips.find((t, i) => 
-            (t.daily_trip_number || t.trip_sequence || i + 1) === row.tripNumber
-          );
+          // Get target trip_id
+          let targetTripId: number | string | 'new';
+          if (existingTripNumbers.has(row.tripNumber)) {
+            targetTripId = tripNumberToIdMap.get(row.tripNumber) || row.tripNumber;
+          } else {
+            // This is a new trip
+            const newTripIndex = newTripIndexMap.get(row.tripNumber);
+            targetTripId = newTripIndex !== undefined ? `new-${newTripIndex}` : 'new';
+          }
           
           changes.splits.push({
             orderId: row.orderId,
             sourceStopId: originalRow.stopId,
-            targetTripId: targetTrip?.trip_id || row.tripNumber,
+            targetTripId: targetTripId,
             splitWeightKg: row.weightKg
           });
         }
       });
       
-      // Detect reorders within same trip
+      // Detect reorders within same trip (only for existing trips)
       tripNumbers.forEach(tripNum => {
+        // Skip new trips - they don't have existing stops to reorder
+        if (!existingTripNumbers.has(tripNum)) return;
+        
         const tripRows = rows.filter(r => r.tripNumber === tripNum);
         const initialTripRows = initialRows.filter(r => r.tripNumber === tripNum);
         
@@ -347,36 +432,27 @@ export default function ExcelStyleRouteEditor({
         const initialOrder = initialTripRows.map(r => r.stopId).join(',');
         
         if (currentOrder !== initialOrder && tripRows.length > 0) {
-          const trip = trips.find((t, i) => 
-            (t.daily_trip_number || t.trip_sequence || i + 1) === tripNum
-          );
+          const tripId = tripNumberToIdMap.get(tripNum);
           
-          if (trip) {
+          if (tripId) {
             // Sort by sequence and get stop IDs
             const sortedRows = [...tripRows].sort((a, b) => a.stopSequence - b.stopSequence);
             const uniqueStopIds = [...new Set(sortedRows.map(r => r.stopId))];
             
             changes.reorders.push({
-              tripId: trip.trip_id,
+              tripId: tripId,
               orderedStopIds: uniqueStopIds
             });
           }
         }
       });
       
-      // Check for new trips
-      const existingTripNumbers = new Set(trips.map((t, i) => 
-        t.daily_trip_number || t.trip_sequence || i + 1
-      ));
-      const newTripNumbers = tripNumbers.filter(n => !existingTripNumbers.has(n));
-      newTripNumbers.forEach(n => {
-        changes.newTrips.push({ tripName: `คันที่ ${n}` });
-      });
-      
       await onSave(changes);
       setHasChanges(false);
     } catch (error: any) {
       setSaveError(error.message || 'เกิดข้อผิดพลาดในการบันทึก');
+    } finally {
+      setIsSaving(false);
     }
   }, [rows, initialRows, trips, tripNumbers, onSave]);
 
@@ -409,10 +485,10 @@ export default function ExcelStyleRouteEditor({
           <Button 
             variant="primary" 
             onClick={handleSave} 
-            disabled={!hasChanges || loading}
+            disabled={!hasChanges || loading || isSaving}
           >
             <Save size={16} className="mr-1" />
-            บันทึก
+            {isSaving ? 'กำลังบันทึก...' : 'บันทึก'}
           </Button>
         </div>
       </div>
@@ -589,7 +665,7 @@ export default function ExcelStyleRouteEditor({
         isOpen={showSplitModal}
         onClose={() => setShowSplitModal(false)}
         title="แบ่งออเดอร์"
-        size="sm"
+        size="md"
       >
         {splitModalData && (
           <div className="space-y-4">
@@ -598,6 +674,39 @@ export default function ExcelStyleRouteEditor({
               <div className="text-sm text-gray-600">{splitModalData.row.customerName}</div>
               <div className="text-sm">น้ำหนักปัจจุบัน: {splitModalData.row.weightKg.toFixed(2)} kg</div>
             </div>
+
+            {/* รายการสินค้าในออเดอร์ */}
+            {splitModalData.row.items && splitModalData.row.items.length > 0 ? (
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  รายการสินค้าในออเดอร์ ({splitModalData.row.items.length} รายการ)
+                </label>
+                <div className="max-h-48 overflow-auto border rounded-lg">
+                  <table className="w-full text-sm">
+                    <thead className="bg-gray-100 sticky top-0">
+                      <tr>
+                        <th className="px-2 py-1 text-left">SKU</th>
+                        <th className="px-2 py-1 text-left">ชื่อสินค้า</th>
+                        <th className="px-2 py-1 text-right">จำนวน</th>
+                        <th className="px-2 py-1 text-right">น้ำหนัก (kg)</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {splitModalData.row.items.map((item, idx) => (
+                        <tr key={item.order_item_id || idx} className="border-t hover:bg-gray-50">
+                          <td className="px-2 py-1 font-mono text-xs">{item.sku_id}</td>
+                          <td className="px-2 py-1 text-xs truncate max-w-[150px]">{item.sku_name || '-'}</td>
+                          <td className="px-2 py-1 text-right font-mono">{item.order_qty}</td>
+                          <td className="px-2 py-1 text-right font-mono">{(item.order_weight || 0).toFixed(2)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-gray-500 italic">ไม่พบรายการสินค้าในออเดอร์นี้</div>
+            )}
             
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -669,6 +778,19 @@ export default function ExcelStyleRouteEditor({
           </div>
         )}
       </Modal>
+
+      {/* Loading Overlay */}
+      {isSaving && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 shadow-xl flex flex-col items-center gap-4">
+            <div className="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
+            <div className="text-center">
+              <p className="text-lg font-semibold text-gray-900">กำลังบันทึก...</p>
+              <p className="text-sm text-gray-600">กรุณารอสักครู่</p>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

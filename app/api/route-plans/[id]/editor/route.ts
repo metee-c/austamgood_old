@@ -126,21 +126,34 @@ export async function GET(
 
         // Fetch order items to get total quantity for each order
         let orderItemsMap: Record<number, number> = {};
+        let orderItemsDetailMap: Record<number, any[]> = {};
         if (allOrderIds.size > 0) {
           const { data: orderItemsData, error: orderItemsError } = await supabase
             .from('wms_order_items')
-            .select('order_id, order_qty')
+            .select('order_id, order_item_id, sku_id, sku_name, order_qty, order_weight')
             .in('order_id', Array.from(allOrderIds));
 
           if (!orderItemsError && orderItemsData) {
-            // Sum quantities by order_id
-            orderItemsMap = orderItemsData.reduce((acc: any, item: any) => {
-              if (!acc[item.order_id]) {
-                acc[item.order_id] = 0;
+            // Sum quantities by order_id and store details
+            orderItemsData.forEach((item: any) => {
+              // Sum quantities
+              if (!orderItemsMap[item.order_id]) {
+                orderItemsMap[item.order_id] = 0;
               }
-              acc[item.order_id] += item.order_qty || 0;
-              return acc;
-            }, {});
+              orderItemsMap[item.order_id] += item.order_qty || 0;
+              
+              // Store item details
+              if (!orderItemsDetailMap[item.order_id]) {
+                orderItemsDetailMap[item.order_id] = [];
+              }
+              orderItemsDetailMap[item.order_id].push({
+                order_item_id: item.order_item_id,
+                sku_id: item.sku_id,
+                sku_name: item.sku_name,
+                order_qty: Number(item.order_qty) || 0,
+                order_weight: Number(item.order_weight) || 0
+              });
+            });
 
             console.log('📦 Order items map created:', {
               orderItemsMapSize: Object.keys(orderItemsMap).length,
@@ -215,7 +228,8 @@ export async function GET(
               total_order_weight_kg: order.total_weight,
               total_qty: totalQty,
               note: order.notes || null,
-              text_field_long_1: order.text_field_long_1 || null
+              text_field_long_1: order.text_field_long_1 || null,
+              items: orderItemsDetailMap[order.order_id] || []
             };
           }).filter((order: any) => order != null);
 
@@ -233,6 +247,11 @@ export async function GET(
           stopsCount: allStops.length,
           ordersMapSize: Object.keys(ordersMap).length,
           inputsMapSize: Object.keys(inputsMap).length,
+          orderItemsDetailMapSize: Object.keys(orderItemsDetailMap).length,
+          sampleOrderItems: Object.entries(orderItemsDetailMap).slice(0, 2).map(([k, v]) => ({
+            order_id: k,
+            items_count: (v as any[]).length
+          })),
           firstStop: allStops[0] ? {
             stop_id: allStops[0].stop_id,
             stop_name: allStops[0].stop_name,
@@ -243,7 +262,8 @@ export async function GET(
             orders_detail: allStops[0].orders?.map((o: any) => ({
               order_id: o.order_id,
               order_no: o.order_no,
-              weight: o.allocated_weight_kg
+              weight: o.allocated_weight_kg,
+              items_count: o.items?.length || 0
             })),
             tags: allStops[0].tags
           } : null
@@ -319,6 +339,7 @@ export async function GET(
       // Fetch order details if we have order IDs
       let ordersMap: Record<number, any> = {};
       let orderItemsMap: Record<number, number> = {};
+      let orderItemsDetailMap: Record<number, any[]> = {};
 
       if (allOrderIds.length > 0) {
         const { data: orders, error: ordersError } = await supabase
@@ -348,10 +369,10 @@ export async function GET(
           }, {});
         }
 
-        // Fetch order items to get total quantity for each order (FALLBACK MODE)
+        // Fetch order items to get total quantity and details for each order (FALLBACK MODE)
         const { data: orderItemsData, error: orderItemsError } = await supabase
           .from('wms_order_items')
-          .select('order_id, order_qty')
+          .select('order_id, order_item_id, sku_id, sku_name, order_qty, order_weight')
           .in('order_id', allOrderIds);
 
         console.log('📦 Order items query result:', {
@@ -361,14 +382,26 @@ export async function GET(
         });
 
         if (!orderItemsError && orderItemsData) {
-          // Sum quantities by order_id
-          orderItemsMap = orderItemsData.reduce((acc: any, item: any) => {
-            if (!acc[item.order_id]) {
-              acc[item.order_id] = 0;
+          // Sum quantities by order_id and store details
+          orderItemsData.forEach((item: any) => {
+            // Sum quantities
+            if (!orderItemsMap[item.order_id]) {
+              orderItemsMap[item.order_id] = 0;
             }
-            acc[item.order_id] += item.order_qty || 0;
-            return acc;
-          }, {});
+            orderItemsMap[item.order_id] += item.order_qty || 0;
+            
+            // Store item details
+            if (!orderItemsDetailMap[item.order_id]) {
+              orderItemsDetailMap[item.order_id] = [];
+            }
+            orderItemsDetailMap[item.order_id].push({
+              order_item_id: item.order_item_id,
+              sku_id: item.sku_id,
+              sku_name: item.sku_name,
+              order_qty: item.order_qty,
+              order_weight: item.order_weight
+            });
+          });
         }
       }
       
@@ -413,7 +446,8 @@ export async function GET(
               total_order_weight_kg: orderWeight,
               total_qty: totalQty,
               note: order.notes || null,
-              text_field_long_1: order.text_field_long_1 || null
+              text_field_long_1: order.text_field_long_1 || null,
+              items: orderItemsDetailMap[order.order_id] || []
             };
           }).filter((o: any) => o != null);
           
