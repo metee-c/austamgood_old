@@ -28,6 +28,7 @@ interface Trip {
   shipping_cost?: number;
   porterage_fee?: number;
   other_fees?: Array<{ label: string; amount: number }>;
+  extra_delivery_stops?: Array<{ name: string; description: string; cost: number }>; // จุดส่งพิเศษ
   vehicle_label?: string;
   driver_label?: string;
   total_distance_km?: number;
@@ -46,6 +47,7 @@ interface SupplierSummary {
   total_shipping_cost: number;
   total_porterage_fee: number;
   total_other_fees: number;
+  total_extra_delivery_stops_cost: number; // รวมค่าจุดส่งพิเศษ
   trips: Trip[];
 }
 
@@ -54,6 +56,32 @@ interface TransportContractModalProps {
   onClose: () => void;
   planId?: number | null;
 }
+
+// Helper function: ตัดที่อยู่เอาเฉพาะส่วนที่เริ่มจาก "ต." หรือ "ตำบล" เป็นต้นไป
+const extractAddressFromTambon = (fullAddress: string | null | undefined): string => {
+  if (!fullAddress) return '-';
+  
+  // หา index ของ "ต." หรือ "ตำบล"
+  const tambonIndex = fullAddress.indexOf('ต.');
+  const tambonFullIndex = fullAddress.indexOf('ตำบล');
+  
+  // เลือก index ที่พบก่อน (ค่าน้อยกว่าและไม่ใช่ -1)
+  let startIndex = -1;
+  if (tambonIndex !== -1 && tambonFullIndex !== -1) {
+    startIndex = Math.min(tambonIndex, tambonFullIndex);
+  } else if (tambonIndex !== -1) {
+    startIndex = tambonIndex;
+  } else if (tambonFullIndex !== -1) {
+    startIndex = tambonFullIndex;
+  }
+  
+  if (startIndex !== -1) {
+    return fullAddress.substring(startIndex).trim();
+  }
+  
+  // ถ้าไม่พบ ต. หรือ ตำบล ให้ return ที่อยู่เต็ม (ตัดให้สั้นลง)
+  return fullAddress.length > 50 ? fullAddress.substring(0, 50) + '...' : fullAddress;
+};
 
 const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen, onClose, planId }) => {
   const [step, setStep] = useState<'select-plan' | 'select-supplier'>('select-plan');
@@ -65,6 +93,8 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [currentUser, setCurrentUser] = useState<string>('');
+  // State สำหรับเก็บ bonus orders (แมพ trip_id -> customer_id -> [order_no])
+  const [bonusOrdersMap, setBonusOrdersMap] = useState<Record<number, Record<string, string[]>>>({});
 
   const printRef = useRef<HTMLDivElement>(null);
   const reactToPrintFn = useReactToPrint({
@@ -151,8 +181,19 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`/api/route-plans/${id}/editor`);
-      const { data } = await res.json();
+      // ดึงข้อมูลแผนและ bonus orders พร้อมกัน
+      const [editorRes, bonusRes] = await Promise.all([
+        fetch(`/api/route-plans/${id}/editor`),
+        fetch(`/api/route-plans/${id}/bonus-orders`)
+      ]);
+      
+      const { data } = await editorRes.json();
+      const { data: bonusData } = await bonusRes.json();
+      
+      // เก็บ bonus orders map
+      if (bonusData?.bonusOrders) {
+        setBonusOrdersMap(bonusData.bonusOrders);
+      }
       
       if (data?.trips) {
         // สร้าง plan object จากข้อมูลที่ได้
@@ -185,6 +226,7 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
               total_shipping_cost: 0,
               total_porterage_fee: 0,
               total_other_fees: 0,
+              total_extra_delivery_stops_cost: 0,
               total_cost: 0
             });
           }
@@ -202,7 +244,13 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
             summary.total_other_fees += otherFeesTotal;
           }
           
-          summary.total_cost = summary.total_shipping_cost + summary.total_porterage_fee + summary.total_other_fees;
+          // Calculate extra delivery stops cost
+          if (trip.extra_delivery_stops && Array.isArray(trip.extra_delivery_stops)) {
+            const extraStopsCost = trip.extra_delivery_stops.reduce((sum: number, stop: any) => sum + (stop.cost || 0), 0);
+            summary.total_extra_delivery_stops_cost += extraStopsCost;
+          }
+          
+          summary.total_cost = summary.total_shipping_cost + summary.total_porterage_fee + summary.total_other_fees + summary.total_extra_delivery_stops_cost;
         }
         
         setSupplierSummaries(Array.from(supplierMap.values()));
@@ -285,10 +333,20 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
   const handleSelectPlan = async (plan: Plan) => {
     setSelectedPlan(plan);
     
-    // Fetch full trip details
+    // Fetch full trip details และ bonus orders พร้อมกัน
     try {
-      const res = await fetch(`/api/route-plans/${plan.plan_id}/editor`);
-      const { data } = await res.json();
+      const [editorRes, bonusRes] = await Promise.all([
+        fetch(`/api/route-plans/${plan.plan_id}/editor`),
+        fetch(`/api/route-plans/${plan.plan_id}/bonus-orders`)
+      ]);
+      
+      const { data } = await editorRes.json();
+      const { data: bonusData } = await bonusRes.json();
+      
+      // เก็บ bonus orders map
+      if (bonusData?.bonusOrders) {
+        setBonusOrdersMap(bonusData.bonusOrders);
+      }
       
       if (data?.trips) {
         // Group trips by supplier
@@ -307,6 +365,7 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
               total_cost: 0,
               total_porterage_fee: 0,
               total_other_fees: 0,
+              total_extra_delivery_stops_cost: 0,
               trips: []
             };
           }
@@ -316,10 +375,15 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
           const otherFeesTotal = otherFees.reduce((sum, fee) => sum + (fee.amount || 0), 0);
           const porterageFee = (trip as any).porterage_fee || 0;
           
+          // Calculate extra delivery stops cost
+          const extraDeliveryStops: Array<{ name: string; description: string; cost: number }> = (trip as any).extra_delivery_stops || [];
+          const extraDeliveryStopsCost = extraDeliveryStops.reduce((sum, stop) => sum + (stop.cost || 0), 0);
+          
           acc[trip.supplier_id].trip_count++;
           acc[trip.supplier_id].total_cost += Number(trip.shipping_cost || 0);
           acc[trip.supplier_id].total_porterage_fee += porterageFee;
           acc[trip.supplier_id].total_other_fees += otherFeesTotal;
+          acc[trip.supplier_id].total_extra_delivery_stops_cost += extraDeliveryStopsCost;
           acc[trip.supplier_id].trips.push(trip);
           
           return acc;
@@ -434,10 +498,10 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
                   ไม่พบข้อมูลบริษัทขนส่งในแผนนี้
                 </div>
               ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                   {supplierSummaries.map((summary) => {
-                    const hasExtraFees = summary.total_porterage_fee > 0 || summary.total_other_fees > 0;
-                    const grandTotal = summary.total_cost + summary.total_porterage_fee + summary.total_other_fees;
+                    const hasExtraFees = summary.total_porterage_fee > 0 || summary.total_other_fees > 0 || summary.total_extra_delivery_stops_cost > 0;
+                    const grandTotal = summary.total_cost + summary.total_porterage_fee + summary.total_other_fees + summary.total_extra_delivery_stops_cost;
                     
                     return (
                       <div
@@ -472,6 +536,12 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
                               <div className="flex justify-between text-purple-600">
                                 <span>ค่าอื่นๆ:</span>
                                 <span className="font-semibold">{summary.total_other_fees.toLocaleString()} ฿</span>
+                              </div>
+                            )}
+                            {summary.total_extra_delivery_stops_cost > 0 && (
+                              <div className="flex justify-between text-pink-600">
+                                <span>จุดส่งพิเศษ:</span>
+                                <span className="font-semibold">{summary.total_extra_delivery_stops_cost.toLocaleString()} ฿</span>
                               </div>
                             )}
                             {hasExtraFees && (
@@ -513,6 +583,7 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
                       plan={selectedPlan!}
                       supplier={selectedSupplier}
                       currentUser={currentUser}
+                      bonusOrdersMap={bonusOrdersMap}
                     />
                   </div>
                 </div>
@@ -540,9 +611,10 @@ interface TransportContractDocumentProps {
   plan: Plan;
   supplier: SupplierSummary;
   currentUser: string;
+  bonusOrdersMap: Record<number, Record<string, string[]>>; // trip_id -> customer_id -> [bonus_order_no]
 }
 
-const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ plan, supplier, currentUser }) => {
+const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ plan, supplier, currentUser, bonusOrdersMap }) => {
   const contractDate = new Date().toLocaleDateString('th-TH', {
     year: 'numeric',
     month: 'long',
@@ -567,8 +639,10 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
             const porterageFee = (trip as any).porterage_fee || 0;
             const otherFees: Array<{ label: string; amount: number }> = (trip as any).other_fees || [];
             const otherFeesTotal = otherFees.reduce((sum, fee) => sum + (fee.amount || 0), 0);
-            const hasExtraFees = porterageFee > 0 || otherFees.length > 0;
-            const tripGrandTotal = (trip.shipping_cost || 0) + porterageFee + otherFeesTotal;
+            const extraDeliveryStops: Array<{ name: string; description: string; cost: number }> = (trip as any).extra_delivery_stops || [];
+            const extraDeliveryStopsCost = extraDeliveryStops.reduce((sum, stop) => sum + (stop.cost || 0), 0);
+            const hasExtraFees = porterageFee > 0 || otherFees.length > 0 || extraDeliveryStops.length > 0;
+            const tripGrandTotal = (trip.shipping_cost || 0) + porterageFee + otherFeesTotal + extraDeliveryStopsCost;
             
             // ใช้ daily_trip_number ถ้ามี ไม่งั้นใช้ tripIndex + 1
             const displayTripNumber = trip.daily_trip_number || (tripIndex + 1);
@@ -599,6 +673,12 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                         <span className="font-semibold">{fee.amount.toLocaleString()} บาท</span>
                       </div>
                     ))}
+                    {extraDeliveryStops.length > 0 && (
+                      <div className="flex justify-between gap-4 text-pink-700">
+                        <span>จุดส่งพิเศษ ({extraDeliveryStops.length}):</span>
+                        <span className="font-semibold">{extraDeliveryStopsCost.toLocaleString()} บาท</span>
+                      </div>
+                    )}
                     {hasExtraFees && (
                       <div className="flex justify-between gap-4 border-t border-gray-300 mt-1 pt-1">
                         <span className="font-bold text-gray-800">รวมคันนี้:</span>
@@ -631,8 +711,8 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                       />
                       <div className="text-xs leading-relaxed text-left">
                         <p className="font-bold text-sm mb-0.5">AUSTAM GOODS CORP., LTD.</p>
-                        <p className="text-gray-700 font-normal">350, 352 Udomsuk Road., Bangkok 10260</p>
-                        <p className="text-gray-700 font-normal">Tel. 662-749-4667-72 | austamgoods@yahoo.com</p>
+                        <p className="text-gray-700 font-normal">350, 352 Udomsuk Road, Bangna, Bangnanuea, Bangkok 10260, Thailand.</p>
+                        <p className="text-gray-700 font-normal">E-mail: austamgoods@yahoo.com | Tel. 662-749-4667-72</p>
                       </div>
                     </div>
 
@@ -655,16 +735,17 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                 <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '4%' }}>คันที่</th>
                 <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '4%' }}>จุดที่</th>
                 <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '5%' }}>จังหวัด</th>
-                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '7%' }}>เลขที่ใบสั่งส่ง</th>
-                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '6%' }}>รหัสลูกค้า</th>
-                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '20%' }}>ชื่อร้านค้า</th>
-                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '6%' }}>น้ำหนัก</th>
-                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '5%' }}>จำนวน</th>
-                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '5%' }}>ประตู</th>
+                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '6%' }}>เลขที่ใบสั่งส่ง</th>
+                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '5%' }}>รหัสลูกค้า</th>
+                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '14%' }}>ชื่อร้านค้า</th>
+                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '5%' }}>น้ำหนัก</th>
+                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '4%' }}>จำนวน</th>
+                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '4%' }}>ประตู</th>
                 <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '4%' }}>คิว</th>
-                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '6%' }}>เปิด-ปิด</th>
-                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '16%' }}>หมายเหตุ</th>
-                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '12%' }}>(ละติจูด, ลองจิจูด)</th>
+                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '8%' }}>เปิด-ปิด</th>
+                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '12%' }}>หมายเหตุ</th>
+                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '14%' }}>ที่อยู่จัดส่ง</th>
+                <th className="border-b border-gray-300 px-1 py-2 text-center text-xs" style={{ width: '11%' }}>(ละติจูด, ลองจิจูด)</th>
               </tr>
             </thead>
             <tbody>
@@ -680,8 +761,10 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                 const porterageFee = (trip as any).porterage_fee || 0;
                 const otherFees: Array<{ label: string; amount: number }> = (trip as any).other_fees || [];
                 const otherFeesTotal = otherFees.reduce((sum, fee) => sum + (fee.amount || 0), 0);
-                const tripGrandTotal = (trip.shipping_cost || 0) + porterageFee + otherFeesTotal;
-                const hasExtraFees = porterageFee > 0 || otherFees.length > 0;
+                const extraDeliveryStops: Array<{ name: string; description: string; cost: number }> = (trip as any).extra_delivery_stops || [];
+                const extraDeliveryStopsCost = extraDeliveryStops.reduce((sum, stop) => sum + (stop.cost || 0), 0);
+                const tripGrandTotal = (trip.shipping_cost || 0) + porterageFee + otherFeesTotal + extraDeliveryStopsCost;
+                const hasExtraFees = porterageFee > 0 || otherFees.length > 0 || extraDeliveryStops.length > 0;
                 
                 // ใช้ daily_trip_number ถ้ามี ไม่งั้นใช้ tripIndex + 1
                 const displayTripNumber = trip.daily_trip_number || (tripIndex + 1);
@@ -690,7 +773,7 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                   <React.Fragment key={trip.trip_id}>
                     {/* Trip Info Header Row */}
                     <tr className="bg-blue-100 border-t-2 border-blue-400">
-                      <td colSpan={13} className="border border-gray-300 px-3 py-2">
+                      <td colSpan={14} className="border border-gray-300 px-3 py-2">
                         <div className="flex justify-between items-start">
                           <div>
                             <span className="font-bold text-sm">คันที่ {displayTripNumber}</span>
@@ -707,6 +790,9 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                               {otherFees.map((fee, idx) => (
                                 <span key={idx} className="text-purple-700">{fee.label}: <span className="font-semibold">{fee.amount.toLocaleString()}</span></span>
                               ))}
+                              {extraDeliveryStops.length > 0 && (
+                                <span className="text-pink-700">จุดส่งพิเศษ: <span className="font-semibold">{extraDeliveryStopsCost.toLocaleString()}</span></span>
+                              )}
                             </div>
                             <div className="text-sm font-bold text-green-700 mt-1">
                               รวม: {tripGrandTotal.toLocaleString()} บาท
@@ -715,7 +801,11 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                         </div>
                       </td>
                     </tr>
-                    {trip.stops?.map((stop: any, stopIndex: number) => {
+                    {(() => {
+                      // Track which customer_ids have already shown bonus orders in this trip
+                      const shownBonusForCustomer = new Set<string>();
+                      
+                      return trip.stops?.map((stop: any, stopIndex: number) => {
                       // Get orders for this stop
                       const orders = Array.isArray(stop.orders) && stop.orders.length > 0
                         ? stop.orders
@@ -726,7 +816,8 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                             customer_name: stop.stop_name,
                             allocated_weight_kg: stop.load_weight_kg,
                             load_units: stop.load_units || 0,
-                            total_qty: 0
+                            total_qty: 0,
+                            note: stop.order_data?.notes || stop.order?.notes || null
                           }] : []);
 
                       // Extract province from address (if available)
@@ -745,6 +836,28 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                         // Get quantity - use total_qty which is the same field used in EditShippingCostModal
                         const quantity = order.total_qty || 0;
                         const weight = order.allocated_weight_kg || order.total_order_weight_kg || 0;
+                        
+                        // ดึง bonus order_no สำหรับ customer_id นี้
+                        const customerId = order.customer_id || '';
+                        const tripBonusOrders = bonusOrdersMap[trip.trip_id] || {};
+                        
+                        // แสดง bonus order_no เฉพาะครั้งแรกที่เจอ customer_id นี้ใน trip
+                        let bonusOrderNos: string[] = [];
+                        if (customerId && !shownBonusForCustomer.has(customerId)) {
+                          bonusOrderNos = tripBonusOrders[customerId] || [];
+                          if (bonusOrderNos.length > 0) {
+                            shownBonusForCustomer.add(customerId);
+                          }
+                        }
+                        
+                        // รวม order_no ปกติกับ bonus order_no (ถ้าเป็นครั้งแรกของ customer)
+                        const allOrderNos = [order.order_no];
+                        for (const bonusNo of bonusOrderNos) {
+                          if (!allOrderNos.includes(bonusNo)) {
+                            allOrderNos.push(bonusNo);
+                          }
+                        }
+                        const displayOrderNo = allOrderNos.filter(Boolean).join(', ');
 
                         return (
                           <tr key={`${stop.stop_id}-${order.order_id || orderIndex}`}>
@@ -773,7 +886,7 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                               </td>
                             )}
                             <td className="border border-gray-300 px-1 py-2 text-xs">
-                              {order.order_no || '-'}
+                              {displayOrderNo || '-'}
                             </td>
                             <td className="border border-gray-300 px-1 py-2 text-xs">
                               {order.customer_id || '-'}
@@ -807,8 +920,9 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                               <td
                                 className="border border-gray-300 px-1 py-2 text-xs bg-gray-50"
                                 rowSpan={orders.length}
+                                style={{ fontSize: '9px' }}
                               >
-                                -
+                                {order.note || '-'}
                               </td>
                             )}
                             <td className="border border-gray-300 px-1 py-2 text-xs">
@@ -816,9 +930,18 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                             </td>
                             {isFirstOrderInStop && (
                               <td
-                                className="border border-gray-300 px-1 py-2 text-xs bg-gray-50 font-mono"
+                                className="border border-gray-300 px-1 py-2 text-xs bg-gray-50"
                                 rowSpan={orders.length}
                                 style={{ fontSize: '9px' }}
+                              >
+                                {extractAddressFromTambon(order.text_field_long_1)}
+                              </td>
+                            )}
+                            {isFirstOrderInStop && (
+                              <td
+                                className="border border-gray-300 px-1 py-2 text-xs bg-gray-50 font-mono"
+                                rowSpan={orders.length}
+                                style={{ fontSize: '10px' }}
                               >
                                 {coordinates}
                               </td>
@@ -826,7 +949,57 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                           </tr>
                         );
                       });
-                    })}
+                    });
+                    })()}
+                    {/* Extra Delivery Stops (จุดส่งพิเศษที่ไม่มี Order) */}
+                    {trip.extra_delivery_stops && trip.extra_delivery_stops.length > 0 && (
+                      trip.extra_delivery_stops.map((extraStop: any, extraIndex: number) => (
+                        <tr key={`extra-${trip.trip_id}-${extraIndex}`} className="bg-pink-50">
+                          <td className="border border-gray-300 px-1 py-2 text-xs text-center font-semibold bg-pink-100">
+                            {displayTripNumber}
+                          </td>
+                          <td className="border border-gray-300 px-1 py-2 text-xs text-center bg-pink-100">
+                            พิเศษ
+                          </td>
+                          <td className="border border-gray-300 px-1 py-2 text-xs bg-pink-100">
+                            -
+                          </td>
+                          <td className="border border-gray-300 px-1 py-2 text-xs text-pink-700 font-semibold">
+                            จุดส่งพิเศษ
+                          </td>
+                          <td className="border border-gray-300 px-1 py-2 text-xs">
+                            -
+                          </td>
+                          <td className="border border-gray-300 px-1 py-2 text-xs font-thai text-pink-700">
+                            {extraStop.name || '-'}
+                          </td>
+                          <td className="border border-gray-300 px-1 py-2 text-xs text-right">
+                            -
+                          </td>
+                          <td className="border border-gray-300 px-1 py-2 text-xs text-right">
+                            -
+                          </td>
+                          <td className="border border-gray-300 px-1 py-2 text-xs bg-pink-100 text-center">
+                            -
+                          </td>
+                          <td className="border border-gray-300 px-1 py-2 text-xs bg-pink-100 text-center">
+                            -
+                          </td>
+                          <td className="border border-gray-300 px-1 py-2 text-xs bg-pink-100">
+                            -
+                          </td>
+                          <td className="border border-gray-300 px-1 py-2 text-xs text-pink-700">
+                            {extraStop.description || '-'} {extraStop.cost > 0 ? `(${extraStop.cost.toLocaleString()} บาท)` : ''}
+                          </td>
+                          <td className="border border-gray-300 px-1 py-2 text-xs bg-pink-100" style={{ fontSize: '9px' }}>
+                            -
+                          </td>
+                          <td className="border border-gray-300 px-1 py-2 text-xs bg-pink-100 font-mono" style={{ fontSize: '9px' }}>
+                            -
+                          </td>
+                        </tr>
+                      ))
+                    )}
                     {/* Subtotal row for each trip */}
                     <tr className="bg-blue-50 font-semibold">
                       <td colSpan={6} className="border border-gray-300 px-2 py-2 text-xs text-right">
@@ -843,7 +1016,7 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                           return sum + orders.reduce((s: number, o: any) => s + (o.total_qty || 0), 0);
                         }, 0)}
                       </td>
-                      <td colSpan={5} className="border border-gray-300 px-2 py-2 text-xs"></td>
+                      <td colSpan={6} className="border border-gray-300 px-2 py-2 text-xs"></td>
                     </tr>
                   </React.Fragment>
                 );
@@ -878,10 +1051,18 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
               </span>
             </div>
           )}
+          {supplier.total_extra_delivery_stops_cost > 0 && (
+            <div className="flex justify-between items-center text-pink-700">
+              <span className="text-sm">ค่าจุดส่งพิเศษ:</span>
+              <span className="text-sm font-semibold">
+                {supplier.total_extra_delivery_stops_cost.toLocaleString()} บาท
+              </span>
+            </div>
+          )}
           <div className="flex justify-between items-center border-t border-gray-300 pt-2 mt-2">
             <span className="text-base font-bold">รวมทั้งสิ้น:</span>
             <span className="text-lg font-bold text-green-700">
-              {(supplier.total_cost + supplier.total_porterage_fee + supplier.total_other_fees).toLocaleString()} บาท
+              {(supplier.total_cost + supplier.total_porterage_fee + supplier.total_other_fees + supplier.total_extra_delivery_stops_cost).toLocaleString()} บาท
             </span>
           </div>
         </div>
@@ -890,9 +1071,21 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
       {/* Signatures */}
       <div className="grid grid-cols-2 gap-8 mt-12">
         <div className="text-center">
-          <div className="border-t border-gray-400 pt-2 mt-16">
-            <p className="text-sm">ผู้ว่าจ้าง (AUSTAM GOODS CORP., LTD.)</p>
-            <p className="text-xs text-gray-600 mt-1">วันที่: _______________</p>
+          <div className="pt-2">
+            {/* รูปลายเซ็นผู้ว่าจ้าง */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/images/signature-austam.png"
+              alt="ลายเซ็นผู้ว่าจ้าง"
+              width={150}
+              height={60}
+              className="mx-auto mb-2"
+              style={{ objectFit: 'contain' }}
+            />
+            <div className="border-t border-gray-400 pt-2">
+              <p className="text-sm">ผู้ว่าจ้าง (AUSTAM GOODS CORP., LTD.)</p>
+              <p className="text-xs text-gray-600 mt-1">วันที่: {new Date(plan.plan_date).toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+            </div>
           </div>
         </div>
         <div className="text-center">
@@ -927,15 +1120,16 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
               <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '4%' }}>คันที่</th>
               <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '8%' }}>จำนวนจุดส่ง</th>
               <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '8%' }}>ทะเบียนรถ</th>
-              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '10%' }}>ชื่อผู้ขับ</th>
+              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '9%' }}>ชื่อผู้ขับ</th>
               <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '4%' }}>ประตู</th>
               <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '4%' }}>คิว</th>
-              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '7%' }}>รูปแบบ</th>
-              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '8%' }}>ราคาเริ่มต้น</th>
-              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '8%' }}>ค่าเด็กติดรถ</th>
-              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '11%' }}>ค่าจุดเพิ่ม</th>
-              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '7%' }}>ค่าแบก</th>
-              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '12%' }}>ค่าใช้จ่ายอื่นๆ</th>
+              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '6%' }}>รูปแบบ</th>
+              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '7%' }}>ราคาเริ่มต้น</th>
+              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '7%' }}>ค่าเด็กติดรถ</th>
+              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '10%' }}>ค่าจุดเพิ่ม</th>
+              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '6%' }}>ค่าแบก</th>
+              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '10%' }}>ค่าใช้จ่ายอื่นๆ</th>
+              <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '8%' }}>จุดส่งพิเศษ</th>
               <th className="border border-gray-300 px-2 py-2 text-xs text-center" style={{ width: '9%' }}>รวมค่าขนส่ง</th>
             </tr>
           </thead>
@@ -969,6 +1163,8 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
               const porterageFee = (trip as any).porterage_fee || 0;
               const otherFees: Array<{ label: string; amount: number }> = (trip as any).other_fees || [];
               const otherFeesTotal = otherFees.reduce((sum, fee) => sum + (fee.amount || 0), 0);
+              const extraDeliveryStopsPage2: Array<{ name: string; description: string; cost: number }> = (trip as any).extra_delivery_stops || [];
+              const extraDeliveryStopsCost = extraDeliveryStopsPage2.reduce((sum, stop) => sum + (stop.cost || 0), 0);
               const extraStops = Math.max(0, uniqueCustomerCount - 1);
               const extraStopTotal = extraStops * extraStopFee;
               
@@ -1030,8 +1226,24 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                       </div>
                     ) : '-'}
                   </td>
+                  <td className="border border-gray-300 px-2 py-3 text-xs">
+                    {extraDeliveryStopsPage2.length > 0 ? (
+                      <div className="text-left">
+                        {extraDeliveryStopsPage2.map((stop, idx) => (
+                          <div key={idx} className="text-xs text-pink-700">
+                            {stop.name}: {stop.cost.toLocaleString()}
+                          </div>
+                        ))}
+                        {extraDeliveryStopsPage2.length > 1 && (
+                          <div className="font-semibold border-t border-gray-300 mt-1 pt-1">
+                            รวม: {extraDeliveryStopsCost.toLocaleString()}
+                          </div>
+                        )}
+                      </div>
+                    ) : '-'}
+                  </td>
                   <td className="border border-gray-300 px-2 py-3 text-right text-xs font-bold text-green-700">
-                    {((trip.shipping_cost || 0) + porterageFee + otherFeesTotal).toLocaleString()} บาท
+                    {((trip.shipping_cost || 0) + porterageFee + otherFeesTotal + extraDeliveryStopsCost).toLocaleString()} บาท
                   </td>
                 </tr>
               );
@@ -1065,10 +1277,18 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
               </span>
             </div>
           )}
+          {supplier.total_extra_delivery_stops_cost > 0 && (
+            <div className="flex justify-between items-center text-pink-700">
+              <span className="text-sm">ค่าจุดส่งพิเศษ:</span>
+              <span className="text-sm font-semibold">
+                {supplier.total_extra_delivery_stops_cost.toLocaleString()} บาท
+              </span>
+            </div>
+          )}
           <div className="flex justify-between items-center border-t border-gray-300 pt-2 mt-2">
             <span className="text-base font-bold">รวมทั้งหมด:</span>
             <span className="text-lg font-bold text-green-700">
-              {(supplier.total_cost + supplier.total_porterage_fee + supplier.total_other_fees).toLocaleString()} บาท
+              {(supplier.total_cost + supplier.total_porterage_fee + supplier.total_other_fees + supplier.total_extra_delivery_stops_cost).toLocaleString()} บาท
             </span>
           </div>
         </div>

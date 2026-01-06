@@ -30,6 +30,7 @@ export async function GET(
     }
 
     // Fetch trips first with picklist and loadlist info
+    // Note: extra_delivery_stops is a JSONB column that stores special delivery stops without orders
     const { data: trips, error: tripsError } = await supabase
       .from('receiving_route_trips')
       .select(`
@@ -74,7 +75,8 @@ export async function GET(
             customer_id,
             total_weight,
             order_date,
-            delivery_date
+            delivery_date,
+            notes
           )
         `)
         .in('trip_id', tripIds)
@@ -111,7 +113,7 @@ export async function GET(
         if (allOrderIds.size > 0) {
           const { data: ordersData, error: ordersError } = await supabase
             .from('wms_orders')
-            .select('order_id, order_no, customer_id, shop_name, province, total_weight, order_date, delivery_date')
+            .select('order_id, order_no, customer_id, shop_name, province, total_weight, order_date, delivery_date, notes, text_field_long_1')
             .in('order_id', Array.from(allOrderIds));
 
           if (!ordersError && ordersData) {
@@ -211,7 +213,9 @@ export async function GET(
               province: order.province || null,
               allocated_weight_kg: allocatedWeight,
               total_order_weight_kg: order.total_weight,
-              total_qty: totalQty
+              total_qty: totalQty,
+              note: order.notes || null,
+              text_field_long_1: order.text_field_long_1 || null
             };
           }).filter((order: any) => order != null);
 
@@ -325,7 +329,9 @@ export async function GET(
             customer_id,
             shop_name,
             province,
-            total_weight
+            total_weight,
+            notes,
+            text_field_long_1
           `)
           .in('order_id', allOrderIds);
 
@@ -405,7 +411,9 @@ export async function GET(
               province: order.province || null,
               allocated_weight_kg: orderWeight,
               total_order_weight_kg: orderWeight,
-              total_qty: totalQty
+              total_qty: totalQty,
+              note: order.notes || null,
+              text_field_long_1: order.text_field_long_1 || null
             };
           }).filter((o: any) => o != null);
           

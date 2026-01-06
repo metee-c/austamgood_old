@@ -2,14 +2,15 @@
    - Environments: .env.local
 
    Creating an optimized production build ...
- ✓ Compiled successfully in 11.6s
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+ ✓ Compiled successfully in 13.1s
    Running TypeScript ...
    Collecting page data using 13 workers ...
    Generating static pages using 13 workers (0/199) ...
    Generating static pages using 13 workers (49/199) 
    Generating static pages using 13 workers (99/199) 
    Generating static pages using 13 workers (149/199) 
- ✓ Generating static pages using 13 workers (199/199) in 1455.3ms
+ ✓ Generating static pages using 13 workers (199/199) in 1619.1ms
    Finalizing page optimization ...
 
 Route (app)

@@ -48,6 +48,9 @@ export async function PATCH(
     if (body.porterage_fee !== undefined) updateData.porterage_fee = body.porterage_fee;
     if (body.other_fees !== undefined) updateData.other_fees = body.other_fees;
 
+    // Add extra_delivery_stops if provided (จุดส่งพิเศษที่ไม่มี order)
+    if (body.extra_delivery_stops !== undefined) updateData.extra_delivery_stops = body.extra_delivery_stops;
+
     // Handle shipping cost reset fields (from rollback)
     if (body.needs_shipping_cost_update !== undefined) {
       updateData.needs_shipping_cost_update = body.needs_shipping_cost_update;
