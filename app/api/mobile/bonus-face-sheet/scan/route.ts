@@ -232,6 +232,7 @@ export async function POST(request: NextRequest) {
 
         // บันทึก ledger: OUT จาก source_location
         // ✅ CRITICAL FIX: Include order_id and order_item_id for BRCGS traceability
+        // ✅ FIX: Include production_date and expiry_date for proper balance sync
         // Note: bonus_face_sheet_items links via order_item_id → wms_order_items.order_id
         ledgerEntries.push({
           movement_at: now,
@@ -242,13 +243,16 @@ export async function POST(request: NextRequest) {
           sku_id: item.sku_id,
           pack_qty: packToDeduct,
           piece_qty: qtyToDeduct,
+          production_date: balance.production_date || null,  // ✅ FIX: Include for balance matching
+          expiry_date: balance.expiry_date || null,          // ✅ FIX: Include for balance matching
+          lot_no: balance.lot_no || null,                    // ✅ FIX: Include for balance matching
           reference_no: (item.bonus_face_sheets as any).face_sheet_no,
           reference_doc_type: 'bonus_face_sheet',
           reference_doc_id: bonus_face_sheet_id,
           order_item_id: item.order_item_id, // ✅ BRCGS: Link to order line
           remarks: `หยิบของแถมจาก ${balance.location_id} (balance_id: ${balance.balance_id})`,
           created_by: userId,
-          skip_balance_sync: true
+          skip_balance_sync: true  // ✅ Keep true because we manually update balance above
         });
 
         processedReservations.push(reservation.reservation_id);
@@ -338,6 +342,7 @@ export async function POST(request: NextRequest) {
 
     // บันทึก ledger: IN ไปยัง Dispatch
     // ✅ CRITICAL FIX: Include order_item_id for BRCGS traceability
+    // ✅ FIX: Include production_date and expiry_date for proper balance sync
     ledgerEntries.push({
       movement_at: now,
       transaction_type: 'pick',
@@ -347,13 +352,16 @@ export async function POST(request: NextRequest) {
       sku_id: item.sku_id,
       pack_qty: packQty,
       piece_qty: quantity_picked,
+      production_date: sourceProductionDate || null,  // ✅ FIX: Include for balance matching
+      expiry_date: sourceExpiryDate || null,          // ✅ FIX: Include for balance matching
+      lot_no: sourceLotNo || null,                    // ✅ FIX: Include for balance matching
       reference_no: (item.bonus_face_sheets as any).face_sheet_no,
       reference_doc_type: 'bonus_face_sheet',
       reference_doc_id: bonus_face_sheet_id,
       order_item_id: item.order_item_id, // ✅ BRCGS: Link to order line
       remarks: `ย้ายของแถมไป Dispatch`,
       created_by: userId,
-      skip_balance_sync: true
+      skip_balance_sync: true  // ✅ Keep true because we manually upsert balance above
     });
 
     // 10. บันทึก ledger entries

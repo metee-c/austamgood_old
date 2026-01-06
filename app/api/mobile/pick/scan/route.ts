@@ -209,6 +209,7 @@ export async function POST(request: NextRequest) {
 
       // บันทึก ledger: OUT จาก source_location
       // ✅ CRITICAL FIX: Include order_id and order_item_id for BRCGS traceability
+      // ✅ FIX: Include production_date and expiry_date for proper balance matching
       ledgerEntries.push({
         movement_at: now,
         transaction_type: 'pick',
@@ -218,6 +219,8 @@ export async function POST(request: NextRequest) {
         sku_id: item.sku_id,
         pack_qty: packToDeduct,
         piece_qty: qtyToDeduct,
+        production_date: balance.production_date || null,  // ✅ FIX: Include for balance matching
+        expiry_date: balance.expiry_date || null,          // ✅ FIX: Include for balance matching
         reference_no: item.picklists.picklist_code,
         reference_doc_type: 'picklist',
         reference_doc_id: picklist_id,
@@ -356,6 +359,7 @@ export async function POST(request: NextRequest) {
           .eq('balance_id', balance.balance_id);
 
         // ✅ CRITICAL FIX: Include order_id and order_item_id for BRCGS traceability
+        // ✅ FIX: Include production_date and expiry_date for proper balance matching
         ledgerEntries.push({
           movement_at: now,
           transaction_type: 'pick',
@@ -365,6 +369,8 @@ export async function POST(request: NextRequest) {
           sku_id: item.sku_id,
           pack_qty: packToDeduct,
           piece_qty: qtyToDeduct,
+          production_date: balance.production_date || null,  // ✅ FIX: Include for balance matching
+          expiry_date: balance.expiry_date || null,          // ✅ FIX: Include for balance matching
           reference_no: item.picklists.picklist_code,
           reference_doc_type: 'picklist',
           reference_doc_id: picklist_id,
@@ -429,6 +435,7 @@ export async function POST(request: NextRequest) {
 
     // บันทึก ledger: IN ไปยัง Dispatch
     // ✅ CRITICAL FIX: Include order_id and order_item_id for BRCGS traceability
+    // ✅ FIX: Include production_date and expiry_date for proper balance matching
     ledgerEntries.push({
       movement_at: now,
       transaction_type: 'pick',
@@ -438,6 +445,8 @@ export async function POST(request: NextRequest) {
       sku_id: item.sku_id,
       pack_qty: packQty,
       piece_qty: quantity_picked,
+      production_date: sourceProductionDate || null,  // ✅ FIX: Include for balance matching
+      expiry_date: sourceExpiryDate || null,          // ✅ FIX: Include for balance matching
       reference_no: item.picklists.picklist_code,
       reference_doc_type: 'picklist',
       reference_doc_id: picklist_id,

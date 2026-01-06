@@ -3,6 +3,18 @@
 import React from 'react';
 import Barcode from 'react-barcode';
 
+// Helper function: ดึงขนาด (กก.) จากชื่อสินค้า เช่น "Buzz Beyond แม่และลูกแมว | 7 กก." -> "7"
+const extractSizeFromProductName = (productName: string | null | undefined): string | null => {
+  if (!productName) return null;
+  
+  // Pattern: หาตัวเลขที่ตามด้วย "กก." หรือ "kg"
+  const match = productName.match(/(\d+(?:\.\d+)?)\s*(?:กก\.|kg)/i);
+  if (match) {
+    return match[1];
+  }
+  return null;
+};
+
 interface PackageDetails {
   id: number;
   package_number: number;

@@ -115,18 +115,29 @@ npm run build
 - `057_add_face_sheet_stock_reservation_trigger.sql` - Auto-reserve stock on face sheet creation
 - `070-077_face_sheet_*.sql` - Face sheet workflow improvements and fixes
 - `100-107_bonus_face_sheet_*.sql` - Bonus Face Sheet system (stock reservation, triggers, loadlist integration)
+- `168-172_production_*.sql` - Production receipt materials and material consumption tracking with traceability
+- `173_fix_auto_update_receive_status_on_transfer.sql` - Auto-update receive status when transferring stock
+- `174_cleanup_inventory_on_receive_delete.sql` - Clean up inventory balances and ledger when receive is deleted
+- `20260106100000_fix_face_sheet_7kg_remainder_logic.sql` - Fix 7kg face sheet remainder logic (individual 1-pack per piece)
 
 ## Environment Setup
 
 Create a `.env.local` file (use `.env.local.example` as template):
-```
+```env
+# Supabase Configuration
 NEXT_PUBLIC_SUPABASE_URL=your_supabase_project_url
 NEXT_PUBLIC_SUPABASE_ANON_KEY=your_supabase_anon_key
 SUPABASE_SERVICE_ROLE_KEY=your_supabase_service_role_key
+
+# Next.js Configuration
 NEXTAUTH_SECRET=your_nextauth_secret
 NEXTAUTH_URL=http://localhost:3000
-NEXT_PUBLIC_APP_URL=http://localhost:3000  # For internal API calls
-NEXT_PUBLIC_MAPBOX_TOKEN=your_mapbox_token  # Required for route planning/maps
+
+# App URL (for internal API calls)
+NEXT_PUBLIC_APP_URL=http://localhost:3000
+
+# Mapbox (required for route planning/maps)
+NEXT_PUBLIC_MAPBOX_TOKEN=your_mapbox_token
 ```
 
 **Note**: Mapbox token is required for route visualization features. Get one at https://mapbox.com
@@ -143,7 +154,7 @@ The application uses Next.js 15 App Router with the following main sections:
 - `/shipping` - Shipping operations
 - `/reports` - Reporting interface
 - `/production` - Production order management (forecast, planning, orders, material requisition, actual production)
-- `/mobile` - Mobile-optimized interfaces for warehouse operations (pick, loading, receive, transfer, face-sheet)
+- `/mobile` - Mobile-optimized interfaces for warehouse operations (pick, loading, receive, transfer, face-sheet, bonus-face-sheet, pick-up-pieces)
 - `/online-packing` - **NEW**: E-commerce order packing system (9 sub-pages)
 - `/stock-management` - Stock transfer, count, and adjustment
 
@@ -191,11 +202,23 @@ Manufacturing and production management operations:
 - `/production/material-requisition` - Material requisition and issues for production
 - `/production/actual` - Actual production recording and reporting
 
-**Database Tables:** Production orders, BOM (Bill of Materials), material issues, production receipts
+**Database Tables:** Production orders, BOM (Bill of Materials), material issues, production receipts, production_receipt_materials
 **Type Definitions:** Production-related types in `types/`
 **Database Services:** `lib/database/production-orders.ts`, `lib/database/bom-sku.ts`, `lib/database/forecast.ts`, `lib/database/production-planning.ts`
 **Components:** `components/production/` (ProductionOrderForm, ProductionReceiptPrintDocument, etc.)
-**Key Features:** BOM management, material tracking, production receipts with printing
+**Key Features:**
+- BOM management with food materials support
+- Material consumption tracking with traceability
+- Auto-consume materials on production receipt
+- Production date, expiry date, lot tracking
+- Production receipts with printing
+- Finished goods date tracking (fg_production_date, fg_expiry_date)
+
+**Recent Enhancements (Dec 2025 - Jan 2026):**
+- Imported food materials and BOM data (migrations 163-165)
+- Added finished goods dates to production orders (migration 166-167)
+- Implemented material consumption tracking (migrations 168-172)
+- Material traceability from source balance → finished goods
 
 ### Face Sheet Stock Reservation System
 Complete stock reservation and movement system for express delivery face sheets:
@@ -301,6 +324,9 @@ API routes in `app/api/` follow REST patterns with standard HTTP methods:
 - `/api/mobile/face-sheet/*` - **NEW**: Mobile face sheet operations
   - `/api/mobile/face-sheet/scan` - Scan and confirm face sheet pick (POST)
   - `/api/mobile/face-sheet/tasks/[id]` - Get face sheet task details (GET)
+- `/api/mobile/bonus-face-sheet/*` - **NEW**: Mobile bonus face sheet operations
+  - `/api/mobile/bonus-face-sheet/scan` - Scan and confirm bonus face sheet pick (POST)
+  - `/api/mobile/bonus-face-sheet/tasks/[id]` - Get bonus face sheet task details (GET)
 - `/api/moves/*` - Inventory movement operations and status updates
 - `/api/preparation-areas/*` - Preparation area management with import/export
 - `/api/storage-strategies/*` - Storage strategy configuration
@@ -633,8 +659,10 @@ The project uses `@/*` as alias for root directory (configured in `tsconfig.json
 - Module resolution: bundler
 - `noEmit: true` - Type checking only, no JS output
 
-### Webpack Configuration
-Client-side webpack excludes `fs`, `net`, `tls` modules for browser compatibility.
+### Next.js 16 Configuration
+- **Turbopack**: Enabled by default in `next.config.js` for faster builds and hot module replacement
+- **React Strict Mode**: Enabled for better error detection during development
+- **Webpack Fallbacks**: Client-side webpack excludes `fs`, `net`, `tls` modules for browser compatibility
 
 ### Database Type Generation
 After schema changes in Supabase, regenerate types with:
@@ -801,6 +829,14 @@ The system includes recent migrations that add:
   - `trigger_reserve_stock_after_face_sheet_created` for auto-reservation
   - Balance update fixes and upsert functions (070-077)
   - Face sheet workflow triggers and status management
+- Production receipt materials system (migrations 168-172):
+  - Created `production_receipt_materials` table for material consumption tracking
+  - Auto-consume materials on production receipt with pallet info
+  - Added material dates (production_date, expiry_date, lot_no) to receipt materials
+  - Complete material traceability from source balance to finished goods
+- Inventory cleanup triggers (migrations 173-174):
+  - Auto-update receive status when transferring stock
+  - Clean up inventory balances and ledger when receive is deleted
 
 ## Common Gotchas & Troubleshooting
 
@@ -915,6 +951,21 @@ npm run db:generate-types
 - `docs-archive/workflow/WORKFLOW_IMPLEMENTATION_SUMMARY.md` - Complete workflow documentation
 - `docs-archive/workflow/WORKFLOW_STATUS_DESIGN.md` - Design specifications
 - `docs/fixes/WORKFLOW_FIX_SUMMARY.md` - Latest workflow fixes with test cases
+
+### 13. Inventory Balances Not Updating After Operations
+**Problem**: Inventory balances not reflecting after receiving, transfers, or production
+**Solution**: Check database triggers and cleanup operations:
+1. Verify ledger triggers are enabled (migrations 007-015)
+2. Check if cleanup trigger is working (migration 174)
+3. Verify receive status auto-update (migration 173)
+4. For production: Check material consumption triggers (migrations 169-172)
+5. Always check `wms_inventory_balances` and `wms_inventory_ledger` for discrepancies
+
+**Common Causes:**
+- Missing or disabled triggers
+- Error in trigger execution (check Supabase logs)
+- Deleted receives not cleaning up inventory (should be handled by migration 174)
+- Production receipts not consuming materials (should be handled by migrations 169-172)
 
 ## Performance Considerations
 

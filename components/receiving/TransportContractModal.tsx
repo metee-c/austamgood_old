@@ -95,11 +95,13 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
   const [currentUser, setCurrentUser] = useState<string>('');
   // State สำหรับเก็บ bonus orders (แมพ trip_id -> customer_id -> [order_no])
   const [bonusOrdersMap, setBonusOrdersMap] = useState<Record<number, Record<string, string[]>>>({});
+  // State สำหรับเก็บเลขเอกสารใบว่าจ้าง
+  const [contractNo, setContractNo] = useState<string>('');
 
   const printRef = useRef<HTMLDivElement>(null);
   const reactToPrintFn = useReactToPrint({
     contentRef: printRef,
-    documentTitle: `ใบว่าจ้างขนส่ง-${selectedSupplier?.supplier_name}-${selectedPlan?.plan_code}`,
+    documentTitle: `ใบว่าจ้างขนส่ง-${selectedSupplier?.supplier_name}-${contractNo || selectedPlan?.plan_code}`,
   });
 
   // ฟังก์ชันพิมพ์และเปลี่ยนสถานะ
@@ -398,8 +400,36 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
     }
   };
 
-  const handleSelectSupplier = (summary: SupplierSummary) => {
+  const handleSelectSupplier = async (summary: SupplierSummary) => {
     setSelectedSupplier(summary);
+    
+    // Get or create transport contract number
+    if (selectedPlan) {
+      try {
+        const grandTotal = summary.total_cost + (summary.total_porterage_fee || 0) + 
+                          (summary.total_other_fees || 0) + (summary.total_extra_delivery_stops_cost || 0);
+        
+        const response = await fetch('/api/transport-contracts', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            plan_id: selectedPlan.plan_id,
+            supplier_id: summary.supplier_id,
+            supplier_name: summary.supplier_name,
+            total_trips: summary.trip_count,
+            total_cost: grandTotal,
+            printed_by: currentUser
+          })
+        });
+        
+        const result = await response.json();
+        if (result.data?.contract_no) {
+          setContractNo(result.data.contract_no);
+        }
+      } catch (err) {
+        console.error('Error getting transport contract:', err);
+      }
+    }
   };
 
 
@@ -410,6 +440,7 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
       setSelectedPlan(null);
       setSupplierSummaries([]);
       setSelectedSupplier(null);
+      setContractNo('');
     }
   };
 
@@ -418,6 +449,7 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
     setSelectedPlan(null);
     setSupplierSummaries([]);
     setSelectedSupplier(null);
+    setContractNo('');
     setError(null);
     onClose();
   };
@@ -584,6 +616,7 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
                       supplier={selectedSupplier}
                       currentUser={currentUser}
                       bonusOrdersMap={bonusOrdersMap}
+                      contractNo={contractNo}
                     />
                   </div>
                 </div>
@@ -612,9 +645,10 @@ interface TransportContractDocumentProps {
   supplier: SupplierSummary;
   currentUser: string;
   bonusOrdersMap: Record<number, Record<string, string[]>>; // trip_id -> customer_id -> [bonus_order_no]
+  contractNo: string; // เลขเอกสารใบว่าจ้าง
 }
 
-const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ plan, supplier, currentUser, bonusOrdersMap }) => {
+const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ plan, supplier, currentUser, bonusOrdersMap, contractNo }) => {
   const contractDate = new Date().toLocaleDateString('th-TH', {
     year: 'numeric',
     month: 'long',
@@ -717,9 +751,9 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                     </div>
 
                     <div className="text-xs text-right leading-relaxed flex-shrink-0">
-                      <p className="text-gray-700 font-normal">เลขที่: {plan.plan_code}</p>
+                      <p className="text-gray-700 font-normal">เลขที่: {contractNo || '-'}</p>
                       <p className="text-gray-700 font-normal">พิมพ์วันที่: {contractDate}</p>
-                      <p className="text-gray-700 font-normal">แผนวันที่ส่ง: {plan.plan_name || plan.plan_code}</p>
+                      <p className="text-gray-700 font-normal">วันที่ส่ง: {plan.plan_name || new Date(plan.plan_date).toLocaleDateString('th-TH')}</p>
                       <p className="text-gray-700 font-normal">ผู้ออกเอกสาร: {currentUser}</p>
                     </div>
                   </div>
