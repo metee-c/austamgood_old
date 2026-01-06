@@ -237,22 +237,32 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
           summary.trips.push(trip);
           summary.trip_count++;
           summary.total_trips++;
-          summary.total_shipping_cost += trip.shipping_cost || 0;
-          summary.total_porterage_fee += trip.porterage_fee || 0;
           
-          // Calculate other fees
+          // ดึงค่าใช้จ่ายเพิ่มเติม
+          const porterageFee = Number(trip.porterage_fee) || 0;
+          let otherFeesTotal = 0;
+          let extraStopsCost = 0;
+          
           if (trip.other_fees && Array.isArray(trip.other_fees)) {
-            const otherFeesTotal = trip.other_fees.reduce((sum: number, fee: any) => sum + (fee.amount || 0), 0);
-            summary.total_other_fees += otherFeesTotal;
+            otherFeesTotal = trip.other_fees.reduce((sum: number, fee: any) => sum + (Number(fee.amount) || 0), 0);
           }
           
-          // Calculate extra delivery stops cost
           if (trip.extra_delivery_stops && Array.isArray(trip.extra_delivery_stops)) {
-            const extraStopsCost = trip.extra_delivery_stops.reduce((sum: number, stop: any) => sum + (stop.cost || 0), 0);
-            summary.total_extra_delivery_stops_cost += extraStopsCost;
+            extraStopsCost = trip.extra_delivery_stops.reduce((sum: number, stop: any) => sum + (Number(stop.cost) || 0), 0);
           }
           
-          summary.total_cost = summary.total_shipping_cost + summary.total_porterage_fee + summary.total_other_fees + summary.total_extra_delivery_stops_cost;
+          // เก็บค่าแยกรายการเพื่อแสดงใน UI
+          summary.total_porterage_fee += porterageFee;
+          summary.total_other_fees += otherFeesTotal;
+          summary.total_extra_delivery_stops_cost += extraStopsCost;
+          
+          // ⚠️ IMPORTANT: shipping_cost ใน database รวมค่าเพิ่มเติมทั้งหมดแล้ว
+          // ดังนั้น total_cost = shipping_cost โดยตรง ไม่ต้องบวกเพิ่ม
+          summary.total_cost += Number(trip.shipping_cost) || 0;
+          
+          // คำนวณ total_shipping_cost = shipping_cost - ค่าเพิ่มเติมทั้งหมด (เพื่อแสดงค่าขนส่งพื้นฐานแยก)
+          const baseShippingCost = (Number(trip.shipping_cost) || 0) - porterageFee - otherFeesTotal - extraStopsCost;
+          summary.total_shipping_cost += Math.max(0, baseShippingCost);
         }
         
         setSupplierSummaries(Array.from(supplierMap.values()));
@@ -365,6 +375,7 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
               supplier_code: supplier?.supplier_code || '',
               trip_count: 0,
               total_cost: 0,
+              total_shipping_cost: 0,
               total_porterage_fee: 0,
               total_other_fees: 0,
               total_extra_delivery_stops_cost: 0,
@@ -373,19 +384,31 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
           }
           
           // Calculate other fees total for this trip
+          // ✅ FIX: แปลงเป็น number เพราะ database อาจส่งมาเป็น string
           const otherFees: Array<{ label: string; amount: number }> = (trip as any).other_fees || [];
-          const otherFeesTotal = otherFees.reduce((sum, fee) => sum + (fee.amount || 0), 0);
-          const porterageFee = (trip as any).porterage_fee || 0;
+          const otherFeesTotal = otherFees.reduce((sum, fee) => sum + (Number(fee.amount) || 0), 0);
+          const porterageFee = Number((trip as any).porterage_fee) || 0;
           
           // Calculate extra delivery stops cost
           const extraDeliveryStops: Array<{ name: string; description: string; cost: number }> = (trip as any).extra_delivery_stops || [];
-          const extraDeliveryStopsCost = extraDeliveryStops.reduce((sum, stop) => sum + (stop.cost || 0), 0);
+          const extraDeliveryStopsCost = extraDeliveryStops.reduce((sum, stop) => sum + (Number(stop.cost) || 0), 0);
           
           acc[trip.supplier_id].trip_count++;
-          acc[trip.supplier_id].total_cost += Number(trip.shipping_cost || 0);
+          
+          // ⚠️ IMPORTANT: shipping_cost ใน database รวมค่าเพิ่มเติมทั้งหมดแล้ว (porterage_fee, other_fees, extra_delivery_stops)
+          // ดังนั้น total_cost = shipping_cost โดยตรง ไม่ต้องบวกเพิ่ม
+          // ค่าแยกรายการ (total_porterage_fee, total_other_fees, etc.) เก็บไว้เพื่อแสดงใน UI เท่านั้น
+          acc[trip.supplier_id].total_cost += Number(trip.shipping_cost) || 0;
+          
+          // เก็บค่าแยกรายการเพื่อแสดงใน UI (ไม่ใช้ในการคำนวณ total_cost)
           acc[trip.supplier_id].total_porterage_fee += porterageFee;
           acc[trip.supplier_id].total_other_fees += otherFeesTotal;
           acc[trip.supplier_id].total_extra_delivery_stops_cost += extraDeliveryStopsCost;
+          
+          // คำนวณ total_shipping_cost = shipping_cost - ค่าเพิ่มเติมทั้งหมด (เพื่อแสดงค่าขนส่งพื้นฐานแยก)
+          const baseShippingCost = (Number(trip.shipping_cost) || 0) - porterageFee - otherFeesTotal - extraDeliveryStopsCost;
+          acc[trip.supplier_id].total_shipping_cost += Math.max(0, baseShippingCost);
+          
           acc[trip.supplier_id].trips.push(trip);
           
           return acc;
@@ -670,14 +693,21 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
 
             const totalStops = trip.stops?.length || 0;
             
-            // ดึงค่าใช้จ่ายอื่นๆ
-            const porterageFee = (trip as any).porterage_fee || 0;
+            // ✅ FIX: แปลงเป็น number เพราะ database อาจส่งมาเป็น string
+            const porterageFee = Number((trip as any).porterage_fee) || 0;
             const otherFees: Array<{ label: string; amount: number }> = (trip as any).other_fees || [];
-            const otherFeesTotal = otherFees.reduce((sum, fee) => sum + (fee.amount || 0), 0);
+            const otherFeesTotal = otherFees.reduce((sum, fee) => sum + (Number(fee.amount) || 0), 0);
             const extraDeliveryStops: Array<{ name: string; description: string; cost: number }> = (trip as any).extra_delivery_stops || [];
-            const extraDeliveryStopsCost = extraDeliveryStops.reduce((sum, stop) => sum + (stop.cost || 0), 0);
+            const extraDeliveryStopsCost = extraDeliveryStops.reduce((sum, stop) => sum + (Number(stop.cost) || 0), 0);
+            
+            // ⚠️ IMPORTANT: shipping_cost ใน database รวมค่าเพิ่มเติมทั้งหมดแล้ว (porterage_fee, other_fees, extra_delivery_stops)
+            // ดังนั้น tripGrandTotal = shippingCost โดยตรง ไม่ต้องบวกเพิ่ม
+            const shippingCost = Number(trip.shipping_cost) || 0;
             const hasExtraFees = porterageFee > 0 || otherFees.length > 0 || extraDeliveryStops.length > 0;
-            const tripGrandTotal = (trip.shipping_cost || 0) + porterageFee + otherFeesTotal + extraDeliveryStopsCost;
+            const tripGrandTotal = shippingCost; // shipping_cost รวมทุกอย่างแล้ว
+            
+            // คำนวณค่าขนส่งพื้นฐาน (ไม่รวมค่าเพิ่มเติม) เพื่อแสดงแยก
+            const baseShippingCost = Math.max(0, shippingCost - porterageFee - otherFeesTotal - extraDeliveryStopsCost);
             
             // ใช้ daily_trip_number ถ้ามี ไม่งั้นใช้ tripIndex + 1
             const displayTripNumber = trip.daily_trip_number || (tripIndex + 1);
@@ -694,7 +724,7 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                   <div className="text-right text-sm">
                     <div className="flex justify-between gap-4">
                       <span className="text-gray-600">ค่าขนส่ง:</span>
-                      <span className="font-semibold">{(trip.shipping_cost || 0).toLocaleString()} บาท</span>
+                      <span className="font-semibold">{baseShippingCost.toLocaleString()} บาท</span>
                     </div>
                     {porterageFee > 0 && (
                       <div className="flex justify-between gap-4 text-orange-700">
@@ -791,13 +821,20 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                 const orderRemarks = notes.order_remarks || {};
                 
                 // คำนวณค่าใช้จ่ายรวมของคันนี้
-                const porterageFee = (trip as any).porterage_fee || 0;
+                // ✅ FIX: แปลงเป็น number เพราะ database อาจส่งมาเป็น string
+                const porterageFee = Number((trip as any).porterage_fee) || 0;
                 const otherFees: Array<{ label: string; amount: number }> = (trip as any).other_fees || [];
-                const otherFeesTotal = otherFees.reduce((sum, fee) => sum + (fee.amount || 0), 0);
+                const otherFeesTotal = otherFees.reduce((sum, fee) => sum + (Number(fee.amount) || 0), 0);
                 const extraDeliveryStops: Array<{ name: string; description: string; cost: number }> = (trip as any).extra_delivery_stops || [];
-                const extraDeliveryStopsCost = extraDeliveryStops.reduce((sum, stop) => sum + (stop.cost || 0), 0);
-                const tripGrandTotal = (trip.shipping_cost || 0) + porterageFee + otherFeesTotal + extraDeliveryStopsCost;
+                const extraDeliveryStopsCost = extraDeliveryStops.reduce((sum, stop) => sum + (Number(stop.cost) || 0), 0);
+                
+                // ⚠️ IMPORTANT: shipping_cost ใน database รวมค่าเพิ่มเติมทั้งหมดแล้ว
+                const shippingCost = Number(trip.shipping_cost) || 0;
+                const tripGrandTotal = shippingCost; // shipping_cost รวมทุกอย่างแล้ว ไม่ต้องบวกเพิ่ม
                 const hasExtraFees = porterageFee > 0 || otherFees.length > 0 || extraDeliveryStops.length > 0;
+                
+                // คำนวณค่าขนส่งพื้นฐาน (ไม่รวมค่าเพิ่มเติม) เพื่อแสดงแยก
+                const baseShippingCost = Math.max(0, shippingCost - porterageFee - otherFeesTotal - extraDeliveryStopsCost);
                 
                 // ใช้ daily_trip_number ถ้ามี ไม่งั้นใช้ tripIndex + 1
                 const displayTripNumber = trip.daily_trip_number || (tripIndex + 1);
@@ -816,7 +853,7 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                           </div>
                           <div className="text-right text-xs">
                             <div className="flex justify-end gap-3">
-                              <span>ค่าขนส่ง: <span className="font-semibold">{(trip.shipping_cost || 0).toLocaleString()}</span></span>
+                              <span>ค่าขนส่ง: <span className="font-semibold">{baseShippingCost.toLocaleString()}</span></span>
                               {porterageFee > 0 && (
                                 <span className="text-orange-700">ค่าแบก: <span className="font-semibold">{porterageFee.toLocaleString()}</span></span>
                               )}
@@ -1190,14 +1227,16 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
               const uniqueCustomerCount = uniqueCustomerIds.size || totalStops;
               
               const pricingMode = (trip as any).pricing_mode;
-              const basePrice = (trip as any).base_price || 0;
-              const helperFee = (trip as any).helper_fee || 0;
-              const extraStopFee = (trip as any).extra_stop_fee || 0;
-              const porterageFee = (trip as any).porterage_fee || 0;
+              // ✅ FIX: แปลงเป็น number เพราะ database อาจส่งมาเป็น string
+              const basePrice = Number((trip as any).base_price) || 0;
+              const helperFee = Number((trip as any).helper_fee) || 0;
+              const extraStopFee = Number((trip as any).extra_stop_fee) || 0;
+              const porterageFee = Number((trip as any).porterage_fee) || 0;
               const otherFees: Array<{ label: string; amount: number }> = (trip as any).other_fees || [];
-              const otherFeesTotal = otherFees.reduce((sum, fee) => sum + (fee.amount || 0), 0);
+              const otherFeesTotal = otherFees.reduce((sum, fee) => sum + (Number(fee.amount) || 0), 0);
               const extraDeliveryStopsPage2: Array<{ name: string; description: string; cost: number }> = (trip as any).extra_delivery_stops || [];
-              const extraDeliveryStopsCost = extraDeliveryStopsPage2.reduce((sum, stop) => sum + (stop.cost || 0), 0);
+              const extraDeliveryStopsCost = extraDeliveryStopsPage2.reduce((sum, stop) => sum + (Number(stop.cost) || 0), 0);
+              const shippingCost = Number(trip.shipping_cost) || 0;
               const extraStops = Math.max(0, uniqueCustomerCount - 1);
               const extraStopTotal = extraStops * extraStopFee;
               
@@ -1276,7 +1315,7 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                     ) : '-'}
                   </td>
                   <td className="border border-gray-300 px-2 py-3 text-right text-xs font-bold text-green-700">
-                    {((trip.shipping_cost || 0) + porterageFee + otherFeesTotal + extraDeliveryStopsCost).toLocaleString()} บาท
+                    {shippingCost.toLocaleString()} บาท
                   </td>
                 </tr>
               );
