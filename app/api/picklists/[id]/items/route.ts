@@ -38,7 +38,7 @@ export async function GET(
     const orderItemIds = [...new Set(items.map(i => i.order_item_id))];
 
     const [stopsResult, skusResult, locationsResult, orderItemsResult] = await Promise.all([
-      supabase.from('receiving_route_stops').select('stop_id, sequence_no, stop_name, address, customer_id').in('stop_id', stopIds),
+      supabase.from('receiving_route_stops').select('stop_id, sequence_no, stop_name, address, customer_id, order_id, tags').in('stop_id', stopIds),
       supabase.from('master_sku').select('sku_id, sku_name, uom_base, default_location').in('sku_id', skuIds),
       locationIds.length > 0
         ? supabase.from('master_location').select('location_id').in('location_id', locationIds)
@@ -64,7 +64,24 @@ export async function GET(
     const noPriceGoodsMap = new Map((noPriceGoodsResult.data || []).map((r: any) => [r.customer_id, r.note_for_picking]));
 
     const orderIds = [...new Set((orderItemsResult.data || []).map((oi: any) => oi.order_id))];
-    const ordersResult = await supabase.from('wms_orders').select('order_id, order_no').in('order_id', orderIds);
+    
+    // Also collect order IDs from stops (for shop_name lookup)
+    const stopOrderIds = [...new Set((stopsResult.data || [])
+      .filter((s: any) => s.order_id)
+      .map((s: any) => s.order_id))];
+    
+    // Collect order IDs from stop tags
+    (stopsResult.data || []).forEach((s: any) => {
+      if (s.tags?.order_ids && Array.isArray(s.tags.order_ids)) {
+        s.tags.order_ids.forEach((id: number) => stopOrderIds.push(id));
+      }
+    });
+    
+    // Combine all order IDs
+    const allOrderIds = [...new Set([...orderIds, ...stopOrderIds])];
+    
+    // Fetch orders with shop_name
+    const ordersResult = await supabase.from('wms_orders').select('order_id, order_no, shop_name').in('order_id', allOrderIds);
 
     // Get unique default_location values from SKUs to fetch preparation area names
     const defaultLocationIds = [...new Set((skusResult.data || [])
@@ -98,6 +115,28 @@ export async function GET(
       const order = orderItem ? orderMap.get(orderItem.order_id) : null;
 
       const orderNo = order?.order_no || '-';
+      
+      // Get shop_name from order - prioritize shop_name over stop_name
+      // First try to get from the order associated with this item
+      let customerName = order?.shop_name || null;
+      
+      // If not found, try to get from the stop's primary order
+      if (!customerName && stop?.order_id) {
+        const stopOrder = orderMap.get(stop.order_id);
+        customerName = stopOrder?.shop_name || null;
+      }
+      
+      // If still not found, try to get from the first order in stop's tags
+      if (!customerName && stop?.tags?.order_ids && Array.isArray(stop.tags.order_ids) && stop.tags.order_ids.length > 0) {
+        const firstOrderId = stop.tags.order_ids[0];
+        const firstOrder = orderMap.get(firstOrderId);
+        customerName = firstOrder?.shop_name || null;
+      }
+      
+      // Fallback to stop_name if no shop_name found
+      if (!customerName) {
+        customerName = stop?.stop_name || '-';
+      }
       
       console.log(`Processing item: stop=${item.stop_id}, sku=${item.sku_id}, order=${orderNo}, qty=${item.quantity_to_pick}`);
 
@@ -133,7 +172,7 @@ export async function GET(
           stop: {
             stop_id: item.stop_id,
             stop_sequence: stop?.sequence_no || 0,
-            customer_name: stop?.stop_name || '-',
+            customer_name: customerName,
             customer_address: stop?.address || '-'
           }
         });

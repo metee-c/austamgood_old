@@ -142,7 +142,7 @@ export default function ExcelStyleRouteEditor({
             orderId: order.order_id,
             orderNo: order.order_no || '-',
             customerId: order.customer_id || '',
-            customerName: order.customer_name || order.shop_name || stop.stop_name || '-',
+            customerName: order.shop_name || order.customer_name || stop.stop_name || '-',
             province: order.province || null,
             weightKg: Number(order.allocated_weight_kg || order.total_order_weight_kg || 0),
             totalQty: order.total_qty || 0,

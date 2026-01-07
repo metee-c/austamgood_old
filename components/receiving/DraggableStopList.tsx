@@ -24,6 +24,7 @@ interface StopOrderDetail {
   order_id: number | null;
   order_no?: string | null;
   customer_name?: string | null;
+  shop_name?: string | null;
   allocated_weight_kg?: number | null;
   total_order_weight_kg?: number | null;
 }
@@ -116,7 +117,7 @@ function SortableStopRow({ stop, isSelected, selectedOrderId, onSelectStop }: So
           ? weightSource.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
           : '-';
 
-        const customerDisplay = order.customer_name || stop.stop_name || '-';
+        const customerDisplay = order.shop_name || order.customer_name || stop.stop_name || '-';
         const addressDisplay = stop.address || '-';
         const serviceDurationDisplay = (stop.service_duration_minutes ?? '-') || '-';
         const notesDisplay = stop.notes || '-';

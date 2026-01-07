@@ -20,8 +20,12 @@ import {
   Trash2,
   CheckSquare,
   Square,
-  X
+  X,
+  Filter,
+  Download,
+  RefreshCw
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
 import Table from '@/components/ui/Table';
@@ -86,12 +90,50 @@ const OrdersPage = () => {
   const [bulkDeliveryDate, setBulkDeliveryDate] = useState('');
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
 
+  // Advanced filter panel state
+  const [showFilters, setShowFilters] = useState(false);
+  
+  // Advanced filters
+  interface AdvancedFilters {
+    customer_id?: string;
+    shop_name?: string;
+    province?: string;
+    plan_code?: string;
+    sales_territory?: string;
+    delivery_type?: string;
+    product_name?: string;
+  }
+  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>({});
+  const [tempAdvancedFilters, setTempAdvancedFilters] = useState<AdvancedFilters>({});
+
+  // Options for filter dropdowns
+  const [provinceOptions, setProvinceOptions] = useState<string[]>([]);
+  const [salesTerritoryOptions, setSalesTerritoryOptions] = useState<string[]>([]);
+
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
     // Clear selection when filters change
     setSelectedOrderIds(new Set());
-  }, [searchTerm, selectedType, selectedLocationFilter, selectedStatus, startDate, endDate]);
+  }, [searchTerm, selectedType, selectedLocationFilter, selectedStatus, startDate, endDate, advancedFilters]);
+
+  // Apply advanced filters
+  const applyFilters = () => {
+    setAdvancedFilters(tempAdvancedFilters);
+    setShowFilters(false);
+  };
+
+  // Reset all filters
+  const resetAllFilters = () => {
+    setTempAdvancedFilters({});
+    setAdvancedFilters({});
+    setSearchTerm('');
+    setSelectedType('all');
+    setSelectedLocationFilter('all');
+    setSelectedStatus('all');
+    setStartDate('');
+    setEndDate('');
+  };
 
   // Fetcher function for SWR
   const fetcher = async (url: string) => {
@@ -171,6 +213,19 @@ const OrdersPage = () => {
   }, [orders, queryParams, selectedType, selectedStatus, selectedLocationFilter, startDate, endDate, searchTerm]);
   const dashboardLoading = !dashboardData && !dashboardError;
 
+  // Fetch filter options from orders data
+  useEffect(() => {
+    if (orders && orders.length > 0) {
+      // Extract unique provinces
+      const provinces = [...new Set(orders.map((o: any) => o.province).filter(Boolean))].sort();
+      setProvinceOptions(provinces as string[]);
+      
+      // Extract unique sales territories
+      const territories = [...new Set(orders.map((o: any) => o.sales_territory).filter(Boolean))].sort();
+      setSalesTerritoryOptions(territories as string[]);
+    }
+  }, [orders]);
+
   // Fetch warehouse data
   useEffect(() => {
     const fetchWarehouse = async () => {
@@ -220,21 +275,39 @@ const OrdersPage = () => {
     total_value: 0
   };
 
-  // Filter orders by location
+  // Filter orders by location and advanced filters
   const locationFilteredOrders = useMemo(() => {
     if (!orders) return [];
-    if (selectedLocationFilter === 'all') return orders;
-
+    
     return orders.filter((order: any) => {
-      const hasLocation = order.customer?.latitude && order.customer?.longitude;
-      if (selectedLocationFilter === 'has_location') {
-        return hasLocation;
-      } else if (selectedLocationFilter === 'no_location') {
-        return !hasLocation;
+      // Location filter
+      if (selectedLocationFilter !== 'all') {
+        const hasLocation = order.customer?.latitude && order.customer?.longitude;
+        if (selectedLocationFilter === 'has_location' && !hasLocation) return false;
+        if (selectedLocationFilter === 'no_location' && hasLocation) return false;
       }
+
+      // Advanced filters
+      if (advancedFilters.customer_id && !order.customer_id?.toLowerCase().includes(advancedFilters.customer_id.toLowerCase())) return false;
+      if (advancedFilters.shop_name && !order.shop_name?.toLowerCase().includes(advancedFilters.shop_name.toLowerCase())) return false;
+      if (advancedFilters.province && order.province !== advancedFilters.province) return false;
+      if (advancedFilters.plan_code && !order.plan_code?.toLowerCase().includes(advancedFilters.plan_code.toLowerCase())) return false;
+      if (advancedFilters.sales_territory && order.sales_territory !== advancedFilters.sales_territory) return false;
+      if (advancedFilters.delivery_type && order.delivery_type !== advancedFilters.delivery_type) return false;
+      
+      // Product name filter - search in order items
+      if (advancedFilters.product_name) {
+        const searchTerm = advancedFilters.product_name.toLowerCase();
+        const hasMatchingProduct = order.items?.some((item: any) => 
+          item.sku_name?.toLowerCase().includes(searchTerm) ||
+          item.sku_id?.toLowerCase().includes(searchTerm)
+        );
+        if (!hasMatchingProduct) return false;
+      }
+
       return true;
     });
-  }, [orders, selectedLocationFilter]);
+  }, [orders, selectedLocationFilter, advancedFilters]);
 
   // Sort orders
   const sortedOrders = useMemo(() => {
@@ -657,6 +730,96 @@ const OrdersPage = () => {
     }
   };
 
+  // Export to Excel function
+  const handleExportExcel = () => {
+    if (!sortedOrders || sortedOrders.length === 0) {
+      alert('ไม่มีข้อมูลสำหรับส่งออก');
+      return;
+    }
+
+    // Prepare data for export - flatten orders with items
+    const exportData: any[] = [];
+    
+    sortedOrders.forEach((order: any) => {
+      if (order.items && order.items.length > 0) {
+        // Export each item as a separate row
+        order.items.forEach((item: any, index: number) => {
+          exportData.push({
+            'เลขที่ออเดอร์': order.order_no,
+            'ประเภท': getTypeText(order.order_type),
+            'สถานะ': getStatusText(order.status),
+            'รหัสลูกค้า': order.customer_id || '-',
+            'ชื่อลูกค้า': order.customer_name || '-',
+            'ชื่อร้าน': order.shop_name || '-',
+            'จังหวัด': order.province || '-',
+            'วันที่สั่ง': formatDate(order.order_date),
+            'วันที่แผนส่ง': formatDate(order.delivery_date),
+            'รหัสแผน': order.plan_code || '-',
+            'รหัสทริป': order.trip_code || '-',
+            'ลำดับจุดส่ง': order.trip_sequence || '-',
+            'รหัส SKU': item.sku_id || '-',
+            'ชื่อสินค้า': item.sku_name || '-',
+            'จำนวน': item.order_qty || 0,
+            'น้ำหนัก (กก.)': item.order_weight || 0,
+          });
+        });
+      } else {
+        // Export order without items
+        exportData.push({
+          'เลขที่ออเดอร์': order.order_no,
+          'ประเภท': getTypeText(order.order_type),
+          'สถานะ': getStatusText(order.status),
+          'รหัสลูกค้า': order.customer_id || '-',
+          'ชื่อลูกค้า': order.customer_name || '-',
+          'ชื่อร้าน': order.shop_name || '-',
+          'จังหวัด': order.province || '-',
+          'วันที่สั่ง': formatDate(order.order_date),
+          'วันที่แผนส่ง': formatDate(order.delivery_date),
+          'รหัสแผน': order.plan_code || '-',
+          'รหัสทริป': order.trip_code || '-',
+          'ลำดับจุดส่ง': order.trip_sequence || '-',
+          'รหัส SKU': '-',
+          'ชื่อสินค้า': '-',
+          'จำนวน': 0,
+          'น้ำหนัก (กก.)': 0,
+        });
+      }
+    });
+
+    // Create workbook and worksheet
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Orders');
+
+    // Auto-size columns
+    const colWidths = [
+      { wch: 15 }, // เลขที่ออเดอร์
+      { wch: 12 }, // ประเภท
+      { wch: 12 }, // สถานะ
+      { wch: 15 }, // รหัสลูกค้า
+      { wch: 25 }, // ชื่อลูกค้า
+      { wch: 25 }, // ชื่อร้าน
+      { wch: 15 }, // จังหวัด
+      { wch: 12 }, // วันที่สั่ง
+      { wch: 12 }, // วันที่แผนส่ง
+      { wch: 15 }, // รหัสแผน
+      { wch: 15 }, // รหัสทริป
+      { wch: 10 }, // ลำดับจุดส่ง
+      { wch: 20 }, // รหัส SKU
+      { wch: 30 }, // ชื่อสินค้า
+      { wch: 10 }, // จำนวน
+      { wch: 12 }, // น้ำหนัก
+    ];
+    ws['!cols'] = colWidths;
+
+    // Generate filename with date
+    const today = new Date().toISOString().split('T')[0];
+    const filename = `orders_export_${today}.xlsx`;
+
+    // Download file
+    XLSX.writeFile(wb, filename);
+  };
+
   // Check if all orders on current page are selected
   const isAllCurrentPageSelected = useMemo(() => {
     if (!sortedOrders || sortedOrders.length === 0) return false;
@@ -699,51 +862,233 @@ const OrdersPage = () => {
 
   return (
     <PageContainer>
-      {/* Header with Filters */}
-      <PageHeaderWithFilters title="คำสั่งซื้อ / ใบสั่งจ่าย (Orders)">
-        <SearchInput
-          value={searchTerm}
-          onChange={setSearchTerm}
-          placeholder="ค้นหาเลขที่คำสั่งซื้อ, ลูกค้า..."
-        />
-        <FilterSelect
-          value={selectedType}
-          onChange={(v) => setSelectedType(v as OrderType | 'all')}
-          options={typeOptions}
-        />
-        <FilterSelect
-          value={selectedLocationFilter}
-          onChange={(v) => setSelectedLocationFilter(v as 'all' | 'has_location' | 'no_location')}
-          options={locationOptions}
-        />
-        <FilterSelect
-          value={selectedStatus}
-          onChange={(v) => setSelectedStatus(v as OrderStatus | 'all')}
-          options={statusOptions}
-        />
-        <input
-          type="date"
-          value={startDate}
-          onChange={(e) => setStartDate(e.target.value)}
-          className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50"
-        />
-        <span className="text-thai-gray-400 text-xs">-</span>
-        <input
-          type="date"
-          value={endDate}
-          onChange={(e) => setEndDate(e.target.value)}
-          className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50"
-        />
-        <Button
-          variant="primary"
-          size="sm"
-          icon={Plus}
-          onClick={() => setShowImportModal(true)}
-          className="text-xs py-1 px-2"
-        >
-          สร้างคำสั่งซื้อใหม่
-        </Button>
-      </PageHeaderWithFilters>
+      {/* Header + Filters Combined */}
+      <div className="bg-white/80 backdrop-blur-sm border-x-0 border-t-0 border-b border-white/20 rounded-none px-4 py-2 shadow-sm flex-shrink-0 mb-2 mb-4">
+        <div className="flex items-center gap-2 flex-wrap">
+          <h1 className="text-base font-bold text-thai-gray-900 font-thai whitespace-nowrap">คำสั่งซื้อ</h1>
+          <div className="flex-1 min-w-[300px] max-w-[500px] relative">
+            <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3.5 h-3.5 text-thai-gray-400" />
+            <input
+              type="text"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              placeholder="ค้นหา..."
+              className="w-full pl-7 pr-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50"
+            />
+          </div>
+          <select
+            value={selectedType}
+            onChange={(e) => setSelectedType(e.target.value as OrderType | 'all')}
+            className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50"
+          >
+            <option value="all">ทุกประเภท</option>
+            <option value="route_planning">จัดเส้นทาง</option>
+            <option value="express">ส่งรายชิ้น</option>
+            <option value="special">สินค้าพิเศษ</option>
+          </select>
+          <select
+            value={selectedLocationFilter}
+            onChange={(e) => setSelectedLocationFilter(e.target.value as 'all' | 'has_location' | 'no_location')}
+            className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50"
+          >
+            <option value="all">ทุกโลเคชั่น</option>
+            <option value="has_location">มีโลเคชั่น</option>
+            <option value="no_location">ไม่มีโลเคชั่น</option>
+          </select>
+          <select
+            value={selectedStatus}
+            onChange={(e) => setSelectedStatus(e.target.value as OrderStatus | 'all')}
+            className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50"
+          >
+            <option value="all">ทุกสถานะ</option>
+            <option value="draft">ร่าง</option>
+            <option value="confirmed">ยืนยันแล้ว</option>
+            <option value="in_picking">กำลังหยิบ</option>
+            <option value="picked">หยิบเสร็จ</option>
+            <option value="loaded">ขึ้นรถแล้ว</option>
+            <option value="in_transit">กำลังจัดส่ง</option>
+            <option value="delivered">ส่งถึงแล้ว</option>
+            <option value="cancelled">ยกเลิก</option>
+          </select>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary-500/50 w-[110px]"
+          />
+          <span className="text-thai-gray-400 text-xs">-</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary-500/50 w-[110px]"
+          />
+          <Button 
+            variant="outline" 
+            size="sm" 
+            icon={Filter} 
+            onClick={() => {
+              setTempAdvancedFilters(advancedFilters);
+              setShowFilters(!showFilters);
+            }}
+            className={`text-xs py-1 px-2 ${Object.keys(advancedFilters).some(k => advancedFilters[k as keyof typeof advancedFilters]) ? 'border-primary-500 text-primary-600' : ''}`}
+          >
+            ตัวกรอง
+            {Object.keys(advancedFilters).filter(k => advancedFilters[k as keyof typeof advancedFilters]).length > 0 && (
+              <span className="ml-1 px-1.5 py-0.5 bg-primary-500 text-white rounded-full text-[10px]">
+                {Object.keys(advancedFilters).filter(k => advancedFilters[k as keyof typeof advancedFilters]).length}
+              </span>
+            )}
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            icon={RefreshCw} 
+            onClick={() => refetch()} 
+            disabled={ordersLoading}
+            className="text-xs py-1 px-2"
+          >
+            รีเฟรช
+          </Button>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            icon={Download} 
+            onClick={handleExportExcel} 
+            disabled={!sortedOrders || sortedOrders.length === 0}
+            className="text-xs py-1 px-2"
+          >
+            ส่งออก Excel
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            icon={Plus}
+            onClick={() => setShowImportModal(true)}
+            className="text-xs py-1 px-2"
+          >
+            สร้างใหม่
+          </Button>
+        </div>
+      </div>
+
+      {/* Advanced Filter Panel */}
+      {showFilters && (
+        <div className="bg-white border border-gray-200 rounded-lg p-3 shadow-sm mb-2">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-thai-gray-900 font-thai">ตัวกรองขั้นสูง</h3>
+            <button
+              onClick={() => setShowFilters(false)}
+              className="p-1 hover:bg-gray-100 rounded"
+            >
+              <X className="w-4 h-4 text-gray-500" />
+            </button>
+          </div>
+          <div className="grid grid-cols-6 gap-3">
+            {/* Customer ID */}
+            <div>
+              <label className="block text-xs font-medium text-thai-gray-700 mb-1 font-thai">รหัสลูกค้า</label>
+              <input
+                type="text"
+                value={tempAdvancedFilters.customer_id || ''}
+                onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, customer_id: e.target.value || undefined }))}
+                placeholder="ค้นหารหัส..."
+                className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
+              />
+            </div>
+
+            {/* Shop Name */}
+            <div>
+              <label className="block text-xs font-medium text-thai-gray-700 mb-1 font-thai">ชื่อลูกค้า</label>
+              <input
+                type="text"
+                value={tempAdvancedFilters.shop_name || ''}
+                onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, shop_name: e.target.value || undefined }))}
+                placeholder="ค้นหาชื่อ..."
+                className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
+              />
+            </div>
+
+            {/* Province */}
+            <div>
+              <label className="block text-xs font-medium text-thai-gray-700 mb-1 font-thai">จังหวัด</label>
+              <select
+                value={tempAdvancedFilters.province || ''}
+                onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, province: e.target.value || undefined }))}
+                className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
+              >
+                <option value="">ทั้งหมด</option>
+                {provinceOptions.map(p => (
+                  <option key={p} value={p}>{p}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Plan Code */}
+            <div>
+              <label className="block text-xs font-medium text-thai-gray-700 mb-1 font-thai">รหัสแผนส่ง</label>
+              <input
+                type="text"
+                value={tempAdvancedFilters.plan_code || ''}
+                onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, plan_code: e.target.value || undefined }))}
+                placeholder="ค้นหาแผน..."
+                className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
+              />
+            </div>
+
+            {/* Sales Territory */}
+            <div>
+              <label className="block text-xs font-medium text-thai-gray-700 mb-1 font-thai">เขตการขาย</label>
+              <select
+                value={tempAdvancedFilters.sales_territory || ''}
+                onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, sales_territory: e.target.value || undefined }))}
+                className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
+              >
+                <option value="">ทั้งหมด</option>
+                {salesTerritoryOptions.map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Delivery Type */}
+            <div>
+              <label className="block text-xs font-medium text-thai-gray-700 mb-1 font-thai">ประเภทจัดส่ง</label>
+              <select
+                value={tempAdvancedFilters.delivery_type || ''}
+                onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, delivery_type: e.target.value || undefined }))}
+                className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
+              >
+                <option value="">ทั้งหมด</option>
+                <option value="delivery">จัดส่ง</option>
+                <option value="pickup">รับเอง</option>
+              </select>
+            </div>
+
+            {/* Product Name */}
+            <div>
+              <label className="block text-xs font-medium text-thai-gray-700 mb-1 font-thai">ชื่อสินค้า / รหัส SKU</label>
+              <input
+                type="text"
+                value={tempAdvancedFilters.product_name || ''}
+                onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, product_name: e.target.value || undefined }))}
+                placeholder="ค้นหาชื่อสินค้า..."
+                className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
+              />
+            </div>
+
+            {/* Buttons */}
+            <div className="col-span-6 flex items-end gap-2 justify-end">
+              <Button variant="primary" size="sm" onClick={applyFilters} className="text-xs">
+                ใช้ตัวกรอง
+              </Button>
+              <Button variant="outline" size="sm" onClick={resetAllFilters} className="text-xs">
+                ล้างตัวกรองทั้งหมด
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bulk Action Toolbar - แสดงเมื่อมีการเลือกออเดอร์ */}
       {selectedOrderIds.size > 0 && (
@@ -838,27 +1183,27 @@ const OrdersPage = () => {
                   </button>
                 </Table.Head>
                 <Table.Head>ดู</Table.Head>
-                <Table.Head onClick={() => handleSort('order_no')}>เลขที่คำสั่งซื้อ{getSortIcon('order_no')}</Table.Head>
-                <Table.Head width="180px" onClick={() => handleSort('order_type')}>ประเภทคำสั่งซื้อ{getSortIcon('order_type')}</Table.Head>
-                <Table.Head width="120px">สถานะ</Table.Head>
-                <Table.Head onClick={() => handleSort('customer')}>รหัสลูกค้า{getSortIcon('customer')}</Table.Head>
+                <Table.Head onClick={() => handleSort('order_no')}>เลขที่{getSortIcon('order_no')}</Table.Head>
+                <Table.Head width="100px" onClick={() => handleSort('order_type')}>ประเภท{getSortIcon('order_type')}</Table.Head>
+                <Table.Head width="80px">สถานะ</Table.Head>
+                <Table.Head onClick={() => handleSort('customer')}>รหัส{getSortIcon('customer')}</Table.Head>
                 <Table.Head>ชื่อลูกค้า</Table.Head>
                 <Table.Head>จังหวัด</Table.Head>
-                <Table.Head onClick={() => handleSort('order_date')}>วันที่สั่ง{getSortIcon('order_date')}</Table.Head>
-                <Table.Head onClick={() => handleSort('delivery_date')}>วันที่แผนส่ง{getSortIcon('delivery_date')}</Table.Head>
-                <Table.Head>เอกสารแผนส่ง</Table.Head>
-                <Table.Head>ที่อยู่จัดส่ง</Table.Head>
-                <Table.Head>คำแนะนำการจัดส่ง</Table.Head>
-                <Table.Head>จำนวนรายการ</Table.Head>
-                <Table.Head onClick={() => handleSort('total_qty')}>จำนวนรวม{getSortIcon('total_qty')}</Table.Head>
-                <Table.Head onClick={() => handleSort('total_weight')}>น้ำหนักรวม (กก.){getSortIcon('total_weight')}</Table.Head>
-                <Table.Head>ประเภทการจัดส่ง</Table.Head>
-                <Table.Head>เขตการขาย</Table.Head>
-                <Table.Head>ผู้สร้าง</Table.Head>
-                <Table.Head>ผู้แก้ไข</Table.Head>
-                <Table.Head onClick={() => handleSort('created_at')}>วันที่สร้าง{getSortIcon('created_at')}</Table.Head>
-                <Table.Head onClick={() => handleSort('updated_at')}>วันที่แก้ไข{getSortIcon('updated_at')}</Table.Head>
-                <Table.Head>การดำเนินการ</Table.Head>
+                <Table.Head onClick={() => handleSort('order_date')}>วันสั่ง{getSortIcon('order_date')}</Table.Head>
+                <Table.Head onClick={() => handleSort('delivery_date')}>แผนส่ง{getSortIcon('delivery_date')}</Table.Head>
+                <Table.Head>เอกสาร</Table.Head>
+                <Table.Head>ที่อยู่</Table.Head>
+                <Table.Head>หมายเหตุ</Table.Head>
+                <Table.Head>รายการ</Table.Head>
+                <Table.Head onClick={() => handleSort('total_qty')}>จำนวน{getSortIcon('total_qty')}</Table.Head>
+                <Table.Head onClick={() => handleSort('total_weight')}>น้ำหนัก{getSortIcon('total_weight')}</Table.Head>
+                <Table.Head>จัดส่ง</Table.Head>
+                <Table.Head>เขต</Table.Head>
+                <Table.Head>สร้าง</Table.Head>
+                <Table.Head>แก้ไข</Table.Head>
+                <Table.Head onClick={() => handleSort('created_at')}>วันสร้าง{getSortIcon('created_at')}</Table.Head>
+                <Table.Head onClick={() => handleSort('updated_at')}>วันแก้ไข{getSortIcon('updated_at')}</Table.Head>
+                <Table.Head>จัดการ</Table.Head>
               </tr>
             </Table.Header>
             <Table.Body>
@@ -904,19 +1249,19 @@ const OrdersPage = () => {
                           ? 'bg-red-100'
                           : ''
                       } ${selectedOrderIds.has(order.order_id.toString()) ? 'bg-blue-50' : ''}`}>
-                        <Table.Cell className="w-8">
+                        <Table.Cell className="w-6 !px-1">
                           <button
                             onClick={() => toggleSelectOrder(order.order_id.toString())}
-                            className="p-1 hover:bg-gray-100 rounded"
+                            className="p-0.5 hover:bg-gray-100 rounded"
                           >
                             {selectedOrderIds.has(order.order_id.toString()) ? (
-                              <CheckSquare className="w-4 h-4 text-blue-600" />
+                              <CheckSquare className="w-3.5 h-3.5 text-blue-600" />
                             ) : (
-                              <Square className="w-4 h-4 text-gray-400" />
+                              <Square className="w-3.5 h-3.5 text-gray-400" />
                             )}
                           </button>
                         </Table.Cell>
-                        <Table.Cell>
+                        <Table.Cell className="!px-1">
                           <button
                             onClick={() => toggleExpandOrder(order.order_id)}
                             className="text-thai-gray-500 hover:text-thai-gray-700 p-0.5"
@@ -929,50 +1274,28 @@ const OrdersPage = () => {
                           </button>
                         </Table.Cell>
                         <Table.Cell>
-                          <span className="font-mono text-blue-600 font-semibold">{order.order_no}</span>
+                          <span className="font-mono text-blue-600 font-medium text-[10px]">{order.order_no}</span>
                         </Table.Cell>
-                        <Table.Cell width="180px">
-                          <div className="relative">
-                            <select
-                              value={order.order_type || ''}
-                              onChange={(e) => handleTypeChange(order.order_id, e.target.value as OrderType)}
-                              className={`w-full px-2 py-1 border rounded text-xs font-thai appearance-none focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer ${
-                                order.order_type === 'route_planning' ? 'bg-blue-100 border-blue-300' :
-                                order.order_type === 'express' ? 'bg-orange-100 border-orange-300' :
-                                order.order_type === 'special' ? 'bg-purple-100 border-purple-300' :
-                                'border-gray-300'
-                              }`}
-                              style={{ color: 'transparent' }}
-                              onClick={(e) => e.stopPropagation()}
-                            >
-                              <option value="route_planning" className="text-gray-900">จัดเส้นทาง</option>
-                              <option value="express" className="text-gray-900">ส่งรายชิ้น</option>
-                              <option value="special" className="text-gray-900">สินค้าพิเศษ</option>
-                            </select>
-                            <div className="pointer-events-none absolute inset-y-0 left-0 right-6 flex items-center px-2">
-                              <span className={`text-xs font-thai font-semibold truncate ${
-                                order.order_type === 'route_planning' ? 'text-blue-700' :
-                                order.order_type === 'express' ? 'text-orange-700' :
-                                order.order_type === 'special' ? 'text-purple-700' :
-                                'text-gray-900'
-                              }`}>
-                                {getTypeText(order.order_type)}
-                              </span>
-                            </div>
-                            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2">
-                              <ChevronDown className={`w-3.5 h-3.5 ${
-                                order.order_type === 'route_planning' ? 'text-blue-600' :
-                                order.order_type === 'express' ? 'text-orange-600' :
-                                order.order_type === 'special' ? 'text-purple-600' :
-                                'text-gray-600'
-                              }`} />
-                            </div>
-                          </div>
+                        <Table.Cell width="100px">
+                          <select
+                            value={order.order_type || ''}
+                            onChange={(e) => handleTypeChange(order.order_id, e.target.value as OrderType)}
+                            className={`w-full px-1 py-0 border rounded text-[10px] font-thai appearance-none focus:outline-none cursor-pointer ${
+                              order.order_type === 'route_planning' ? 'bg-blue-50 border-blue-200 text-blue-700' :
+                              order.order_type === 'express' ? 'bg-orange-50 border-orange-200 text-orange-700' :
+                              order.order_type === 'special' ? 'bg-purple-50 border-purple-200 text-purple-700' :
+                              'border-gray-200 text-gray-700'
+                            }`}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <option value="route_planning">จัดเส้นทาง</option>
+                            <option value="express">ส่งรายชิ้น</option>
+                            <option value="special">สินค้าพิเศษ</option>
+                          </select>
                         </Table.Cell>
-                        <Table.Cell width="120px" className="min-w-[120px]">
-                          {/* สถานะ Order - แสดงเป็น Badge อย่างเดียว (ไม่ให้แก้ไข เพราะระบบจัดการอัตโนมัติ) */}
-                          <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-thai font-medium whitespace-nowrap ${
-                            order.status === 'draft' ? 'bg-gray-100 text-gray-700' :
+                        <Table.Cell width="80px">
+                          <span className={`inline-block px-1.5 py-0 rounded text-[10px] font-thai font-medium ${
+                            order.status === 'draft' ? 'bg-gray-100 text-gray-600' :
                             order.status === 'confirmed' ? 'bg-blue-100 text-blue-700' :
                             order.status === 'in_picking' ? 'bg-yellow-100 text-yellow-700' :
                             order.status === 'picked' ? 'bg-indigo-100 text-indigo-700' :
@@ -980,110 +1303,92 @@ const OrdersPage = () => {
                             order.status === 'in_transit' ? 'bg-cyan-100 text-cyan-700' :
                             order.status === 'delivered' ? 'bg-green-100 text-green-700' :
                             order.status === 'cancelled' ? 'bg-red-100 text-red-700' :
-                            'bg-gray-100 text-gray-700'
+                            'bg-gray-100 text-gray-600'
                           }`}>
                             {getStatusText(order.status) || '-'}
                           </span>
                         </Table.Cell>
                         <Table.Cell>
-                          <span className="font-mono text-gray-600">{order.customer_id}</span>
+                          <span className="font-mono text-gray-600 text-[10px]">{order.customer_id}</span>
                         </Table.Cell>
-                        <Table.Cell>{order.shop_name || '-'}</Table.Cell>
-                        <Table.Cell>{order.province || '-'}</Table.Cell>
+                        <Table.Cell><span className="text-[10px]">{order.shop_name || '-'}</span></Table.Cell>
+                        <Table.Cell><span className="text-[10px]">{order.province || '-'}</span></Table.Cell>
                         <Table.Cell>
-                          <span className="font-mono">{formatDate(order.order_date)}</span>
+                          <span className="font-mono text-[10px]">{formatDate(order.order_date)}</span>
                         </Table.Cell>
                         <Table.Cell>
                           <input
                             type="date"
                             value={order.delivery_date || ''}
                             onChange={(e) => handleRequiredDateChange(order.order_id, e.target.value)}
-                            className="px-2 py-1 border border-gray-300 rounded text-xs font-mono
-                                     focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
+                            className="px-1 py-0 border border-gray-200 rounded text-[10px] font-mono focus:outline-none cursor-pointer w-[90px]"
                             onClick={(e) => e.stopPropagation()}
                           />
                         </Table.Cell>
                         <Table.Cell>
                           {order.order_type === 'special' || order.order_type === 'express' ? (
-                            // แสดง loadlist_code สำหรับ special และ express
                             order.loadlist_code ? (
-                              <div className="text-xs">
-                                <div className="font-semibold text-green-600">{order.loadlist_code}</div>
-                              </div>
-                            ) : (
-                              <span className="text-gray-400 text-xs">-</span>
-                            )
+                              <span className="font-medium text-green-600 text-[10px]">{order.loadlist_code}</span>
+                            ) : <span className="text-gray-400 text-[10px]">-</span>
                           ) : (
-                            // แสดง plan_code สำหรับ route_planning
                             order.plan_code ? (
-                              <div className="text-xs space-y-0.5">
-                                <div className="font-semibold text-blue-600">{order.plan_code}</div>
-                                {order.trip_code && (
-                                  <div className="text-gray-600 font-medium">เที่ยวที่ {order.trip_sequence || '?'}</div>
-                                )}
-                              </div>
-                            ) : (
-                              <span className="text-gray-400 text-xs">-</span>
-                            )
+                              <span className="font-medium text-blue-600 text-[10px]">{order.plan_code}{order.trip_code ? ` T${order.trip_sequence || '?'}` : ''}</span>
+                            ) : <span className="text-gray-400 text-[10px]">-</span>
                           )}
                         </Table.Cell>
-                        <Table.Cell>{order.text_field_long_1 || '-'}</Table.Cell>
-                        <Table.Cell>{order.text_field_additional_4 || '-'}</Table.Cell>
+                        <Table.Cell><span className="text-[10px] truncate max-w-[100px] block">{order.text_field_long_1 || '-'}</span></Table.Cell>
+                        <Table.Cell><span className="text-[10px] truncate max-w-[80px] block">{order.text_field_additional_4 || '-'}</span></Table.Cell>
                         <Table.Cell className="text-center">
-                          <span className="font-mono">{order.items?.length || 0}</span>
+                          <span className="font-mono text-[10px]">{order.items?.length || 0}</span>
                         </Table.Cell>
                         <Table.Cell className="text-center">
-                          <span className="font-mono font-semibold text-gray-900">{order.total_qty || 0}</span>
+                          <span className="font-mono font-medium text-[10px]">{order.total_qty || 0}</span>
                         </Table.Cell>
                         <Table.Cell className="text-center">
-                          <span className="font-mono">{order.total_weight || 0}</span>
+                          <span className="font-mono text-[10px]">{order.total_weight || 0}</span>
                         </Table.Cell>
                         <Table.Cell>
-                          <span className="text-xs text-gray-700 font-thai">
+                          <span className="text-[10px]">
                             {order.delivery_type === 'pickup' ? 'รับเอง' : 
                              order.delivery_type === 'delivery' ? 'จัดส่ง' : 
                              order.delivery_type || '-'}
                           </span>
                         </Table.Cell>
                         <Table.Cell>
-                          <span className="text-xs text-gray-700 font-thai">{order.sales_territory || '-'}</span>
+                          <span className="text-[10px]">{order.sales_territory || '-'}</span>
                         </Table.Cell>
                         <Table.Cell>
-                          <span className="text-xs text-gray-700 font-thai">
+                          <span className="text-[10px]">
                             {(order as any).created_by_user?.full_name || 
                              (order as any).created_by_user?.username || 
-                             (order.created_by ? `User #${order.created_by}` : '-')}
+                             (order.created_by ? `#${order.created_by}` : '-')}
                           </span>
                         </Table.Cell>
                         <Table.Cell>
-                          <span className="text-xs text-gray-700 font-thai">
+                          <span className="text-[10px]">
                             {(order as any).updated_by_user?.full_name || 
                              (order as any).updated_by_user?.username || 
-                             (order.updated_by ? `User #${order.updated_by}` : '-')}
+                             (order.updated_by ? `#${order.updated_by}` : '-')}
                           </span>
                         </Table.Cell>
                         <Table.Cell>
-                          <span className="text-xs text-gray-600 font-thai">{formatDate(order.created_at)}</span>
+                          <span className="text-[10px] text-gray-500">{formatDate(order.created_at)}</span>
                         </Table.Cell>
                         <Table.Cell>
-                          <span className="text-xs text-gray-600 font-thai">{formatDate(order.updated_at)}</span>
+                          <span className="text-[10px] text-gray-500">{formatDate(order.updated_at)}</span>
                         </Table.Cell>
-                        <Table.Cell className="text-center">
-                          <div className="flex items-center justify-center space-x-1">
+                        <Table.Cell className="!px-1">
+                          <div className="flex items-center space-x-0.5">
                             <button
-                              className="p-1 text-gray-600 hover:bg-gray-100 rounded transition-colors"
+                              className="p-0.5 text-gray-500 hover:bg-gray-100 rounded"
                               title="แก้ไข"
                               onClick={() => openEditModal(order.order_id)}
                             >
-                              <Edit className="w-3.5 h-3.5" />
+                              <Edit className="w-3 h-3" />
                             </button>
                             <button
-                              className="p-1 text-gray-600 hover:bg-gray-100 rounded transition-colors"
-                              title={
-                                order.customer?.latitude && order.customer?.longitude
-                                  ? 'ที่อยู่จัดส่ง'
-                                  : 'เพิ่มพิกัดที่อยู่'
-                              }
+                              className="p-0.5 text-gray-500 hover:bg-gray-100 rounded"
+                              title={order.customer?.latitude && order.customer?.longitude ? 'ที่อยู่จัดส่ง' : 'เพิ่มพิกัด'}
                               onClick={() => {
                                 if (order.customer?.latitude && order.customer?.longitude) {
                                   openLocationModal(order);
@@ -1093,26 +1398,26 @@ const OrdersPage = () => {
                               }}
                             >
                               {order.customer?.latitude && order.customer?.longitude ? (
-                                <MapPin className="w-3.5 h-3.5" />
+                                <MapPin className="w-3 h-3" />
                               ) : (
-                                <MapPinOff className="w-3.5 h-3.5" />
+                                <MapPinOff className="w-3 h-3" />
                               )}
                             </button>
                             {order.status !== 'draft' && order.status !== 'cancelled' && (
                               <button
-                                className="p-1 text-orange-600 hover:bg-orange-50 rounded transition-colors"
-                                title="ถอยสถานะไปร่าง"
+                                className="p-0.5 text-orange-500 hover:bg-orange-50 rounded"
+                                title="ถอยสถานะ"
                                 onClick={() => openRollbackModal(order)}
                               >
-                                <RotateCcw className="w-3.5 h-3.5" />
+                                <RotateCcw className="w-3 h-3" />
                               </button>
                             )}
                             <button
-                              className="p-1 text-gray-600 hover:bg-gray-100 rounded transition-colors"
-                              title="ลบคำสั่งซื้อ"
+                              className="p-0.5 text-gray-500 hover:bg-gray-100 rounded"
+                              title="ลบ"
                               onClick={() => handleDelete(order.order_id, order.order_no)}
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Trash2 className="w-3 h-3" />
                             </button>
                           </div>
                         </Table.Cell>

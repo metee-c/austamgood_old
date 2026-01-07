@@ -99,22 +99,77 @@ export async function GET(
         }));
       }
 
-      // Fetch shop names from stops
+      // Fetch shop names from orders (prioritize shop_name over stop_name)
       const stopIds = [...new Set(picklist.picklist_items.map(item => item.stop_id).filter(Boolean))];
       if (stopIds.length > 0) {
         const { data: stops } = await supabase
           .from('receiving_route_stops')
-          .select('stop_id, stop_name, order_id')
+          .select('stop_id, stop_name, order_id, tags')
           .in('stop_id', stopIds);
 
+        // Collect all order IDs from stops
+        const orderIds = new Set<number>();
+        (stops || []).forEach(stop => {
+          if (stop.order_id) orderIds.add(stop.order_id);
+          if (stop.tags?.order_ids && Array.isArray(stop.tags.order_ids)) {
+            stop.tags.order_ids.forEach((id: number) => orderIds.add(id));
+          }
+        });
+
+        // Also collect order IDs from picklist items
+        picklist.picklist_items.forEach(item => {
+          if (item.order_id) orderIds.add(item.order_id);
+        });
+
+        // Fetch orders with shop_name
+        let orderMap = new Map<number, any>();
+        if (orderIds.size > 0) {
+          const { data: orders } = await supabase
+            .from('wms_orders')
+            .select('order_id, shop_name')
+            .in('order_id', Array.from(orderIds));
+          
+          orderMap = new Map((orders || []).map(o => [o.order_id, o]));
+        }
+
         const stopMap = new Map(
-          (stops || []).map(stop => [stop.stop_id, { stop_name: stop.stop_name, order_id: stop.order_id }])
+          (stops || []).map(stop => [stop.stop_id, { stop_name: stop.stop_name, order_id: stop.order_id, tags: stop.tags }])
         );
 
-        picklist.picklist_items = picklist.picklist_items.map(item => ({
-          ...item,
-          shop_name: item.stop_id ? stopMap.get(item.stop_id)?.stop_name : null
-        }));
+        picklist.picklist_items = picklist.picklist_items.map(item => {
+          const stop = item.stop_id ? stopMap.get(item.stop_id) : null;
+          
+          // Priority: 1. shop_name from item's order, 2. shop_name from stop's order, 3. stop_name
+          let shopName = null;
+          
+          // Try item's order first
+          if (item.order_id) {
+            const order = orderMap.get(item.order_id);
+            shopName = order?.shop_name || null;
+          }
+          
+          // Try stop's primary order
+          if (!shopName && stop?.order_id) {
+            const order = orderMap.get(stop.order_id);
+            shopName = order?.shop_name || null;
+          }
+          
+          // Try first order from stop's tags
+          if (!shopName && stop?.tags?.order_ids && Array.isArray(stop.tags.order_ids) && stop.tags.order_ids.length > 0) {
+            const order = orderMap.get(stop.tags.order_ids[0]);
+            shopName = order?.shop_name || null;
+          }
+          
+          // Fallback to stop_name
+          if (!shopName) {
+            shopName = stop?.stop_name || null;
+          }
+          
+          return {
+            ...item,
+            shop_name: shopName
+          };
+        });
       }
     }
 

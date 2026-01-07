@@ -624,6 +624,7 @@ const RoutesPage = () => {
     const [routePlans, setRoutePlans] = useState<RoutePlan[]>([]);
 
     const [draftOrders, setDraftOrders] = useState<DraftOrder[]>([]);
+    const [draftOrderFilter, setDraftOrderFilter] = useState('');
 
     const [selectedOrders, setSelectedOrders] = useState<Set<number>>(new Set());
 
@@ -997,10 +998,10 @@ const RoutesPage = () => {
     };
 
     const handleSelectAll = () => {
-        if (selectedOrders.size === draftOrders.length) {
+        if (selectedOrders.size === filteredDraftOrders.length) {
             setSelectedOrders(new Set());
         } else {
-            setSelectedOrders(new Set(draftOrders.map(order => order.order_id)));
+            setSelectedOrders(new Set(filteredDraftOrders.map(order => order.order_id)));
         }
     };
 
@@ -1177,7 +1178,7 @@ const RoutesPage = () => {
             const inputsPayload: any[] = selectedOrderData.map((order: DraftOrder) => ({
                 plan_id: createdPlan.plan_id,
                 order_id: order.order_id,
-                stop_name: order.customer?.customer_name || order.shop_name || order.customer_id,
+                stop_name: order.shop_name || order.customer?.customer_name || order.customer_id,
                 contact_phone: order.phone,
                 address: order.address || order.province,
                 latitude: order.customer?.latitude,
@@ -2188,6 +2189,33 @@ const RoutesPage = () => {
         };
     }, [routePlans, draftOrders, selectedOrders]);
 
+    // กรอง draftOrders ตามคำค้นหา (จังหวัด, ชื่อร้าน, เลขออเดอร์)
+    const filteredDraftOrders = useMemo(() => {
+        if (!draftOrderFilter.trim()) return draftOrders;
+        
+        const filterText = draftOrderFilter.trim().toLowerCase();
+        // รองรับการค้นหาหลายเลขออเดอร์คั่นด้วย comma
+        const orderNos = filterText.split(',').map(s => s.trim()).filter(Boolean);
+        
+        return draftOrders.filter(order => {
+            // ค้นหาเลขออเดอร์ (รองรับ comma-separated)
+            if (orderNos.length > 0) {
+                const orderNoMatch = orderNos.some(no => 
+                    order.order_no?.toLowerCase().includes(no)
+                );
+                if (orderNoMatch) return true;
+            }
+            
+            // ค้นหาจังหวัด
+            if (order.province?.toLowerCase().includes(filterText)) return true;
+            
+            // ค้นหาชื่อร้าน
+            if (order.shop_name?.toLowerCase().includes(filterText)) return true;
+            
+            return false;
+        });
+    }, [draftOrders, draftOrderFilter]);
+
     const previewWarehouse = useMemo(() => {
         if (!previewPlan) return null;
         const latCandidate = Number(
@@ -2870,15 +2898,28 @@ const RoutesPage = () => {
 
                     <div className="border-t pt-4">
                         <div className="flex justify-between items-center mb-4">
-                            <h3 className="font-medium text-gray-900">ออเดอร์รอจัดเส้นทาง ({draftOrders.length} รายการ)</h3>
+                            <h3 className="font-medium text-gray-900">ออเดอร์รอจัดเส้นทาง ({filteredDraftOrders.length} รายการ)</h3>
                             <Button variant="outline" size="sm" onClick={handleSelectAll}>
-                                {selectedOrders.size === draftOrders.length ? 'ยกเลิกเลือกทั้งหมด' : 'เลือกทั้งหมด'}
+                                {selectedOrders.size === filteredDraftOrders.length ? 'ยกเลิกเลือกทั้งหมด' : 'เลือกทั้งหมด'}
                             </Button>
                         </div>
 
+                        {/* ช่องกรองออเดอร์ */}
+                        <div className="mb-3">
+                            <input
+                                type="text"
+                                placeholder="ค้นหา จังหวัด, ชื่อร้าน หรือเลขออเดอร์ (คั่นด้วย , เช่น IV001,IV002)"
+                                value={draftOrderFilter}
+                                onChange={(e) => setDraftOrderFilter(e.target.value)}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            />
+                        </div>
+
                         <div className="max-h-96 overflow-y-auto border border-gray-200 rounded-lg">
-                            {draftOrders.length === 0 ? (
-                                <div className="p-8 text-center text-gray-500">ไม่มีออเดอร์รอจัดเส้นทาง</div>
+                            {filteredDraftOrders.length === 0 ? (
+                                <div className="p-8 text-center text-gray-500">
+                                    {draftOrderFilter ? 'ไม่พบออเดอร์ที่ตรงกับเงื่อนไข' : 'ไม่มีออเดอร์รอจัดเส้นทาง'}
+                                </div>
                             ) : (
                                 <table className="w-full text-sm">
                                     <thead className="bg-gray-50 sticky top-0">
@@ -2886,7 +2927,7 @@ const RoutesPage = () => {
                                             <th className="px-4 py-2 text-left">
                                                 <input
                                                     type="checkbox"
-                                                    checked={selectedOrders.size > 0 && selectedOrders.size === draftOrders.length}
+                                                    checked={selectedOrders.size > 0 && selectedOrders.size === filteredDraftOrders.length}
                                                     onChange={handleSelectAll}
                                                 />
                                             </th>
@@ -2897,7 +2938,7 @@ const RoutesPage = () => {
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-gray-200">
-                                        {draftOrders.map(order => (
+                                        {filteredDraftOrders.map(order => (
                                             <tr key={order.order_id} className="hover:bg-gray-50">
                                                 <td className="px-4 py-2">
                                                     <input

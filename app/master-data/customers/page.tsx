@@ -11,9 +11,6 @@ import {
   ChevronDown,
   AlertCircle,
   Users,
-  Phone,
-  Mail,
-  MapPin,
   AlertTriangle
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
@@ -165,16 +162,33 @@ const CustomersPage = () => {
   };
 
   const columns = [
-    { header: 'รหัสลูกค้า', accessor: 'customer_code', className: 'w-32' },
-    { header: 'ชื่อลูกค้า', accessor: 'customer_name', className: 'min-w-48' },
-    { header: 'ประเภท', accessor: 'customer_type', className: 'w-32' },
-    { header: 'ผู้ติดต่อ', accessor: 'contact_person', className: 'min-w-48' },
-    { header: 'เบอร์โทรศัพท์', accessor: 'phone', className: 'w-40' },
-    { header: 'อีเมล', accessor: 'email', className: 'min-w-48' },
-    { header: 'จังหวัด', accessor: 'province', className: 'w-32' },
-    { header: 'กลุ่มลูกค้า', accessor: 'customer_segment', className: 'w-40' },
-    { header: 'ช่องทาง', accessor: 'channel_source', className: 'w-32' },
-    { header: 'สถานะ', accessor: 'status', className: 'w-24' },
+    { header: 'รหัสลูกค้า', accessor: 'customer_code', className: 'w-24' },
+    { header: 'โค้ดลูกค้า', accessor: 'customer_id', className: 'w-20' },
+    { header: 'ชื่อลูกค้า', accessor: 'customer_name', className: 'w-40' },
+    { header: 'ประเภท', accessor: 'customer_type', className: 'w-24' },
+    { header: 'เลขที่ผู้เสียภาษี', accessor: 'tax_id', className: 'w-28' },
+    { header: 'เลขทะเบียนธุรกิจ', accessor: 'business_reg_no', className: 'w-32' },
+    { header: 'ผู้ติดต่อ', accessor: 'contact_person', className: 'w-28' },
+    { header: 'เบอร์โทรศัพท์', accessor: 'phone', className: 'w-28' },
+    { header: 'อีเมล', accessor: 'email', className: 'w-40' },
+    { header: 'Line ID', accessor: 'line_id', className: 'w-24' },
+    { header: 'เว็บไซต์', accessor: 'website', className: 'w-32' },
+    { header: 'ที่อยู่เรียกเก็บเงิน', accessor: 'billing_address', className: 'w-48' },
+    { header: 'ที่อยู่จัดส่ง', accessor: 'shipping_address', className: 'w-48' },
+    { header: 'ตำบล', accessor: 'subdistrict', className: 'w-24' },
+    { header: 'อำเภอ', accessor: 'district', className: 'w-24' },
+    { header: 'จังหวัด', accessor: 'province', className: 'w-24' },
+    { header: 'รหัสไปรษณีย์', accessor: 'postal_code', className: 'w-20' },
+    { header: 'Latitude', accessor: 'latitude', className: 'w-20' },
+    { header: 'Longitude', accessor: 'longitude', className: 'w-20' },
+    { header: 'คำแนะนำการส่ง', accessor: 'delivery_instructions', className: 'w-36' },
+    { header: 'เวลาส่งที่ต้องการ', accessor: 'preferred_delivery_time', className: 'w-32' },
+    { header: 'ช่องทาง', accessor: 'channel_source', className: 'w-24' },
+    { header: 'กลุ่มลูกค้า', accessor: 'customer_segment', className: 'w-24' },
+    { header: 'หน่วย Hub', accessor: 'hub_name', className: 'w-24' },
+    { header: 'หมายเหตุ', accessor: 'remarks', className: 'w-36' },
+    { header: 'สร้างโดย', accessor: 'created_by', className: 'w-24' },
+    { header: 'สถานะ', accessor: 'status', className: 'w-20' },
   ];
 
   const typeOptions = [
@@ -268,70 +282,111 @@ const CustomersPage = () => {
                 {sortedCustomers.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((customer) => (
                   <Table.Row key={customer.customer_id} className="hover:bg-thai-gray-25">
                     <Table.Cell>
-                      <div className="font-mono text-sm font-medium text-primary-600">
-                        {customer.customer_code}
-                      </div>
+                      <span className="font-mono text-xs">{customer.customer_code || '-'}</span>
                     </Table.Cell>
                     <Table.Cell>
-                      <div className="space-y-1">
-                        <div className="font-medium font-thai text-sm">
-                          {customer.customer_name}
-                        </div>
-                        {customer.tax_id && (
-                          <div className="text-xs text-thai-gray-500 font-mono">
-                            เลขที่ผู้เสียภาษี: {customer.tax_id}
-                          </div>
-                        )}
-                      </div>
+                      <span className="font-mono text-xs">{customer.customer_id || '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="font-thai text-xs">{customer.customer_name || '-'}</span>
                     </Table.Cell>
                     <Table.Cell>
                       <Badge variant={
                         customer.customer_type === 'retail' ? 'info' :
                         customer.customer_type === 'wholesale' ? 'success' :
                         customer.customer_type === 'distributor' ? 'warning' : 'default'
-                      }>
-                        {customer.customer_type === 'retail' && 'ลูกค้าปลีก'}
-                        {customer.customer_type === 'wholesale' && 'ลูกค้าส่ง'}
-                        {customer.customer_type === 'distributor' && 'ตัวแทนจำหน่าย'}
+                      } className="text-[9px] py-0 px-1">
+                        {customer.customer_type === 'retail' && 'ปลีก'}
+                        {customer.customer_type === 'wholesale' && 'ส่ง'}
+                        {customer.customer_type === 'distributor' && 'ตัวแทน'}
                         {customer.customer_type === 'other' && 'อื่นๆ'}
                       </Badge>
                     </Table.Cell>
                     <Table.Cell>
-                      <span className="text-sm font-thai">{customer.contact_person || '-'}</span>
+                      <span className="font-mono text-xs">{customer.tax_id || '-'}</span>
                     </Table.Cell>
                     <Table.Cell>
-                      <div className="flex items-center">
-                        <Phone className="w-4 h-4 mr-2 text-thai-gray-400" />
-                        <span className="text-sm">{customer.phone || '-'}</span>
-                      </div>
+                      <span className="font-mono text-xs">{customer.business_reg_no || '-'}</span>
                     </Table.Cell>
                     <Table.Cell>
-                      <div className="flex items-center">
-                        <Mail className="w-4 h-4 mr-2 text-thai-gray-400" />
-                        <span className="text-sm">{customer.email || '-'}</span>
-                      </div>
+                      <span className="font-thai text-xs">{customer.contact_person || '-'}</span>
                     </Table.Cell>
                     <Table.Cell>
-                      <div className="flex items-center">
-                        <MapPin className="w-4 h-4 mr-2 text-thai-gray-400" />
-                        <span className="text-sm font-thai">{customer.province || '-'}</span>
-                      </div>
+                      <span className="text-xs">{customer.phone || '-'}</span>
                     </Table.Cell>
                     <Table.Cell>
-                      <Badge variant="default">
-                        {customer.customer_segment || '-'}
-                      </Badge>
+                      <span className="text-xs truncate block max-w-[160px]" title={customer.email || '-'}>
+                        {customer.email || '-'}
+                      </span>
                     </Table.Cell>
                     <Table.Cell>
-                      <span className="text-sm font-thai">{customer.channel_source || '-'}</span>
+                      <span className="text-xs">{customer.line_id || '-'}</span>
                     </Table.Cell>
                     <Table.Cell>
-                      <Badge variant={customer.status === 'active' ? 'success' : 'default'}>
+                      <span className="text-xs truncate block max-w-[128px]" title={customer.website || '-'}>
+                        {customer.website || '-'}
+                      </span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="font-thai text-xs truncate block max-w-[192px]" title={customer.billing_address || '-'}>
+                        {customer.billing_address || '-'}
+                      </span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="font-thai text-xs truncate block max-w-[192px]" title={customer.shipping_address || '-'}>
+                        {customer.shipping_address || '-'}
+                      </span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="font-thai text-xs">{customer.subdistrict || '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="font-thai text-xs">{customer.district || '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="font-thai text-xs">{customer.province || '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs">{customer.postal_code || '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs">{customer.latitude ? customer.latitude.toFixed(6) : '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs">{customer.longitude ? customer.longitude.toFixed(6) : '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="font-thai text-xs truncate block max-w-[144px]" title={customer.delivery_instructions || '-'}>
+                        {customer.delivery_instructions || '-'}
+                      </span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs">{customer.preferred_delivery_time || '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="font-thai text-xs">{customer.channel_source || '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="font-thai text-xs">{customer.customer_segment || '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="font-thai text-xs">{customer.hub_name || '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="font-thai text-xs truncate block max-w-[144px]" title={customer.remarks || '-'}>
+                        {customer.remarks || '-'}
+                      </span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs">{customer.created_by || '-'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <Badge variant={customer.status === 'active' ? 'success' : 'default'} className="text-[10px] py-0 px-1.5">
                         {customer.status === 'active' ? 'ใช้งาน' : 'ไม่ใช้งาน'}
                       </Badge>
                     </Table.Cell>
                     <Table.Cell>
-                      <div className="flex space-x-1">
+                      <div className="flex space-x-0.5">
                         <Button
                           variant="ghost"
                           size="sm"
