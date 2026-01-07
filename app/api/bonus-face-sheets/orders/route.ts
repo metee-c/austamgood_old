@@ -4,6 +4,11 @@ import { createClient } from '@/lib/supabase/server';
 /**
  * GET /api/bonus-face-sheets/orders
  * ดึงรายการออเดอร์ที่มี order_type = 'special' สำหรับสร้างใบปะหน้าของแถม
+ * 
+ * การหา trip_number:
+ * 1. ดึงจาก receiving_route_stops โดยใช้ customer_id ของออเดอร์ของแถม
+ *    แมพกับ customer_id ของออเดอร์ปกติที่อยู่ใน route stops
+ * 2. สร้าง full trip code: {plan_code}-{trip_code}
  */
 export async function GET(request: NextRequest) {
   try {
@@ -72,19 +77,26 @@ export async function GET(request: NextRequest) {
     );
     
     // ดึงข้อมูล trip โดยแมพจาก customer_id ผ่าน route stops
-    // เนื่องจากออเดอร์ของแถม (order_type = 'special') ไม่มี matched_trip_id
-    // ต้องหา trip จาก route plan ที่มี delivery_date เดียวกัน และมี customer_id ตรงกัน
-    const customerTripMap = new Map<string, { trip_id: number; trip_code: string; plate_number?: string }>();
+    // สร้าง map: customer_id -> { trip_id, trip_code, plan_code, full_trip_code }
+    const customerTripMap = new Map<string, { 
+      trip_id: number; 
+      trip_code: string; 
+      plan_code: string;
+      full_trip_code: string;
+      plate_number?: string 
+    }>();
     
     if (customerIds.length > 0) {
-      // ดึง route stops ที่มี customer_id ตรงกับออเดอร์ของแถม
+      // ดึง route stops พร้อม trip และ plan info
       // โดยหา trip จาก route plan ที่มี plan_date = delivery_date และ status = 'approved'
+      // แมพโดยใช้ customer_id (รหัสร้าน) และ delivery_date (วันส่ง) ตรงกัน
       const { data: routeStopsWithTrips } = await supabase
         .from('receiving_route_stops')
         .select(`
           stop_id,
           trip_id,
           order_id,
+          customer_id,
           receiving_route_trips!inner (
             trip_id,
             trip_code,
@@ -95,66 +107,35 @@ export async function GET(request: NextRequest) {
             ),
             receiving_route_plans!inner (
               plan_id,
+              plan_code,
               plan_date,
               status
             )
           )
         `)
+        .in('customer_id', customerIds)
         .eq('receiving_route_trips.receiving_route_plans.plan_date', delivery_date)
         .eq('receiving_route_trips.receiving_route_plans.status', 'approved');
       
       if (routeStopsWithTrips && routeStopsWithTrips.length > 0) {
-        // ดึง order_ids จาก route stops
-        const stopOrderIds = routeStopsWithTrips.map(s => s.order_id).filter(Boolean);
-        
-        if (stopOrderIds.length > 0) {
-          // ดึง customer_id จาก orders ที่อยู่ใน route stops
-          const { data: stopOrders } = await supabase
-            .from('wms_orders')
-            .select('order_id, customer_id')
-            .in('order_id', stopOrderIds);
-          
-          // สร้าง map: order_id -> customer_id
-          const orderCustomerMap = new Map(
-            (stopOrders || []).map(o => [o.order_id, o.customer_id])
-          );
-          
-          // สร้าง map: customer_id -> trip info
-          for (const stop of routeStopsWithTrips) {
-            const customerId = orderCustomerMap.get(stop.order_id);
-            if (customerId && !customerTripMap.has(customerId)) {
-              const tripInfo = stop.receiving_route_trips as any;
-              customerTripMap.set(customerId, {
-                trip_id: tripInfo.trip_id,
-                trip_code: tripInfo.trip_code,
-                plate_number: tripInfo.master_vehicle?.plate_number
-              });
-            }
+        // สร้าง map: customer_id -> trip info (จาก route stops ที่มี customer_id และ delivery_date ตรงกัน)
+        for (const stop of routeStopsWithTrips) {
+          const customerId = stop.customer_id;
+          if (customerId && !customerTripMap.has(customerId)) {
+            const tripInfo = stop.receiving_route_trips as any;
+            const planInfo = tripInfo.receiving_route_plans;
+            const fullTripCode = `${planInfo.plan_code}-${tripInfo.trip_code}`;
+            
+            customerTripMap.set(customerId, {
+              trip_id: tripInfo.trip_id,
+              trip_code: tripInfo.trip_code,
+              plan_code: planInfo.plan_code,
+              full_trip_code: fullTripCode,
+              plate_number: tripInfo.master_vehicle?.plate_number
+            });
           }
         }
       }
-    }
-    
-    // Fallback: ดึงข้อมูล trip จาก matched_trip_id (สำหรับออเดอร์ที่มี matched_trip_id อยู่แล้ว)
-    const tripIds = [...new Set(orders.map(o => o.matched_trip_id).filter(Boolean))];
-    let tripMap = new Map();
-    
-    if (tripIds.length > 0) {
-      const { data: trips } = await supabase
-        .from('receiving_route_trips')
-        .select(`
-          trip_id,
-          trip_code,
-          vehicle_id,
-          master_vehicle (
-            plate_number
-          )
-        `)
-        .in('trip_id', tripIds);
-      
-      tripMap = new Map(
-        (trips || []).map(t => [t.trip_id, t])
-      );
     }
     
     // ดึงรายการสินค้าของแต่ละออเดอร์
@@ -175,25 +156,15 @@ export async function GET(request: NextRequest) {
         // ดึงข้อมูล customer
         const customer = customerMap.get(order.customer_id);
         
-        // ดึงข้อมูล trip - ลองจาก customerTripMap ก่อน (แมพจาก route stops)
-        // ถ้าไม่เจอ ลองจาก matched_trip_id
+        // ดึงข้อมูล trip จาก customerTripMap (แมพจาก customer_id ใน route stops)
         let tripNumber = '';
         let matchedTripId = order.matched_trip_id;
         
-        // 1. ลองหาจาก customerTripMap (แมพจาก customer_id ใน route stops)
         const customerTrip = customerTripMap.get(order.customer_id);
         if (customerTrip) {
-          tripNumber = customerTrip.trip_code || 
-                      (customerTrip.plate_number ? `รถ ${customerTrip.plate_number}` : '');
+          // ใช้ full_trip_code: {plan_code}-{trip_code}
+          tripNumber = customerTrip.full_trip_code;
           matchedTripId = customerTrip.trip_id;
-        }
-        // 2. Fallback: ใช้ matched_trip_id ถ้ามี
-        else if (order.matched_trip_id) {
-          const tripInfo = tripMap.get(order.matched_trip_id);
-          if (tripInfo) {
-            tripNumber = tripInfo.trip_code || 
-                        (tripInfo.master_vehicle?.plate_number ? `รถ ${tripInfo.master_vehicle.plate_number}` : '');
-          }
         }
         
         return {

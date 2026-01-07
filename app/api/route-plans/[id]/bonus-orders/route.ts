@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 
 // GET /api/route-plans/[id]/bonus-orders
 // ดึง bonus order_no (order_type = 'special') และ delivery_number จาก loadlist
+// กรองตาม delivery_date ของ route plan เพื่อให้ได้เฉพาะออเดอร์ของแถมที่ตรงกับวันส่ง
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -10,6 +11,19 @@ export async function GET(
   try {
     const { id: planId } = await params;
     const supabase = await createClient();
+
+    // 0. ดึง plan_date จาก route plan
+    const { data: plan, error: planError } = await supabase
+      .from('receiving_route_plans')
+      .select('plan_id, plan_date')
+      .eq('plan_id', planId)
+      .single();
+
+    if (planError || !plan) {
+      return NextResponse.json({ error: 'Route plan not found' }, { status: 404 });
+    }
+
+    const planDate = plan.plan_date;
 
     // 1. ดึง trip และ customer_id ทั้งหมดในแผนนี้
     const { data: stops, error: stopsError } = await supabase
@@ -83,13 +97,14 @@ export async function GET(
       Array.from(tripCustomers.values()).flatMap(set => Array.from(set))
     )];
 
-    // 5. ดึง bonus orders (order_type = 'special') ที่ match กับ customer_id
+    // 5. ดึง bonus orders (order_type = 'special') ที่ match กับ customer_id และ delivery_date
     let bonusOrders: { order_no: string; customer_id: string }[] = [];
     if (allCustomerIds.length > 0) {
       const { data: bonusData, error: bonusError } = await supabase
         .from('wms_orders')
         .select('order_no, customer_id')
         .eq('order_type', 'special')
+        .eq('delivery_date', planDate) // กรองตาม delivery_date ของ route plan
         .in('customer_id', allCustomerIds);
 
       if (bonusError) {

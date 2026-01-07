@@ -22,6 +22,7 @@ interface BonusFaceSheetPackage {
   order_no: string;
   shop_name: string;
   barcode_id: string;
+  trip_number?: string; // เพิ่ม trip_number สำหรับแต่ละ package
   bonus_face_sheet_items: BonusFaceSheetItem[];
 }
 
@@ -36,6 +37,7 @@ interface BonusFaceSheetData {
   total_orders: number;
   created_date: string;
   created_by: string;
+  trip_number?: string; // เพิ่ม trip_number สำหรับแสดงใน header
 }
 
 interface ChecklistData {
@@ -115,6 +117,9 @@ const BonusFaceSheetChecklistDocument: React.FC<Props> = ({ data }) => {
         <div>
           <div style={{ marginBottom: '5px' }}>
             <strong>เลขที่ใบปะหน้า:</strong> <span style={{ fontSize: '15px', fontWeight: 'bold' }}>{bonusFaceSheet.face_sheet_no}</span>
+          </div>
+          <div style={{ marginBottom: '5px' }}>
+            <strong>สายรถ:</strong> <span style={{ fontSize: '14px', fontWeight: 'bold', color: '#2563eb' }}>{bonusFaceSheet.trip_number || '-'}</span>
           </div>
           <div style={{ marginBottom: '5px' }}>
             <strong>คลังสินค้า:</strong> {bonusFaceSheet.warehouse_id}
