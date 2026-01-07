@@ -490,9 +490,10 @@ export async function POST(request: Request) {
             } : null
           });
 
-          const { error: stopsError } = await supabase
+          const { data: insertedStops, error: stopsError } = await supabase
             .from('receiving_route_stops')
-            .insert(stopsToInsert);
+            .insert(stopsToInsert)
+            .select();
 
           if (stopsError) {
             console.error(`❌ ERROR: Could not save stops for trip ${i + 1}:`, {
@@ -505,6 +506,62 @@ export async function POST(request: Request) {
             });
           } else {
             console.log(`✅ Saved ${stopsToInsert.length} stops for trip ${i + 1}`);
+
+            // 10.1 Save stop items for each stop (important for consolidated stops)
+            if (insertedStops) {
+              for (let stopIdx = 0; stopIdx < insertedStops.length; stopIdx++) {
+                const insertedStop = insertedStops[stopIdx];
+                const stopData = trip.stops[stopIdx];
+                const orderIds = stopData.orderIds || (stopData.orderId ? [stopData.orderId] : []);
+
+                if (orderIds.length === 0) continue;
+
+                // Get all order items for these orders
+                const { data: stopOrderItems, error: itemsQueryError } = await supabase
+                  .from('wms_order_items')
+                  .select('order_item_id, order_id, sku_id, order_qty, order_weight')
+                  .in('order_id', orderIds);
+
+                if (itemsQueryError) {
+                  console.error(`❌ ERROR: Could not fetch order items for stop ${insertedStop.stop_id}:`, itemsQueryError.message);
+                  continue;
+                }
+
+                if (!stopOrderItems || stopOrderItems.length === 0) continue;
+
+                // Get SKU names
+                const itemSkuIds = [...new Set(stopOrderItems.map(item => item.sku_id).filter(Boolean))];
+                const { data: itemSkus } = await supabase
+                  .from('master_sku')
+                  .select('sku_id, sku_name')
+                  .in('sku_id', itemSkuIds);
+
+                const skuNameMap = new Map(itemSkus?.map(s => [s.sku_id, s.sku_name]) || []);
+
+                // Create stop items
+                const stopItemsToInsert = stopOrderItems.map(item => ({
+                  plan_id: planId,
+                  trip_id: insertedTrip.trip_id,
+                  stop_id: insertedStop.stop_id,
+                  order_id: item.order_id,
+                  order_item_id: item.order_item_id,
+                  sku_id: item.sku_id,
+                  sku_name: skuNameMap.get(item.sku_id) || null,
+                  allocated_quantity: item.order_qty,
+                  allocated_weight_kg: item.order_weight
+                }));
+
+                const { error: stopItemsError } = await supabase
+                  .from('receiving_route_stop_items')
+                  .insert(stopItemsToInsert);
+
+                if (stopItemsError) {
+                  console.error(`❌ ERROR: Could not save stop items for stop ${insertedStop.stop_id}:`, stopItemsError.message);
+                } else {
+                  console.log(`✅ Saved ${stopItemsToInsert.length} items for stop ${insertedStop.stop_id}`);
+                }
+              }
+            }
           }
         }
       }

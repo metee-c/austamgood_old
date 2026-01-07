@@ -469,16 +469,21 @@ const InventoryBalancesPage = () => {
 
   const filteredData = expandedData.filter(item => {
     const searchLower = searchTerm.toLowerCase();
+    // รองรับทั้ง nested object (จาก Supabase) และ flat property
+    const skuName = item.sku_name || (item as any).master_sku?.sku_name || '';
+    const locationName = item.location_name || (item as any).master_location?.location_name || '';
+    const warehouseName = item.warehouse_name || (item as any).master_warehouse?.warehouse_name || '';
+    
     const matchesSearch = !searchTerm || (
       (item.sku_id?.toLowerCase().includes(searchLower)) ||
-      (item.sku_name?.toLowerCase().includes(searchLower)) ||
+      (skuName?.toLowerCase().includes(searchLower)) ||
       (item.lot_no?.toLowerCase().includes(searchLower)) ||
       (item.pallet_id?.toLowerCase().includes(searchLower)) ||
       (item.pallet_id_external?.toLowerCase().includes(searchLower)) ||
       (item.location_id?.toLowerCase().includes(searchLower)) ||
-      (item.location_name?.toLowerCase().includes(searchLower)) ||
+      (locationName?.toLowerCase().includes(searchLower)) ||
       (item.warehouse_id?.toLowerCase().includes(searchLower)) ||
-      (item.warehouse_name?.toLowerCase().includes(searchLower)) ||
+      (warehouseName?.toLowerCase().includes(searchLower)) ||
       (item.production_date?.includes(searchTerm)) ||
       (item.expiry_date?.includes(searchTerm)) ||
       (item.balance_id?.toString().includes(searchTerm)) ||

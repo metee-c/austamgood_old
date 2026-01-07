@@ -202,6 +202,7 @@ export async function GET(
               }
               stopItemsMap[item.stop_id].push({
                 order_item_id: item.order_item_id,
+                order_id: item.order_id, // Include order_id for filtering
                 sku_id: item.sku_id,
                 sku_name: item.sku_name,
                 order_qty: Number(item.allocated_quantity) || 0,
@@ -257,10 +258,31 @@ export async function GET(
 
             if (hasStopItems) {
               // Use items from receiving_route_stop_items (split tracking)
-              itemsForStop = stopItemsMap[stop.stop_id] || [];
+              // IMPORTANT: Filter by order_id to get only items for THIS order
+              const allStopItems = stopItemsMap[stop.stop_id] || [];
+              
+              // Filter stop items that belong to this order by order_id (primary method)
+              itemsForStop = allStopItems.filter((item: any) => item.order_id === orderId);
+              
+              // If no items found by order_id, try matching by order_item_id
+              if (itemsForStop.length === 0) {
+                const orderItemIds = (orderItemsDetailMap[orderId] || []).map((item: any) => item.order_item_id);
+                itemsForStop = allStopItems.filter((item: any) => orderItemIds.includes(item.order_item_id));
+              }
+              
               totalQty = itemsForStop.reduce((sum, item) => sum + (item.order_qty || 0), 0);
-              // Calculate weight from split items
               allocatedWeight = itemsForStop.reduce((sum, item) => sum + (item.order_weight || 0), 0);
+              
+              // If still no items found, fall back to order items from wms_order_items
+              if (itemsForStop.length === 0) {
+                itemsForStop = orderItemsDetailMap[orderId] || [];
+                totalQty = orderItemsMap[orderId] || 0;
+                allocatedWeight = input?.demand_weight_kg != null && input.demand_weight_kg > 0
+                  ? Number(input.demand_weight_kg)
+                  : (order.total_weight != null && order.total_weight > 0
+                    ? Number(order.total_weight)
+                    : 0);
+              }
             } else if (hasSplitItems) {
               // This stop was created from a split - only show split items
               const allItems = orderItemsDetailMap[order.order_id] || [];
@@ -272,12 +294,12 @@ export async function GET(
               // No split tracking - use all items from order
               itemsForStop = orderItemsDetailMap[order.order_id] || [];
               totalQty = orderItemsMap[order.order_id] || 0;
-              // Use weight from input if available, otherwise use order total weight, or split evenly
+              // Use weight from input if available, otherwise use order total weight
               allocatedWeight = input?.demand_weight_kg != null && input.demand_weight_kg > 0
-                ? input.demand_weight_kg
+                ? Number(input.demand_weight_kg)
                 : (order.total_weight != null && order.total_weight > 0
-                  ? order.total_weight
-                  : (stop.load_weight_kg || 0) / orderIds.length);
+                  ? Number(order.total_weight)
+                  : 0);
             }
 
             // Debug log for first order

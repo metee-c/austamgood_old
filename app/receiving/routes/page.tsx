@@ -382,6 +382,12 @@ function SplitStopModal({ isOpen, stop, orderId, trips, currentTripId, onClose, 
 
     const totalSelectedWeight = items.reduce((sum, item) => sum + (item.moveWeight ? Number(item.moveWeight) : 0), 0);
     const totalSelectedPieces = items.reduce((sum, item) => sum + (item.movePieces ? Number(item.movePieces) : 0), 0);
+    
+    // คำนวณจำนวนคงเหลือในคันเดิม (realtime)
+    const totalAvailablePieces = items.reduce((sum, item) => sum + Math.floor(item.availableQty), 0);
+    const totalAvailableWeight = items.reduce((sum, item) => sum + item.availableWeight, 0);
+    const remainingPieces = totalAvailablePieces - totalSelectedPieces;
+    const remainingWeight = totalAvailableWeight - totalSelectedWeight;
 
     const handleSubmit = () => {
         if (!stop) return;
@@ -518,9 +524,19 @@ function SplitStopModal({ isOpen, stop, orderId, trips, currentTripId, onClose, 
                         </table>
                     </div>
 
-                    <div className="text-sm text-gray-700 flex gap-4">
-                        <span>จำนวนที่จะย้าย: <span className="font-semibold text-blue-600">{totalSelectedPieces} ชิ้น</span></span>
-                        <span>น้ำหนักรวม: <span className="font-semibold">{totalSelectedWeight.toFixed(2)} kg</span></span>
+                    <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div className="bg-gray-50 border border-gray-200 rounded-md px-3 py-2">
+                            <div className="text-xs text-gray-500 mb-1">คงเหลือในคันเดิม:</div>
+                            <div className="font-semibold text-gray-700">
+                                {remainingPieces} ชิ้น <span className="text-gray-400">|</span> {remainingWeight.toFixed(2)} kg
+                            </div>
+                        </div>
+                        <div className="bg-blue-50 border border-blue-200 rounded-md px-3 py-2">
+                            <div className="text-xs text-blue-600 mb-1">ย้ายไปคันใหม่:</div>
+                            <div className="font-semibold text-blue-700">
+                                {totalSelectedPieces} ชิ้น <span className="text-blue-300">|</span> {totalSelectedWeight.toFixed(2)} kg
+                            </div>
+                        </div>
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">

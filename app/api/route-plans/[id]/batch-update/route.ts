@@ -157,6 +157,11 @@ export async function POST(
           continue;
         }
 
+        // Check if this is a consolidated stop with multiple orders
+        const orderIdsInStop: number[] = stopWithOrder.tags?.order_ids || 
+          (stopWithOrder.order_id ? [stopWithOrder.order_id] : []);
+        const isConsolidatedStop = orderIdsInStop.length > 1;
+
         // Get max sequence in target trip
         const { data: targetStops } = await supabase
           .from('receiving_route_stops')
@@ -167,28 +172,174 @@ export async function POST(
 
         const newSeq = (targetStops?.[0]?.sequence_no || 0) + 1;
 
-        // Update the stop to move to new trip
-        const { error: updateError } = await supabase
-          .from('receiving_route_stops')
-          .update({
-            trip_id: toTripId,
-            sequence_no: newSeq,
-            updated_at: new Date().toISOString()
-          })
-          .eq('stop_id', stopWithOrder.stop_id);
+        if (isConsolidatedStop) {
+          // Consolidated stop: extract only the selected order to a new stop
+          console.log('Moving single order from consolidated stop:', {
+            orderId: move.orderId,
+            stopId: stopWithOrder.stop_id,
+            totalOrdersInStop: orderIdsInStop.length
+          });
 
-        if (updateError) {
-          console.error('Error moving stop:', updateError);
-          continue;
+          // Get order details for the order being moved
+          const { data: orderData } = await supabase
+            .from('wms_orders')
+            .select('order_id, order_no, customer_id, total_order_weight_kg')
+            .eq('order_id', move.orderId)
+            .single();
+
+          // Get order items for weight calculation
+          const { data: orderItems } = await supabase
+            .from('wms_order_items')
+            .select('order_item_id, order_weight')
+            .eq('order_id', move.orderId);
+
+          const orderWeight = orderItems?.reduce((sum, item) => sum + Number(item.order_weight || 0), 0) 
+            || Number(orderData?.total_order_weight_kg || 0);
+
+          // Create new stop in target trip for the moved order
+          const { data: newStop, error: createStopError } = await supabase
+            .from('receiving_route_stops')
+            .insert({
+              trip_id: toTripId,
+              plan_id: Number(planId),
+              sequence_no: newSeq,
+              order_id: move.orderId,
+              stop_name: stopWithOrder.stop_name,
+              address: stopWithOrder.address,
+              latitude: stopWithOrder.latitude,
+              longitude: stopWithOrder.longitude,
+              load_weight_kg: orderWeight,
+              service_duration_minutes: stopWithOrder.service_duration_minutes,
+              customer_id: stopWithOrder.customer_id,
+              tags: {
+                order_ids: [move.orderId],
+                customer_id: stopWithOrder.tags?.customer_id || stopWithOrder.customer_id,
+                moved_from_stop_id: stopWithOrder.stop_id
+              }
+            })
+            .select()
+            .single();
+
+          if (createStopError) {
+            console.error('Error creating new stop for moved order:', createStopError);
+            continue;
+          }
+
+          // Copy stop items for the moved order to new stop
+          const { data: existingStopItems } = await supabase
+            .from('receiving_route_stop_items')
+            .select('*')
+            .eq('stop_id', stopWithOrder.stop_id)
+            .eq('order_id', move.orderId);
+
+          if (existingStopItems && existingStopItems.length > 0) {
+            const newStopItems = existingStopItems.map(item => ({
+              plan_id: Number(planId),
+              trip_id: toTripId,
+              stop_id: newStop.stop_id,
+              order_id: item.order_id,
+              order_item_id: item.order_item_id,
+              sku_id: item.sku_id,
+              sku_name: item.sku_name,
+              allocated_quantity: item.allocated_quantity,
+              allocated_weight_kg: item.allocated_weight_kg,
+              notes: `ย้ายจาก stop ${stopWithOrder.stop_id}`
+            }));
+
+            await supabase
+              .from('receiving_route_stop_items')
+              .insert(newStopItems);
+
+            // Delete old stop items for this order
+            await supabase
+              .from('receiving_route_stop_items')
+              .delete()
+              .eq('stop_id', stopWithOrder.stop_id)
+              .eq('order_id', move.orderId);
+          }
+
+          // Update source stop: remove the moved order from tags.order_ids
+          const remainingOrderIds = orderIdsInStop.filter(id => id !== move.orderId);
+          
+          // Recalculate source stop weight
+          const { data: remainingStopItems } = await supabase
+            .from('receiving_route_stop_items')
+            .select('allocated_weight_kg')
+            .eq('stop_id', stopWithOrder.stop_id);
+
+          const remainingWeight = remainingStopItems?.reduce(
+            (sum, item) => sum + Number(item.allocated_weight_kg || 0), 0
+          ) || (Number(stopWithOrder.load_weight_kg || 0) - orderWeight);
+
+          if (remainingOrderIds.length === 0) {
+            // No orders left in source stop - delete it
+            await supabase
+              .from('receiving_route_stop_items')
+              .delete()
+              .eq('stop_id', stopWithOrder.stop_id);
+
+            await supabase
+              .from('receiving_route_stops')
+              .delete()
+              .eq('stop_id', stopWithOrder.stop_id);
+          } else {
+            // Update source stop with remaining orders
+            const newPrimaryOrderId = remainingOrderIds[0];
+            await supabase
+              .from('receiving_route_stops')
+              .update({
+                order_id: newPrimaryOrderId,
+                load_weight_kg: Math.max(0, remainingWeight),
+                tags: {
+                  ...stopWithOrder.tags,
+                  order_ids: remainingOrderIds
+                },
+                updated_at: new Date().toISOString()
+              })
+              .eq('stop_id', stopWithOrder.stop_id);
+          }
+
+          results.moves.push({
+            orderId: move.orderId,
+            sourceStopId: stopWithOrder.stop_id,
+            newStopId: newStop.stop_id,
+            fromTripId,
+            toTripId,
+            newSequence: newSeq,
+            wasConsolidated: true
+          });
+
+        } else {
+          // Single order stop: move the entire stop
+          const { error: updateError } = await supabase
+            .from('receiving_route_stops')
+            .update({
+              trip_id: toTripId,
+              sequence_no: newSeq,
+              updated_at: new Date().toISOString()
+            })
+            .eq('stop_id', stopWithOrder.stop_id);
+
+          if (updateError) {
+            console.error('Error moving stop:', updateError);
+            continue;
+          }
+
+          // Update stop items trip_id as well
+          await supabase
+            .from('receiving_route_stop_items')
+            .update({ trip_id: toTripId })
+            .eq('stop_id', stopWithOrder.stop_id);
+
+          results.moves.push({
+            orderId: move.orderId,
+            stopId: stopWithOrder.stop_id,
+            fromTripId,
+            toTripId,
+            newSequence: newSeq,
+            wasConsolidated: false
+          });
         }
-
-        results.moves.push({
-          orderId: move.orderId,
-          stopId: stopWithOrder.stop_id,
-          fromTripId,
-          toTripId,
-          newSequence: newSeq
-        });
 
         // Resequence remaining stops in source trip
         const { data: remainingStops } = await supabase
