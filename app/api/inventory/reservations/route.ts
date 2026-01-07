@@ -15,7 +15,8 @@ export async function GET(request: Request) {
 
     const supabase = await createClient();
 
-    // Query picklist reservations with simpler approach
+    // Query picklist reservations - รวม reserved และ picked เพื่อแสดงข้อมูลทั้งหมด
+    // (picked = ถูก pick แล้วแต่ยังไม่ถูกย้ายไป Dispatch หรือ reserved_piece_qty ยังค้างอยู่)
     const { data: picklistReservations, error: picklistError } = await supabase
       .from('picklist_item_reservations')
       .select('*')
@@ -26,7 +27,7 @@ export async function GET(request: Request) {
       console.error('Error fetching picklist reservations:', picklistError);
     }
 
-    // Query face sheet reservations with simpler approach
+    // Query face sheet reservations - รวม reserved และ picked
     const { data: faceSheetReservations, error: faceSheetError } = await supabase
       .from('face_sheet_item_reservations')
       .select('*')
@@ -37,7 +38,7 @@ export async function GET(request: Request) {
       console.error('Error fetching face sheet reservations:', faceSheetError);
     }
 
-    // Query bonus face sheet reservations with simpler approach
+    // Query bonus face sheet reservations - รวม reserved และ picked
     const { data: bonusReservations, error: bonusError } = await supabase
       .from('bonus_face_sheet_item_reservations')
       .select('*')
@@ -52,135 +53,160 @@ export async function GET(request: Request) {
     const reservations = [];
 
     // Process picklist reservations
+    // ✅ แสดงทุก reservations ที่มี reserved_piece_qty > 0 (ไม่ว่า item status จะเป็นอะไร)
     if (picklistReservations && picklistReservations.length > 0) {
-      const picklistItemIds = picklistReservations.map((r: any) => r.picklist_item_id);
+      // กรองเฉพาะ reservations ที่ยังมี reserved_piece_qty > 0
+      const activeReservations = picklistReservations.filter((r: any) => parseFloat(r.reserved_piece_qty) > 0);
       
-      const { data: picklistItems } = await supabase
-        .from('picklist_items')
-        .select('id, order_id, order_no, picklist_id')
-        .in('id', picklistItemIds);
+      if (activeReservations.length > 0) {
+        const picklistItemIds = activeReservations.map((r: any) => r.picklist_item_id);
+        
+        const { data: picklistItems } = await supabase
+          .from('picklist_items')
+          .select('id, order_id, order_no, picklist_id, status')
+          .in('id', picklistItemIds);
 
-      const picklistIds = [...new Set(picklistItems?.map((i: any) => i.picklist_id) || [])];
-      const orderIds = [...new Set(picklistItems?.map((i: any) => i.order_id) || [])];
+        const picklistIds = [...new Set(picklistItems?.map((i: any) => i.picklist_id) || [])];
+        const orderIds = [...new Set(picklistItems?.map((i: any) => i.order_id) || [])];
 
-      const [picklistsResult, ordersResult] = await Promise.all([
-        picklistIds.length > 0 
-          ? supabase.from('picklists').select('id, picklist_code').in('id', picklistIds)
-          : { data: [] },
-        orderIds.length > 0
-          ? supabase.from('wms_orders').select('order_id, order_no, shop_name').in('order_id', orderIds)
-          : { data: [] }
-      ]);
+        const [picklistsResult, ordersResult] = await Promise.all([
+          picklistIds.length > 0 
+            ? supabase.from('picklists').select('id, picklist_code').in('id', picklistIds)
+            : { data: [] },
+          orderIds.length > 0
+            ? supabase.from('wms_orders').select('order_id, order_no, shop_name').in('order_id', orderIds)
+            : { data: [] }
+        ]);
 
-      const picklistMap = new Map((picklistsResult.data || []).map((p: any) => [p.id, p]));
-      const orderMap = new Map((ordersResult.data || []).map((o: any) => [o.order_id, o]));
-      const itemMap = new Map((picklistItems || []).map((i: any) => [i.id, i]));
+        const picklistMap = new Map((picklistsResult.data || []).map((p: any) => [p.id, p]));
+        const orderMap = new Map((ordersResult.data || []).map((o: any) => [o.order_id, o]));
+        const itemMap = new Map((picklistItems || []).map((i: any) => [i.id, i]));
 
-      picklistReservations.forEach((res: any) => {
-        const item = itemMap.get(res.picklist_item_id);
-        const picklist = item ? picklistMap.get(item.picklist_id) : null;
-        const order = item ? orderMap.get(item.order_id) : null;
+        activeReservations.forEach((res: any) => {
+          const item = itemMap.get(res.picklist_item_id);
+          const picklist = item ? picklistMap.get(item.picklist_id) : null;
+          const order = item ? orderMap.get(item.order_id) : null;
 
-        reservations.push({
-          reservation_id: res.reservation_id,
-          document_type: 'Picklist',
-          document_no: picklist?.picklist_code || '-',
-          order_no: order?.order_no || item?.order_no || '-',
-          shop_name: order?.shop_name || '-',
-          reserved_piece_qty: res.reserved_piece_qty,
-          reserved_pack_qty: res.reserved_pack_qty,
-          status: res.status,
-          reserved_at: res.reserved_at,
+          reservations.push({
+            reservation_id: res.reservation_id,
+            document_type: 'Picklist',
+            document_no: picklist?.picklist_code || '-',
+            order_no: order?.order_no || item?.order_no || '-',
+            shop_name: order?.shop_name || '-',
+            reserved_piece_qty: res.reserved_piece_qty,
+            reserved_pack_qty: res.reserved_pack_qty,
+            status: res.status,
+            item_status: item?.status || '-',
+            reserved_at: res.reserved_at,
+          });
         });
-      });
+      }
     }
 
     // Process face sheet reservations
     if (faceSheetReservations && faceSheetReservations.length > 0) {
       const faceSheetItemIds = faceSheetReservations.map((r: any) => r.face_sheet_item_id);
       
+      // ✅ ดึง face_sheet_items พร้อม status เพื่อกรองเฉพาะที่ยังไม่ถูก pick
       const { data: faceSheetItems } = await supabase
         .from('face_sheet_items')
-        .select('id, order_id, face_sheet_id')
-        .in('id', faceSheetItemIds);
+        .select('id, order_id, face_sheet_id, status')
+        .in('id', faceSheetItemIds)
+        .neq('status', 'picked');  // ✅ กรองเฉพาะที่ยังไม่ถูก pick
 
-      const faceSheetIds = [...new Set(faceSheetItems?.map((i: any) => i.face_sheet_id) || [])];
-      const orderIds = [...new Set(faceSheetItems?.map((i: any) => i.order_id) || [])];
+      // ถ้าไม่มี items ที่ยังไม่ถูก pick ให้ข้ามไป
+      if (faceSheetItems && faceSheetItems.length > 0) {
+        const faceSheetIds = [...new Set(faceSheetItems.map((i: any) => i.face_sheet_id) || [])];
+        const orderIds = [...new Set(faceSheetItems.map((i: any) => i.order_id) || [])];
+        const validItemIds = new Set(faceSheetItems.map((i: any) => i.id));
 
-      const [faceSheetsResult, ordersResult] = await Promise.all([
-        faceSheetIds.length > 0
-          ? supabase.from('face_sheets').select('id, face_sheet_no').in('id', faceSheetIds)
-          : { data: [] },
-        orderIds.length > 0
-          ? supabase.from('wms_orders').select('order_id, order_no, shop_name').in('order_id', orderIds)
-          : { data: [] }
-      ]);
+        const [faceSheetsResult, ordersResult] = await Promise.all([
+          faceSheetIds.length > 0
+            ? supabase.from('face_sheets').select('id, face_sheet_no').in('id', faceSheetIds)
+            : { data: [] },
+          orderIds.length > 0
+            ? supabase.from('wms_orders').select('order_id, order_no, shop_name').in('order_id', orderIds)
+            : { data: [] }
+        ]);
 
-      const faceSheetMap = new Map((faceSheetsResult.data || []).map((f: any) => [f.id, f]));
-      const orderMap = new Map((ordersResult.data || []).map((o: any) => [o.order_id, o]));
-      const itemMap = new Map((faceSheetItems || []).map((i: any) => [i.id, i]));
+        const faceSheetMap = new Map((faceSheetsResult.data || []).map((f: any) => [f.id, f]));
+        const orderMap = new Map((ordersResult.data || []).map((o: any) => [o.order_id, o]));
+        const itemMap = new Map((faceSheetItems || []).map((i: any) => [i.id, i]));
 
-      faceSheetReservations.forEach((res: any) => {
-        const item = itemMap.get(res.face_sheet_item_id);
-        const faceSheet = item ? faceSheetMap.get(item.face_sheet_id) : null;
-        const order = item ? orderMap.get(item.order_id) : null;
+        // ✅ กรองเฉพาะ reservations ที่ face_sheet_item ยังไม่ถูก pick
+        faceSheetReservations
+          .filter((res: any) => validItemIds.has(res.face_sheet_item_id))
+          .forEach((res: any) => {
+            const item = itemMap.get(res.face_sheet_item_id);
+            const faceSheet = item ? faceSheetMap.get(item.face_sheet_id) : null;
+            const order = item ? orderMap.get(item.order_id) : null;
 
-        reservations.push({
-          reservation_id: res.reservation_id,
-          document_type: 'Face Sheet',
-          document_no: faceSheet?.face_sheet_no || '-',
-          order_no: order?.order_no || '-',
-          shop_name: order?.shop_name || '-',
-          reserved_piece_qty: res.reserved_piece_qty,
-          reserved_pack_qty: res.reserved_pack_qty,
-          status: res.status,
-          reserved_at: res.reserved_at,
-        });
-      });
+            reservations.push({
+              reservation_id: res.reservation_id,
+              document_type: 'Face Sheet',
+              document_no: faceSheet?.face_sheet_no || '-',
+              order_no: order?.order_no || '-',
+              shop_name: order?.shop_name || '-',
+              reserved_piece_qty: res.reserved_piece_qty,
+              reserved_pack_qty: res.reserved_pack_qty,
+              status: res.status,
+              reserved_at: res.reserved_at,
+            });
+          });
+      }
     }
 
     // Process bonus face sheet reservations
     if (bonusReservations && bonusReservations.length > 0) {
       const bonusItemIds = bonusReservations.map((r: any) => r.bonus_face_sheet_item_id);
       
+      // ✅ ดึง bonus_face_sheet_items พร้อม status เพื่อกรองเฉพาะที่ยังไม่ถูก pick
       const { data: bonusItems } = await supabase
         .from('bonus_face_sheet_items')
-        .select('id, face_sheet_id, package_id')
-        .in('id', bonusItemIds);
+        .select('id, face_sheet_id, package_id, status')
+        .in('id', bonusItemIds)
+        .neq('status', 'picked');  // ✅ กรองเฉพาะที่ยังไม่ถูก pick
 
-      const faceSheetIds = [...new Set(bonusItems?.map((i: any) => i.face_sheet_id) || [])];
-      const packageIds = [...new Set(bonusItems?.map((i: any) => i.package_id) || [])];
+      // ถ้าไม่มี items ที่ยังไม่ถูก pick ให้ข้ามไป
+      if (bonusItems && bonusItems.length > 0) {
+        const faceSheetIds = [...new Set(bonusItems.map((i: any) => i.face_sheet_id) || [])];
+        const packageIds = [...new Set(bonusItems.map((i: any) => i.package_id) || [])];
+        const validItemIds = new Set(bonusItems.map((i: any) => i.id));
 
-      const [faceSheetsResult, packagesResult] = await Promise.all([
-        faceSheetIds.length > 0
-          ? supabase.from('bonus_face_sheets').select('id, face_sheet_no').in('id', faceSheetIds)
-          : { data: [] },
-        packageIds.length > 0
-          ? supabase.from('bonus_face_sheet_packages').select('id, order_no, shop_name').in('id', packageIds)
-          : { data: [] }
-      ]);
+        const [faceSheetsResult, packagesResult] = await Promise.all([
+          faceSheetIds.length > 0
+            ? supabase.from('bonus_face_sheets').select('id, face_sheet_no').in('id', faceSheetIds)
+            : { data: [] },
+          packageIds.length > 0
+            ? supabase.from('bonus_face_sheet_packages').select('id, order_no, shop_name').in('id', packageIds)
+            : { data: [] }
+        ]);
 
-      const faceSheetMap = new Map((faceSheetsResult.data || []).map((f: any) => [f.id, f]));
-      const packageMap = new Map((packagesResult.data || []).map((p: any) => [p.id, p]));
-      const itemMap = new Map((bonusItems || []).map((i: any) => [i.id, i]));
+        const faceSheetMap = new Map((faceSheetsResult.data || []).map((f: any) => [f.id, f]));
+        const packageMap = new Map((packagesResult.data || []).map((p: any) => [p.id, p]));
+        const itemMap = new Map((bonusItems || []).map((i: any) => [i.id, i]));
 
-      bonusReservations.forEach((res: any) => {
-        const item = itemMap.get(res.bonus_face_sheet_item_id);
-        const faceSheet = item ? faceSheetMap.get(item.face_sheet_id) : null;
-        const pkg = item ? packageMap.get(item.package_id) : null;
+        // ✅ กรองเฉพาะ reservations ที่ bonus_face_sheet_item ยังไม่ถูก pick
+        bonusReservations
+          .filter((res: any) => validItemIds.has(res.bonus_face_sheet_item_id))
+          .forEach((res: any) => {
+            const item = itemMap.get(res.bonus_face_sheet_item_id);
+            const faceSheet = item ? faceSheetMap.get(item.face_sheet_id) : null;
+            const pkg = item ? packageMap.get(item.package_id) : null;
 
-        reservations.push({
-          reservation_id: res.reservation_id,
-          document_type: 'Bonus Face Sheet',
-          document_no: faceSheet?.face_sheet_no || '-',
-          order_no: pkg?.order_no || '-',
-          shop_name: pkg?.shop_name || '-',
-          reserved_piece_qty: res.reserved_piece_qty,
-          reserved_pack_qty: res.reserved_pack_qty,
-          status: res.status,
-          reserved_at: res.reserved_at,
-        });
-      });
+            reservations.push({
+              reservation_id: res.reservation_id,
+              document_type: 'Bonus Face Sheet',
+              document_no: faceSheet?.face_sheet_no || '-',
+              order_no: pkg?.order_no || '-',
+              shop_name: pkg?.shop_name || '-',
+              reserved_piece_qty: res.reserved_piece_qty,
+              reserved_pack_qty: res.reserved_pack_qty,
+              status: res.status,
+              reserved_at: res.reserved_at,
+            });
+          });
+      }
     }
 
     // Sort by reserved_at descending

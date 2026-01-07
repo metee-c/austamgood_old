@@ -259,7 +259,8 @@ export async function GET(request: Request) {
           quantity_picked,
           source_location_id,
           voided_at,
-          status
+          status,
+          package_id
         ),
         loadlist_face_sheets (
           loadlist_id,
@@ -276,6 +277,26 @@ export async function GET(request: Request) {
 
     if (!faceSheetError && faceSheets) {
       const dispatchLocationId = 'Dispatch';
+      
+      // ดึง package_ids ทั้งหมดจาก face_sheet_items เพื่อ fetch order_no และ shop_name
+      const allFsPackageIds = faceSheets.flatMap(fs => 
+        (fs.face_sheet_items || []).map((item: any) => item.package_id).filter(Boolean)
+      );
+      
+      // Fetch face_sheet_packages แยกต่างหาก
+      let fsPackageMap: Record<number, { order_no: string; shop_name: string }> = {};
+      if (allFsPackageIds.length > 0) {
+        const uniqueFsPackageIds = [...new Set(allFsPackageIds)];
+        const { data: fsPackages } = await supabase
+          .from('face_sheet_packages')
+          .select('id, order_no, shop_name')
+          .in('id', uniqueFsPackageIds);
+        if (fsPackages) {
+          fsPackageMap = Object.fromEntries(
+            fsPackages.map(p => [p.id, { order_no: p.order_no || '', shop_name: p.shop_name || '' }])
+          );
+        }
+      }
       
       for (const fs of faceSheets) {
         // ✅ ตรวจสอบว่ายังไม่ได้เพิ่มเข้า loadlist หรืออยู่ใน loadlist ที่ยังไม่ loaded/voided
@@ -294,34 +315,13 @@ export async function GET(request: Request) {
           console.log(`✅ Include face sheet ${fs.face_sheet_no} - in ${loadlistStatus} loadlist ${loadlistCode}`);
         }
         
-        // Group items by SKU and aggregate quantities/packages
-        const groupedItems = new Map<string, {
-          sku_id: string;
-          sku_name: string;
-          total_quantity: number;
-          package_count: number;
-          package_ids: Set<number>;
-          balance_id?: number;
-          location_id: string;
-          pallet_id?: string;
-          pallet_id_external?: string;
-          lot_no?: string;
-          production_date?: string;
-          expiry_date?: string;
-          total_pack_qty?: number;
-          total_piece_qty?: number;
-          reserved_pack_qty?: number;
-          reserved_piece_qty?: number;
-          warehouse_id?: string;
-          last_movement_at?: string;
-          updated_at?: string;
-        }>();
-        
         const totalQty = (fs.face_sheet_items || []).reduce((sum: number, item: any) => 
           sum + (parseFloat(item.quantity_picked) || parseFloat(item.quantity) || 0), 0
         );
         
-        // First pass: group by SKU (skip voided items)
+        // ✅ ไม่ group by SKU แล้ว - แสดงแต่ละ item แยกกันเพื่อให้เห็น order_no และ shop_name ของแต่ละ package
+        const items: PreparedDocumentItem[] = [];
+        
         for (const item of (fs.face_sheet_items || [])) {
           // ✅ ข้าม items ที่ถูก voided
           if (item.voided_at || item.status === 'voided') {
@@ -332,82 +332,55 @@ export async function GET(request: Request) {
           const skuId = item.sku_id || '-';
           const qty = parseFloat(item.quantity_picked) || parseFloat(item.quantity) || 0;
           
-          if (!groupedItems.has(skuId)) {
-            // Fetch balance data for this SKU
-            const { data: balances } = await supabase
-              .from('wms_inventory_balances')
-              .select(`
-                balance_id,
-                pallet_id,
-                pallet_id_external,
-                lot_no,
-                production_date,
-                expiry_date,
-                total_pack_qty,
-                total_piece_qty,
-                reserved_pack_qty,
-                reserved_piece_qty,
-                warehouse_id,
-                location_id,
-                last_movement_at,
-                updated_at
-              `)
-              .eq('location_id', dispatchLocationId)
-              .eq('sku_id', skuId)
-              .limit(1)
-              .single();
-            
-            groupedItems.set(skuId, {
-              sku_id: skuId,
-              sku_name: item.product_name || skuId,
-              total_quantity: qty,
-              package_count: 1,
-              package_ids: new Set(),
-              balance_id: balances?.balance_id,
-              location_id: balances?.location_id || dispatchLocationId,
-              pallet_id: balances?.pallet_id,
-              pallet_id_external: balances?.pallet_id_external,
-              lot_no: balances?.lot_no,
-              production_date: balances?.production_date,
-              expiry_date: balances?.expiry_date,
-              total_pack_qty: balances?.total_pack_qty,
-              total_piece_qty: balances?.total_piece_qty,
-              reserved_pack_qty: balances?.reserved_pack_qty,
-              reserved_piece_qty: balances?.reserved_piece_qty,
-              warehouse_id: balances?.warehouse_id,
-              last_movement_at: balances?.last_movement_at,
-              updated_at: balances?.updated_at
-            });
-          } else {
-            // Add to existing group
-            const existing = groupedItems.get(skuId)!;
-            existing.total_quantity += qty;
-            existing.package_count += 1;
-            
-          }
+          // ดึง order_no และ shop_name จาก package
+          const packageInfo = item.package_id ? fsPackageMap[item.package_id] : null;
+          
+          // Fetch balance data for this SKU
+          const { data: balances } = await supabase
+            .from('wms_inventory_balances')
+            .select(`
+              balance_id,
+              pallet_id,
+              pallet_id_external,
+              lot_no,
+              production_date,
+              expiry_date,
+              total_pack_qty,
+              total_piece_qty,
+              reserved_pack_qty,
+              reserved_piece_qty,
+              warehouse_id,
+              location_id,
+              last_movement_at,
+              updated_at
+            `)
+            .eq('location_id', dispatchLocationId)
+            .eq('sku_id', skuId)
+            .limit(1)
+            .single();
+          
+          items.push({
+            balance_id: balances?.balance_id,
+            sku_id: skuId,
+            sku_name: item.product_name || skuId,
+            quantity: qty,
+            location_id: balances?.location_id || dispatchLocationId,
+            pallet_id: balances?.pallet_id,
+            pallet_id_external: balances?.pallet_id_external,
+            lot_no: balances?.lot_no,
+            production_date: balances?.production_date,
+            expiry_date: balances?.expiry_date,
+            total_pack_qty: balances?.total_pack_qty,
+            total_piece_qty: balances?.total_piece_qty,
+            reserved_pack_qty: balances?.reserved_pack_qty,
+            reserved_piece_qty: balances?.reserved_piece_qty,
+            warehouse_id: balances?.warehouse_id,
+            last_movement_at: balances?.last_movement_at,
+            updated_at: balances?.updated_at,
+            order_no: packageInfo?.order_no,
+            shop_name: packageInfo?.shop_name
+          });
         }
-        
-        // Convert grouped items to array
-        const items = Array.from(groupedItems.values()).map(group => ({
-          balance_id: group.balance_id,
-          sku_id: group.sku_id,
-          sku_name: group.sku_name,
-          quantity: group.total_quantity,
-          package_count: group.package_count, // จำนวนแพ็คของ SKU นี้
-          location_id: group.location_id,
-          pallet_id: group.pallet_id,
-          pallet_id_external: group.pallet_id_external,
-          lot_no: group.lot_no,
-          production_date: group.production_date,
-          expiry_date: group.expiry_date,
-          total_pack_qty: group.total_pack_qty,
-          total_piece_qty: group.total_piece_qty,
-          reserved_pack_qty: group.reserved_pack_qty,
-          reserved_piece_qty: group.reserved_piece_qty,
-          warehouse_id: group.warehouse_id,
-          last_movement_at: group.last_movement_at,
-          updated_at: group.updated_at
-        }));
         
         // ✅ ข้าม face sheet ที่ไม่มี items ที่ยังใช้งานได้ (ทั้งหมดถูก voided)
         if (items.length === 0) {
@@ -415,17 +388,17 @@ export async function GET(request: Request) {
           continue;
         }
         
-        console.log(`✅ Include face sheet ${fs.face_sheet_no} - ${items.length} active SKUs, ${fs.total_packages} packages`);
+        console.log(`✅ Include face sheet ${fs.face_sheet_no} - ${items.length} active items, ${fs.total_packages} packages`);
         
         documents.push({
           document_type: 'face_sheet',
           document_id: fs.id,
           document_no: fs.face_sheet_no,
           status: fs.status,
-          total_items: items.length, // จำนวน SKU ที่ไม่ซ้ำ
+          total_items: items.length,
           total_quantity: totalQty,
           created_at: fs.created_at,
-          loadlist_code: null,  // ✅ ยืนยันว่ายังไม่มี loadlist
+          loadlist_code: loadlistCode || null,  // ✅ ส่ง loadlist_code ถ้ามี
           items
         } as any);
       }
@@ -449,7 +422,8 @@ export async function GET(request: Request) {
           quantity_picked,
           source_location_id,
           voided_at,
-          status
+          status,
+          package_id
         ),
         wms_loadlist_bonus_face_sheets (
           loadlist_id,
@@ -466,6 +440,26 @@ export async function GET(request: Request) {
 
     if (!bonusFaceSheetError && bonusFaceSheets) {
       const dispatchLocationId = 'Dispatch';
+      
+      // ดึง package_ids ทั้งหมดจาก bonus_face_sheet_items เพื่อ fetch order_no และ shop_name
+      const allBfsPackageIds = bonusFaceSheets.flatMap(bfs => 
+        (bfs.bonus_face_sheet_items || []).map((item: any) => item.package_id).filter(Boolean)
+      );
+      
+      // Fetch bonus_face_sheet_packages แยกต่างหาก
+      let bfsPackageMap: Record<number, { order_no: string; shop_name: string }> = {};
+      if (allBfsPackageIds.length > 0) {
+        const uniqueBfsPackageIds = [...new Set(allBfsPackageIds)];
+        const { data: bfsPackages } = await supabase
+          .from('bonus_face_sheet_packages')
+          .select('id, order_no, shop_name')
+          .in('id', uniqueBfsPackageIds);
+        if (bfsPackages) {
+          bfsPackageMap = Object.fromEntries(
+            bfsPackages.map(p => [p.id, { order_no: p.order_no || '', shop_name: p.shop_name || '' }])
+          );
+        }
+      }
       
       for (const bfs of bonusFaceSheets) {
         // ✅ ตรวจสอบว่ายังไม่ได้เพิ่มเข้า loadlist หรืออยู่ใน loadlist ที่ยังไม่ loaded/voided
@@ -484,34 +478,13 @@ export async function GET(request: Request) {
           console.log(`✅ Include bonus face sheet ${bfs.face_sheet_no} - in ${loadlistStatus} loadlist ${loadlistCode}`);
         }
         
-        // Group items by SKU and aggregate quantities/packages
-        const groupedItems = new Map<string, {
-          sku_id: string;
-          sku_name: string;
-          total_quantity: number;
-          package_count: number;
-          package_ids: Set<number>;
-          balance_id?: number;
-          location_id: string;
-          pallet_id?: string;
-          pallet_id_external?: string;
-          lot_no?: string;
-          production_date?: string;
-          expiry_date?: string;
-          total_pack_qty?: number;
-          total_piece_qty?: number;
-          reserved_pack_qty?: number;
-          reserved_piece_qty?: number;
-          warehouse_id?: string;
-          last_movement_at?: string;
-          updated_at?: string;
-        }>();
-        
         const totalQty = (bfs.bonus_face_sheet_items || []).reduce((sum: number, item: any) => 
           sum + (parseFloat(item.quantity_picked) || parseFloat(item.quantity) || 0), 0
         );
         
-        // First pass: group by SKU (skip voided items)
+        // ✅ ไม่ group by SKU แล้ว - แสดงแต่ละ item แยกกันเพื่อให้เห็น order_no และ shop_name ของแต่ละ package
+        const items: PreparedDocumentItem[] = [];
+        
         for (const item of (bfs.bonus_face_sheet_items || [])) {
           // ✅ ข้าม items ที่ถูก voided
           if (item.voided_at || item.status === 'voided') {
@@ -522,82 +495,55 @@ export async function GET(request: Request) {
           const skuId = item.sku_id || '-';
           const qty = parseFloat(item.quantity_picked) || parseFloat(item.quantity) || 0;
           
-          if (!groupedItems.has(skuId)) {
-            // Fetch balance data for this SKU
-            const { data: balances } = await supabase
-              .from('wms_inventory_balances')
-              .select(`
-                balance_id,
-                pallet_id,
-                pallet_id_external,
-                lot_no,
-                production_date,
-                expiry_date,
-                total_pack_qty,
-                total_piece_qty,
-                reserved_pack_qty,
-                reserved_piece_qty,
-                warehouse_id,
-                location_id,
-                last_movement_at,
-                updated_at
-              `)
-              .eq('location_id', dispatchLocationId)
-              .eq('sku_id', skuId)
-              .limit(1)
-              .single();
-            
-            groupedItems.set(skuId, {
-              sku_id: skuId,
-              sku_name: item.product_name || skuId,
-              total_quantity: qty,
-              package_count: 1,
-              package_ids: new Set(),
-              balance_id: balances?.balance_id,
-              location_id: balances?.location_id || dispatchLocationId,
-              pallet_id: balances?.pallet_id,
-              pallet_id_external: balances?.pallet_id_external,
-              lot_no: balances?.lot_no,
-              production_date: balances?.production_date,
-              expiry_date: balances?.expiry_date,
-              total_pack_qty: balances?.total_pack_qty,
-              total_piece_qty: balances?.total_piece_qty,
-              reserved_pack_qty: balances?.reserved_pack_qty,
-              reserved_piece_qty: balances?.reserved_piece_qty,
-              warehouse_id: balances?.warehouse_id,
-              last_movement_at: balances?.last_movement_at,
-              updated_at: balances?.updated_at
-            });
-          } else {
-            // Add to existing group
-            const existing = groupedItems.get(skuId)!;
-            existing.total_quantity += qty;
-            existing.package_count += 1;
-            
-          }
+          // ดึง order_no และ shop_name จาก package
+          const packageInfo = item.package_id ? bfsPackageMap[item.package_id] : null;
+          
+          // Fetch balance data for this SKU
+          const { data: balances } = await supabase
+            .from('wms_inventory_balances')
+            .select(`
+              balance_id,
+              pallet_id,
+              pallet_id_external,
+              lot_no,
+              production_date,
+              expiry_date,
+              total_pack_qty,
+              total_piece_qty,
+              reserved_pack_qty,
+              reserved_piece_qty,
+              warehouse_id,
+              location_id,
+              last_movement_at,
+              updated_at
+            `)
+            .eq('location_id', dispatchLocationId)
+            .eq('sku_id', skuId)
+            .limit(1)
+            .single();
+          
+          items.push({
+            balance_id: balances?.balance_id,
+            sku_id: skuId,
+            sku_name: item.product_name || skuId,
+            quantity: qty,
+            location_id: balances?.location_id || dispatchLocationId,
+            pallet_id: balances?.pallet_id,
+            pallet_id_external: balances?.pallet_id_external,
+            lot_no: balances?.lot_no,
+            production_date: balances?.production_date,
+            expiry_date: balances?.expiry_date,
+            total_pack_qty: balances?.total_pack_qty,
+            total_piece_qty: balances?.total_piece_qty,
+            reserved_pack_qty: balances?.reserved_pack_qty,
+            reserved_piece_qty: balances?.reserved_piece_qty,
+            warehouse_id: balances?.warehouse_id,
+            last_movement_at: balances?.last_movement_at,
+            updated_at: balances?.updated_at,
+            order_no: packageInfo?.order_no,
+            shop_name: packageInfo?.shop_name
+          });
         }
-        
-        // Convert grouped items to array
-        const items = Array.from(groupedItems.values()).map(group => ({
-          balance_id: group.balance_id,
-          sku_id: group.sku_id,
-          sku_name: group.sku_name,
-          quantity: group.total_quantity,
-          package_count: group.package_count, // จำนวนแพ็คของ SKU นี้
-          location_id: group.location_id,
-          pallet_id: group.pallet_id,
-          pallet_id_external: group.pallet_id_external,
-          lot_no: group.lot_no,
-          production_date: group.production_date,
-          expiry_date: group.expiry_date,
-          total_pack_qty: group.total_pack_qty,
-          total_piece_qty: group.total_piece_qty,
-          reserved_pack_qty: group.reserved_pack_qty,
-          reserved_piece_qty: group.reserved_piece_qty,
-          warehouse_id: group.warehouse_id,
-          last_movement_at: group.last_movement_at,
-          updated_at: group.updated_at
-        }));
         
         // ✅ ข้าม bonus face sheet ที่ไม่มี items ที่ยังใช้งานได้ (ทั้งหมดถูก voided)
         if (items.length === 0) {
@@ -605,17 +551,17 @@ export async function GET(request: Request) {
           continue;
         }
         
-        console.log(`✅ Include bonus face sheet ${bfs.face_sheet_no} - ${items.length} active SKUs, ${bfs.total_packages} packages`);
+        console.log(`✅ Include bonus face sheet ${bfs.face_sheet_no} - ${items.length} active items, ${bfs.total_packages} packages`);
         
         documents.push({
           document_type: 'bonus_face_sheet',
           document_id: bfs.id,
           document_no: bfs.face_sheet_no,
           status: bfs.status,
-          total_items: items.length, // จำนวน SKU ที่ไม่ซ้ำ
+          total_items: items.length,
           total_quantity: totalQty,
           created_at: bfs.created_at,
-          loadlist_code: null,  // ✅ ยืนยันว่ายังไม่มี loadlist
+          loadlist_code: loadlistCode || null,  // ✅ ส่ง loadlist_code ถ้ามี
           items
         } as any);
       }

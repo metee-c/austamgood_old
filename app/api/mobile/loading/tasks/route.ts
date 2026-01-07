@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
         updated_at,
         vehicle_id,
         driver_employee_id,
+        trip_id,
         wms_loadlist_picklists (
           picklist_id,
           picklists:picklist_id (
@@ -54,7 +55,7 @@ export async function GET(request: NextRequest) {
           )
         )
       `)
-      .order('created_at', { ascending: false });
+      .order('loadlist_code', { ascending: false });
 
     if (error) {
       console.error('Database error:', error);
@@ -67,6 +68,7 @@ export async function GET(request: NextRequest) {
     // Get unique vehicle IDs and driver IDs
     const vehicleIds = [...new Set(loadlists?.map((l: any) => l.vehicle_id).filter(Boolean))];
     const driverIds = [...new Set(loadlists?.map((l: any) => l.driver_employee_id).filter(Boolean))];
+    const tripIds = [...new Set(loadlists?.map((l: any) => l.trip_id).filter(Boolean))];
 
     // Fetch vehicles
     let vehicleMap: Record<string, any> = {};
@@ -91,6 +93,19 @@ export async function GET(request: NextRequest) {
 
       drivers?.forEach((d: any) => {
         driverMap[d.employee_id] = d;
+      });
+    }
+
+    // Fetch trips to get daily_trip_number (เลขคัน)
+    let tripMap: Record<number, any> = {};
+    if (tripIds.length > 0) {
+      const { data: trips } = await supabase
+        .from('receiving_route_trips')
+        .select('trip_id, daily_trip_number')
+        .in('trip_id', tripIds);
+
+      trips?.forEach((t: any) => {
+        tripMap[t.trip_id] = t;
       });
     }
 
@@ -207,6 +222,9 @@ export async function GET(request: NextRequest) {
       if (faceSheets.length > 0) documentTypes.push('ใบปะหน้า');
       if (bonusFaceSheets.length > 0) documentTypes.push('ของแถม');
 
+      // Get daily_trip_number (เลขคัน) from trip
+      const trip = loadlist.trip_id ? tripMap[loadlist.trip_id] : null;
+
       return {
         loadlist_id: loadlist.id,
         loadlist_code: loadlist.loadlist_code,
@@ -219,7 +237,8 @@ export async function GET(request: NextRequest) {
         updated_at: loadlist.updated_at,
         vehicle: loadlist.vehicle_id ? vehicleMap[loadlist.vehicle_id] : null,
         driver: loadlist.driver_employee_id ? driverMap[loadlist.driver_employee_id] : null,
-        document_types: documentTypes
+        document_types: documentTypes,
+        daily_trip_number: trip?.daily_trip_number || null
       };
     }) || []);
 

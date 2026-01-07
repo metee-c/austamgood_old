@@ -105,6 +105,17 @@ const FaceSheetsPage = () => {
   const [warehouses, setWarehouses] = useState<Array<{ warehouse_id: string; warehouse_name: string }>>([]);
   const [selectedWarehouse, setSelectedWarehouse] = useState('WH01');
 
+  // Missing Hub Modal State
+  const [showMissingHubModal, setShowMissingHubModal] = useState(false);
+  const [missingHubCustomers, setMissingHubCustomers] = useState<Array<{ 
+    customer_id: string; 
+    customer_name: string; 
+    province: string | null;
+    suggested_hubs: Array<{ hub: string; count: number }>;
+    hub: string 
+  }>>([]);
+  const [savingHub, setSavingHub] = useState(false);
+
   const statuses = [
     { value: 'all', label: 'ทั้งหมด' },
     { value: 'draft', label: 'แบบร่าง' },
@@ -359,7 +370,25 @@ const FaceSheetsPage = () => {
           fetchFaceSheets();
         }, 100);
       } else {
+        // Check if this is a missing hub error
         if (result.details && Array.isArray(result.details)) {
+          const hubMissingDetail = result.details.find((d: any) => d.type === 'Hub is Missing');
+          if (hubMissingDetail && hubMissingDetail.customers_info) {
+            // Open missing hub modal instead of showing error
+            setMissingHubCustomers(
+              hubMissingDetail.customers_info.map((c: any) => ({
+                customer_id: c.customer_id,
+                customer_name: c.customer_name,
+                province: c.province || null,
+                suggested_hubs: c.suggested_hubs || [],
+                hub: ''
+              }))
+            );
+            setShowMissingHubModal(true);
+            setError(null); // Clear error since we're showing modal
+            return;
+          }
+
           const errorMessages = result.details.map((detail: any, index: number) => (
             <li key={index}>{detail.message}</li>
           ));
@@ -684,6 +713,69 @@ const FaceSheetsPage = () => {
   };
 
   const isCreateDisabled = loading || !creationDate || previewLoading || previewOrders.length === 0 || selectedOrderIds.length === 0;
+
+  // Handle hub input change
+  const handleHubChange = (customerId: string, hub: string) => {
+    setMissingHubCustomers(prev =>
+      prev.map(c => c.customer_id === customerId ? { ...c, hub } : c)
+    );
+  };
+
+  // Save hub values and retry face sheet creation
+  const handleSaveHubs = async () => {
+    const updates = missingHubCustomers
+      .filter(c => c.hub.trim())
+      .map(c => ({ customer_id: c.customer_id, hub: c.hub.trim() }));
+
+    if (updates.length === 0) {
+      setError('กรุณากรอก Hub อย่างน้อย 1 รายการ');
+      return;
+    }
+
+    if (updates.length !== missingHubCustomers.length) {
+      setError('กรุณากรอก Hub ให้ครบทุกลูกค้า');
+      return;
+    }
+
+    try {
+      setSavingHub(true);
+      setError(null);
+
+      const response = await fetch('/api/master-customer/update-hub', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ updates })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        setError(result.error || 'ไม่สามารถบันทึก Hub ได้');
+        return;
+      }
+
+      // Close modal and retry face sheet creation
+      setShowMissingHubModal(false);
+      setMissingHubCustomers([]);
+      setSuccess(`บันทึก Hub สำเร็จ ${result.updated?.length || 0} รายการ กำลังสร้างใบปะหน้าสินค้าใหม่...`);
+
+      // Retry face sheet creation after a short delay
+      setTimeout(() => {
+        handleCreateFaceSheet();
+      }, 500);
+
+    } catch (err) {
+      console.error('Error saving hubs:', err);
+      setError('เกิดข้อผิดพลาดในการบันทึก Hub');
+    } finally {
+      setSavingHub(false);
+    }
+  };
+
+  const handleCloseMissingHubModal = () => {
+    setShowMissingHubModal(false);
+    setMissingHubCustomers([]);
+  };
 
   return (
     <PageContainer>
@@ -1023,6 +1115,102 @@ const FaceSheetsPage = () => {
                 </>
               ) : (
                 'สร้างใบปะหน้าสินค้า'
+              )}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Missing Hub Modal */}
+      <Modal
+        isOpen={showMissingHubModal}
+        onClose={handleCloseMissingHubModal}
+        title="กรุณากรอกข้อมูล Hub"
+        size="lg"
+      >
+        <div className="space-y-4">
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <div className="flex items-start space-x-2">
+              <AlertCircle className="w-5 h-5 text-amber-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm text-amber-800 font-medium">ลูกค้าด้านล่างยังไม่มีข้อมูล Hub</p>
+                <p className="text-xs text-amber-700 mt-1">กรุณากรอก Hub ให้ครบทุกลูกค้าเพื่อสร้างใบปะหน้าสินค้า</p>
+              </div>
+            </div>
+          </div>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start space-x-2">
+              <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
+              <span className="text-sm text-red-700">{error}</span>
+            </div>
+          )}
+
+          <div className="border border-gray-200 rounded-lg overflow-hidden">
+            <table className="min-w-full text-sm">
+              <thead className="bg-gray-50">
+                <tr>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600">รหัสลูกค้า</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600">ชื่อร้าน</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600">จังหวัด</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600">Hub ที่แนะนำ</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold text-gray-600 w-36">Hub</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {missingHubCustomers.map((customer) => (
+                  <tr key={customer.customer_id} className="hover:bg-gray-50">
+                    <td className="px-3 py-2 text-xs font-mono text-blue-600">{customer.customer_id}</td>
+                    <td className="px-3 py-2 text-xs text-gray-800">{customer.customer_name}</td>
+                    <td className="px-3 py-2 text-xs text-gray-600">{customer.province || '-'}</td>
+                    <td className="px-3 py-2">
+                      {customer.suggested_hubs && customer.suggested_hubs.length > 0 ? (
+                        <div className="flex flex-wrap gap-1">
+                          {customer.suggested_hubs.map((s, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => handleHubChange(customer.customer_id, s.hub)}
+                              className="px-2 py-0.5 text-[10px] bg-blue-50 text-blue-700 rounded hover:bg-blue-100 border border-blue-200 transition-colors"
+                              disabled={savingHub}
+                              title={`ใช้โดย ${s.count} ร้านในจังหวัดนี้`}
+                            >
+                              {s.hub} ({s.count})
+                            </button>
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-[10px] text-gray-400">ไม่มีข้อมูล</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      <input
+                        type="text"
+                        value={customer.hub}
+                        onChange={(e) => handleHubChange(customer.customer_id, e.target.value)}
+                        placeholder="กรอก Hub"
+                        className="w-full px-2 py-1.5 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                        disabled={savingHub}
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex justify-end space-x-3 pt-2">
+            <Button variant="outline" onClick={handleCloseMissingHubModal} disabled={savingHub}>
+              ยกเลิก
+            </Button>
+            <Button variant="primary" onClick={handleSaveHubs} disabled={savingHub}>
+              {savingHub ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                  กำลังบันทึก...
+                </>
+              ) : (
+                'บันทึก Hub และสร้างใบปะหน้า'
               )}
             </Button>
           </div>

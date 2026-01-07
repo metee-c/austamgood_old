@@ -73,8 +73,23 @@ export async function GET(request: NextRequest) {
               status
             )
           )
-        ),
-        bonus_face_sheet_packages!package_id (
+        )
+      `)
+      .in('sku_id', skuIds)
+      .gt('quantity_picked', 0) // ✅ กรองเฉพาะที่หยิบแล้ว (quantity_picked > 0)
+      .is('voided_at', null) // ✅ กรอง voided items ออก
+      .neq('status', 'voided'); // ✅ กรอง voided status ออก
+
+    if (bfsError) throw bfsError;
+
+    // ✅ ดึงข้อมูล bonus_face_sheet_packages แยกต่างหาก
+    const packageIds = (bonusFaceSheetData || []).map(item => item.package_id).filter(Boolean);
+    let bonusPackagesMap: Record<number, any> = {};
+    
+    if (packageIds.length > 0) {
+      const { data: packagesData, error: packagesError } = await supabase
+        .from('bonus_face_sheet_packages')
+        .select(`
           id,
           package_number,
           barcode_id,
@@ -84,25 +99,20 @@ export async function GET(request: NextRequest) {
           province,
           phone,
           hub,
-          delivery_type,
-          wms_orders!order_id (
-            order_id,
-            order_no,
-            customer_id,
-            shop_name,
-            province,
-            phone,
-            status,
-            delivery_date
-          )
-        )
-      `)
-      .in('sku_id', skuIds)
-      .gt('quantity_picked', 0) // ✅ กรองเฉพาะที่หยิบแล้ว (quantity_picked > 0)
-      .is('voided_at', null) // ✅ กรอง voided items ออก
-      .neq('status', 'voided'); // ✅ กรอง voided status ออก
-
-    if (bfsError) throw bfsError;
+          delivery_type
+        `)
+        .in('id', packageIds);
+      
+      if (packagesError) throw packagesError;
+      
+      // สร้าง map สำหรับ lookup
+      bonusPackagesMap = (packagesData || []).reduce((acc, pkg) => {
+        acc[pkg.id] = pkg;
+        return acc;
+      }, {} as Record<number, any>);
+      
+      console.log(`[DISPATCH-INVENTORY] Bonus packages loaded: ${Object.keys(bonusPackagesMap).length} packages`);
+    }
 
     console.log(`[DISPATCH-INVENTORY] Bonus Face Sheet Items: Found ${bonusFaceSheetData?.length || 0} items (all statuses)`);
     
@@ -287,31 +297,46 @@ export async function GET(request: NextRequest) {
         // Bonus face sheet documents
         ...relatedBonusItems.map(item => {
           const faceSheet = Array.isArray(item.bonus_face_sheets) ? item.bonus_face_sheets[0] : item.bonus_face_sheets;
-          const faceSheetPackage = Array.isArray(item.bonus_face_sheet_packages) ? item.bonus_face_sheet_packages[0] : item.bonus_face_sheet_packages;
-          const order = faceSheetPackage?.wms_orders ? (Array.isArray(faceSheetPackage.wms_orders) ? faceSheetPackage.wms_orders[0] : faceSheetPackage.wms_orders) : null;
+          // ✅ ใช้ bonusPackagesMap แทน nested select
+          const faceSheetPackage = item.package_id ? bonusPackagesMap[item.package_id] : null;
+          
+          // ดึง loadlist_code จาก wms_loadlist_bonus_face_sheets
+          const loadlistBonusFaceSheets = faceSheet?.wms_loadlist_bonus_face_sheets || [];
+          const firstLoadlistLink = loadlistBonusFaceSheets[0];
+          const loadlist = firstLoadlistLink?.loadlists ? (Array.isArray(firstLoadlistLink.loadlists) ? firstLoadlistLink.loadlists[0] : firstLoadlistLink.loadlists) : null;
 
           return {
             document_type: 'bonus_face_sheet',
             face_sheet_id: faceSheet?.id,
             face_sheet_no: faceSheet?.face_sheet_no,
+            bonus_face_sheet_code: faceSheet?.face_sheet_no, // alias for display
             face_sheet_status: faceSheet?.status,
             package_id: faceSheetPackage?.id,
             package_number: faceSheetPackage?.package_number,
             barcode_id: faceSheetPackage?.barcode_id,
-            order_id: order?.order_id || faceSheetPackage?.order_id,
-            order_no: order?.order_no || faceSheetPackage?.order_no,
-            shop_name: order?.shop_name || faceSheetPackage?.shop_name,
-            province: order?.province || faceSheetPackage?.province,
-            phone: order?.phone || faceSheetPackage?.phone,
-            delivery_date: order?.delivery_date,
+            order_id: faceSheetPackage?.order_id,
+            order_no: faceSheetPackage?.order_no,
+            shop_name: faceSheetPackage?.shop_name,
+            province: faceSheetPackage?.province,
+            phone: faceSheetPackage?.phone,
+            delivery_date: null,
             quantity_picked: item.quantity_picked,
-            picked_at: item.picked_at
+            picked_at: item.picked_at,
+            // ✅ เพิ่ม loadlist_code
+            loadlist_id: firstLoadlistLink?.loadlist_id,
+            loadlist_code: loadlist?.loadlist_code,
+            loadlist_status: loadlist?.status
           };
         }),
         // Picklist documents
         ...relatedPicklistItems.map(item => {
           const picklist = Array.isArray(item.picklists) ? item.picklists[0] : item.picklists;
           const order = Array.isArray(item.wms_orders) ? item.wms_orders[0] : item.wms_orders;
+          
+          // ดึง loadlist_code จาก wms_loadlist_picklists
+          const loadlistPicklists = picklist?.wms_loadlist_picklists || [];
+          const firstLoadlistLink = loadlistPicklists[0];
+          const loadlist = firstLoadlistLink?.loadlists ? (Array.isArray(firstLoadlistLink.loadlists) ? firstLoadlistLink.loadlists[0] : firstLoadlistLink.loadlists) : null;
 
           return {
             document_type: 'picklist',
@@ -325,18 +350,28 @@ export async function GET(request: NextRequest) {
             phone: order?.phone,
             delivery_date: order?.delivery_date,
             quantity_picked: item.quantity_picked,
-            picked_at: item.picked_at
+            picked_at: item.picked_at,
+            // ✅ เพิ่ม loadlist_code
+            loadlist_id: firstLoadlistLink?.loadlist_id,
+            loadlist_code: loadlist?.loadlist_code,
+            loadlist_status: loadlist?.status
           };
         }),
         // Face sheet documents (ใบปะหน้า)
         ...relatedFaceSheetItems.map(item => {
           const faceSheet = Array.isArray(item.face_sheets) ? item.face_sheets[0] : item.face_sheets;
           const order = Array.isArray(item.wms_orders) ? item.wms_orders[0] : item.wms_orders;
+          
+          // ดึง loadlist_code จาก loadlist_face_sheets
+          const loadlistFaceSheets = faceSheet?.loadlist_face_sheets || [];
+          const firstLoadlistLink = loadlistFaceSheets[0];
+          const loadlist = firstLoadlistLink?.loadlist ? (Array.isArray(firstLoadlistLink.loadlist) ? firstLoadlistLink.loadlist[0] : firstLoadlistLink.loadlist) : null;
 
           return {
             document_type: 'face_sheet',
             face_sheet_id: faceSheet?.id,
             face_sheet_no: faceSheet?.face_sheet_no,
+            face_sheet_code: faceSheet?.face_sheet_no, // alias for display
             face_sheet_status: faceSheet?.status,
             order_id: order?.order_id || item.order_id,
             order_no: order?.order_no,
@@ -345,7 +380,11 @@ export async function GET(request: NextRequest) {
             phone: order?.phone,
             delivery_date: order?.delivery_date,
             quantity_picked: item.quantity_picked,
-            picked_at: item.picked_at
+            picked_at: item.picked_at,
+            // ✅ เพิ่ม loadlist_code
+            loadlist_id: firstLoadlistLink?.loadlist_id,
+            loadlist_code: loadlist?.loadlist_code,
+            loadlist_status: loadlist?.status
           };
         })
       ];

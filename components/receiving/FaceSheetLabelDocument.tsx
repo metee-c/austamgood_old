@@ -156,23 +156,51 @@ const FaceSheetLabelDocument: React.FC<FaceSheetLabelDocumentProps> = ({ faceShe
 
           {/* Product Details */}
           <div style={{ marginBottom: '6px' }}>
-            <div style={{ fontSize: '12px', fontWeight: 'bold', marginBottom: '3px', paddingBottom: '2px', borderBottom: '1px solid #000' }}>
+            <div style={{ fontSize: '14px', fontWeight: 'bold', marginBottom: '3px', paddingBottom: '2px', borderBottom: '1px solid #000' }}>
               สินค้า:
             </div>
             {pkg.product_items && pkg.product_items.length > 0 ? (
-              <div style={{ fontSize: '10px', lineHeight: '1.4' }}>
-                {pkg.product_items.map((item, idx) => (
-                  <div key={idx} style={{
-                    padding: '2px 0',
-                    borderBottom: idx < pkg.product_items!.length - 1 ? '1px solid #eee' : '1px solid #000'
-                  }}>
-                    {item.product_name} | {item.size} กก. ({item.product_code})
-                  </div>
-                ))}
+              <div style={{ fontSize: '16px', lineHeight: '1.6', fontWeight: '500' }}>
+                {pkg.product_items.map((item, idx) => {
+                  // ดึงขนาดจากชื่อสินค้า หรือใช้ item.size
+                  const sizeFromName = extractSizeFromProductName(item.product_name);
+                  const displaySize = sizeFromName || item.size?.toString() || '';
+                  // แสดงชื่อสินค้าพร้อมขนาด (ไม่มีรหัสสินค้า)
+                  const displayName = displaySize 
+                    ? `${item.product_name} | ${displaySize} กก.`
+                    : item.product_name;
+                  return (
+                    <div key={idx} style={{
+                      padding: '4px 0',
+                      borderBottom: idx < pkg.product_items!.length - 1 ? '1px solid #eee' : '1px solid #000',
+                      wordWrap: 'break-word',
+                      whiteSpace: 'normal'
+                    }}>
+                      {displayName}
+                    </div>
+                  );
+                })}
               </div>
             ) : (
-              <div style={{ fontSize: '10px', padding: '2px 0', borderBottom: '1px solid #000', paddingBottom: '4px' }}>
-                {pkg.product_name} ({pkg.product_code})
+              <div style={{ 
+                fontSize: '16px', 
+                padding: '4px 0', 
+                borderBottom: '1px solid #000', 
+                paddingBottom: '5px',
+                wordWrap: 'break-word',
+                whiteSpace: 'normal',
+                lineHeight: '1.6',
+                fontWeight: '500'
+              }}>
+                {(() => {
+                  // ดึงขนาดจากชื่อสินค้า
+                  const sizeFromName = extractSizeFromProductName(pkg.product_name);
+                  const displaySize = sizeFromName || pkg.size || '';
+                  // แสดงชื่อสินค้าพร้อมขนาด (ไม่มีรหัสสินค้า)
+                  return displaySize 
+                    ? `${pkg.product_name} | ${displaySize} กก.`
+                    : pkg.product_name;
+                })()}
               </div>
             )}
           </div>

@@ -127,10 +127,64 @@ export async function POST(request: NextRequest) {
         });
       }
       if (filteredMissingHubs.length > 0) {
+        // ดึงข้อมูล customer_name และ province สำหรับลูกค้าที่ไม่มี hub
+        const { data: customersWithNames } = await supabase
+          .from('master_customer')
+          .select('customer_id, customer_name, province')
+          .in('customer_id', filteredMissingHubs);
+
+        // ดึงจังหวัดทั้งหมดที่ต้องการหา hub แนะนำ
+        const provinces = [...new Set(
+          (customersWithNames || [])
+            .map(c => c.province)
+            .filter((p): p is string => Boolean(p && p.trim()))
+        )];
+
+        // ดึง hub ที่ใช้มากที่สุดในแต่ละจังหวัด
+        let hubSuggestions: Record<string, { hub: string; count: number }[]> = {};
+        if (provinces.length > 0) {
+          const { data: hubsByProvince } = await supabase
+            .from('master_customer')
+            .select('province, hub')
+            .in('province', provinces)
+            .not('hub', 'is', null)
+            .neq('hub', '');
+
+          // จัดกลุ่มและนับ hub ตามจังหวัด
+          const hubCounts: Record<string, Record<string, number>> = {};
+          (hubsByProvince || []).forEach(row => {
+            if (row.province && row.hub) {
+              if (!hubCounts[row.province]) hubCounts[row.province] = {};
+              hubCounts[row.province][row.hub] = (hubCounts[row.province][row.hub] || 0) + 1;
+            }
+          });
+
+          // แปลงเป็น array และเรียงตามจำนวน
+          for (const province of Object.keys(hubCounts)) {
+            hubSuggestions[province] = Object.entries(hubCounts[province])
+              .map(([hub, count]) => ({ hub, count }))
+              .sort((a, b) => b.count - a.count)
+              .slice(0, 3); // เอาแค่ 3 อันดับแรก
+          }
+        }
+
+        const customersInfo = filteredMissingHubs.map((customerId: string) => {
+          const customer = customersWithNames?.find(c => c.customer_id === customerId);
+          const province = customer?.province || null;
+          const suggestions = province ? hubSuggestions[province] || [] : [];
+          return {
+            customer_id: customerId,
+            customer_name: customer?.customer_name || customerId,
+            province: province,
+            suggested_hubs: suggestions
+          };
+        });
+
         errorDetails.push({
           type: 'Hub is Missing',
           message: `ลูกค้ายังไม่มีข้อมูล Hub: ${filteredMissingHubs.join(', ')}`,
           customers: filteredMissingHubs,
+          customers_info: customersInfo,
         });
       }
 

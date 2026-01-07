@@ -313,11 +313,30 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate loadlist code with pattern: LD-YYYYMMDD-####
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = String(today.getMonth() + 1).padStart(2, '0');
-    const day = String(today.getDate()).padStart(2, '0');
-    const datePrefix = `${year}${month}${day}`;
+    // ใช้ plan_date จาก Route Plan ถ้ามี, ไม่งั้นใช้วันที่ปัจจุบัน
+    let datePrefix: string;
+    
+    if (plan_id) {
+      // Fetch plan_date from route plan
+      const { data: routePlan } = await supabase
+        .from('receiving_route_plans')
+        .select('plan_date')
+        .eq('plan_id', plan_id)
+        .single();
+      
+      if (routePlan?.plan_date) {
+        // plan_date format: "2026-01-07"
+        datePrefix = routePlan.plan_date.replace(/-/g, '');
+      } else {
+        // Fallback to today
+        const today = new Date();
+        datePrefix = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+      }
+    } else {
+      // No plan_id, use today's date
+      const today = new Date();
+      datePrefix = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+    }
 
     // Get the latest loadlist code for today
     const { data: latestLoadlist } = await supabase

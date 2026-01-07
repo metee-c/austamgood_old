@@ -157,11 +157,11 @@ export async function GET() {
 
                 const doc = {
                   document_type: 'picklist',
-                  plan_code: (pl.route_plan_trip as any)?.route_plan?.[0]?.plan_code || null,
+                  plan_code: (pl.route_plan_trip as any)?.route_plan?.plan_code || null,
                   trip_code: (pl.route_plan_trip as any)?.trip_code || null,
                   picklist_code: pl.picklist_code || null,
-                  loadlist_code: (loadlistPicklist?.loadlists as any)?.[0]?.loadlist_code || (loadlistPicklist?.loadlists as any)?.loadlist_code || null,
-                  delivery_number: (loadlistPicklist?.loadlists as any)?.[0]?.delivery_number || (loadlistPicklist?.loadlists as any)?.delivery_number || null,
+                  loadlist_code: (loadlistPicklist?.loadlists as any)?.loadlist_code || null,
+                  delivery_number: (loadlistPicklist?.loadlists as any)?.delivery_number || null,
                   order_id: picklistItem?.order_id || null,
                   order_no: order?.order_no || null,
                   shop_name: order?.shop_name || null,
@@ -279,8 +279,8 @@ export async function GET() {
                 faceSheetDocs.push({
                   document_type: 'face_sheet',
                   face_sheet_code: fs.face_sheet_no || null,
-                  loadlist_code: (loadlistFaceSheet?.loadlist as any)?.[0]?.loadlist_code || (loadlistFaceSheet?.loadlist as any)?.loadlist_code || null,
-                  delivery_number: (loadlistFaceSheet?.loadlist as any)?.[0]?.delivery_number || (loadlistFaceSheet?.loadlist as any)?.delivery_number || null,
+                  loadlist_code: (loadlistFaceSheet?.loadlist as any)?.loadlist_code || null,
+                  delivery_number: (loadlistFaceSheet?.loadlist as any)?.delivery_number || null,
                   order_id: faceSheetItem?.order_id || null,
                   order_no: order?.order_no || null,
                   shop_name: order?.shop_name || null,
@@ -319,12 +319,6 @@ export async function GET() {
                   status
                 )
               )
-            ),
-            package:bonus_face_sheet_packages!package_id (
-              order_no,
-              shop_name,
-              province,
-              phone
             )
           `)
           .eq('sku_id', item.sku_id)
@@ -336,17 +330,48 @@ export async function GET() {
         } else {
           console.log(`[DELIVERY-INVENTORY] 📋 Found ${bonusFaceSheetItems?.length || 0} bonus face sheet items with loaded loadlist for SKU ${item.sku_id}`);
           if (bonusFaceSheetItems && bonusFaceSheetItems.length > 0) {
+            // ✅ ดึงข้อมูล bonus_face_sheet_packages แยกต่างหาก
+            const packageIds = bonusFaceSheetItems.map((bfs: any) => bfs.package_id).filter(Boolean);
+            let bonusPackagesMap: Record<number, any> = {};
+            
+            if (packageIds.length > 0) {
+              const { data: packagesData, error: packagesError } = await supabase
+                .from('bonus_face_sheet_packages')
+                .select(`
+                  id,
+                  order_no,
+                  shop_name,
+                  province,
+                  phone
+                `)
+                .in('id', packageIds);
+              
+              if (packagesError) {
+                console.error(`[DELIVERY-INVENTORY] ❌ Error fetching bonus packages:`, packagesError);
+              } else {
+                // สร้าง map สำหรับ lookup
+                bonusPackagesMap = (packagesData || []).reduce((acc, pkg) => {
+                  acc[pkg.id] = pkg;
+                  return acc;
+                }, {} as Record<number, any>);
+                console.log(`[DELIVERY-INVENTORY] ✅ Loaded ${Object.keys(bonusPackagesMap).length} bonus packages`);
+              }
+            }
+            
             const bonusFaceSheetDocs = bonusFaceSheetItems.map((bfs: any) => {
               const loadlist = bfs.bonus_face_sheet?.wms_loadlist_bonus_face_sheets?.[0]?.loadlist;
+              // ✅ ใช้ bonusPackagesMap แทน nested select
+              const pkg = bfs.package_id ? bonusPackagesMap[bfs.package_id] : null;
+              
               return {
                 document_type: 'bonus_face_sheet',
                 bonus_face_sheet_code: bfs.bonus_face_sheet?.face_sheet_no || null,
                 loadlist_code: loadlist?.loadlist_code || null,
                 delivery_number: loadlist?.delivery_number || null,
-                order_no: bfs.package?.order_no || null,
-                shop_name: bfs.package?.shop_name || null,
-                province: bfs.package?.province || null,
-                phone: bfs.package?.phone || null,
+                order_no: pkg?.order_no || null,
+                shop_name: pkg?.shop_name || null,
+                province: pkg?.province || null,
+                phone: pkg?.phone || null,
                 // ✅ Add quantity for this specific item
                 quantity_picked: parseFloat(bfs.quantity_picked) || parseFloat(bfs.quantity) || 0,
                 quantity_to_pick: parseFloat(bfs.quantity) || 0

@@ -47,7 +47,7 @@ export async function GET(
       );
     }
 
-    // Fetch packages for this face sheet
+    // Fetch packages for this face sheet - เรียงตาม product_code เพื่อให้สินค้าเดียวกันอยู่ติดกัน
     const { data: packages, error: packagesError } = await supabase
       .from('face_sheet_packages')
       .select(`
@@ -70,6 +70,7 @@ export async function GET(
         notes
       `)
       .eq('face_sheet_id', id)
+      .order('product_code', { ascending: true })
       .order('package_number', { ascending: true });
 
     if (packagesError) {

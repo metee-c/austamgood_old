@@ -730,29 +730,59 @@ export async function POST(request: NextRequest) {
           throw new Error(`Failed to update delivery balance: ${updateError.message}`);
         }
       } else {
-        console.log(`🆕 Creating new Delivery-In-Progress balance: SKU=${sku_id}, prod=${sourceBalance.production_date}, exp=${sourceBalance.expiry_date}, lot=${sourceBalance.lot_no}`);
+        console.log(`🆕 Creating/Updating Delivery-In-Progress balance: SKU=${sku_id}, prod=${sourceBalance.production_date}, exp=${sourceBalance.expiry_date}, lot=${sourceBalance.lot_no}`);
         
-        const { error: insertError } = await supabase
+        // ✅ FIX: Use upsert to handle duplicate key constraint
+        // First try to find existing balance by exact match on unique constraint columns
+        const { data: existingBalance } = await supabase
           .from('wms_inventory_balances')
-          .insert({
-            warehouse_id: 'WH001',
-            location_id: deliveryLocation.location_id,
-            sku_id,
-            production_date: sourceBalance.production_date || null,
-            expiry_date: sourceBalance.expiry_date || null,
-            lot_no: sourceBalance.lot_no || null,
-            pallet_id: null,
-            pallet_id_external: null,
-            total_pack_qty: qtyPack,
-            total_piece_qty: qty,
-            reserved_pack_qty: 0,
-            reserved_piece_qty: 0,
-            last_movement_at: now
-          });
+          .select('balance_id, total_piece_qty, total_pack_qty')
+          .eq('warehouse_id', 'WH001')
+          .eq('location_id', deliveryLocation.location_id)
+          .eq('sku_id', sku_id)
+          .is('pallet_id', null)
+          .maybeSingle();
         
-        if (insertError) {
-          console.error(`❌ Error creating Delivery-In-Progress balance:`, insertError);
-          throw new Error(`Failed to create delivery balance: ${insertError.message}`);
+        if (existingBalance) {
+          // Update existing balance
+          console.log(`✅ Found existing balance by unique constraint, updating: ${existingBalance.balance_id}`);
+          const { error: updateError } = await supabase
+            .from('wms_inventory_balances')
+            .update({
+              total_pack_qty: existingBalance.total_pack_qty + qtyPack,
+              total_piece_qty: existingBalance.total_piece_qty + qty,
+              last_movement_at: now
+            })
+            .eq('balance_id', existingBalance.balance_id);
+          
+          if (updateError) {
+            console.error(`❌ Error updating Delivery-In-Progress balance:`, updateError);
+            throw new Error(`Failed to update delivery balance: ${updateError.message}`);
+          }
+        } else {
+          // Insert new balance
+          const { error: insertError } = await supabase
+            .from('wms_inventory_balances')
+            .insert({
+              warehouse_id: 'WH001',
+              location_id: deliveryLocation.location_id,
+              sku_id,
+              production_date: sourceBalance.production_date || null,
+              expiry_date: sourceBalance.expiry_date || null,
+              lot_no: sourceBalance.lot_no || null,
+              pallet_id: null,
+              pallet_id_external: null,
+              total_pack_qty: qtyPack,
+              total_piece_qty: qty,
+              reserved_pack_qty: 0,
+              reserved_piece_qty: 0,
+              last_movement_at: now
+            });
+          
+          if (insertError) {
+            console.error(`❌ Error creating Delivery-In-Progress balance:`, insertError);
+            throw new Error(`Failed to create delivery balance: ${insertError.message}`);
+          }
         }
       }
 

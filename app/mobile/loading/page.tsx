@@ -33,6 +33,7 @@ interface LoadlistTask {
   vehicle?: { plate_number: string };
   driver?: { first_name: string; last_name: string };
   document_types?: string[];
+  daily_trip_number?: number;
 }
 
 const LOADLIST_STATUSES = [
@@ -289,6 +290,7 @@ function MobileLoadingPage() {
               <thead className="bg-gray-50 border-b border-gray-200">
                 <tr>
                   <th className="px-1.5 py-1 text-left text-[10px] font-semibold text-gray-700 font-thai">รหัส</th>
+                  <th className="px-1.5 py-1 text-center text-[10px] font-semibold text-gray-700 font-thai">เลขคัน</th>
                   <th className="px-1.5 py-1 text-center text-[10px] font-semibold text-gray-700 font-thai">สถานะ</th>
                   <th className="px-1.5 py-1 text-center text-[10px] font-semibold text-gray-700 font-thai">จำนวน</th>
                   <th className="px-1.5 py-1 text-center text-[10px] font-semibold text-gray-700 font-thai">อัปเดต</th>
@@ -324,6 +326,13 @@ function MobileLoadingPage() {
                           )}
                         </div>
                       </div>
+                    </td>
+
+                    {/* เลขคัน */}
+                    <td className="px-1.5 py-2 text-center">
+                      <p className="font-semibold text-gray-900 font-thai text-xs">
+                        {loadlist.daily_trip_number || '-'}
+                      </p>
                     </td>
 
                     {/* สถานะ */}

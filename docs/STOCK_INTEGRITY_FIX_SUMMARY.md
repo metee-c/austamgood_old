@@ -1,5 +1,5 @@
 # Stock Integrity Fix Summary
-**Date:** 2026-01-06
+**Date:** 2026-01-06 (Updated: 2026-01-07)
 
 ## Migrations Applied
 
@@ -22,6 +22,17 @@
   2. ลบ balance ที่ location ปัจจุบัน (ไม่ใช่ที่ Receiving)
   3. ลบ ledger entries ทั้งหมดที่เกี่ยวข้องกับ pallet_id (รวม transfer entries)
 
+### Migration 184: fix_wrong_picklist_ledger_entries
+- **ปัญหา**: Ledger entries ถูกสร้างด้วย reference_no (picklist_code) ที่ไม่ตรงกับ order_item_id
+- **สาเหตุ**: เมื่อ order ถูกแบ่งออกเป็นหลาย picklists (split order) และหน้า mobile pick ส่ง request แบบ parallel ทำให้เกิด race condition
+- **ผลกระทบ**: 
+  - PL-20260106-008: 14 wrong entries (4,200 ชิ้น) - ลบแล้ว
+  - PL-20260106-009: 11 wrong entries (7,300 ชิ้น) - ลบแล้ว
+  - PL-20260106-010: 16 wrong entries (4,290 ชิ้น) - ลบแล้ว
+- **วิธีแก้ไข**:
+  1. ลบ ledger entries ที่ order_item_id ไม่ตรงกับ picklist_items ของ picklist นั้น
+  2. แก้ไข TUN|070 IN entry ให้ตรงกับ OUT (50 -> 34)
+
 ## Results
 
 | Issue | Before | After | Status |
@@ -30,6 +41,25 @@
 | Orphan Reservations | 45 | 0 | ✅ Fixed |
 | Ledger vs Balance Mismatches | 234 | 49 | 🟡 Partially Fixed |
 | Negative Balances | 44 | 23 | ⚠️ Allowed by design |
+| Wrong Picklist Ledger Entries | 41 | 0 | ✅ Fixed |
+
+## Root Cause Analysis: Wrong Picklist Ledger Entries
+
+### Problem
+เมื่อ order ถูกแบ่งออกเป็นหลาย picklists (split order) และหน้า mobile pick ส่ง request แบบ parallel:
+1. Order 6458 ถูกแบ่งเป็น 3 picklists: PL-008, PL-009, PL-010
+2. แต่ละ picklist มี items บางส่วนของ order
+3. เมื่อกดยืนยันหยิบ หน้า mobile pick ส่ง requests แบบ parallel
+4. API ใช้ FEFO/FIFO fallback เมื่อไม่มี reservations
+5. เกิด race condition ทำให้ ledger entries ถูกสร้างด้วย reference_no ที่ผิด
+
+### Solution Applied
+1. ลบ ledger entries ที่ order_item_id ไม่ตรงกับ picklist_items ของ picklist นั้น
+2. แก้ไข TUN|070 IN entry ให้ตรงกับ OUT
+
+### Prevention (TODO)
+1. แก้ไข API `/api/mobile/pick/scan` ให้ตรวจสอบว่า item.picklist_id ตรงกับ picklist_id ที่ส่งมา
+2. หรือแก้ไขหน้า mobile pick ให้ส่ง requests แบบ sequential แทน parallel
 
 ## Remaining Issues (49 mismatches)
 

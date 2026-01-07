@@ -199,6 +199,9 @@ const LoadlistsPage = () => {
   // ✅ NEW: เก็บค่าแยกต่างหากแต่ละ picklist (key = picklist_id)
   const [picklistFormData, setPicklistFormData] = useState<Record<number, PicklistFormData>>({});
 
+  // ✅ NEW: เก็บค่า checker แยกต่างหากแต่ละ bonus face sheet (key = bonus_face_sheet_id)
+  const [bonusFaceSheetCheckers, setBonusFaceSheetCheckers] = useState<Record<number, number | ''>>({});
+
   // Form fields (ใช้สำหรับ face sheets และ bonus face sheets)
   const [checkerEmployeeId, setCheckerEmployeeId] = useState<number | ''>('');
   const [vehicleType, setVehicleType] = useState('');
@@ -450,6 +453,7 @@ const LoadlistsPage = () => {
     setLoadingQueueNumber('');
     setLoadingDoorNumber('');
     setPicklistFormData({}); // ✅ Reset picklist form data
+    setBonusFaceSheetCheckers({}); // ✅ Reset bonus face sheet checkers
     await Promise.all([
       fetchAvailablePicklists(),
       fetchAvailableFaceSheets(),
@@ -555,10 +559,22 @@ const LoadlistsPage = () => {
     }
 
     // For face sheets and bonus face sheets: use shared checkerEmployeeId
-    if ((hasFaceSheets || hasBonusFaceSheets) && !hasPicklists) {
+    if (hasFaceSheets && !hasPicklists) {
       if (!checkerEmployeeId) {
         setCreateError('กรุณาเลือกผู้เช็คโหลดสินค้า');
         return;
+      }
+    }
+
+    // For bonus face sheets: validate each selected bonus face sheet has checker
+    if (hasBonusFaceSheets && !hasPicklists) {
+      for (const bfsId of selectedBonusFaceSheets) {
+        const bfs = availableBonusFaceSheets.find(b => b.id === bfsId);
+        const checkerId = bonusFaceSheetCheckers[bfsId];
+        if (!checkerId) {
+          setCreateError(`กรุณาเลือกผู้เช็คสำหรับ ${bfs?.face_sheet_no || `ID:${bfsId}`}`);
+          return;
+        }
       }
     }
 
@@ -619,7 +635,48 @@ const LoadlistsPage = () => {
         return;
       }
 
-      // For face sheets and bonus face sheets: create single loadlist with shared values
+      // For bonus face sheets only: create one loadlist per bonus face sheet (each has different checker)
+      if (hasBonusFaceSheets && !hasFaceSheets) {
+        const results = [];
+        for (const bfsId of selectedBonusFaceSheets) {
+          const bfs = availableBonusFaceSheets.find(b => b.id === bfsId);
+          const checkerId = bonusFaceSheetCheckers[bfsId];
+          
+          const requestBody: any = {
+            checker_employee_id: checkerId,
+            vehicle_type: vehicleType || 'N/A',
+            delivery_number: deliveryNumber || `BFS-${Date.now()}`,
+            vehicle_id: vehicleId || null,
+            driver_employee_id: driverEmployeeId || null,
+            loading_queue_number: loadingQueueNumber || null,
+            loading_door_number: loadingDoorNumber || null,
+            bonus_face_sheet_ids: [bfsId]
+          };
+
+          console.log(`🚀 Creating loadlist for ${bfs?.face_sheet_no}:`, {
+            checker_employee_id: requestBody.checker_employee_id
+          });
+
+          const response = await fetch('/api/loadlists', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(requestBody)
+          });
+          const result = await response.json();
+          if (!response.ok) {
+            throw new Error(result.error || `ไม่สามารถสร้างใบโหลดสำหรับ ${bfs?.face_sheet_no}`);
+          }
+          results.push(result);
+        }
+        
+        setIsCreateModalOpen(false);
+        setSelectedBonusFaceSheets([]);
+        setBonusFaceSheetCheckers({});
+        await fetchLoadlists();
+        return;
+      }
+
+      // For face sheets (and mixed with bonus face sheets): create single loadlist with shared values
       const requestBody: any = {
         checker_employee_id: checkerEmployeeId,
         vehicle_type: vehicleType || 'N/A',
@@ -658,6 +715,7 @@ const LoadlistsPage = () => {
       setIsCreateModalOpen(false);
       setSelectedFaceSheets([]);
       setSelectedBonusFaceSheets([]);
+      setBonusFaceSheetCheckers({});
       await fetchLoadlists();
       
       // If created from face sheets or bonus face sheets, show delivery document option
@@ -899,7 +957,32 @@ const LoadlistsPage = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
-                    {filteredLoadlists.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((loadlist) => (
+                    {filteredLoadlists.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((loadlist) => {
+                      // ตรวจสอบประเภทเอกสารและแสดงเลขงานจัดส่งที่เหมาะสม
+                      const hasPicklists = loadlist.picklists && loadlist.picklists.length > 0;
+                      const hasFaceSheets = (loadlist as any).face_sheets && (loadlist as any).face_sheets.length > 0;
+                      const hasBonusFaceSheets = (loadlist as any).bonus_face_sheets && (loadlist as any).bonus_face_sheets.length > 0;
+                      
+                      // แสดงเลขงานจัดส่งตามประเภท
+                      let displayDeliveryNumber = '-';
+                      let deliveryNumberStyle = 'text-gray-700 font-medium';
+                      
+                      if (hasPicklists) {
+                        // Picklist: แสดง delivery_number จริง
+                        displayDeliveryNumber = loadlist.delivery_number || '-';
+                      } else if (hasFaceSheets) {
+                        // Face Sheet: แสดง face_sheet_no
+                        const faceSheet = (loadlist as any).face_sheets[0];
+                        displayDeliveryNumber = faceSheet?.face_sheet_no || loadlist.delivery_number || '-';
+                        deliveryNumberStyle = 'text-orange-600 font-medium';
+                      } else if (hasBonusFaceSheets) {
+                        // Bonus Face Sheet: แสดง face_sheet_no
+                        const bonusFaceSheet = (loadlist as any).bonus_face_sheets[0];
+                        displayDeliveryNumber = bonusFaceSheet?.face_sheet_no || loadlist.delivery_number || '-';
+                        deliveryNumberStyle = 'text-pink-600 font-medium';
+                      }
+                      
+                      return (
                       <tr key={loadlist.id} className="hover:bg-blue-50/30 transition-colors duration-150">
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap font-semibold text-green-600">
                           {loadlist.loadlist_code}
@@ -910,8 +993,8 @@ const LoadlistsPage = () => {
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-purple-600 font-mono text-xs">
                           {loadlist.trip?.trip_code || '-'}
                         </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700 font-medium">
-                          {loadlist.delivery_number || '-'}
+                        <td className={`px-2 py-0.5 border-r border-gray-100 whitespace-nowrap ${deliveryNumberStyle}`}>
+                          {displayDeliveryNumber}
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                           <select
@@ -1103,7 +1186,8 @@ const LoadlistsPage = () => {
                           </div>
                         </td>
                       </tr>
-                    ))}
+                    );
+                    })}
                   </tbody>
                 </table>
             </div>
@@ -1602,26 +1686,21 @@ const LoadlistsPage = () => {
                             {bonusFaceSheet.warehouse_id}
                           </td>
                           <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                            {index === 0 ? (
-                              <select
-                                value={checkerEmployeeId}
-                                onChange={(e) => setCheckerEmployeeId(e.target.value ? Number(e.target.value) : '')}
-                                className="w-32 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
-                              >
-                                <option value="">-- เลือก --</option>
-                                {employees.map((emp) => (
-                                  <option key={emp.employee_id} value={emp.employee_id}>
-                                    {emp.first_name} {emp.last_name}
-                                  </option>
-                                ))}
-                              </select>
-                            ) : checkerEmployeeId ? (
-                              <span className="text-gray-400 text-xs">
-                                {employees.find(e => e.employee_id === checkerEmployeeId)?.first_name || '-'}
-                              </span>
-                            ) : (
-                              <span className="text-gray-400 text-xs">-</span>
-                            )}
+                            <select
+                              value={bonusFaceSheetCheckers[bonusFaceSheet.id] ?? ''}
+                              onChange={(e) => setBonusFaceSheetCheckers(prev => ({
+                                ...prev,
+                                [bonusFaceSheet.id]: e.target.value ? Number(e.target.value) : ''
+                              }))}
+                              className="w-32 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                            >
+                              <option value="">-- เลือก --</option>
+                              {employees.map((emp) => (
+                                <option key={emp.employee_id} value={emp.employee_id}>
+                                  {emp.first_name} {emp.last_name}
+                                </option>
+                              ))}
+                            </select>
                           </td>
                           <td className="px-3 py-2 text-center">
                             <Badge variant="success" size="sm">เสร็จสิ้น</Badge>
