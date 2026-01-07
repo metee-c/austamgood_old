@@ -245,11 +245,13 @@ export async function POST(request: NextRequest) {
         }
       } else {
         // ✅ CASE 2: Stop has no split items - use wms_order_items (original logic)
-        const stopOrderIds: number[] = [];
-        if (stop.order_id) stopOrderIds.push(stop.order_id);
+        // ✅ FIX: Deduplicate order IDs within the same stop to prevent duplicate items
+        const stopOrderIdsSet = new Set<number>();
+        if (stop.order_id) stopOrderIdsSet.add(stop.order_id);
         if (stop.tags?.order_ids) {
-          stopOrderIds.push(...stop.tags.order_ids);
+          stop.tags.order_ids.forEach((id: number) => stopOrderIdsSet.add(id));
         }
+        const stopOrderIds = Array.from(stopOrderIdsSet);
 
         for (const orderId of stopOrderIds) {
           const orderItemsForOrder = (orderItems || []).filter(item => item.order_id === orderId);
@@ -302,6 +304,23 @@ export async function POST(request: NextRequest) {
       }, { status: 400 });
     }
 
+    // ✅ FIX: Deduplicate items by order_item_id (prevent unique constraint violation)
+    // If same order_item_id appears multiple times, keep only the first occurrence
+    const seenOrderItemIds = new Set<number>();
+    const deduplicatedItems = itemsToInsert.filter(item => {
+      if (seenOrderItemIds.has(item.order_item_id)) {
+        console.log(`⚠️ Skipping duplicate order_item_id: ${item.order_item_id}`);
+        return false;
+      }
+      seenOrderItemIds.add(item.order_item_id);
+      return true;
+    });
+
+    console.log(`📦 Items after deduplication: ${deduplicatedItems.length} (was ${itemsToInsert.length})`);
+
+    // Use deduplicated items for the rest of the process
+    const finalItemsToInsert = deduplicatedItems;
+
     // ============================================================
     // ✅ FIX #2: Check stock availability and create replenishment if needed
     // ============================================================
@@ -315,7 +334,7 @@ export async function POST(request: NextRequest) {
       .in('location_type', ['rack', 'floor', 'bulk'])
       .in('zone', ['Zone Selective Rack', 'Zone Block Stack']);
 
-    for (const item of itemsToInsert) {
+    for (const item of finalItemsToInsert) {
       // ✅ FIX: Map area_code → zone name → location_ids
       // source_location_id is area_code from preparation_areas (e.g., 'PK001')
 
@@ -433,7 +452,7 @@ export async function POST(request: NextRequest) {
     // ============================================================
     // 9. Create picklist (all validations passed)
     // ============================================================
-    const totalQuantity = itemsToInsert.reduce((sum, item) => sum + item.quantity_to_pick, 0);
+    const totalQuantity = finalItemsToInsert.reduce((sum, item) => sum + item.quantity_to_pick, 0);
     const { data: { user } } = await supabase.auth.getUser();
 
     const { data: picklistData, error: picklistError } = await supabase
@@ -443,7 +462,7 @@ export async function POST(request: NextRequest) {
         trip_id: trip_id,
         plan_id: trip.plan_id,
         status: 'pending',
-        total_lines: itemsToInsert.length,
+        total_lines: finalItemsToInsert.length,
         total_quantity: totalQuantity,
         loading_door_number: loading_door_number || null,
         created_by: user?.id,
@@ -459,7 +478,7 @@ export async function POST(request: NextRequest) {
     picklist = picklistData;
 
     // 10. Create picklist items
-    const itemsWithPicklistId = itemsToInsert.map(item => ({
+    const itemsWithPicklistId = finalItemsToInsert.map(item => ({
       picklist_id: picklist.id,
       order_item_id: item.order_item_id,
       sku_id: item.sku_id,
@@ -480,19 +499,27 @@ export async function POST(request: NextRequest) {
       .insert(itemsWithPicklistId)
       .select();
 
-    if (itemsError || !createdItems) {
-      throw new Error('Failed to create picklist items');
+    if (itemsError) {
+      console.error('❌ Error creating picklist items:', itemsError);
+      throw new Error(`Failed to create picklist items: ${itemsError.message}`);
+    }
+    
+    if (!createdItems || createdItems.length === 0) {
+      console.error('❌ No picklist items created, items to insert:', itemsWithPicklistId.length);
+      throw new Error('Failed to create picklist items: no items returned');
     }
 
     picklistItems = createdItems;
 
     // ============================================================
     // ✅ FIX #3: Reserve stock using picklist_item_reservations table
+    // ✅ UPDATED: Allow negative stock - skip reservation if no balance available
     // ============================================================
     const reservationsToInsert: any[] = [];
+    const skippedReservations: any[] = [];
 
-    for (let i = 0; i < itemsToInsert.length; i++) {
-      const item = itemsToInsert[i];
+    for (let i = 0; i < finalItemsToInsert.length; i++) {
+      const item = finalItemsToInsert[i];
       const picklistItem = createdItems[i];
 
       // ✅ Map area_code → zone name → location_ids (same logic as validation)
@@ -518,13 +545,13 @@ export async function POST(request: NextRequest) {
       }
 
       // Query balances with FEFO + FIFO across all locations in zone
+      // ✅ UPDATED: Remove .gt('total_piece_qty', 0) to allow checking all balances
       const { data: balances } = await supabase
         .from('wms_inventory_balances')
         .select('balance_id, pallet_id, location_id, total_piece_qty, total_pack_qty, reserved_piece_qty, reserved_pack_qty, expiry_date, production_date')
         .eq('warehouse_id', warehouseId)
         .in('location_id', locationIdsToReserve)
         .eq('sku_id', item.sku_id)
-        .gt('total_piece_qty', 0)
         .order('expiry_date', { ascending: true, nullsFirst: false })
         .order('production_date', { ascending: true, nullsFirst: false })
         .order('created_at', { ascending: true });
@@ -536,9 +563,12 @@ export async function POST(request: NextRequest) {
         if (remainingQty <= 0) break;
 
         const availableQty = (balance.total_piece_qty || 0) - (balance.reserved_piece_qty || 0);
-        if (availableQty <= 0) continue;
-
-        const qtyToReserve = Math.min(availableQty, remainingQty);
+        
+        // ✅ UPDATED: Allow reserving even if availableQty is negative or zero
+        // Reserve what we can (even if it goes negative)
+        const qtyToReserve = Math.min(Math.max(availableQty, 0), remainingQty);
+        if (qtyToReserve <= 0) continue; // Skip if nothing to reserve from this balance
+        
         const packToReserve = qtyToReserve / qtyPerPack;
 
         // Update inventory balance
@@ -564,22 +594,30 @@ export async function POST(request: NextRequest) {
         remainingQty -= qtyToReserve;
       }
 
-      // Double-check: should never happen if we have replenishment
+      // ✅ UPDATED: Log but don't fail - allow negative stock scenario
       if (remainingQty > 0) {
-        // Don't fail - we'll create replenishment task
-        console.log(`SKU ${item.sku_id} needs replenishment: ${remainingQty} pieces`);
+        console.log(`⚠️ SKU ${item.sku_id} has ${remainingQty} pieces without reservation (stock shortage)`);
+        skippedReservations.push({
+          sku_id: item.sku_id,
+          sku_name: item.sku_name,
+          unreserved_qty: remainingQty
+        });
       }
     }
 
-    // Insert all reservations
+    // Insert all reservations (may be empty if no stock available)
     if (reservationsToInsert.length > 0) {
       const { error: reservationError } = await supabase
         .from('picklist_item_reservations')
         .insert(reservationsToInsert);
 
       if (reservationError) {
-        throw new Error('Failed to create stock reservations');
+        console.error('❌ Error creating reservations:', reservationError);
+        // Don't throw - allow picklist creation without reservations
+        console.warn('⚠️ Continuing without stock reservations');
       }
+    } else {
+      console.log('⚠️ No stock reservations created - all items have insufficient stock');
     }
 
     // ============================================================
@@ -627,18 +665,21 @@ export async function POST(request: NextRequest) {
       picklist_id: picklist.id,
       picklist_code: picklistCode,
       picklist_no: picklistCode,
-      total_items: itemsToInsert.length,
+      total_items: finalItemsToInsert.length,
       total_quantity: totalQuantity,
       reservations_created: reservationsToInsert.length,
+      skipped_reservations: skippedReservations,
       replenishments: createdReplenishments,
       replenishment_count: createdReplenishments.length,
-      has_stock_shortage: insufficientStockItems.length > 0,
+      has_stock_shortage: insufficientStockItems.length > 0 || skippedReservations.length > 0,
       shortage_items: insufficientStockItems,
-      message: insufficientStockItems.length > 0
-        ? `สร้างใบหยิบสำเร็จ แต่มี ${insufficientStockItems.length} รายการที่สต็อกไม่พอและหาแหล่งเติมไม่ได้`
-        : createdReplenishments.length > 0 
-          ? `สร้างใบหยิบสำเร็จ พร้อมงานเติม ${createdReplenishments.length} รายการ`
-          : 'สร้างใบหยิบสำเร็จ จองสต็อกเรียบร้อย'
+      message: skippedReservations.length > 0
+        ? `สร้างใบหยิบสำเร็จ (มี ${skippedReservations.length} รายการที่สต็อกไม่พอ - ยอมให้หยิบติดลบได้)`
+        : insufficientStockItems.length > 0
+          ? `สร้างใบหยิบสำเร็จ แต่มี ${insufficientStockItems.length} รายการที่สต็อกไม่พอและหาแหล่งเติมไม่ได้`
+          : createdReplenishments.length > 0 
+            ? `สร้างใบหยิบสำเร็จ พร้อมงานเติม ${createdReplenishments.length} รายการ`
+            : 'สร้างใบหยิบสำเร็จ จองสต็อกเรียบร้อย'
     });
 
   } catch (error: any) {

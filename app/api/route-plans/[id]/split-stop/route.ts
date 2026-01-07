@@ -108,6 +108,10 @@ export async function POST(
         );
       }
 
+      const planDate = plan.plan_date 
+        ? new Date(plan.plan_date).toISOString().split('T')[0]
+        : new Date().toISOString().split('T')[0];
+
       // Get max trip_sequence for this plan
       const { data: maxSeqData } = await supabase
         .from('receiving_route_trips')
@@ -119,21 +123,64 @@ export async function POST(
 
       const nextTripSeq = (maxSeqData?.trip_sequence ?? 0) + 1;
 
-      // Create new trip
-      const { data: newTripData, error: newTripError } = await supabase
-        .from('receiving_route_trips')
-        .insert({
-          plan_id: Number(planId),
-          trip_sequence: nextTripSeq,
-          daily_trip_number: nextTripSeq,
-          trip_code: `TRIP-${String(nextTripSeq).padStart(3, '0')}`,
-          trip_status: 'planned',
-          notes: newTrip.trip_name || `คันที่ ${nextTripSeq} (แบ่ง)`
-        })
-        .select()
-        .single();
+      // เตรียมข้อมูล trip สำหรับ insert
+      const tripToInsert = [{
+        plan_id: Number(planId),
+        trip_sequence: nextTripSeq,
+        trip_code: `TRIP-${String(nextTripSeq).padStart(3, '0')}`,
+        trip_status: 'planned',
+        notes: newTrip.trip_name || `คันที่ ${nextTripSeq} (แบ่ง)`
+      }];
 
-      if (newTripError || !newTripData) {
+      // ใช้ RPC เพื่อ insert พร้อม daily_trip_number ที่ไม่ซ้ำกัน
+      const { data: insertResult, error: insertError } = await supabase
+        .rpc('insert_trips_with_daily_numbers', {
+          p_plan_date: planDate,
+          p_trips: tripToInsert
+        });
+
+      let newTripData: any = null;
+
+      if (insertError) {
+        console.error('Error creating new trip via RPC:', insertError);
+        // Fallback: ใช้วิธีเดิมพร้อม advisory lock
+        const { data: maxDailyNumber } = await supabase
+          .rpc('get_next_daily_trip_number', { p_plan_date: planDate });
+        
+        const { data: fallbackTrip, error: fallbackError } = await supabase
+          .from('receiving_route_trips')
+          .insert({
+            plan_id: Number(planId),
+            trip_sequence: nextTripSeq,
+            daily_trip_number: (maxDailyNumber || 0) + 1,
+            trip_code: `TRIP-${String(nextTripSeq).padStart(3, '0')}`,
+            trip_status: 'planned',
+            notes: newTrip.trip_name || `คันที่ ${nextTripSeq} (แบ่ง)`
+          })
+          .select()
+          .single();
+
+        if (fallbackError || !fallbackTrip) {
+          return NextResponse.json(
+            { error: 'ไม่สามารถสร้าง trip ใหม่ได้' },
+            { status: 500 }
+          );
+        }
+        newTripData = fallbackTrip;
+      } else {
+        // RPC สำเร็จ - ดึง trip ที่สร้างใหม่
+        const tripIds = insertResult?.trip_ids || [];
+        if (tripIds.length > 0) {
+          const { data: createdTrip } = await supabase
+            .from('receiving_route_trips')
+            .select('*')
+            .eq('trip_id', tripIds[0])
+            .single();
+          newTripData = createdTrip;
+        }
+      }
+
+      if (!newTripData) {
         return NextResponse.json(
           { error: 'ไม่สามารถสร้าง trip ใหม่ได้' },
           { status: 500 }

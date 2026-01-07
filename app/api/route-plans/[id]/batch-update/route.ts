@@ -60,6 +60,17 @@ export async function POST(
     const newTripIds: Map<number, number> = new Map();
     
     if (newTrips && newTrips.length > 0) {
+      // Get plan data to get plan_date
+      const { data: planData } = await supabase
+        .from('receiving_route_plans')
+        .select('plan_date')
+        .eq('plan_id', planId)
+        .single();
+      
+      const planDate = planData?.plan_date 
+        ? new Date(planData.plan_date).toISOString().split('T')[0]
+        : new Date().toISOString().split('T')[0];
+
       // Get max trip_sequence for this plan
       const { data: maxSeqData } = await supabase
         .from('receiving_route_trips')
@@ -71,34 +82,66 @@ export async function POST(
 
       let nextSeq = (maxSeqData?.trip_sequence || 0) + 1;
 
-      for (let i = 0; i < newTrips.length; i++) {
-        const newTrip = newTrips[i];
-        const { data: createdTrip, error: createError } = await supabase
-          .from('receiving_route_trips')
-          .insert({
-            plan_id: Number(planId),
-            trip_sequence: nextSeq,
-            daily_trip_number: nextSeq,
-            trip_code: `TRIP-${String(nextSeq).padStart(3, '0')}`,
-            trip_status: 'planned',
-            notes: newTrip.tripName || `คันที่ ${nextSeq}`
-          })
-          .select()
-          .single();
+      // เตรียมข้อมูล trips สำหรับ insert
+      const tripsToInsert = newTrips.map((newTrip, i) => ({
+        plan_id: Number(planId),
+        trip_sequence: nextSeq + i,
+        trip_code: `TRIP-${String(nextSeq + i).padStart(3, '0')}`,
+        trip_status: 'planned',
+        notes: newTrip.tripName || `คันที่ ${nextSeq + i}`
+      }));
 
-        if (createError) {
-          console.error('Error creating new trip:', createError);
-          continue;
-        }
-
-        // Map the index (i) to actual trip_id - frontend sends "new-{index}"
-        newTripIds.set(i, createdTrip.trip_id);
-        results.newTrips.push({
-          index: i,
-          virtualTripNumber: nextSeq,
-          actualTripId: createdTrip.trip_id
+      // ใช้ RPC เพื่อ insert พร้อม daily_trip_number ที่ไม่ซ้ำกัน
+      const { data: insertResult, error: insertError } = await supabase
+        .rpc('insert_trips_with_daily_numbers', {
+          p_plan_date: planDate,
+          p_trips: tripsToInsert
         });
-        nextSeq++;
+
+      if (insertError) {
+        console.error('Error creating new trips via RPC:', insertError);
+        // Fallback: ใช้วิธีเดิม
+        for (let i = 0; i < newTrips.length; i++) {
+          const newTrip = newTrips[i];
+          const { data: maxDailyNumber } = await supabase
+            .rpc('get_next_daily_trip_number', { p_plan_date: planDate });
+          
+          const { data: createdTrip, error: createError } = await supabase
+            .from('receiving_route_trips')
+            .insert({
+              plan_id: Number(planId),
+              trip_sequence: nextSeq + i,
+              daily_trip_number: (maxDailyNumber || 0) + 1,
+              trip_code: `TRIP-${String(nextSeq + i).padStart(3, '0')}`,
+              trip_status: 'planned',
+              notes: newTrip.tripName || `คันที่ ${nextSeq + i}`
+            })
+            .select()
+            .single();
+
+          if (createError) {
+            console.error('Error creating new trip:', createError);
+            continue;
+          }
+
+          newTripIds.set(i, createdTrip.trip_id);
+          results.newTrips.push({
+            index: i,
+            virtualTripNumber: nextSeq + i,
+            actualTripId: createdTrip.trip_id
+          });
+        }
+      } else {
+        // RPC สำเร็จ - ดึง trips ที่สร้างใหม่
+        const tripIds = insertResult?.trip_ids || [];
+        for (let i = 0; i < tripIds.length; i++) {
+          newTripIds.set(i, tripIds[i]);
+          results.newTrips.push({
+            index: i,
+            virtualTripNumber: nextSeq + i,
+            actualTripId: tripIds[i]
+          });
+        }
       }
       
       console.log('Created new trips:', {

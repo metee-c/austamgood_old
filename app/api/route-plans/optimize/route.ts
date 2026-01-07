@@ -371,14 +371,18 @@ export async function POST(request: Request) {
 
     // 10. Save trips to database
     try {
-      // ดึงเลขคันสูงสุดของวันนี้เพื่อกำหนด daily_trip_number
+      // ใช้ RPC function ที่มี advisory lock เพื่อป้องกัน race condition
+      // และ insert trips ใน transaction เดียวกัน
       const planDate = new Date(plan.plan_date).toISOString().split('T')[0];
-      const { data: maxDailyNumber } = await supabase
-        .rpc('get_next_daily_trip_number', { p_plan_date: planDate });
       
-      let nextDailyNumber = maxDailyNumber || 1;
+      // Delete existing trips for this plan first
+      await supabase
+        .from('receiving_route_trips')
+        .delete()
+        .eq('plan_id', planId);
 
-      const tripsToInsert = allTrips.map((trip: any, index: number) => {
+      // เตรียมข้อมูล trips (ยังไม่ใส่ daily_trip_number)
+      const tripsData = allTrips.map((trip: any, index: number) => {
         const vehicleCapacity = settings.vehicleCapacityKg || 1000;
         const capacityUtil = vehicleCapacity > 0 ? ((trip.totalWeight || 0) / vehicleCapacity) * 100 : 0;
 
@@ -403,21 +407,54 @@ export async function POST(request: Request) {
           helper_fee: null,
           extra_stop_fee: null,
           is_overweight: trip.isOverweight || false,
-          notes: trip.zoneName ? `โซน: ${trip.zoneName}` : null,
-          daily_trip_number: nextDailyNumber + index // เลขคันที่ไม่ซ้ำกันทั้งวัน
+          notes: trip.zoneName ? `โซน: ${trip.zoneName}` : null
         };
       });
 
-      // Delete existing trips for this plan
-      await supabase
-        .from('receiving_route_trips')
-        .delete()
-        .eq('plan_id', planId);
+      // ใช้ RPC เพื่อ reserve เลขคันและ insert trips ใน transaction เดียวกัน
+      // ป้องกัน race condition เมื่อหลายคนจัดเส้นทางพร้อมกัน
+      const { data: insertResult, error: insertError } = await supabase
+        .rpc('insert_trips_with_daily_numbers', {
+          p_plan_date: planDate,
+          p_trips: tripsData
+        });
 
-      const { data: insertedTrips, error: tripsError } = await supabase
-        .from('receiving_route_trips')
-        .insert(tripsToInsert)
-        .select();
+      let insertedTrips: any[] = [];
+      let tripsError: any = insertError;
+
+      if (!insertError && insertResult) {
+        // RPC สำเร็จ - ดึง trips ที่ insert ไป
+        const { data: fetchedTrips, error: fetchError } = await supabase
+          .from('receiving_route_trips')
+          .select('*')
+          .eq('plan_id', planId)
+          .order('trip_sequence', { ascending: true });
+        
+        if (!fetchError && fetchedTrips) {
+          insertedTrips = fetchedTrips;
+        }
+      } else if (insertError?.message?.includes('does not exist')) {
+        // Fallback: ถ้า RPC ยังไม่มี ใช้วิธีเดิม (แต่มี advisory lock ใน get_next_daily_trip_number แล้ว)
+        console.log('⚠️ RPC insert_trips_with_daily_numbers not found, using fallback method');
+        
+        const { data: maxDailyNumber } = await supabase
+          .rpc('get_next_daily_trip_number', { p_plan_date: planDate });
+        
+        const nextDailyNumber = maxDailyNumber || 1;
+        
+        const tripsToInsert = tripsData.map((trip: any, index: number) => ({
+          ...trip,
+          daily_trip_number: nextDailyNumber + index
+        }));
+
+        const { data: fallbackTrips, error: fallbackError } = await supabase
+          .from('receiving_route_trips')
+          .insert(tripsToInsert)
+          .select();
+        
+        insertedTrips = fallbackTrips || [];
+        tripsError = fallbackError;
+      }
 
       if (tripsError) {
         console.error('❌ ERROR: Could not save trips to database:', {

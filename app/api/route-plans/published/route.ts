@@ -51,7 +51,7 @@ export async function GET(request: NextRequest) {
         // Fetch trips for this plan
         const { data: trips, error: tripsError } = await supabase
           .from('receiving_route_trips')
-          .select('trip_id, trip_sequence, vehicle_id, driver_id, shipping_cost, total_distance_km, total_weight_kg, notes, pricing_mode, base_price, helper_fee, extra_stop_fee, supplier_id')
+          .select('trip_id, trip_sequence, daily_trip_number, vehicle_id, driver_id, shipping_cost, total_distance_km, total_weight_kg, notes, pricing_mode, base_price, helper_fee, extra_stop_fee, supplier_id')
           .eq('plan_id', plan.plan_id)
           .order('trip_sequence', { ascending: true });
 
