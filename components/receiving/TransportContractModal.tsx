@@ -1235,7 +1235,7 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                 notes = trip.notes ? JSON.parse(trip.notes) : {};
               } catch {}
 
-              const totalStops = trip.stops?.length || 0;
+              const stopsCount = trip.stops?.length || 0;
               
               // นับจำนวนจุดจาก unique customer_id แทนการนับจาก order
               const uniqueCustomerIds = new Set<string>();
@@ -1249,7 +1249,14 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                   }
                 });
               });
-              const uniqueCustomerCount = uniqueCustomerIds.size || totalStops;
+              const uniqueCustomerCount = uniqueCustomerIds.size || stopsCount;
+              
+              // ✅ FIX: ใช้ actual_stops_count ถ้ามี (เหมือน EditShippingCostModal)
+              // actual_stops_count คือจำนวนจุดส่งจริงที่ user กำหนด (กรณีหลายร้านส่งที่เดียวกัน)
+              const actualStopsCount = (trip as any).actual_stops_count;
+              const totalStopsForCalc = actualStopsCount !== null && actualStopsCount !== undefined && actualStopsCount > 0 
+                ? actualStopsCount 
+                : uniqueCustomerCount;
               
               const pricingMode = (trip as any).pricing_mode;
               // ✅ FIX: แปลงเป็น number เพราะ database อาจส่งมาเป็น string
@@ -1264,7 +1271,8 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
               const shippingCost = Number(trip.shipping_cost) || 0;
               // ✅ FIX: ใช้ base_shipping_cost สำหรับโหมดเหมา
               const baseShippingCostFlat = Number((trip as any).base_shipping_cost) || 0;
-              const extraStops = Math.max(0, uniqueCustomerCount - 1);
+              // ✅ FIX: ใช้ totalStopsForCalc แทน uniqueCustomerCount เพื่อให้ตรงกับ EditShippingCostModal
+              const extraStops = Math.max(0, totalStopsForCalc - 1);
               const extraStopTotal = extraStops * extraStopFee;
               
               // ใช้ daily_trip_number ถ้ามี ไม่งั้นใช้ tripIndex + 1
@@ -1276,7 +1284,7 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                     {displayTripNumber}
                   </td>
                   <td className="border border-gray-300 px-2 py-3 text-center text-xs">
-                    {uniqueCustomerCount} ลูกค้า / {totalStops} จุดส่ง
+                    {uniqueCustomerCount} ลูกค้า / {stopsCount} จุดส่ง
                   </td>
                   <td className="border border-gray-300 px-2 py-3 text-xs">
                     {notes.vehicle_label || '-'}

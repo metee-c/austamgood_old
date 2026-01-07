@@ -215,7 +215,12 @@ const BonusFaceSheetChecklistDocument: React.FC<Props> = ({ data }) => {
               <div>
                 <strong>ร้านค้า:</strong> {pkg.shop_name}
               </div>
-              <div style={{ gridColumn: '1 / -1' }}>
+              {pkg.trip_number && (
+                <div>
+                  <strong>เลขคัน:</strong> <span style={{ fontWeight: 'bold', color: '#2563eb' }}>{pkg.trip_number}</span>
+                </div>
+              )}
+              <div style={{ gridColumn: pkg.trip_number ? 'auto' : '1 / -1' }}>
                 <strong>บาร์โค้ด:</strong> <span style={{ fontFamily: 'monospace', fontSize: '11px' }}>{pkg.barcode_id}</span>
               </div>
             </div>

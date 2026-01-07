@@ -188,7 +188,7 @@ function MobilePickPage() {
       const matchesSearch =
         task.picklist_code.toLowerCase().includes(searchLower) ||
         task.receiving_route_trips?.receiving_route_plans?.plan_code?.toLowerCase().includes(searchLower) ||
-        task.receiving_route_trips?.vehicle_id?.toLowerCase().includes(searchLower);
+        String(task.receiving_route_trips?.vehicle_id || '').toLowerCase().includes(searchLower);
       return matchesSearch;
     } else {
       const matchesSearch =

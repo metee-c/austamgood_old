@@ -556,7 +556,26 @@ export async function POST(request: NextRequest) {
     const allPicked = allItems?.every(i => i.status === 'picked');
 
     // 11. อัปเดตสถานะ picklist และบันทึกข้อมูลพนักงาน (ถ้ามี)
-    const newStatus = allPicked ? 'completed' : 'picking';
+    // ✅ FIX: ต้องเปลี่ยนสถานะผ่าน picking ก่อน ไม่สามารถข้ามจาก assigned → completed ได้
+    // เพราะ trigger validate_picklist_status_transition บังคับ state machine
+    const currentStatus = item.picklists.status;
+    let newStatus: string;
+    
+    if (allPicked) {
+      // ถ้าหยิบครบแล้ว ต้องเปลี่ยนเป็น completed
+      // แต่ถ้าสถานะปัจจุบันเป็น assigned ต้องเปลี่ยนเป็น picking ก่อน
+      if (currentStatus === 'assigned') {
+        // Step 1: assigned → picking
+        await supabase
+          .from('picklists')
+          .update({ status: 'picking', picking_started_at: now, updated_at: now })
+          .eq('id', picklist_id);
+      }
+      newStatus = 'completed';
+    } else {
+      newStatus = 'picking';
+    }
+    
     const picklistUpdate: any = {
       status: newStatus,
       ...(allPicked && { picking_completed_at: now }),

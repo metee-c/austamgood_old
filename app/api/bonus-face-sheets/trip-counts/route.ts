@@ -9,6 +9,7 @@ import { createClient } from '@/lib/supabase/server';
  * 1. ดึง customer_id จาก wms_orders ของแต่ละ package
  * 2. หา trip จาก receiving_route_stops โดยแมพผ่าน order_id -> wms_orders.customer_id
  * 3. สร้าง full trip code: {plan_code}-{trip_code}
+ * 4. ดึง delivery_number จาก loadlists ตาม trip_id
  */
 export async function GET(request: NextRequest) {
   try {
@@ -68,7 +69,7 @@ export async function GET(request: NextRequest) {
     // ดึง trip ที่ถูกต้องจาก route stops โดยแมพผ่าน customer_id
     // หา trip จาก route plan ที่มี plan_date = delivery_date และ status = 'approved'
     const customerIds = [...new Set(Array.from(orderCustomerMap.values()))];
-    const customerTripMap = new Map<string, string>();
+    const customerTripMap = new Map<string, { fullTripCode: string; tripId: number }>();
 
     if (customerIds.length > 0 && bonusFaceSheet.delivery_date) {
       // ดึง route stops พร้อม trip และ plan info
@@ -79,6 +80,7 @@ export async function GET(request: NextRequest) {
           stop_id,
           order_id,
           receiving_route_trips!inner (
+            trip_id,
             trip_code,
             receiving_route_plans!inner (
               plan_code,
@@ -108,29 +110,64 @@ export async function GET(request: NextRequest) {
           }
         }
 
-        // สร้าง map: customer_id -> full_trip_code
+        // สร้าง map: customer_id -> { fullTripCode, tripId }
         for (const stop of routeStopsWithTrips) {
           const customerId = routeOrderCustomerMap.get(stop.order_id);
           if (customerId && !customerTripMap.has(customerId)) {
             const tripInfo = stop.receiving_route_trips as any;
             const planInfo = tripInfo.receiving_route_plans;
             const fullTripCode = `${planInfo.plan_code}-${tripInfo.trip_code}`;
-            customerTripMap.set(customerId, fullTripCode);
+            customerTripMap.set(customerId, {
+              fullTripCode,
+              tripId: tripInfo.trip_id
+            });
           }
         }
       }
     }
 
+    // ดึง delivery_number จาก loadlists ตาม trip_id
+    const tripIds = [...new Set(Array.from(customerTripMap.values()).map(t => t.tripId))];
+    const tripDeliveryNumberMap = new Map<number, string>();
+
+    if (tripIds.length > 0) {
+      const { data: loadlists } = await supabase
+        .from('loadlists')
+        .select('trip_id, delivery_number')
+        .in('trip_id', tripIds);
+
+      for (const ll of loadlists || []) {
+        if (ll.trip_id && ll.delivery_number) {
+          tripDeliveryNumberMap.set(ll.trip_id, ll.delivery_number);
+        }
+      }
+    }
+
     // Group by trip_number (ใช้ trip ที่ถูกต้องจาก route stops)
-    const tripCounts: Record<string, { packageCount: number; orderCount: number; orderIds: number[] }> = {};
+    const tripCounts: Record<string, { 
+      packageCount: number; 
+      orderCount: number; 
+      orderIds: number[];
+      tripId: number | null;
+      deliveryNumber: string | null;
+    }> = {};
 
     (packages || []).forEach(pkg => {
       // หา trip จาก customer_id ของออเดอร์
       const customerId = orderCustomerMap.get(pkg.order_id);
-      const tripNumber = (customerId ? customerTripMap.get(customerId) : null) || 'NO_TRIP';
+      const tripInfo = customerId ? customerTripMap.get(customerId) : null;
+      const tripNumber = tripInfo?.fullTripCode || 'NO_TRIP';
+      const tripId = tripInfo?.tripId || null;
+      const deliveryNumber = tripId ? tripDeliveryNumberMap.get(tripId) || null : null;
 
       if (!tripCounts[tripNumber]) {
-        tripCounts[tripNumber] = { packageCount: 0, orderCount: 0, orderIds: [] };
+        tripCounts[tripNumber] = { 
+          packageCount: 0, 
+          orderCount: 0, 
+          orderIds: [],
+          tripId,
+          deliveryNumber
+        };
       }
       tripCounts[tripNumber].packageCount++;
       if (pkg.order_id && !tripCounts[tripNumber].orderIds.includes(pkg.order_id)) {
@@ -156,7 +193,9 @@ export async function GET(request: NextRequest) {
       .map(([tripNumber, counts]) => ({
         trip_number: tripNumber === 'NO_TRIP' ? 'ไม่ระบุสายรถ' : tripNumber,
         trip_number_raw: tripNumber, // เก็บค่าจริงสำหรับ filter
-        ...counts
+        delivery_number: counts.deliveryNumber, // เลขเที่ยวจริงจากใบว่าจ้าง
+        packageCount: counts.packageCount,
+        orderCount: counts.orderCount
       }));
 
     return NextResponse.json({

@@ -141,6 +141,15 @@ interface AvailableBonusFaceSheet {
   warehouse_id: string;
   created_at: string;
   picking_completed_at?: string;
+  delivery_date?: string;
+  daily_trip_numbers?: number[];
+  daily_trip_numbers_display?: string;
+  trip_infos?: Array<{
+    trip_number: string;
+    daily_trip_number: number | null;
+    vehicle_id: number | null;
+    plate_number: string | null;
+  }>;
 }
 
 interface Employee {
@@ -224,7 +233,7 @@ const LoadlistsPage = () => {
   // State สำหรับ modal เลือก trip ที่จะปริ้นใบปะหน้าของแถม
   const [isBonusPrintModalOpen, setIsBonusPrintModalOpen] = useState(false);
   const [bonusFaceSheetToPrint, setBonusFaceSheetToPrint] = useState<{ id: number; face_sheet_no: string } | null>(null);
-  const [bonusTripCounts, setBonusTripCounts] = useState<Array<{ trip_number: string; trip_number_raw: string; packageCount: number; orderCount: number }>>([]);
+  const [bonusTripCounts, setBonusTripCounts] = useState<Array<{ trip_number: string; trip_number_raw: string; delivery_number: string | null; packageCount: number; orderCount: number }>>([]);
   const [selectedTripsForPrint, setSelectedTripsForPrint] = useState<string[]>([]); // เก็บ trip_number_raw สำหรับ filter
   const fetchLoadlists = async () => {
     setLoading(true);
@@ -1633,6 +1642,7 @@ const LoadlistsPage = () => {
                         <span className="sr-only">เลือก</span>
                       </th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสใบปะหน้าของแถม</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">เลขคัน</th>
                       <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">แพ็ค</th>
                       <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชิ้น</th>
                       <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ออเดอร์</th>
@@ -1644,7 +1654,7 @@ const LoadlistsPage = () => {
                   <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
                     {availableBonusFaceSheets.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
+                        <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
                           ไม่พบใบปะหน้าของแถมที่สถานะ "เสร็จสิ้น"
                         </td>
                       </tr>
@@ -1672,6 +1682,9 @@ const LoadlistsPage = () => {
                           </td>
                           <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap font-mono text-purple-600">
                             {bonusFaceSheet.face_sheet_no}
+                          </td>
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap font-semibold text-orange-600">
+                            {bonusFaceSheet.daily_trip_numbers_display || '-'}
                           </td>
                           <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap font-semibold text-blue-600">
                             {bonusFaceSheet.total_packages}
@@ -1924,6 +1937,7 @@ const LoadlistsPage = () => {
                 <tr>
                   <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 w-12"></th>
                   <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">สายรถ</th>
+                  <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">เลขเที่ยว</th>
                   <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200">จำนวนแพ็ค</th>
                   <th className="px-2 py-2 text-center text-xs font-semibold border-b">จำนวนร้าน</th>
                 </tr>
@@ -1931,7 +1945,7 @@ const LoadlistsPage = () => {
               <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
                 {bonusTripCounts.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="px-4 py-8 text-center text-gray-500">
+                    <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
                       <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
                       กำลังโหลดข้อมูล...
                     </td>
@@ -1960,6 +1974,9 @@ const LoadlistsPage = () => {
                       </td>
                       <td className="px-2 py-1 border-r border-gray-100 font-mono text-purple-600 font-semibold">
                         {trip.trip_number}
+                      </td>
+                      <td className="px-2 py-1 border-r border-gray-100 font-mono text-orange-600 font-semibold">
+                        {trip.delivery_number || '-'}
                       </td>
                       <td className="px-2 py-1 text-center border-r border-gray-100 font-semibold text-blue-600">
                         {trip.packageCount} แพ็ค
