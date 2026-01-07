@@ -1082,23 +1082,37 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                       ))
                     )}
                     {/* Subtotal row for each trip */}
-                    <tr className="bg-blue-50 font-semibold">
-                      <td colSpan={6} className="border border-gray-300 px-2 py-2 text-xs text-right">
-                        รวมคันที่ {displayTripNumber}:
-                      </td>
-                      <td className="border border-gray-300 px-2 py-2 text-xs text-right">
-                        {(trip.total_weight_kg || 0).toFixed(1)}
-                      </td>
-                      <td className="border border-gray-300 px-2 py-2 text-xs text-right">
-                        {trip.stops?.reduce((sum: number, stop: any) => {
-                          const orders = Array.isArray(stop.orders) && stop.orders.length > 0
-                            ? stop.orders
-                            : [];
-                          return sum + orders.reduce((s: number, o: any) => s + (o.total_qty || 0), 0);
-                        }, 0)}
-                      </td>
-                      <td colSpan={6} className="border border-gray-300 px-2 py-2 text-xs"></td>
-                    </tr>
+                    {(() => {
+                      // คำนวณน้ำหนักรวมจาก orders ใน stops จริงๆ (ไม่ใช้ trip.total_weight_kg ที่อาจไม่ถูกต้องเมื่อแบ่งออเดอร์)
+                      const calculatedTotalWeight = trip.stops?.reduce((sum: number, stop: any) => {
+                        const orders = Array.isArray(stop.orders) && stop.orders.length > 0
+                          ? stop.orders
+                          : [];
+                        return sum + orders.reduce((s: number, o: any) => s + (o.allocated_weight_kg || o.total_order_weight_kg || 0), 0);
+                      }, 0) || 0;
+                      
+                      const calculatedTotalQty = trip.stops?.reduce((sum: number, stop: any) => {
+                        const orders = Array.isArray(stop.orders) && stop.orders.length > 0
+                          ? stop.orders
+                          : [];
+                        return sum + orders.reduce((s: number, o: any) => s + (o.total_qty || 0), 0);
+                      }, 0) || 0;
+                      
+                      return (
+                        <tr className="bg-blue-50 font-semibold">
+                          <td colSpan={6} className="border border-gray-300 px-2 py-2 text-xs text-right">
+                            รวมคันที่ {displayTripNumber}:
+                          </td>
+                          <td className="border border-gray-300 px-2 py-2 text-xs text-right">
+                            {calculatedTotalWeight.toFixed(1)}
+                          </td>
+                          <td className="border border-gray-300 px-2 py-2 text-xs text-right">
+                            {calculatedTotalQty}
+                          </td>
+                          <td colSpan={6} className="border border-gray-300 px-2 py-2 text-xs"></td>
+                        </tr>
+                      );
+                    })()}
                   </React.Fragment>
                 );
               })}

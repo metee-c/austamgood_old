@@ -56,6 +56,9 @@ export async function PATCH(
     // Add extra_delivery_stops if provided (จุดส่งพิเศษที่ไม่มี order)
     if (body.extra_delivery_stops !== undefined) updateData.extra_delivery_stops = body.extra_delivery_stops;
 
+    // Add actual_stops_count if provided (กรณีหลายร้านส่งที่เดียวกัน)
+    if (body.actual_stops_count !== undefined) updateData.actual_stops_count = body.actual_stops_count;
+
     // Handle shipping cost reset fields (from rollback)
     if (body.needs_shipping_cost_update !== undefined) {
       updateData.needs_shipping_cost_update = body.needs_shipping_cost_update;

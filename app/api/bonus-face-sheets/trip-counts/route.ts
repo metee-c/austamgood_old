@@ -54,10 +54,15 @@ export async function GET(request: NextRequest) {
 
     // Sort by trip_number
     const sortedTrips = Object.entries(tripCounts)
-      .filter(([tripNumber]) => tripNumber !== 'NO_TRIP')
-      .sort(([a], [b]) => a.localeCompare(b))
+      .sort(([a], [b]) => {
+        // Put NO_TRIP and empty string at the end
+        if (a === 'NO_TRIP' || a === '') return 1;
+        if (b === 'NO_TRIP' || b === '') return -1;
+        return a.localeCompare(b);
+      })
       .map(([tripNumber, counts]) => ({
-        trip_number: tripNumber,
+        trip_number: tripNumber || 'ไม่ระบุสายรถ',
+        trip_number_raw: tripNumber, // เก็บค่าจริงสำหรับ filter
         ...counts
       }));
 

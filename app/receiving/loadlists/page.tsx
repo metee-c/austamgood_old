@@ -224,8 +224,8 @@ const LoadlistsPage = () => {
   // State สำหรับ modal เลือก trip ที่จะปริ้นใบปะหน้าของแถม
   const [isBonusPrintModalOpen, setIsBonusPrintModalOpen] = useState(false);
   const [bonusFaceSheetToPrint, setBonusFaceSheetToPrint] = useState<{ id: number; face_sheet_no: string } | null>(null);
-  const [bonusTripCounts, setBonusTripCounts] = useState<Array<{ trip_number: string; packageCount: number; orderCount: number }>>([]);
-  const [selectedTripsForPrint, setSelectedTripsForPrint] = useState<string[]>([]);
+  const [bonusTripCounts, setBonusTripCounts] = useState<Array<{ trip_number: string; trip_number_raw: string; packageCount: number; orderCount: number }>>([]);
+  const [selectedTripsForPrint, setSelectedTripsForPrint] = useState<string[]>([]); // เก็บ trip_number_raw สำหรับ filter
   const fetchLoadlists = async () => {
     setLoading(true);
     setError(null);
@@ -858,10 +858,10 @@ const LoadlistsPage = () => {
       return;
     }
 
-    // เปิดหน้าปริ้นสำหรับแต่ละ trip ที่เลือก
-    selectedTripsForPrint.forEach((tripNumber) => {
+    // เปิดหน้าปริ้นสำหรับแต่ละ trip ที่เลือก (ใช้ trip_number_raw สำหรับ filter)
+    selectedTripsForPrint.forEach((tripNumberRaw) => {
       window.open(
-        `/api/bonus-face-sheets/print?id=${bonusFaceSheetToPrint.id}&trip_number=${encodeURIComponent(tripNumber)}`,
+        `/api/bonus-face-sheets/print?id=${bonusFaceSheetToPrint.id}&trip_number=${encodeURIComponent(tripNumberRaw)}`,
         '_blank'
       );
     });
@@ -1907,7 +1907,7 @@ const LoadlistsPage = () => {
                   if (selectedTripsForPrint.length === bonusTripCounts.length) {
                     setSelectedTripsForPrint([]);
                   } else {
-                    setSelectedTripsForPrint(bonusTripCounts.map(t => t.trip_number));
+                    setSelectedTripsForPrint(bonusTripCounts.map(t => t.trip_number_raw));
                   }
                 }}
                 className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
@@ -1939,20 +1939,20 @@ const LoadlistsPage = () => {
                 ) : (
                   bonusTripCounts.map((trip) => (
                     <tr
-                      key={trip.trip_number}
+                      key={trip.trip_number_raw}
                       className={`hover:bg-blue-50/30 transition-colors duration-150 ${
-                        selectedTripsForPrint.includes(trip.trip_number) ? 'bg-green-50' : ''
+                        selectedTripsForPrint.includes(trip.trip_number_raw) ? 'bg-green-50' : ''
                       }`}
                     >
                       <td className="px-2 py-1 border-r border-gray-100">
                         <input
                           type="checkbox"
-                          checked={selectedTripsForPrint.includes(trip.trip_number)}
+                          checked={selectedTripsForPrint.includes(trip.trip_number_raw)}
                           onChange={() => {
-                            if (selectedTripsForPrint.includes(trip.trip_number)) {
-                              setSelectedTripsForPrint(selectedTripsForPrint.filter(t => t !== trip.trip_number));
+                            if (selectedTripsForPrint.includes(trip.trip_number_raw)) {
+                              setSelectedTripsForPrint(selectedTripsForPrint.filter(t => t !== trip.trip_number_raw));
                             } else {
-                              setSelectedTripsForPrint([...selectedTripsForPrint, trip.trip_number]);
+                              setSelectedTripsForPrint([...selectedTripsForPrint, trip.trip_number_raw]);
                             }
                           }}
                           className="w-4 h-4 text-green-600 rounded focus:ring-green-500"

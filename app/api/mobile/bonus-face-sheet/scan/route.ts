@@ -191,31 +191,28 @@ export async function POST(request: NextRequest) {
           sourceLotNo = balance.lot_no;
         }
 
-        // ตรวจสอบว่ามีสต็อคเพียงพอ
-        if (balance.total_piece_qty < qtyToDeduct) {
-          return NextResponse.json(
-            { error: `สต็อคไม่เพียงพอ: ต้องการ ${qtyToDeduct} แต่มีเพียง ${balance.total_piece_qty} ชิ้น` },
-            { status: 400 }
-          );
-        }
-
-        // ลดยอดจองและสต็อคจริง
+        // ✅ ยอมให้สต็อคติดลบได้ที่บ้านหยิบ (Preparation Area)
+        // ไม่ต้องตรวจสอบว่ามีสต็อคเพียงพอ เพราะของแถมอาจจองไว้ก่อนที่จะมีสต็อคจริง
+        
+        // ลดยอดจองและสต็อคจริง (ยอมให้ติดลบได้)
+        const newTotalPiece = balance.total_piece_qty - qtyToDeduct;
+        const newTotalPack = balance.total_pack_qty - packToDeduct;
+        const newReservedPiece = balance.reserved_piece_qty - qtyToDeduct;
+        const newReservedPack = balance.reserved_pack_qty - packToDeduct;
+        
         console.log(`🔄 Updating balance ${balance.balance_id}:`, {
           before: { total: balance.total_piece_qty, reserved: balance.reserved_piece_qty },
           deduct: { total: qtyToDeduct, reserved: qtyToDeduct },
-          after: {
-            total: Math.max(0, balance.total_piece_qty - qtyToDeduct),
-            reserved: Math.max(0, balance.reserved_piece_qty - qtyToDeduct)
-          }
+          after: { total: newTotalPiece, reserved: newReservedPiece }
         });
 
         const { error: updateError } = await supabase
           .from('wms_inventory_balances')
           .update({
-            reserved_piece_qty: Math.max(0, balance.reserved_piece_qty - qtyToDeduct),
-            reserved_pack_qty: Math.max(0, balance.reserved_pack_qty - packToDeduct),
-            total_piece_qty: Math.max(0, balance.total_piece_qty - qtyToDeduct),
-            total_pack_qty: Math.max(0, balance.total_pack_qty - packToDeduct),
+            reserved_piece_qty: Math.max(0, newReservedPiece), // reserved ไม่ติดลบ
+            reserved_pack_qty: Math.max(0, newReservedPack),
+            total_piece_qty: newTotalPiece, // ✅ ยอมให้ติดลบได้
+            total_pack_qty: newTotalPack,   // ✅ ยอมให้ติดลบได้
             updated_at: now
           })
           .eq('balance_id', balance.balance_id);
@@ -234,6 +231,7 @@ export async function POST(request: NextRequest) {
         // ✅ CRITICAL FIX: Include order_id and order_item_id for BRCGS traceability
         // ✅ FIX: Include production_date and expiry_date for proper balance sync
         // Note: bonus_face_sheet_items links via order_item_id → wms_order_items.order_id
+        // Note: lot_no is NOT in wms_inventory_ledger table
         ledgerEntries.push({
           movement_at: now,
           transaction_type: 'pick',
@@ -243,16 +241,15 @@ export async function POST(request: NextRequest) {
           sku_id: item.sku_id,
           pack_qty: packToDeduct,
           piece_qty: qtyToDeduct,
-          production_date: balance.production_date || null,  // ✅ FIX: Include for balance matching
-          expiry_date: balance.expiry_date || null,          // ✅ FIX: Include for balance matching
-          lot_no: balance.lot_no || null,                    // ✅ FIX: Include for balance matching
+          production_date: balance.production_date || null,
+          expiry_date: balance.expiry_date || null,
           reference_no: (item.bonus_face_sheets as any).face_sheet_no,
           reference_doc_type: 'bonus_face_sheet',
           reference_doc_id: bonus_face_sheet_id,
-          order_item_id: item.order_item_id, // ✅ BRCGS: Link to order line
+          order_item_id: item.order_item_id,
           remarks: `หยิบของแถมจาก ${balance.location_id} (balance_id: ${balance.balance_id})`,
           created_by: userId,
-          skip_balance_sync: true  // ✅ Keep true because we manually update balance above
+          skip_balance_sync: true
         });
 
         processedReservations.push(reservation.reservation_id);
@@ -341,8 +338,7 @@ export async function POST(request: NextRequest) {
     }
 
     // บันทึก ledger: IN ไปยัง Dispatch
-    // ✅ CRITICAL FIX: Include order_item_id for BRCGS traceability
-    // ✅ FIX: Include production_date and expiry_date for proper balance sync
+    // Note: lot_no is NOT in wms_inventory_ledger table
     ledgerEntries.push({
       movement_at: now,
       transaction_type: 'pick',
@@ -352,16 +348,15 @@ export async function POST(request: NextRequest) {
       sku_id: item.sku_id,
       pack_qty: packQty,
       piece_qty: quantity_picked,
-      production_date: sourceProductionDate || null,  // ✅ FIX: Include for balance matching
-      expiry_date: sourceExpiryDate || null,          // ✅ FIX: Include for balance matching
-      lot_no: sourceLotNo || null,                    // ✅ FIX: Include for balance matching
+      production_date: sourceProductionDate || null,
+      expiry_date: sourceExpiryDate || null,
       reference_no: (item.bonus_face_sheets as any).face_sheet_no,
       reference_doc_type: 'bonus_face_sheet',
       reference_doc_id: bonus_face_sheet_id,
-      order_item_id: item.order_item_id, // ✅ BRCGS: Link to order line
+      order_item_id: item.order_item_id,
       remarks: `ย้ายของแถมไป Dispatch`,
       created_by: userId,
-      skip_balance_sync: true  // ✅ Keep true because we manually upsert balance above
+      skip_balance_sync: true
     });
 
     // 10. บันทึก ledger entries
