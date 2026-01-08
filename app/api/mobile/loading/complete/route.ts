@@ -174,8 +174,10 @@ export async function POST(request: NextRequest) {
       faceSheets = faceSheetData || [];
     }
 
-    // Fetch bonus face sheets with items (including order_item_id from bonus_face_sheet_items)
+    // Fetch bonus face sheets with items (including package_id for trip_number filtering)
     let bonusFaceSheets: any[] = [];
+    let validBonusPackageIds = new Set<number>(); // เก็บ package_id ที่มี trip_number (ถูกแมพเข้าสายรถแล้ว)
+    
     if (bonusFaceSheetIds.length > 0) {
       console.log('🔍 Fetching bonus face sheets:', bonusFaceSheetIds);
       const { data: bonusFaceSheetData, error: bonusFaceSheetsError } = await supabase
@@ -187,7 +189,8 @@ export async function POST(request: NextRequest) {
             sku_id,
             quantity_picked,
             quantity_to_pick,
-            order_item_id
+            order_item_id,
+            package_id
           )
         `)
         .in('id', bonusFaceSheetIds);
@@ -201,6 +204,32 @@ export async function POST(request: NextRequest) {
           { status: 404 }
         );
       }
+      
+      // ✅ FIX: กรองเฉพาะ items ที่อยู่ใน packages ที่มี trip_number (ถูกแมพเข้าสายรถแล้ว)
+      // ดึง package_id ทั้งหมดจาก bonus face sheet items
+      const allPackageIds = [...new Set(
+        (bonusFaceSheetData || []).flatMap(bfs => 
+          (bfs.bonus_face_sheet_items || []).map((item: any) => item.package_id).filter(Boolean)
+        )
+      )];
+      
+      if (allPackageIds.length > 0) {
+        // ดึงข้อมูล packages พร้อม trip_number
+        const { data: packageData } = await supabase
+          .from('bonus_face_sheet_packages')
+          .select('id, trip_number')
+          .in('id', allPackageIds);
+        
+        // เก็บเฉพาะ package_id ที่มี trip_number
+        packageData?.forEach((pkg: any) => {
+          if (pkg.trip_number && pkg.trip_number.trim() !== '') {
+            validBonusPackageIds.add(pkg.id);
+          }
+        });
+        
+        console.log(`📦 Bonus packages: total=${allPackageIds.length}, with trip_number=${validBonusPackageIds.size}`);
+      }
+      
       bonusFaceSheets = bonusFaceSheetData || [];
     }
 
@@ -421,15 +450,52 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Process bonus face sheet items (from Dispatch, same as face sheets)
+    // Process bonus face sheet items
+    // ✅ FIX: กรองเฉพาะ items ที่อยู่ใน packages ที่มี trip_number (ถูกแมพเข้าสายรถแล้ว)
+    // ✅ BACKWARD COMPATIBLE: ตรวจสอบสต็อกจาก PQTD/MRTD ก่อน ถ้าไม่มีให้ fallback ไป Dispatch (legacy data)
+    
+    // Get PQTD and MRTD locations
+    const { data: pqtdLocation } = await supabase
+      .from('master_location')
+      .select('location_id')
+      .eq('location_code', 'PQTD')
+      .single();
+
+    const { data: mrtdLocation } = await supabase
+      .from('master_location')
+      .select('location_id')
+      .eq('location_code', 'MRTD')
+      .single();
+
+    // Get package hub info for determining which staging location to use
+    const packageHubMap = new Map<number, string>(); // package_id -> hub
+    if (bonusFaceSheetIds.length > 0) {
+      const allBonusPackageIds = [...validBonusPackageIds];
+      if (allBonusPackageIds.length > 0) {
+        const { data: packageHubs } = await supabase
+          .from('bonus_face_sheet_packages')
+          .select('id, hub')
+          .in('id', allBonusPackageIds);
+        
+        packageHubs?.forEach((pkg: any) => {
+          packageHubMap.set(pkg.id, pkg.hub || '');
+        });
+      }
+    }
+
     for (const bonusFaceSheet of bonusFaceSheets) {
       if (!bonusFaceSheet.bonus_face_sheet_items) continue;
 
-      console.log(`🔍 Processing bonus face sheet ${bonusFaceSheet.face_sheet_no} with ${bonusFaceSheet.bonus_face_sheet_items.length} items`);
+      // กรอง items เฉพาะที่อยู่ใน packages ที่มี trip_number
+      const filteredItems = bonusFaceSheet.bonus_face_sheet_items.filter(
+        (item: any) => item.package_id && validBonusPackageIds.has(item.package_id)
+      );
+      
+      console.log(`🔍 Processing bonus face sheet ${bonusFaceSheet.face_sheet_no}: total items=${bonusFaceSheet.bonus_face_sheet_items.length}, filtered (with trip)=${filteredItems.length}`);
 
-      for (const item of bonusFaceSheet.bonus_face_sheet_items) {
+      for (const item of filteredItems) {
         const qty = item.quantity_picked || item.quantity_to_pick || 0;
-        console.log(`📦 Bonus face sheet item: sku=${item.sku_id}, qty_picked=${item.quantity_picked}, qty_to_pick=${item.quantity_to_pick}, final_qty=${qty}`);
+        console.log(`📦 Bonus face sheet item: sku=${item.sku_id}, qty_picked=${item.quantity_picked}, qty_to_pick=${item.quantity_to_pick}, final_qty=${qty}, package_id=${item.package_id}`);
 
         if (qty <= 0) {
           console.log(`⚠️ Skipping item with qty=${qty}`);
@@ -456,38 +522,82 @@ export async function POST(request: NextRequest) {
         const qtyPack = qty / qtyPerPack;
         console.log(`✅ SKU info: qty_per_pack=${qtyPerPack}, qtyPack=${qtyPack}`);
 
-        // Check Dispatch balance for bonus face sheets (same as regular face sheets)
-        console.log(`🔍 Checking Dispatch balance for ${item.sku_id}`);
-        const { data: dispatchBalance, error: balanceError } = await supabase
-          .from('wms_inventory_balances')
-          .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
-          .eq('warehouse_id', 'WH001')
-          .eq('location_id', dispatchLocation.location_id)
-          .eq('sku_id', item.sku_id)
-          .maybeSingle();
+        // ✅ Determine staging location based on package hub
+        // PQ hubs (กรุงเทพ/ภาคกลาง) → PQTD
+        // MR hubs (ต่างจังหวัด) → MRTD
+        const packageHub = packageHubMap.get(item.package_id) || '';
+        const isPQHub = packageHub.includes('BKK') || packageHub.includes('Central') || packageHub.includes('Marketing');
+        const stagingLocationId = isPQHub ? pqtdLocation?.location_id : mrtdLocation?.location_id;
+        const stagingLocationName = isPQHub ? 'PQTD' : 'MRTD';
 
-        if (balanceError) {
-          console.error('❌ Error checking dispatch balance:', balanceError);
-          return NextResponse.json(
-            { error: 'ไม่สามารถตรวจสอบสต็อคได้', details: balanceError.message },
-            { status: 500 }
-          );
+        // ✅ BACKWARD COMPATIBLE: ตรวจสอบ staging location ก่อน ถ้าไม่มีให้ fallback ไป Dispatch
+        let sourceBalance: any = null;
+        let sourceLocationId: number | null = null;
+        let sourceLocationName: string = '';
+
+        // 1. ตรวจสอบ staging location (PQTD/MRTD) - new workflow
+        if (stagingLocationId) {
+          console.log(`🔍 Checking ${stagingLocationName} balance for ${item.sku_id} (hub: ${packageHub})`);
+          const { data: stagingBalance, error: stagingError } = await supabase
+            .from('wms_inventory_balances')
+            .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
+            .eq('warehouse_id', 'WH001')
+            .eq('location_id', stagingLocationId)
+            .eq('sku_id', item.sku_id)
+            .gt('total_piece_qty', 0)
+            .maybeSingle();
+
+          if (!stagingError && stagingBalance && stagingBalance.total_piece_qty >= qty) {
+            sourceBalance = stagingBalance;
+            sourceLocationId = stagingLocationId;
+            sourceLocationName = stagingLocationName;
+            console.log(`✅ Found stock at ${stagingLocationName}: ${stagingBalance.total_piece_qty} pieces`);
+          }
         }
 
-        console.log(`📊 Dispatch balance: ${dispatchBalance ? `${dispatchBalance.total_piece_qty} pieces` : 'not found'}`);
+        // 2. ถ้าไม่มีที่ staging → fallback ไป Dispatch (legacy data)
+        if (!sourceBalance) {
+          console.log(`🔍 Fallback: Checking Dispatch balance for ${item.sku_id} (legacy data)`);
+          const { data: dispatchBonusBalance, error: dispatchError } = await supabase
+            .from('wms_inventory_balances')
+            .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
+            .eq('warehouse_id', 'WH001')
+            .eq('location_id', dispatchLocation.location_id)
+            .eq('sku_id', item.sku_id)
+            .gt('total_piece_qty', 0)
+            .maybeSingle();
 
-        const availableQty = dispatchBalance?.total_piece_qty || 0;
+          console.log(`📊 Dispatch query result:`, { 
+            data: dispatchBonusBalance, 
+            error: dispatchError,
+            availableQty: dispatchBonusBalance ? Number(dispatchBonusBalance.total_piece_qty) : 0,
+            requiredQty: qty,
+            isEnough: dispatchBonusBalance ? Number(dispatchBonusBalance.total_piece_qty) >= qty : false
+          });
 
-        // ✅ ตรวจสอบว่ามีสต็อคเพียงพอหรือไม่
-        if (availableQty < qty) {
+          // ✅ FIX: Convert to Number for proper comparison (Supabase returns string for numeric)
+          if (!dispatchError && dispatchBonusBalance && Number(dispatchBonusBalance.total_piece_qty) >= qty) {
+            sourceBalance = dispatchBonusBalance;
+            sourceLocationId = dispatchLocation.location_id;
+            sourceLocationName = 'Dispatch';
+            console.log(`✅ Found stock at Dispatch (legacy): ${dispatchBonusBalance.total_piece_qty} pieces`);
+          }
+        }
+
+        // 3. ถ้าไม่มีทั้งสองที่ → insufficient stock
+        if (!sourceBalance || !sourceLocationId) {
+          // รายงานว่าไม่พบสต็อกที่ไหนเลย
+          const stagingQty = 0; // ไม่มีที่ staging
+          const dispatchQty = 0; // ไม่มีที่ dispatch
+          
           insufficientStockItems.push({
             sku_id: item.sku_id,
             sku_name: skuInfo?.sku_name,
             bonus_face_sheet_no: bonusFaceSheet.face_sheet_no,
             required: qty,
-            available: availableQty,
-            shortage: qty - availableQty,
-            location: 'Dispatch'
+            available: 0,
+            shortage: qty,
+            location: `${stagingLocationName} หรือ Dispatch` // แสดงทั้งสองที่
           });
         } else {
           // เก็บข้อมูลไว้สำหรับ process ทีหลัง
@@ -497,8 +607,9 @@ export async function POST(request: NextRequest) {
             qtyPack,
             qtyPerPack,
             bonus_face_sheet_no: bonusFaceSheet.face_sheet_no,
-            sourceBalance: dispatchBalance,
-            sourceLocation: dispatchLocation.location_id,
+            sourceBalance,
+            sourceLocation: sourceLocationId,
+            sourceLocationName,
             isFromBonusFaceSheet: true
           });
         }
@@ -587,15 +698,15 @@ export async function POST(request: NextRequest) {
           .eq('loadlist_id', loadlist.id);
       }
 
-      // Group items by SKU + production_date + expiry_date + lot_no to handle duplicates
-      // (ไม่ต้อง group by source_location เพราะทั้ง picklist และ face sheet ใช้ Dispatch เหมือนกัน)
+      // Group items by SKU + production_date + expiry_date + lot_no + sourceLocation to handle duplicates
+      // ✅ FIX: ต้อง group by sourceLocation ด้วยเพราะ bonus face sheet ใช้ PQTD/MRTD แทน Dispatch
       console.log(`🔄 Grouping ${itemsToProcess.length} items...`);
       
       for (const itemData of itemsToProcess) {
-        const { sku_id, qty, qtyPack, picklist_code, face_sheet_no, bonus_face_sheet_no, sourceBalance, sourceLocation } = itemData;
+        const { sku_id, qty, qtyPack, picklist_code, face_sheet_no, bonus_face_sheet_no, sourceBalance, sourceLocation, sourceLocationName } = itemData;
         const docCode = picklist_code || face_sheet_no || bonus_face_sheet_no;
         
-        const key = `${sku_id}|${sourceBalance.production_date}|${sourceBalance.expiry_date}|${sourceBalance.lot_no}`;
+        const key = `${sku_id}|${sourceBalance.production_date}|${sourceBalance.expiry_date}|${sourceBalance.lot_no}|${sourceLocation}`;
         
         if (groupedItems.has(key)) {
           const existing = groupedItems.get(key);
@@ -609,6 +720,7 @@ export async function POST(request: NextRequest) {
             qtyPack,
             sourceBalance,
             sourceLocation,
+            sourceLocationName: sourceLocationName || 'Dispatch', // ✅ Store location name
             docCodes: [docCode]
           });
         }
@@ -625,9 +737,8 @@ export async function POST(request: NextRequest) {
     console.log(`🔄 Starting to process ${groupedItems.size} batches...`);
     for (const [key, itemData] of groupedItems) {
       console.log(`🔄 Processing batch: ${key}`);
-      const { sku_id, qty, qtyPack, sourceBalance, sourceLocation, docCodes } = itemData;
+      const { sku_id, qty, qtyPack, sourceBalance, sourceLocation, sourceLocationName, docCodes } = itemData;
       const docCode = docCodes.join(', ');
-      const sourceLocationName = sourceLocation === dispatchLocation.location_id ? 'Dispatch' : 'Prep-Area';
 
       console.log(`📦 Processing item: SKU=${sku_id}, qty=${qty}, from=${sourceLocationName}, production_date=${sourceBalance.production_date}, expiry_date=${sourceBalance.expiry_date}`);
 

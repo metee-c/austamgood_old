@@ -13,7 +13,10 @@ import {
   Loader2,
   Package,
   ClipboardCheck,
-  AlertTriangle
+  AlertTriangle,
+  MapPin,
+  FileText,
+  PackageSearch
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
@@ -82,6 +85,11 @@ const BonusFaceSheetsPage = () => {
   const [showMatchingStep, setShowMatchingStep] = useState(false);
   const [editingStatusId, setEditingStatusId] = useState<number | null>(null);
   const [checklistingId, setChecklistingId] = useState<number | null>(null);
+  const [assigningLocationId, setAssigningLocationId] = useState<number | null>(null);
+  const [printingPlacementId, setPrintingPlacementId] = useState<number | null>(null);
+  const [checkingUnloadedId, setCheckingUnloadedId] = useState<number | null>(null);
+  const [showUnloadedModal, setShowUnloadedModal] = useState(false);
+  const [unloadedData, setUnloadedData] = useState<any>(null);
 
   const statuses = [
     { value: 'all', label: 'ทั้งหมด' },
@@ -544,6 +552,152 @@ const BonusFaceSheetsPage = () => {
     }
   };
 
+  // Handler: จัดสรรโลเคชั่นจัดวาง (PQ01-PQ10, MR01-MR10)
+  const handleAssignLocations = async (id: number) => {
+    setAssigningLocationId(id);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/bonus-face-sheets/assign-locations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ face_sheet_id: id })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'ไม่สามารถจัดสรรโลเคชั่นได้');
+      }
+
+      setSuccess(`จัดสรรโลเคชั่นสำเร็จ ${result.assigned_packages?.length || 0} แพ็ค`);
+      
+      // Refresh list
+      await fetchBonusFaceSheets();
+    } catch (err: any) {
+      console.error('Error assigning locations:', err);
+      setError(err.message || 'ไม่สามารถจัดสรรโลเคชั่นได้');
+    } finally {
+      setAssigningLocationId(null);
+    }
+  };
+
+  // Handler: พิมพ์ใบจัดวางสินค้า (Storage Placement Form)
+  const handlePrintStoragePlacement = async (id: number) => {
+    setPrintingPlacementId(id);
+    setError(null);
+
+    let printWindow: Window | null = null;
+
+    try {
+      // Fetch storage placement data
+      const response = await fetch(`/api/bonus-face-sheets/storage-placement?id=${id}`);
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        // Check if needs assignment first
+        if (result.needs_assignment) {
+          setError(`กรุณากดปุ่ม "จัดสรรโลเคชั่น" ก่อนพิมพ์ใบจัดวางสินค้า (มี ${result.unassigned_count} แพ็คที่ยังไม่ได้จัดสรร)`);
+          return;
+        }
+        throw new Error(result.error || 'ไม่สามารถดึงข้อมูลใบจัดวางสินค้าได้');
+      }
+
+      const data = result.data;
+
+      // Create print window
+      printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        throw new Error('กรุณาอนุญาตป๊อปอัพเพื่อใช้งานการพิมพ์');
+      }
+
+      // Render component
+      const tempContainer = document.createElement('div');
+      document.body.appendChild(tempContainer);
+
+      const { createRoot } = await import('react-dom/client');
+      const BonusStoragePlacementDocument = (await import('@/components/receiving/BonusStoragePlacementDocument')).default;
+      
+      const root = createRoot(tempContainer);
+      root.render(
+        <BonusStoragePlacementDocument
+          faceSheetNo={data.face_sheet_no}
+          createdDate={data.created_date}
+          totalPackages={data.total_packages}
+          locationSummary={data.location_summary}
+        />
+      );
+
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      const printContent = tempContainer.innerHTML;
+      const cssContent = `
+        @page { size: A4 portrait; margin: 10mm; }
+        body {
+          font-family: 'Sarabun', 'Noto Sans Thai', sans-serif;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+          margin: 0;
+          padding: 0;
+        }
+        table { page-break-inside: avoid; }
+      `;
+
+      printWindow.document.write(`
+        <!DOCTYPE html>
+        <html lang="th">
+          <head>
+            <meta charset="UTF-8">
+            <title>ใบจัดวางสินค้า: ${data.face_sheet_no}</title>
+            <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@400;500;600;700&family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+            <style>${cssContent}</style>
+          </head>
+          <body>${printContent}</body>
+        </html>
+      `);
+      printWindow.document.close();
+
+      setTimeout(() => {
+        printWindow?.print();
+      }, 500);
+
+      // Cleanup
+      root.unmount();
+      document.body.removeChild(tempContainer);
+    } catch (err: any) {
+      console.error('Error printing storage placement:', err);
+      setError(err.message || 'ไม่สามารถพิมพ์ใบจัดวางสินค้าได้');
+      if (printWindow && !printWindow.closed) {
+        printWindow.close();
+      }
+    } finally {
+      setPrintingPlacementId(null);
+    }
+  };
+
+  // Handler: เช็คแพ็คที่ยังไม่โหลด
+  const handleCheckUnloadedPackages = async (id: number) => {
+    setCheckingUnloadedId(id);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/bonus-face-sheets/unloaded-packages?id=${id}`);
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'ไม่สามารถดึงข้อมูลได้');
+      }
+
+      setUnloadedData(result.data);
+      setShowUnloadedModal(true);
+    } catch (err: any) {
+      console.error('Error checking unloaded packages:', err);
+      setError(err.message || 'ไม่สามารถดึงข้อมูลแพ็คที่ยังไม่โหลดได้');
+    } finally {
+      setCheckingUnloadedId(null);
+    }
+  };
+
   return (
     <PageContainer>
       <PageHeaderWithFilters title="สร้างใบปะหน้าของแถม (Bonus Face Sheets)">
@@ -680,6 +834,30 @@ const BonusFaceSheetsPage = () => {
                             <Eye className="w-4 h-4" />
                           </button>
                           <button
+                            className="p-1 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors disabled:opacity-60"
+                            title="จัดสรรโลเคชั่น (PQ/MR)"
+                            onClick={() => handleAssignLocations(sheet.id)}
+                            disabled={assigningLocationId === sheet.id}
+                          >
+                            {assigningLocationId === sheet.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <MapPin className="w-4 h-4" />
+                            )}
+                          </button>
+                          <button
+                            className="p-1 rounded hover:bg-cyan-50 hover:text-cyan-600 transition-colors disabled:opacity-60"
+                            title="พิมพ์ใบจัดวางสินค้า"
+                            onClick={() => handlePrintStoragePlacement(sheet.id)}
+                            disabled={printingPlacementId === sheet.id}
+                          >
+                            {printingPlacementId === sheet.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <FileText className="w-4 h-4" />
+                            )}
+                          </button>
+                          <button
                             className="p-1 rounded hover:bg-green-50 hover:text-green-600 transition-colors disabled:opacity-60"
                             title="พิมพ์ใบปะหน้า"
                             onClick={() => handlePrintBonusFaceSheet(sheet.id)}
@@ -701,6 +879,18 @@ const BonusFaceSheetsPage = () => {
                               <Loader2 className="w-4 h-4 animate-spin" />
                             ) : (
                               <ClipboardCheck className="w-4 h-4" />
+                            )}
+                          </button>
+                          <button
+                            className="p-1 rounded hover:bg-amber-50 hover:text-amber-600 transition-colors disabled:opacity-60"
+                            title="เช็คแพ็คที่ยังไม่โหลด"
+                            onClick={() => handleCheckUnloadedPackages(sheet.id)}
+                            disabled={checkingUnloadedId === sheet.id}
+                          >
+                            {checkingUnloadedId === sheet.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <PackageSearch className="w-4 h-4" />
                             )}
                           </button>
                         </div>
@@ -1034,6 +1224,165 @@ const BonusFaceSheetsPage = () => {
             </Button>
           </div>
         </div>
+      </Modal>
+
+      {/* Unloaded Packages Modal */}
+      <Modal
+        isOpen={showUnloadedModal}
+        onClose={() => {
+          setShowUnloadedModal(false);
+          setUnloadedData(null);
+        }}
+        title={`📦 สถานะแพ็คของแถม: ${unloadedData?.face_sheet_no || ''}`}
+        size="lg"
+      >
+        {unloadedData && (
+          <div className="space-y-4">
+            {/* Summary */}
+            <div className="grid grid-cols-4 gap-3">
+              <div className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-center">
+                <div className="text-2xl font-bold text-gray-700">{unloadedData.summary.total_packages}</div>
+                <div className="text-xs text-gray-500">แพ็คทั้งหมด</div>
+              </div>
+              <div className="bg-green-50 border border-green-200 rounded-lg p-3 text-center">
+                <div className="text-2xl font-bold text-green-600">{unloadedData.summary.loaded_count}</div>
+                <div className="text-xs text-green-700">โหลดแล้ว</div>
+              </div>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-center">
+                <div className="text-2xl font-bold text-blue-600">{unloadedData.summary.unloaded_count}</div>
+                <div className="text-xs text-blue-700">รอโหลด</div>
+              </div>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-center">
+                <div className="text-2xl font-bold text-amber-600">{unloadedData.summary.unmapped_count}</div>
+                <div className="text-xs text-amber-700">ยังไม่แมพสายรถ</div>
+              </div>
+            </div>
+
+            {/* Unmapped Packages */}
+            {unloadedData.unmapped_packages.length > 0 && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <h3 className="font-semibold text-amber-800 mb-3 flex items-center gap-2">
+                  <AlertCircle className="w-5 h-5" />
+                  ❌ แพ็คที่ยังไม่แมพสายรถ ({unloadedData.unmapped_packages.length} แพ็ค)
+                </h3>
+                <div className="max-h-48 overflow-y-auto">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-amber-100 sticky top-0">
+                      <tr>
+                        <th className="px-2 py-1 text-left font-semibold">แพ็ค</th>
+                        <th className="px-2 py-1 text-left font-semibold">ร้านค้า</th>
+                        <th className="px-2 py-1 text-left font-semibold">Hub</th>
+                        <th className="px-2 py-1 text-left font-semibold">โลเคชั่น</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-amber-200">
+                      {unloadedData.unmapped_packages.map((pkg: any) => (
+                        <tr key={pkg.id} className="hover:bg-amber-100/50">
+                          <td className="px-2 py-1 font-mono">{pkg.package_number}</td>
+                          <td className="px-2 py-1">{pkg.shop_name || '-'}</td>
+                          <td className="px-2 py-1">{pkg.hub || '-'}</td>
+                          <td className="px-2 py-1">{pkg.storage_location || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Unloaded Packages (pending) */}
+            {unloadedData.unloaded_packages.length > 0 && (
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h3 className="font-semibold text-blue-800 mb-3 flex items-center gap-2">
+                  <Package className="w-5 h-5" />
+                  ⏳ แพ็คที่รอโหลด ({unloadedData.unloaded_packages.length} แพ็ค)
+                </h3>
+                <div className="max-h-48 overflow-y-auto">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-blue-100 sticky top-0">
+                      <tr>
+                        <th className="px-2 py-1 text-left font-semibold">แพ็ค</th>
+                        <th className="px-2 py-1 text-left font-semibold">ร้านค้า</th>
+                        <th className="px-2 py-1 text-left font-semibold">สายรถ</th>
+                        <th className="px-2 py-1 text-left font-semibold">Hub</th>
+                        <th className="px-2 py-1 text-left font-semibold">โลเคชั่น</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-blue-200">
+                      {unloadedData.unloaded_packages.map((pkg: any) => (
+                        <tr key={pkg.id} className="hover:bg-blue-100/50">
+                          <td className="px-2 py-1 font-mono">{pkg.package_number}</td>
+                          <td className="px-2 py-1">{pkg.shop_name || '-'}</td>
+                          <td className="px-2 py-1">
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-blue-200 text-blue-800 text-xs">
+                              {pkg.trip_number}
+                            </span>
+                          </td>
+                          <td className="px-2 py-1">{pkg.hub || '-'}</td>
+                          <td className="px-2 py-1">{pkg.storage_location || '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* Loaded Packages */}
+            {unloadedData.loaded_packages.length > 0 && (
+              <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                <h3 className="font-semibold text-green-800 mb-3 flex items-center gap-2">
+                  <CheckCircle className="w-5 h-5" />
+                  ✅ แพ็คที่โหลดแล้ว ({unloadedData.loaded_packages.length} แพ็ค)
+                </h3>
+                <div className="max-h-32 overflow-y-auto">
+                  <table className="min-w-full text-xs">
+                    <thead className="bg-green-100 sticky top-0">
+                      <tr>
+                        <th className="px-2 py-1 text-left font-semibold">แพ็ค</th>
+                        <th className="px-2 py-1 text-left font-semibold">ร้านค้า</th>
+                        <th className="px-2 py-1 text-left font-semibold">สายรถ</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-green-200">
+                      {unloadedData.loaded_packages.map((pkg: any) => (
+                        <tr key={pkg.id} className="hover:bg-green-100/50">
+                          <td className="px-2 py-1 font-mono">{pkg.package_number}</td>
+                          <td className="px-2 py-1">{pkg.shop_name || '-'}</td>
+                          <td className="px-2 py-1">
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-green-200 text-green-800 text-xs">
+                              {pkg.trip_number}
+                            </span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* All loaded message */}
+            {unloadedData.summary.unmapped_count === 0 && unloadedData.summary.unloaded_count === 0 && (
+              <div className="bg-green-100 border border-green-300 rounded-lg p-4 text-center">
+                <CheckCircle className="w-8 h-8 text-green-600 mx-auto mb-2" />
+                <p className="text-green-800 font-semibold">แพ็คทั้งหมดโหลดเรียบร้อยแล้ว!</p>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setShowUnloadedModal(false);
+                  setUnloadedData(null);
+                }}
+              >
+                ปิด
+              </Button>
+            </div>
+          </div>
+        )}
       </Modal>
     </PageContainer>
   );

@@ -82,16 +82,19 @@ export async function GET(request: NextRequest) {
       .filter((id: any) => id != null) || [];
 
     // Fetch trip codes if we have trip IDs
-    let tripMap: Record<number, string> = {};
+    let tripMap: Record<number, { trip_code: string; daily_trip_number: number | null }> = {};
     if (tripIds.length > 0) {
       const { data: trips } = await supabase
         .from('receiving_route_trips')
-        .select('trip_id, trip_code')
+        .select('trip_id, trip_code, daily_trip_number')
         .in('trip_id', tripIds);
 
       trips?.forEach((trip: any) => {
         if (trip.trip_id) {
-          tripMap[trip.trip_id] = trip.trip_code;
+          tripMap[trip.trip_id] = {
+            trip_code: trip.trip_code,
+            daily_trip_number: trip.daily_trip_number
+          };
         }
       });
     }
@@ -141,7 +144,7 @@ export async function GET(request: NextRequest) {
       const picklists = loadlist.wms_loadlist_picklists || [];
       const faceSheets = loadlist.loadlist_face_sheets || [];
       const bonusFaceSheets = loadlist.wms_loadlist_bonus_face_sheets || [];
-      const tripCode = loadlist.trip_id ? tripMap[loadlist.trip_id] : null;
+      const tripData = loadlist.trip_id ? tripMap[loadlist.trip_id] : null;
       const vehicleIdNum = loadlist.vehicle_id ? parseInt(loadlist.vehicle_id, 10) : null;
       const vehicle = vehicleIdNum && !isNaN(vehicleIdNum) ? vehicleMap[vehicleIdNum] : null;
       const driver = loadlist.driver_employee_id ? driverMap[loadlist.driver_employee_id] : null;
@@ -173,7 +176,7 @@ export async function GET(request: NextRequest) {
         plan_id: loadlist.plan_id,
         route_plan: loadlist.route_plan,
         trip_id: loadlist.trip_id,
-        trip: tripCode ? { trip_code: tripCode } : null,
+        trip: tripData ? { trip_code: tripData.trip_code, daily_trip_number: tripData.daily_trip_number } : null,
         total_picklists: picklists.length,
         total_face_sheets: faceSheets.length,
         total_bonus_face_sheets: bonusFaceSheets.length,

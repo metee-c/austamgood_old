@@ -22,6 +22,7 @@ interface BonusFaceSheetPackage {
   remark?: string;
   sales_territory?: string;
   trip_number?: string;
+  storage_location?: string; // โลเคชั่นจัดวาง (PQ01-PQ10, MR01-MR10)
   items: BonusFaceSheetItem[];
 }
 
@@ -301,6 +302,28 @@ const BonusFaceSheetLabelDocument: React.FC<BonusFaceSheetLabelDocumentProps> = 
                         {pkg.package_number}
                       </p>
                     </div>
+                    {/* Storage Location - แสดงโลเคชั่นจัดวาง */}
+                    {pkg.storage_location && (
+                      <div style={{ flex: 1, textAlign: 'center' }}>
+                        <p style={{ fontSize: '10px', margin: 0, color: '#555' }}>โลเคชั่นจัดวาง</p>
+                        <p
+                          style={{
+                            fontSize: '20px',
+                            margin: 0,
+                            fontWeight: 'bold',
+                            color: '#fff',
+                            background: pkg.storage_location.startsWith('PQ') ? '#2563eb' : '#db2777',
+                            padding: '4px 12px',
+                            display: 'inline-block',
+                            borderRadius: '6px',
+                            border: '2px solid #000',
+                            letterSpacing: '1px'
+                          }}
+                        >
+                          {pkg.storage_location}
+                        </p>
+                      </div>
+                    )}
                     <div style={{ flex: 1, textAlign: 'center' }}>
                       <p style={{ fontSize: '10px', margin: 0, color: '#555' }}>แพ็คต่อเลขออเดอร์</p>
                       <p

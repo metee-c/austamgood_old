@@ -43,6 +43,7 @@ interface PreparedDocument {
   plan_code?: string;
   trip_id?: number;
   trip_code?: string;
+  daily_trip_number?: number | null;  // เลขคันจริง (ไม่ซ้ำกันทั้งวัน)
   loadlist_code?: string | null;
   items: DocumentItem[];
 }
@@ -424,7 +425,9 @@ const PreparedDocumentsTable: React.FC<PreparedDocumentsTableProps> = ({ warehou
                     <span className="font-mono font-semibold text-purple-700">{doc.plan_code || '-'}</span>
                   </td>
                   <td className="px-3 py-2 border-r border-gray-100 bg-blue-50/30">
-                    <span className="font-mono text-purple-600">{doc.trip_code || '-'}</span>
+                    <span className="font-mono text-purple-600">
+                      {doc.daily_trip_number ? `คันที่ ${doc.daily_trip_number}` : (doc.trip_code || '-')}
+                    </span>
                   </td>
                   <td className="px-3 py-2 border-r border-gray-100 bg-blue-50/30">
                     <span className="font-mono font-semibold text-blue-600">{doc.document_no}</span>

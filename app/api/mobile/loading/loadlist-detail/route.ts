@@ -195,15 +195,35 @@ export async function GET(request: NextRequest) {
 
       const items = bonusFaceSheet.bonus_face_sheet_items || [];
 
-      // Get unique SKU IDs and package IDs from bonus face sheet items
-      const skuIds = [...new Set(items.map((item: any) => item.sku_id).filter(Boolean))];
+      // Get unique package IDs from bonus face sheet items
       const packageIds = [...new Set(items.map((item: any) => item.package_id).filter(Boolean))];
       
-      // Create item to package mapping
-      const itemPackageMap: Record<string, number> = {};
-      items.forEach((item: any) => {
-        itemPackageMap[item.sku_id] = item.package_id;
-      });
+      // ✅ Fetch package data พร้อม trip_number เพื่อกรองเฉพาะ packages ที่ถูกแมพสายรถแล้ว
+      let packageOrderMap: Record<number, number> = {};
+      let packageNumberMap: Record<number, string> = {};
+      let validPackageIds = new Set<number>(); // เก็บ package_id ที่มี trip_number
+      
+      if (packageIds.length > 0) {
+        const { data: packageData } = await supabase
+          .from('bonus_face_sheet_packages')
+          .select('id, order_id, package_number, trip_number')
+          .in('id', packageIds);
+        
+        packageData?.forEach((pkg: any) => {
+          // ✅ กรองเฉพาะ packages ที่มี trip_number (ถูกแมพเข้าสายรถแล้ว)
+          if (pkg.trip_number && pkg.trip_number.trim() !== '') {
+            packageOrderMap[pkg.id] = pkg.order_id;
+            packageNumberMap[pkg.id] = pkg.package_number;
+            validPackageIds.add(pkg.id);
+          }
+        });
+      }
+
+      // ✅ กรอง items เฉพาะที่อยู่ใน packages ที่มี trip_number
+      const filteredItems = items.filter((item: any) => validPackageIds.has(item.package_id));
+
+      // Get unique SKU IDs from filtered items
+      const skuIds = [...new Set(filteredItems.map((item: any) => item.sku_id).filter(Boolean))];
       
       // Fetch SKU data separately
       let skuMap: Record<string, any> = {};
@@ -215,21 +235,6 @@ export async function GET(request: NextRequest) {
         
         skuData?.forEach((sku: any) => {
           skuMap[sku.sku_id] = sku;
-        });
-      }
-
-      // Fetch package data to get order_id and package_number
-      let packageOrderMap: Record<number, number> = {};
-      let packageNumberMap: Record<number, string> = {};
-      if (packageIds.length > 0) {
-        const { data: packageData } = await supabase
-          .from('bonus_face_sheet_packages')
-          .select('id, order_id, package_number')
-          .in('id', packageIds);
-        
-        packageData?.forEach((pkg: any) => {
-          packageOrderMap[pkg.id] = pkg.order_id;
-          packageNumberMap[pkg.id] = pkg.package_number;
         });
       }
 
@@ -249,7 +254,8 @@ export async function GET(request: NextRequest) {
         });
       }
 
-      for (const item of items) {
+      // ✅ ใช้ filteredItems แทน items
+      for (const item of filteredItems) {
         const qty = item.quantity_picked || 0;
         const sku = skuMap[item.sku_id];
         const orderId = packageOrderMap[item.package_id];

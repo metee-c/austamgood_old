@@ -3,14 +3,14 @@
 
    Creating an optimized production build ...
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
- ✓ Compiled successfully in 17.9s
+ ✓ Compiled successfully in 11.1s
    Running TypeScript ...
    Collecting page data using 13 workers ...
-   Generating static pages using 13 workers (0/203) ...
-   Generating static pages using 13 workers (50/203) 
-   Generating static pages using 13 workers (101/203) 
-   Generating static pages using 13 workers (152/203) 
- ✓ Generating static pages using 13 workers (203/203) in 2.3s
+   Generating static pages using 13 workers (0/208) ...
+   Generating static pages using 13 workers (52/208) 
+   Generating static pages using 13 workers (104/208) 
+   Generating static pages using 13 workers (156/208) 
+ ✓ Generating static pages using 13 workers (208/208) in 1475.0ms
    Finalizing page optimization ...
 
 Route (app)
@@ -50,13 +50,18 @@ Route (app)
 ├ ƒ /api/auth/settings
 ├ ƒ /api/auth/settings/[key]
 ├ ƒ /api/bonus-face-sheets
+├ ƒ /api/bonus-face-sheets/assign-locations
 ├ ƒ /api/bonus-face-sheets/checklist
+├ ƒ /api/bonus-face-sheets/confirm-pick-to-staging
 ├ ƒ /api/bonus-face-sheets/delivery-document
 ├ ƒ /api/bonus-face-sheets/[id]
 ├ ƒ /api/bonus-face-sheets/loadlist-counts
 ├ ƒ /api/bonus-face-sheets/orders
+├ ƒ /api/bonus-face-sheets/pick-list
 ├ ƒ /api/bonus-face-sheets/print
+├ ƒ /api/bonus-face-sheets/storage-placement
 ├ ƒ /api/bonus-face-sheets/trip-counts
+├ ƒ /api/bonus-face-sheets/unloaded-packages
 ├ ƒ /api/bonus-face-sheets/upload
 ├ ƒ /api/dashboard/location-detail
 ├ ƒ /api/dashboard/warehouse-map

@@ -22,6 +22,7 @@ interface Loadlist {
   };
   trip?: {
     trip_code: string;
+    daily_trip_number?: number | null;
   };
   vehicle?: {
     vehicle_id: string;
@@ -165,8 +166,9 @@ const DeliveryOrderDocument: React.FC<DeliveryOrderDocumentProps> = ({
           <div style={{ fontSize: '8pt' }}>Delivery Order Document</div>
         </div>
         <div style={{ textAlign: 'right', marginLeft: '15px' }}>
-          <div style={{ marginBottom: '5px' }}>
-            <strong>เลขที่เอกสาร:</strong> {loadlist.delivery_number || loadlist.loadlist_code}
+          <div style={{ marginBottom: '8px', padding: '8px 12px', backgroundColor: '#fff3cd', border: '2px solid #856404', borderRadius: '6px' }}>
+            <div style={{ fontSize: '9pt', color: '#856404', marginBottom: '2px' }}>เลขที่เอกสาร</div>
+            <div style={{ fontSize: '18pt', fontWeight: 'bold', color: '#000' }}>{loadlist.delivery_number || loadlist.loadlist_code}</div>
           </div>
           <div style={{ marginBottom: '3px' }}>
             <strong>วันที่ปริ้น:</strong> {formatDate(loadlist.created_at)}
@@ -227,10 +229,13 @@ const DeliveryOrderDocument: React.FC<DeliveryOrderDocumentProps> = ({
               whiteSpace: 'nowrap',
               overflow: 'hidden',
               textOverflow: 'ellipsis',
-              verticalAlign: 'top'
+              verticalAlign: 'top',
+              backgroundColor: '#fff3cd'
             }}>
-              <div style={{ fontWeight: 'bold', marginBottom: '3px' }}>รหัสเที่ยวรถ</div>
-              <div style={{ fontSize: '8.5pt' }}>{loadlist.trip?.trip_code || '-'}</div>
+              <div style={{ fontWeight: 'bold', marginBottom: '3px' }}>คันที่</div>
+              <div style={{ fontSize: '14pt', fontWeight: 'bold', color: '#856404' }}>
+                {loadlist.trip?.daily_trip_number ? loadlist.trip.daily_trip_number : '-'}
+              </div>
             </td>
             <td style={{
               padding: '5px 6px',

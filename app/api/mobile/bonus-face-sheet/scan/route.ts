@@ -39,7 +39,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 1. ดึงข้อมูล bonus_face_sheet และ item
+    // 1. ดึงข้อมูล bonus_face_sheet, item และ package (รวม storage_location)
     const { data: item, error: itemError } = await supabase
       .from('bonus_face_sheet_items')
       .select(`
@@ -49,6 +49,11 @@ export async function POST(request: NextRequest) {
           face_sheet_no,
           status,
           warehouse_id
+        ),
+        bonus_face_sheet_packages!inner(
+          id,
+          storage_location,
+          hub
         )
       `)
       .eq('id', item_id)
@@ -63,7 +68,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('✅ Item found:', { item_id, sku_id: item.sku_id, status: item.status });
+    // ดึง storage_location จาก package
+    const packageData = item.bonus_face_sheet_packages as any;
+    const storageLocation = packageData?.storage_location;
+    
+    console.log('✅ Item found:', { 
+      item_id, 
+      sku_id: item.sku_id, 
+      status: item.status,
+      storage_location: storageLocation,
+      hub: packageData?.hub
+    });
 
     // 2. ตรวจสอบ QR Code (ถ้ามี)
     if (scanned_code && scanned_code !== (item.bonus_face_sheets as any).face_sheet_no) {
@@ -103,20 +118,52 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 6. ดึง Dispatch location
-    const { data: dispatchLocation, error: dispatchError } = await supabase
-      .from('master_location')
-      .select('location_id, location_code')
-      .eq('location_code', 'Dispatch')
-      .eq('warehouse_id', warehouseId)
-      .eq('active_status', 'active')
-      .single();
+    // 6. ดึง Storage location (PQ01-PQ10, MR01-MR10) จาก package
+    // ถ้าไม่มี storage_location ให้ใช้ Dispatch เป็น fallback
+    let destinationLocationId: string;
+    let destinationLocationCode: string;
+    
+    if (storageLocation) {
+      // ใช้ storage_location จาก package (PQ01-PQ10, MR01-MR10)
+      const { data: storageLocationData, error: storageError } = await supabase
+        .from('master_location')
+        .select('location_id, location_code')
+        .eq('location_code', storageLocation)
+        .eq('warehouse_id', warehouseId)
+        .eq('active_status', 'active')
+        .single();
 
-    if (dispatchError || !dispatchLocation) {
-      return NextResponse.json(
-        { error: 'ไม่พบ Dispatch location', details: dispatchError?.message },
-        { status: 404 }
-      );
+      if (storageError || !storageLocationData) {
+        console.error('❌ Storage location not found:', storageLocation, storageError);
+        return NextResponse.json(
+          { error: `ไม่พบโลเคชั่นจัดวาง ${storageLocation}`, details: storageError?.message },
+          { status: 404 }
+        );
+      }
+      
+      destinationLocationId = storageLocationData.location_id;
+      destinationLocationCode = storageLocationData.location_code;
+      console.log(`✅ Using storage location: ${destinationLocationCode}`);
+    } else {
+      // Fallback: ใช้ Dispatch ถ้าไม่มี storage_location
+      const { data: dispatchLocation, error: dispatchError } = await supabase
+        .from('master_location')
+        .select('location_id, location_code')
+        .eq('location_code', 'Dispatch')
+        .eq('warehouse_id', warehouseId)
+        .eq('active_status', 'active')
+        .single();
+
+      if (dispatchError || !dispatchLocation) {
+        return NextResponse.json(
+          { error: 'ไม่พบ Dispatch location', details: dispatchError?.message },
+          { status: 404 }
+        );
+      }
+      
+      destinationLocationId = dispatchLocation.location_id;
+      destinationLocationCode = dispatchLocation.location_code;
+      console.log('⚠️ No storage_location assigned, using Dispatch as fallback');
     }
 
     // Get SKU info
@@ -155,7 +202,7 @@ export async function POST(request: NextRequest) {
     let sourceExpiryDate: string | null = null;
     let sourceLotNo: string | null = null;
 
-    // 8. ย้ายสต็อคจาก Preparation Area → Dispatch
+    // 8. ย้ายสต็อคจาก Preparation Area → Dispatch/Storage Location
     if (reservations && reservations.length > 0) {
       console.log(`✅ Using reservations: ${reservations.length} found`);
 
@@ -275,17 +322,166 @@ export async function POST(request: NextRequest) {
           .in('reservation_id', processedReservations);
       }
     } else {
-      // ไม่มี reservations - ต้องมีการจองก่อน
-      return NextResponse.json(
-        { error: 'ไม่พบข้อมูลการจองสต็อค กรุณาสร้างใบปะหน้าของแถมใหม่' },
-        { status: 400 }
-      );
+      // ✅ FIX: ไม่มี reservations - หาสต็อกจากบ้านหยิบโดยตรง (ยอมให้ติดลบได้)
+      console.log(`⚠️ No reservations found for item ${item_id}, looking for prep area balance directly`);
+      
+      // ดึง preparation area mapping สำหรับ SKU นี้
+      const { data: prepAreaMapping } = await supabase
+        .from('sku_preparation_area_mapping')
+        .select(`
+          preparation_area (
+            area_id,
+            area_code,
+            location_id
+          )
+        `)
+        .eq('sku_id', item.sku_id)
+        .eq('warehouse_id', warehouseId)
+        .single();
+
+      let sourceLocationId: string | null = null;
+      let sourceLocationCode: string = 'Unknown';
+
+      if (prepAreaMapping?.preparation_area) {
+        const prepArea = prepAreaMapping.preparation_area as any;
+        sourceLocationId = prepArea.location_id;
+        sourceLocationCode = prepArea.area_code;
+        console.log(`✅ Found prep area: ${sourceLocationCode} (location_id: ${sourceLocationId})`);
+      } else {
+        // Fallback: ใช้ Dispatch ถ้าไม่มี prep area mapping
+        const { data: dispatchLoc } = await supabase
+          .from('master_location')
+          .select('location_id, location_code')
+          .eq('location_code', 'Dispatch')
+          .eq('warehouse_id', warehouseId)
+          .single();
+        
+        if (dispatchLoc) {
+          sourceLocationId = dispatchLoc.location_id;
+          sourceLocationCode = dispatchLoc.location_code;
+          console.log(`⚠️ No prep area mapping, using Dispatch as source`);
+        }
+      }
+
+      if (!sourceLocationId) {
+        return NextResponse.json(
+          { error: `ไม่พบบ้านหยิบสำหรับ SKU: ${item.sku_id}` },
+          { status: 400 }
+        );
+      }
+
+      // ดึงหรือสร้าง balance ที่บ้านหยิบ
+      const { data: prepBalance } = await supabase
+        .from('wms_inventory_balances')
+        .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
+        .eq('warehouse_id', warehouseId)
+        .eq('location_id', sourceLocationId)
+        .eq('sku_id', item.sku_id)
+        .maybeSingle();
+
+      let balanceId: number;
+      let currentPieceQty = 0;
+      let currentPackQty = 0;
+
+      if (prepBalance) {
+        balanceId = prepBalance.balance_id;
+        currentPieceQty = prepBalance.total_piece_qty || 0;
+        currentPackQty = prepBalance.total_pack_qty || 0;
+        
+        // เก็บวันที่จาก balance
+        if (!sourceProductionDate && prepBalance.production_date) {
+          sourceProductionDate = prepBalance.production_date;
+        }
+        if (!sourceExpiryDate && prepBalance.expiry_date) {
+          sourceExpiryDate = prepBalance.expiry_date;
+        }
+        if (!sourceLotNo && prepBalance.lot_no) {
+          sourceLotNo = prepBalance.lot_no;
+        }
+      } else {
+        // สร้าง balance ใหม่ (จะติดลบทันที)
+        const { data: newBalance, error: insertError } = await supabase
+          .from('wms_inventory_balances')
+          .insert({
+            warehouse_id: warehouseId,
+            location_id: sourceLocationId,
+            sku_id: item.sku_id,
+            total_pack_qty: 0,
+            total_piece_qty: 0,
+            reserved_pack_qty: 0,
+            reserved_piece_qty: 0,
+            last_movement_at: now
+          })
+          .select('balance_id')
+          .single();
+
+        if (insertError || !newBalance) {
+          console.error('❌ Error creating balance:', insertError);
+          return NextResponse.json(
+            { error: 'ไม่สามารถสร้างข้อมูลสต็อคได้', details: insertError?.message },
+            { status: 500 }
+          );
+        }
+        balanceId = newBalance.balance_id;
+      }
+
+      // ✅ หักสต็อกจากบ้านหยิบ (ยอมให้ติดลบได้)
+      const newPieceQty = currentPieceQty - quantity_picked;
+      const newPackQtyVal = currentPackQty - packQty;
+
+      console.log(`🔄 Deducting from prep area ${sourceLocationCode}:`, {
+        before: { piece: currentPieceQty, pack: currentPackQty },
+        deduct: { piece: quantity_picked, pack: packQty },
+        after: { piece: newPieceQty, pack: newPackQtyVal }
+      });
+
+      const { error: updatePrepError } = await supabase
+        .from('wms_inventory_balances')
+        .update({
+          total_piece_qty: newPieceQty, // ✅ ยอมให้ติดลบได้
+          total_pack_qty: newPackQtyVal,
+          updated_at: now
+        })
+        .eq('balance_id', balanceId);
+
+      if (updatePrepError) {
+        console.error('❌ Error updating prep area balance:', updatePrepError);
+        return NextResponse.json(
+          { error: 'ไม่สามารถอัปเดตสต็อคบ้านหยิบได้', details: updatePrepError.message },
+          { status: 500 }
+        );
+      }
+
+      console.log(`✅ Prep area balance updated successfully (may be negative)`);
+
+      // บันทึก ledger: OUT จากบ้านหยิบ
+      ledgerEntries.push({
+        movement_at: now,
+        transaction_type: 'pick',
+        direction: 'out',
+        warehouse_id: warehouseId,
+        location_id: sourceLocationId,
+        sku_id: item.sku_id,
+        pack_qty: packQty,
+        piece_qty: quantity_picked,
+        production_date: sourceProductionDate || null,
+        expiry_date: sourceExpiryDate || null,
+        reference_no: (item.bonus_face_sheets as any).face_sheet_no,
+        reference_doc_type: 'bonus_face_sheet',
+        reference_doc_id: bonus_face_sheet_id,
+        order_item_id: item.order_item_id,
+        remarks: `หยิบของแถมจากบ้านหยิบ ${sourceLocationCode} (ไม่มี reservation)`,
+        created_by: userId,
+        skip_balance_sync: true
+      });
+
+      remainingQty = 0; // หักครบแล้ว
     }
 
-    // 9. เพิ่มสต็อคที่ Dispatch (ใช้ raw SQL เพื่อ UPSERT)
+    // 9. เพิ่มสต็อคที่ Storage Location (PQ01-PQ10, MR01-MR10) หรือ Dispatch
     const { error: upsertError } = await supabase.rpc('upsert_dispatch_balance', {
       p_warehouse_id: warehouseId,
-      p_location_id: dispatchLocation.location_id,
+      p_location_id: destinationLocationId,
       p_sku_id: item.sku_id,
       p_production_date: sourceProductionDate,
       p_expiry_date: sourceExpiryDate,
@@ -295,35 +491,35 @@ export async function POST(request: NextRequest) {
     });
 
     if (upsertError) {
-      console.error('❌ Error upserting dispatch balance:', upsertError);
+      console.error('❌ Error upserting destination balance:', upsertError);
       // Fallback to manual upsert
-      const { data: dispatchBalance } = await supabase
+      const { data: destBalance } = await supabase
         .from('wms_inventory_balances')
         .select('balance_id, total_piece_qty, total_pack_qty')
         .eq('warehouse_id', warehouseId)
-        .eq('location_id', dispatchLocation.location_id)
+        .eq('location_id', destinationLocationId)
         .eq('sku_id', item.sku_id)
         .eq('production_date', sourceProductionDate || null)
         .eq('expiry_date', sourceExpiryDate || null)
         .eq('lot_no', sourceLotNo || null)
         .maybeSingle();
 
-      if (dispatchBalance) {
+      if (destBalance) {
         await supabase
           .from('wms_inventory_balances')
           .update({
-            total_piece_qty: dispatchBalance.total_piece_qty + quantity_picked,
-            total_pack_qty: dispatchBalance.total_pack_qty + packQty,
+            total_piece_qty: destBalance.total_piece_qty + quantity_picked,
+            total_pack_qty: destBalance.total_pack_qty + packQty,
             last_movement_at: now,
             updated_at: now
           })
-          .eq('balance_id', dispatchBalance.balance_id);
+          .eq('balance_id', destBalance.balance_id);
       } else {
         await supabase
           .from('wms_inventory_balances')
           .insert({
             warehouse_id: warehouseId,
-            location_id: dispatchLocation.location_id,
+            location_id: destinationLocationId,
             sku_id: item.sku_id,
             total_pack_qty: packQty,
             total_piece_qty: quantity_picked,
@@ -337,14 +533,14 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // บันทึก ledger: IN ไปยัง Dispatch
+    // บันทึก ledger: IN ไปยัง Storage Location
     // Note: lot_no is NOT in wms_inventory_ledger table
     ledgerEntries.push({
       movement_at: now,
       transaction_type: 'pick',
       direction: 'in',
       warehouse_id: warehouseId,
-      location_id: dispatchLocation.location_id,
+      location_id: destinationLocationId,
       sku_id: item.sku_id,
       pack_qty: packQty,
       piece_qty: quantity_picked,
@@ -354,7 +550,7 @@ export async function POST(request: NextRequest) {
       reference_doc_type: 'bonus_face_sheet',
       reference_doc_id: bonus_face_sheet_id,
       order_item_id: item.order_item_id,
-      remarks: `ย้ายของแถมไป Dispatch`,
+      remarks: `ย้ายของแถมไป ${destinationLocationCode}`,
       created_by: userId,
       skip_balance_sync: true
     });
@@ -456,11 +652,12 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       success: true,
-      message: 'บันทึกการหยิบสินค้าของแถมสำเร็จ',
+      message: `บันทึกการหยิบสินค้าของแถมสำเร็จ (ย้ายไป ${destinationLocationCode})`,
       bonus_face_sheet_status: newStatus,
       bonus_face_sheet_completed: allPicked,
       quantity_picked: quantity_picked,
-      reservations_processed: processedReservations.length
+      reservations_processed: processedReservations.length,
+      destination_location: destinationLocationCode
     });
 
   } catch (error) {

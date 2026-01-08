@@ -40,6 +40,7 @@ interface PreparedDocument {
   plan_code?: string;
   trip_id?: number;
   trip_code?: string;
+  daily_trip_number?: number | null;  // เลขคันจริง (ไม่ซ้ำกันทั้งวัน)
   loadlist_code?: string | null;
   items: PreparedDocumentItem[];
 }
@@ -111,15 +112,17 @@ export async function GET(request: Request) {
         }
       }
       
-      // Fetch trip codes
+      // Fetch trip codes and daily_trip_number
       let tripCodeMap: Record<number, string> = {};
+      let tripDailyNumberMap: Record<number, number | null> = {};
       if (tripIds.length > 0) {
         const { data: trips } = await supabase
           .from('receiving_route_trips')
-          .select('trip_id, trip_code')
+          .select('trip_id, trip_code, daily_trip_number')
           .in('trip_id', tripIds);
         if (trips) {
           tripCodeMap = Object.fromEntries(trips.map(t => [t.trip_id, t.trip_code]));
+          tripDailyNumberMap = Object.fromEntries(trips.map(t => [t.trip_id, t.daily_trip_number]));
         }
       }
       
@@ -235,6 +238,7 @@ export async function GET(request: Request) {
           plan_code: pl.plan_id ? planCodeMap[pl.plan_id] : undefined,
           trip_id: pl.trip_id,
           trip_code: pl.trip_id ? tripCodeMap[pl.trip_id] : undefined,
+          daily_trip_number: pl.trip_id ? tripDailyNumberMap[pl.trip_id] : null,
           loadlist_code: loadlistCode || null,
           items
         } as any);
