@@ -198,6 +198,18 @@ export async function POST(
     const body: BatchUpdateRequest = await request.json();
 
     const { moves, reorders, splits, newTrips, deletes } = body;
+    
+    console.log('📥 Batch update request received:', {
+      planId,
+      movesCount: moves?.length || 0,
+      reordersCount: reorders?.length || 0,
+      splitsCount: splits?.length || 0,
+      newTripsCount: newTrips?.length || 0,
+      deletesCount: deletes?.length || 0,
+      moves: moves?.slice(0, 3),
+      reorders: reorders?.map(r => ({ tripId: r.tripId, stopIdsCount: r.orderedStopIds?.length }))
+    });
+    
     const results: any = {
       moves: [],
       reorders: [],
@@ -688,42 +700,69 @@ export async function POST(
 
     // 3. Process reorders (sequence changes within same trip)
     if (reorders && reorders.length > 0) {
+      console.log('📋 Processing reorders:', {
+        count: reorders.length,
+        reorders: reorders.map(r => ({
+          tripId: r.tripId,
+          stopIdsCount: r.orderedStopIds.length,
+          stopIds: r.orderedStopIds
+        }))
+      });
+      
       for (const reorder of reorders) {
         const tripId = resolveTripId(reorder.tripId);
-        if (!tripId) continue;
+        if (!tripId) {
+          console.warn('⚠️ Skipping reorder - invalid trip ID:', reorder.tripId);
+          continue;
+        }
 
         const stopIds = reorder.orderedStopIds
-          .map(id => typeof id === 'string' ? null : id)
-          .filter((id): id is number => id !== null);
+          .map(id => typeof id === 'string' ? parseInt(id as string) : id)
+          .filter((id): id is number => id !== null && !isNaN(id));
 
-        if (stopIds.length === 0) continue;
+        if (stopIds.length === 0) {
+          console.warn('⚠️ Skipping reorder - no valid stop IDs');
+          continue;
+        }
+
+        console.log('🔄 Reordering stops:', { tripId, stopIds });
 
         // Use 2-phase update to avoid unique constraint violations
         const tempOffset = 10000;
 
         // Phase 1: Set temporary sequence numbers
         for (let i = 0; i < stopIds.length; i++) {
-          await supabase
+          const { error } = await supabase
             .from('receiving_route_stops')
             .update({ sequence_no: tempOffset + i + 1 })
             .eq('stop_id', stopIds[i]);
+          
+          if (error) {
+            console.error('Error in phase 1 reorder:', { stopId: stopIds[i], error });
+          }
         }
 
         // Phase 2: Set final sequence numbers
         for (let i = 0; i < stopIds.length; i++) {
-          await supabase
+          const { error } = await supabase
             .from('receiving_route_stops')
             .update({ 
               sequence_no: i + 1,
               updated_at: new Date().toISOString()
             })
             .eq('stop_id', stopIds[i]);
+          
+          if (error) {
+            console.error('Error in phase 2 reorder:', { stopId: stopIds[i], error });
+          }
         }
 
         results.reorders.push({
           tripId,
           stopsReordered: stopIds.length
         });
+        
+        console.log('✅ Reorder completed:', { tripId, stopsReordered: stopIds.length });
       }
     }
 

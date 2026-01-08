@@ -214,10 +214,10 @@ export async function POST(request: NextRequest) {
       )];
       
       if (allPackageIds.length > 0) {
-        // ดึงข้อมูล packages พร้อม trip_number
+        // ดึงข้อมูล packages พร้อม trip_number และ storage_location
         const { data: packageData } = await supabase
           .from('bonus_face_sheet_packages')
-          .select('id, trip_number')
+          .select('id, trip_number, storage_location')
           .in('id', allPackageIds);
         
         // เก็บเฉพาะ package_id ที่มี trip_number
@@ -228,6 +228,30 @@ export async function POST(request: NextRequest) {
         });
         
         console.log(`📦 Bonus packages: total=${allPackageIds.length}, with trip_number=${validBonusPackageIds.size}`);
+        
+        // ✅ NEW: ตรวจสอบว่า packages ที่มี trip_number ได้ถูกย้ายไป staging แล้วหรือยัง
+        // packages ที่ยังมี storage_location อยู่ = ยังไม่ได้กด "ยืนยันหยิบไปพักรอโหลด"
+        const packagesNotMovedToStaging = packageData?.filter((pkg: any) => 
+          pkg.trip_number && 
+          pkg.trip_number.trim() !== '' && 
+          pkg.storage_location && 
+          pkg.storage_location.trim() !== ''
+        ) || [];
+        
+        if (packagesNotMovedToStaging.length > 0) {
+          console.error(`❌ ${packagesNotMovedToStaging.length} packages not moved to staging yet`);
+          return NextResponse.json(
+            { 
+              error: 'กรุณากด "ยืนยันหยิบไปพักรอโหลด" ก่อนยืนยันโหลด',
+              details: `มี ${packagesNotMovedToStaging.length} แพ็คที่ยังไม่ได้ย้ายไปจุดพักรอโหลด`,
+              packages_pending: packagesNotMovedToStaging.map((p: any) => ({
+                id: p.id,
+                storage_location: p.storage_location
+              }))
+            },
+            { status: 400 }
+          );
+        }
       }
       
       bonusFaceSheets = bonusFaceSheetData || [];

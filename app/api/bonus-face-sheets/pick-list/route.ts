@@ -46,6 +46,7 @@ export async function GET(request: NextRequest) {
     }
 
     // Get packages with storage locations and trip info
+    // ✅ กรองเฉพาะ packages ที่มี trip_number (ไม่ใช่ null และไม่ใช่ empty string)
     const { data: packages, error: pkgError } = await supabase
       .from('bonus_face_sheet_packages')
       .select(`
@@ -59,7 +60,8 @@ export async function GET(request: NextRequest) {
         trip_number
       `)
       .eq('face_sheet_id', id)
-      .not('trip_number', 'is', null) // Only packages with trip assigned
+      .not('trip_number', 'is', null)
+      .neq('trip_number', '') // กรอง empty string ด้วย
       .order('trip_number')
       .order('package_number');
 

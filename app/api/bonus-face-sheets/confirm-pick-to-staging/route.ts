@@ -53,20 +53,23 @@ export async function POST(request: NextRequest) {
       .select(`
         id,
         loadlist_code,
-        trip_id,
-        trip:receiving_route_trips(trip_code)
+        trip_id
       `)
       .eq('id', loadlist_id)
       .single();
 
     if (loadlistError || !loadlist) {
+      console.error('Loadlist query error:', loadlistError);
       return NextResponse.json(
         { success: false, error: 'ไม่พบใบโหลดสินค้า' },
         { status: 404 }
       );
     }
 
-    // 3. ดึง packages ที่มี storage_location
+    console.log(`📋 Found loadlist: ${loadlist.loadlist_code}, trip_id: ${loadlist.trip_id}`);
+
+    // 3. ดึง packages ที่มี storage_location และมี trip_number (แมพสายรถแล้ว)
+    // ✅ กรองเฉพาะ packages ที่มี trip_number (ไม่ใช่ null และไม่ใช่ empty string)
     const { data: packages, error: pkgError } = await supabase
       .from('bonus_face_sheet_packages')
       .select(`
@@ -76,10 +79,13 @@ export async function POST(request: NextRequest) {
         storage_location,
         hub,
         order_id,
-        shop_name
+        shop_name,
+        trip_number
       `)
       .eq('face_sheet_id', bonus_face_sheet_id)
-      .not('storage_location', 'is', null);
+      .not('storage_location', 'is', null)
+      .not('trip_number', 'is', null)
+      .neq('trip_number', ''); // กรอง empty string ด้วย
 
     if (pkgError) {
       console.error('Error fetching packages:', pkgError);
@@ -91,14 +97,15 @@ export async function POST(request: NextRequest) {
 
     if (!packages || packages.length === 0) {
       return NextResponse.json(
-        { success: false, error: 'ไม่พบแพ็คที่มีโลเคชั่นจัดวาง กรุณาจัดสรรโลเคชั่นก่อน' },
+        { success: false, error: 'ไม่พบแพ็คที่มีโลเคชั่นจัดวางและแมพสายรถแล้ว กรุณาจัดสรรโลเคชั่นและแมพสายรถก่อน' },
         { status: 400 }
       );
     }
 
-    console.log(`📦 Found ${packages.length} packages with storage locations`);
+    console.log(`📦 Found ${packages.length} packages with storage locations and trip_number`);
 
-    // 4. ดึง items ของแต่ละ package เพื่อย้ายสต็อก
+    // 4. ดึง items ของแต่ละ package ที่มี trip_number เพื่อย้ายสต็อก
+    const packageIds = packages.map(p => p.id);
     const { data: items, error: itemsError } = await supabase
       .from('bonus_face_sheet_items')
       .select(`
@@ -110,7 +117,8 @@ export async function POST(request: NextRequest) {
         status
       `)
       .eq('face_sheet_id', bonus_face_sheet_id)
-      .eq('status', 'picked'); // เฉพาะ items ที่หยิบแล้ว
+      .eq('status', 'picked') // เฉพาะ items ที่หยิบแล้ว
+      .in('package_id', packageIds); // เฉพาะ items ใน packages ที่มี trip_number
 
     if (itemsError) {
       console.error('Error fetching items:', itemsError);
@@ -312,8 +320,7 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // 8. Clear storage_location from packages (mark as moved to staging)
-    const packageIds = packages.map(p => p.id);
+    // 8. Clear storage_location from packages ที่มี trip_number (mark as moved to staging)
     await supabase
       .from('bonus_face_sheet_packages')
       .update({ 

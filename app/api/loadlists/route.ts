@@ -316,8 +316,9 @@ export async function POST(request: NextRequest) {
     }
 
     // Generate loadlist code with pattern: LD-YYYYMMDD-####
-    // ใช้ plan_date จาก Route Plan ถ้ามี, ไม่งั้นใช้วันที่ปัจจุบัน
+    // ใช้ plan_date จาก Route Plan ถ้ามี, หรือ delivery_date จาก bonus face sheet, ไม่งั้นใช้วันที่ปัจจุบัน
     let datePrefix: string;
+    let deliveryDate: string | null = null;
     
     if (plan_id) {
       // Fetch plan_date from route plan
@@ -329,14 +330,41 @@ export async function POST(request: NextRequest) {
       
       if (routePlan?.plan_date) {
         // plan_date format: "2026-01-07"
-        datePrefix = routePlan.plan_date.replace(/-/g, '');
-      } else {
-        // Fallback to today
-        const today = new Date();
-        datePrefix = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+        deliveryDate = routePlan.plan_date;
       }
+    }
+    
+    // ถ้าไม่มี plan_date ให้ดึง delivery_date จาก bonus face sheet
+    if (!deliveryDate && hasBonusFaceSheets) {
+      const { data: bonusFaceSheet } = await supabase
+        .from('bonus_face_sheets')
+        .select('delivery_date')
+        .eq('id', bonus_face_sheet_ids[0])
+        .single();
+      
+      if (bonusFaceSheet?.delivery_date) {
+        deliveryDate = bonusFaceSheet.delivery_date;
+      }
+    }
+    
+    // ถ้าไม่มี delivery_date ให้ดึงจาก face sheet
+    if (!deliveryDate && hasFaceSheets) {
+      const { data: faceSheet } = await supabase
+        .from('face_sheets')
+        .select('delivery_date')
+        .eq('id', face_sheet_ids[0])
+        .single();
+      
+      if (faceSheet?.delivery_date) {
+        deliveryDate = faceSheet.delivery_date;
+      }
+    }
+    
+    if (deliveryDate) {
+      // date format: "2026-01-07"
+      datePrefix = deliveryDate.replace(/-/g, '');
     } else {
-      // No plan_id, use today's date
+      // Fallback to today
       const today = new Date();
       datePrefix = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
     }

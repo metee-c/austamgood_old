@@ -407,6 +407,13 @@ export default function ExcelStyleRouteEditor({
         deletes: []
       };
 
+      console.log('🔍 Detecting changes...', {
+        rowsCount: rows.length,
+        initialRowsCount: initialRows.length,
+        tripNumbers: Array.from(tripNumbers),
+        existingTripNumbers: Array.from(existingTripNumbers)
+      });
+
       // First, identify new trips that need to be created
       const newTripNumbers = tripNumbers.filter(n => !existingTripNumbers.has(n));
       newTripNumbers.forEach(n => {
@@ -490,20 +497,31 @@ export default function ExcelStyleRouteEditor({
         // Skip new trips - they don't have existing stops to reorder
         if (!existingTripNumbers.has(tripNum)) return;
         
-        const tripRows = rows.filter(r => r.tripNumber === tripNum);
+        const tripRows = rows.filter(r => r.tripNumber === tripNum && !r.isSplit);
         const initialTripRows = initialRows.filter(r => r.tripNumber === tripNum);
         
-        // Check if order changed
-        const currentOrder = tripRows.map(r => r.stopId).join(',');
-        const initialOrder = initialTripRows.map(r => r.stopId).join(',');
+        // Sort both by sequence to compare actual order
+        const sortedCurrent = [...tripRows].sort((a, b) => a.stopSequence - b.stopSequence);
+        const sortedInitial = [...initialTripRows].sort((a, b) => a.stopSequence - b.stopSequence);
+        
+        // Check if order changed (compare sequence-sorted stop IDs)
+        const currentOrder = sortedCurrent.map(r => r.stopId).join(',');
+        const initialOrder = sortedInitial.map(r => r.stopId).join(',');
+        
+        console.log(`🔄 Trip ${tripNum} reorder check:`, {
+          currentOrder,
+          initialOrder,
+          changed: currentOrder !== initialOrder,
+          currentRows: sortedCurrent.map(r => ({ stopId: r.stopId, seq: r.stopSequence })),
+          initialRows: sortedInitial.map(r => ({ stopId: r.stopId, seq: r.stopSequence }))
+        });
         
         if (currentOrder !== initialOrder && tripRows.length > 0) {
           const tripId = tripNumberToIdMap.get(tripNum);
           
           if (tripId) {
-            // Sort by sequence and get stop IDs
-            const sortedRows = [...tripRows].sort((a, b) => a.stopSequence - b.stopSequence);
-            const uniqueStopIds = [...new Set(sortedRows.map(r => r.stopId))];
+            // Get unique stop IDs in new sequence order
+            const uniqueStopIds = [...new Set(sortedCurrent.map(r => r.stopId))];
             
             changes.reorders.push({
               tripId: tripId,
@@ -511,6 +529,15 @@ export default function ExcelStyleRouteEditor({
             });
           }
         }
+      });
+      
+      console.log('📤 Changes to save:', {
+        moves: changes.moves.length,
+        reorders: changes.reorders.length,
+        splits: changes.splits.length,
+        newTrips: changes.newTrips.length,
+        deletes: changes.deletes?.length || 0,
+        reordersDetail: changes.reorders
       });
       
       await onSave(changes);

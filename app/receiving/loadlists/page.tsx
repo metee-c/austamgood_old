@@ -999,11 +999,31 @@ const LoadlistsPage = () => {
 
     const bonusFaceSheet = (loadlist as any).bonus_face_sheets[0];
     
+    // ดึงจำนวน packages ที่มี trip_number (แมพสายรถแล้ว)
+    let mappedPackagesCount = bonusFaceSheet.total_packages;
+    try {
+      const countResponse = await fetch(`/api/bonus-face-sheets/pick-list?id=${bonusFaceSheet.id}&loadlist_id=${loadlist.id}`);
+      const countResult = await countResponse.json();
+      if (countResult.success && countResult.data) {
+        // นับจำนวน packages จาก trip_groups
+        mappedPackagesCount = countResult.data.trip_groups?.reduce(
+          (sum: number, group: any) => sum + (group.packages?.length || 0), 0
+        ) || 0;
+      }
+    } catch (err) {
+      console.error('Error fetching mapped packages count:', err);
+    }
+    
+    if (mappedPackagesCount === 0) {
+      alert('ไม่พบแพ็คที่แมพสายรถแล้ว กรุณาสร้างใบโหลดก่อน');
+      return;
+    }
+    
     // Confirm before proceeding
     const confirmed = window.confirm(
       `ยืนยันหยิบของแถมไปจุดพักรอโหลด?\n\n` +
       `ใบปะหน้า: ${bonusFaceSheet.face_sheet_no}\n` +
-      `จำนวนแพ็ค: ${bonusFaceSheet.total_packages}\n\n` +
+      `จำนวนแพ็คที่มีสายรถ: ${mappedPackagesCount} แพ็ค\n\n` +
       `ระบบจะย้ายสต็อกจาก PQ01-PQ10, MR01-MR10 ไปยัง PQTD/MRTD`
     );
 

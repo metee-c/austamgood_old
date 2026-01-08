@@ -83,23 +83,28 @@ export async function GET(request: NextRequest) {
       trip_code: string; 
       plan_code: string;
       full_trip_code: string;
+      daily_trip_number: number | null;
       plate_number?: string 
     }>();
     
     if (customerIds.length > 0) {
-      // ดึง route stops พร้อม trip และ plan info
-      // โดยหา trip จาก route plan ที่มี plan_date = delivery_date และ status = 'approved'
-      // แมพโดยใช้ customer_id (รหัสร้าน) และ delivery_date (วันส่ง) ตรงกัน
-      const { data: routeStopsWithTrips } = await supabase
+      // ✅ FIX: ดึง route stops พร้อม trip และ plan info
+      // แมพโดยใช้ customer_id จาก wms_orders (ไม่ใช่จาก receiving_route_stops เพราะเป็น null)
+      // หา trip จาก route plan ที่มี plan_date = delivery_date และ status = 'approved'
+      const { data: routeStopsWithTrips, error: routeError } = await supabase
         .from('receiving_route_stops')
         .select(`
           stop_id,
           trip_id,
           order_id,
-          customer_id,
+          wms_orders!inner (
+            order_id,
+            customer_id
+          ),
           receiving_route_trips!inner (
             trip_id,
             trip_code,
+            daily_trip_number,
             vehicle_id,
             plan_id,
             master_vehicle (
@@ -113,15 +118,20 @@ export async function GET(request: NextRequest) {
             )
           )
         `)
-        .in('customer_id', customerIds)
         .eq('receiving_route_trips.receiving_route_plans.plan_date', delivery_date)
         .eq('receiving_route_trips.receiving_route_plans.status', 'approved');
       
+      if (routeError) {
+        console.error('Error fetching route stops:', routeError);
+      }
+      
       if (routeStopsWithTrips && routeStopsWithTrips.length > 0) {
-        // สร้าง map: customer_id -> trip info (จาก route stops ที่มี customer_id และ delivery_date ตรงกัน)
+        // สร้าง map: customer_id -> trip info (จาก wms_orders.customer_id)
         for (const stop of routeStopsWithTrips) {
-          const customerId = stop.customer_id;
-          if (customerId && !customerTripMap.has(customerId)) {
+          const orderInfo = stop.wms_orders as any;
+          const customerId = orderInfo?.customer_id;
+          
+          if (customerId && customerIds.includes(customerId) && !customerTripMap.has(customerId)) {
             const tripInfo = stop.receiving_route_trips as any;
             const planInfo = tripInfo.receiving_route_plans;
             const fullTripCode = `${planInfo.plan_code}-${tripInfo.trip_code}`;
@@ -131,11 +141,22 @@ export async function GET(request: NextRequest) {
               trip_code: tripInfo.trip_code,
               plan_code: planInfo.plan_code,
               full_trip_code: fullTripCode,
+              daily_trip_number: tripInfo.daily_trip_number,
               plate_number: tripInfo.master_vehicle?.plate_number
             });
           }
         }
       }
+      
+      console.log('📍 Customer trip mapping:', {
+        customerIds: customerIds.length,
+        mappedCustomers: customerTripMap.size,
+        mappings: Array.from(customerTripMap.entries()).slice(0, 5).map(([k, v]) => ({
+          customer_id: k,
+          trip: v.full_trip_code,
+          daily_trip_number: v.daily_trip_number
+        }))
+      });
     }
     
     // ดึงรายการสินค้าของแต่ละออเดอร์
