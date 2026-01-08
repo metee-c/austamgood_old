@@ -476,6 +476,16 @@ export async function POST(request: Request) {
           })
           .eq('plan_id', planId);
       } else if (insertedTrips) {
+        // ลบ optimizedTrips ออกจาก settings เพราะ trips ถูก insert เข้าฐานข้อมูลแล้ว
+        if (plan.settings?.optimizedTrips) {
+          const { optimizedTrips, ...remainingSettings } = plan.settings;
+          await supabase
+            .from('receiving_route_plans')
+            .update({ settings: remainingSettings })
+            .eq('plan_id', planId);
+          console.log('✅ Removed optimizedTrips from settings after successful DB insert');
+        }
+        
         // 10. Save stops for each trip
         for (let i = 0; i < allTrips.length; i++) {
           const trip = allTrips[i];

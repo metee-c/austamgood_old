@@ -23,6 +23,12 @@ interface SplitChange {
   splitItems?: { orderItemId: number; quantity: number; weightKg: number }[];
 }
 
+interface DeleteChange {
+  stopId: number | string;
+  orderId: number;
+  tripId: number | string;
+}
+
 interface NewTripChange {
   tripName?: string;
 }
@@ -32,6 +38,150 @@ interface BatchUpdateRequest {
   reorders: ReorderChange[];
   splits: SplitChange[];
   newTrips: NewTripChange[];
+  deletes?: DeleteChange[];
+}
+
+/**
+ * Helper function to materialize trips from optimizedTrips settings
+ * This converts fallback trips to real database records
+ */
+async function materializeTripsFromSettings(
+  supabase: any,
+  planId: string,
+  optimizedTrips: any[]
+): Promise<Map<string, number>> {
+  const fallbackToRealIdMap = new Map<string, number>();
+  
+  // Get plan date for daily trip number
+  const { data: planData } = await supabase
+    .from('receiving_route_plans')
+    .select('plan_date')
+    .eq('plan_id', planId)
+    .single();
+  
+  const planDate = planData?.plan_date 
+    ? new Date(planData.plan_date).toISOString().split('T')[0]
+    : new Date().toISOString().split('T')[0];
+
+  console.log('🔄 Materializing trips from optimizedTrips:', {
+    planId,
+    planDate,
+    tripsCount: optimizedTrips.length
+  });
+
+  for (let tripIndex = 0; tripIndex < optimizedTrips.length; tripIndex++) {
+    const trip = optimizedTrips[tripIndex];
+    const fallbackTripId = `fallback-${tripIndex + 1}`;
+    
+    // Get next daily trip number (function returns the next available number directly)
+    const { data: nextDailyNumber, error: rpcError } = await supabase
+      .rpc('get_next_daily_trip_number', { p_plan_date: planDate });
+    
+    if (rpcError) {
+      console.error('Error getting next daily trip number:', rpcError);
+      continue;
+    }
+    
+    // Create trip - use nextDailyNumber directly (it's already the next available number)
+    const { data: createdTrip, error: tripError } = await supabase
+      .from('receiving_route_trips')
+      .insert({
+        plan_id: Number(planId),
+        trip_sequence: tripIndex + 1,
+        daily_trip_number: nextDailyNumber || 1,
+        trip_code: `TRIP-${String(tripIndex + 1).padStart(3, '0')}`,
+        trip_status: 'planned',
+        total_distance_km: Math.round(trip.totalDistance || 0),
+        total_drive_minutes: Math.round(trip.totalDriveTime || 0),
+        total_service_minutes: Math.round(trip.totalServiceTime || 0),
+        total_weight_kg: Math.round(trip.totalWeight || 0),
+        notes: trip.zoneName || `คันที่ ${nextDailyNumber || 1}`
+      })
+      .select()
+      .single();
+
+    if (tripError) {
+      console.error('Error creating trip:', tripError);
+      continue;
+    }
+
+    fallbackToRealIdMap.set(fallbackTripId, createdTrip.trip_id);
+    console.log(`✅ Created trip: ${fallbackTripId} -> ${createdTrip.trip_id}`);
+
+    // Create stops for this trip
+    const stops = trip.stops || [];
+    for (let stopIndex = 0; stopIndex < stops.length; stopIndex++) {
+      const stop = stops[stopIndex];
+      const fallbackStopId = `fallback-stop-${tripIndex + 1}-${stopIndex + 1}`;
+      
+      // Handle both orderId (single) and orderIds (array)
+      const orderIds = Array.isArray(stop.orderIds) ? stop.orderIds : (stop.orderId ? [stop.orderId] : []);
+      const primaryOrderId = orderIds[0] || null;
+
+      // Create stop
+      const { data: createdStop, error: stopError } = await supabase
+        .from('receiving_route_stops')
+        .insert({
+          trip_id: createdTrip.trip_id,
+          plan_id: Number(planId),
+          sequence_no: stopIndex + 1,
+          order_id: primaryOrderId,
+          stop_name: stop.stopName || stop.address || `จุดที่ ${stopIndex + 1}`,
+          address: stop.address || null,
+          latitude: stop.latitude || null,
+          longitude: stop.longitude || null,
+          load_weight_kg: stop.weight || 0,
+          service_duration_minutes: stop.serviceTime || 0,
+          customer_id: stop.customerId || null,
+          tags: {
+            order_ids: orderIds,
+            customer_id: stop.customerId || null
+          }
+        })
+        .select()
+        .single();
+
+      if (stopError) {
+        console.error('Error creating stop:', stopError);
+        continue;
+      }
+
+      fallbackToRealIdMap.set(fallbackStopId, createdStop.stop_id);
+
+      // Update order status to 'route_planned'
+      if (orderIds.length > 0) {
+        await supabase
+          .from('wms_orders')
+          .update({
+            status: 'route_planned',
+            updated_at: new Date().toISOString()
+          })
+          .in('order_id', orderIds);
+      }
+    }
+  }
+
+  // Clear optimizedTrips from settings since we've materialized them
+  // Get current settings first, then update without optimizedTrips
+  const { data: currentPlan } = await supabase
+    .from('receiving_route_plans')
+    .select('settings')
+    .eq('plan_id', planId)
+    .single();
+
+  if (currentPlan?.settings) {
+    const { optimizedTrips, ...remainingSettings } = currentPlan.settings;
+    await supabase
+      .from('receiving_route_plans')
+      .update({
+        settings: remainingSettings,
+        updated_at: new Date().toISOString()
+      })
+      .eq('plan_id', planId);
+  }
+
+  console.log('✅ Materialized trips mapping:', Object.fromEntries(fallbackToRealIdMap));
+  return fallbackToRealIdMap;
 }
 
 /**
@@ -47,12 +197,66 @@ export async function POST(
     const { id: planId } = await params;
     const body: BatchUpdateRequest = await request.json();
 
-    const { moves, reorders, splits, newTrips } = body;
+    const { moves, reorders, splits, newTrips, deletes } = body;
     const results: any = {
       moves: [],
       reorders: [],
       splits: [],
-      newTrips: []
+      newTrips: [],
+      deletes: [],
+      materialized: false
+    };
+
+    // Check if we need to materialize trips from settings (fallback mode)
+    let fallbackToRealIdMap = new Map<string, number>();
+    
+    // Detect if any IDs are fallback IDs
+    const hasFallbackIds = [
+      ...(deletes || []).map(d => d.stopId),
+      ...(deletes || []).map(d => d.tripId),
+      ...(moves || []).map(m => m.fromTripId),
+      ...(moves || []).map(m => m.toTripId),
+      ...(reorders || []).map(r => r.tripId),
+      ...(splits || []).map(s => s.sourceStopId),
+      ...(splits || []).map(s => s.targetTripId)
+    ].some(id => typeof id === 'string' && id.toString().startsWith('fallback-'));
+
+    if (hasFallbackIds) {
+      console.log('🔍 Detected fallback IDs, checking if materialization needed...');
+      
+      // Check if trips exist in database
+      const { data: existingTrips } = await supabase
+        .from('receiving_route_trips')
+        .select('trip_id')
+        .eq('plan_id', planId)
+        .limit(1);
+
+      if (!existingTrips || existingTrips.length === 0) {
+        // No trips in database - need to materialize from settings
+        const { data: planData } = await supabase
+          .from('receiving_route_plans')
+          .select('settings')
+          .eq('plan_id', planId)
+          .single();
+
+        if (planData?.settings?.optimizedTrips) {
+          fallbackToRealIdMap = await materializeTripsFromSettings(
+            supabase,
+            planId,
+            planData.settings.optimizedTrips
+          );
+          results.materialized = true;
+        }
+      }
+    }
+
+    // Helper to resolve fallback IDs to real IDs
+    const resolveFallbackId = (id: number | string): number | string => {
+      if (typeof id === 'string' && id.startsWith('fallback-')) {
+        const realId = fallbackToRealIdMap.get(id);
+        if (realId) return realId;
+      }
+      return id;
     };
 
     // 1. Create new trips first (if any)
@@ -152,25 +356,105 @@ export async function POST(
 
     // Helper function to resolve trip ID (handles both real IDs and virtual new trip markers)
     const resolveTripId = (tripIdOrMarker: number | string): number | null => {
+      // First, resolve any fallback IDs to real IDs
+      const resolvedId = resolveFallbackId(tripIdOrMarker);
+      
       // Handle "new-{index}" format for new trips
-      if (typeof tripIdOrMarker === 'string') {
-        if (tripIdOrMarker.startsWith('new-')) {
-          const index = parseInt(tripIdOrMarker.replace('new-', ''));
+      if (typeof resolvedId === 'string') {
+        if (resolvedId.startsWith('new-')) {
+          const index = parseInt(resolvedId.replace('new-', ''));
           if (!isNaN(index) && newTripIds.has(index)) {
             return newTripIds.get(index)!;
           }
           // New trip not yet created - will be handled in newTrips processing
           return null;
         }
-        if (tripIdOrMarker.startsWith('fallback-')) {
-          return null; // Can't process fallback trips
+        if (resolvedId.startsWith('fallback-')) {
+          // Fallback ID that wasn't materialized - skip
+          console.warn('Unresolved fallback ID:', resolvedId);
+          return null;
         }
         // Try to parse as number
-        const parsed = parseInt(tripIdOrMarker);
+        const parsed = parseInt(resolvedId);
         return isNaN(parsed) ? null : parsed;
       }
-      return tripIdOrMarker;
+      return resolvedId as number;
     };
+
+    // 1.5. Process deletes (remove stops from route plan)
+    if (deletes && deletes.length > 0) {
+      for (const del of deletes) {
+        // Resolve fallback IDs first
+        const resolvedStopId = resolveFallbackId(del.stopId);
+        const stopId = typeof resolvedStopId === 'string' ? parseInt(resolvedStopId) : resolvedStopId;
+        const tripId = resolveTripId(del.tripId);
+
+        if (!stopId || isNaN(stopId)) {
+          console.warn('Skipping delete - invalid stop ID:', del);
+          continue;
+        }
+
+        console.log('🗑️ Deleting stop:', { stopId, orderId: del.orderId, tripId });
+
+        // Delete stop items first
+        const { error: deleteItemsError } = await supabase
+          .from('receiving_route_stop_items')
+          .delete()
+          .eq('stop_id', stopId);
+
+        if (deleteItemsError) {
+          console.error('Error deleting stop items:', deleteItemsError);
+        }
+
+        // Delete the stop
+        const { error: deleteStopError } = await supabase
+          .from('receiving_route_stops')
+          .delete()
+          .eq('stop_id', stopId);
+
+        if (deleteStopError) {
+          console.error('Error deleting stop:', deleteStopError);
+          continue;
+        }
+
+        // Revert order status back to 'confirmed' (remove from route plan)
+        const { error: orderUpdateError } = await supabase
+          .from('wms_orders')
+          .update({
+            status: 'confirmed',
+            updated_at: new Date().toISOString()
+          })
+          .eq('order_id', del.orderId);
+
+        if (orderUpdateError) {
+          console.error('Error reverting order status:', orderUpdateError);
+        }
+
+        // Resequence remaining stops in the trip
+        if (tripId) {
+          const { data: remainingStops } = await supabase
+            .from('receiving_route_stops')
+            .select('stop_id')
+            .eq('trip_id', tripId)
+            .order('sequence_no', { ascending: true });
+
+          if (remainingStops) {
+            for (let i = 0; i < remainingStops.length; i++) {
+              await supabase
+                .from('receiving_route_stops')
+                .update({ sequence_no: i + 1 })
+                .eq('stop_id', remainingStops[i].stop_id);
+            }
+          }
+        }
+
+        results.deletes.push({
+          stopId,
+          orderId: del.orderId,
+          tripId
+        });
+      }
+    }
 
     // 2. Process moves (order transfers between trips)
     if (moves && moves.length > 0) {

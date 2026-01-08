@@ -80,6 +80,11 @@ interface RouteChanges {
   newTrips: Array<{
     tripName?: string;
   }>;
+  deletes?: Array<{
+    stopId: number | string;
+    orderId: number;
+    tripId: number | string;
+  }>;
 }
 
 export default function ExcelStyleRouteEditor({
@@ -229,6 +234,12 @@ export default function ExcelStyleRouteEditor({
     return Array.from(summaries.values()).sort((a, b) => a.tripNumber - b.tripNumber);
   }, [rows, trips]);
 
+  // Calculate next available trip number (handles empty trips case)
+  const getNextTripNumber = useCallback(() => {
+    if (tripNumbers.length === 0) return 1;
+    return Math.max(...tripNumbers) + 1;
+  }, [tripNumbers]);
+
   // Handle trip number change
   const handleTripChange = useCallback((rowId: string, newTripNumber: number) => {
     setRows(prev => {
@@ -316,7 +327,7 @@ export default function ExcelStyleRouteEditor({
       // Determine target trip number
       let actualTargetTrip = targetTripNumber;
       if (targetTripNumber === 'new') {
-        actualTargetTrip = Math.max(...tripNumbers) + 1;
+        actualTargetTrip = tripNumbers.length === 0 ? 1 : Math.max(...tripNumbers) + 1;
       }
       
       // Get max sequence in target trip
@@ -357,7 +368,7 @@ export default function ExcelStyleRouteEditor({
 
   // Add new trip
   const handleAddTrip = useCallback(() => {
-    const newTripNumber = Math.max(...tripNumbers, 0) + 1;
+    const newTripNumber = tripNumbers.length === 0 ? 1 : Math.max(...tripNumbers) + 1;
     // Just expand the new trip section - rows will be added when moving orders
     setExpandedTrips(prev => new Set([...prev, newTripNumber]));
   }, [tripNumbers]);
@@ -392,7 +403,8 @@ export default function ExcelStyleRouteEditor({
         moves: [],
         reorders: [],
         splits: [],
-        newTrips: []
+        newTrips: [],
+        deletes: []
       };
 
       // First, identify new trips that need to be created
@@ -405,6 +417,22 @@ export default function ExcelStyleRouteEditor({
       const newTripIndexMap = new Map<number, number>();
       newTripNumbers.forEach((n, idx) => {
         newTripIndexMap.set(n, idx);
+      });
+
+      // ✅ Detect deleted rows (rows in initialRows but not in current rows)
+      const currentRowIds = new Set(rows.map(r => r.rowId));
+      initialRows.forEach(initialRow => {
+        if (!currentRowIds.has(initialRow.rowId) && !initialRow.isSplit) {
+          // This row was deleted
+          const tripId = tripNumberToIdMap.get(initialRow.tripNumber);
+          if (tripId && initialRow.stopId) {
+            changes.deletes!.push({
+              stopId: initialRow.stopId,
+              orderId: initialRow.orderId,
+              tripId: tripId
+            });
+          }
+        }
       });
       
       // Detect moves (trip changes)
@@ -635,7 +663,7 @@ export default function ExcelStyleRouteEditor({
                           {tripNumbers.map(n => (
                             <option key={n} value={n}>คัน {n}</option>
                           ))}
-                          <option value={Math.max(...tripNumbers) + 1}>+ คันใหม่</option>
+                          <option value={tripNumbers.length === 0 ? 1 : Math.max(...tripNumbers) + 1}>+ คันใหม่</option>
                         </select>
                       </td>
                       <td className="border px-2 py-1">

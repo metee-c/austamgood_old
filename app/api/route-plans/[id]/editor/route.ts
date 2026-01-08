@@ -420,6 +420,23 @@ export async function GET(
     if (tripsWithSortedStops.length === 0 && plan.settings?.optimizedTrips) {
       console.log('⚠️ No trips in database, using optimizedTrips from settings');
       
+      // Get the max daily_trip_number for this plan_date from ALL plans
+      const planDate = plan.plan_date ? new Date(plan.plan_date).toISOString().split('T')[0] : null;
+      let startDailyTripNumber = 1;
+      
+      if (planDate) {
+        const { data: maxDailyNumber } = await supabase
+          .rpc('get_next_daily_trip_number', { p_plan_date: planDate });
+        
+        if (maxDailyNumber && typeof maxDailyNumber === 'number') {
+          startDailyTripNumber = maxDailyNumber;
+        }
+        console.log('📊 Calculated daily_trip_number for fallback:', {
+          planDate,
+          startDailyTripNumber
+        });
+      }
+      
       // Collect all order IDs from optimizedTrips
       const allOrderIds = plan.settings.optimizedTrips
         .flatMap((trip: any) => trip.stops || [])
@@ -512,6 +529,7 @@ export async function GET(
       finalTrips = plan.settings.optimizedTrips.map((trip: any, index: number) => ({
         trip_id: `fallback-${index + 1}`,
         trip_sequence: index + 1,
+        daily_trip_number: startDailyTripNumber + index, // ใช้เลขคันที่ไม่ซ้ำกับแผนอื่นในวันเดียวกัน
         trip_code: `TRIP-${String(index + 1).padStart(3, '0')}`,
         plan_id: planId,
         total_distance_km: trip.totalDistance || 0,

@@ -1,3 +1,4 @@
+ดำเนินการต่อสิ่ะ
 /**
  * Fix create_face_sheet_packages function to use ONLY master_customer.hub
  * If hub is empty/null, leave it as NULL (don't fallback to notes or province)
