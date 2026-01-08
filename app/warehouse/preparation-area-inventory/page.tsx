@@ -145,8 +145,8 @@ const InventoryBalancesPage = () => {
 
   const [preparationAreaCodes, setPreparationAreaCodes] = useState<string[]>([]);
   
-  // Premium zone location (Picking Zone 2)
-  const premiumZoneLocations = ['Picking Zone 2'];
+  // Premium zone location (PK002)
+  const premiumZoneLocations = ['PK002'];
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -438,8 +438,10 @@ const InventoryBalancesPage = () => {
     const filtered = balanceData.filter(item => {
       // กรองตาม Tab
       if (activeTab === 'preparation') {
-        // บ้านหยิบ - preparation area codes
-        return item.location_id ? preparationAreaCodes.includes(item.location_id) : false;
+        // บ้านหยิบ - preparation area codes ยกเว้น PK002 (premium zone)
+        return item.location_id 
+          ? preparationAreaCodes.includes(item.location_id) && !premiumZoneLocations.includes(item.location_id)
+          : false;
       }
       return false;
     });
@@ -581,7 +583,9 @@ const InventoryBalancesPage = () => {
 
   // นับจำนวนสินค้าในแต่ละ Tab (นับจากข้อมูลต้นฉบับก่อนแยกแถว)
   const preparationCount = balanceData.filter(item =>
-    item.location_id ? preparationAreaCodes.includes(item.location_id) : false
+    item.location_id 
+      ? preparationAreaCodes.includes(item.location_id) && !premiumZoneLocations.includes(item.location_id)
+      : false
   ).reduce((sum, item) => sum + item.total_piece_qty, 0);
 
   const premiumCount = premiumData.reduce((sum, item) => sum + item.total_piece_qty, 0);

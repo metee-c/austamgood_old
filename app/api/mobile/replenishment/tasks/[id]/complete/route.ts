@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getCurrentSession } from '@/lib/auth';
 import { stockAdjustmentService } from '@/lib/database/stock-adjustment';
+import { canTransferToLocation } from '@/lib/database/prep-area-validation';
+import { isPrepArea, upsertPrepAreaBalance } from '@/lib/database/prep-area-balance';
 
 export const dynamic = 'force-dynamic';
 
@@ -99,6 +101,16 @@ export async function POST(
         error: `Pallet อยู่ที่ ${palletStock.master_location?.location_code || palletStock.location_id}\nไม่ใช่ตำแหน่งต้นทาง: ${task.from_location?.location_code || task.from_location_id}` 
       }, { status: 400 });
     }
+
+    // ===== NEW: Validate SKU can be transferred to this Prep Area =====
+    const transferCheck = await canTransferToLocation(supabase, task.sku_id, targetLocationId);
+    if (!transferCheck.allowed) {
+      return NextResponse.json({ 
+        error: transferCheck.message,
+        error_code: 'INVALID_PREP_AREA'
+      }, { status: 400 });
+    }
+    // ===== END NEW =====
 
     const moveQty = confirmed_qty || task.requested_qty;
     const fromLocationId = palletStock.location_id;

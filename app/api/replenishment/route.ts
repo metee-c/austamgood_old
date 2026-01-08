@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { canTransferToLocation } from '@/lib/database/prep-area-validation';
 
 export const dynamic = 'force-dynamic';
 
@@ -84,6 +85,17 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
 
     const { data: { user } } = await supabase.auth.getUser();
+
+    // Validate SKU can be transferred to destination Prep Area
+    if (body.sku_id && body.to_location_id) {
+      const transferCheck = await canTransferToLocation(supabase, body.sku_id, body.to_location_id);
+      if (!transferCheck.allowed) {
+        return NextResponse.json({ 
+          error: transferCheck.message,
+          error_code: 'INVALID_PREP_AREA'
+        }, { status: 400 });
+      }
+    }
 
     const { data, error } = await supabase
       .from('replenishment_queue')

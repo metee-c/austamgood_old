@@ -75,6 +75,56 @@ export async function POST(request: NextRequest) {
       );
     }
     
+    // ✅ Validate: ตรวจสอบว่าทุก SKU มี preparation area mapping
+    const allSkuIds = new Set<string>();
+    for (const pkg of packages) {
+      if (pkg.items && Array.isArray(pkg.items)) {
+        for (const item of pkg.items) {
+          if (item.product_code) {
+            allSkuIds.add(item.product_code);
+          }
+        }
+      }
+    }
+
+    if (allSkuIds.size > 0) {
+      const { data: mappings, error: mappingError } = await supabase
+        .from('sku_preparation_area_mapping')
+        .select('sku_id')
+        .in('sku_id', Array.from(allSkuIds));
+
+      if (mappingError) {
+        console.error('Error checking SKU mappings:', mappingError);
+        return NextResponse.json(
+          { success: false, error: 'ไม่สามารถตรวจสอบการตั้งค่าบ้านหยิบได้' },
+          { status: 500 }
+        );
+      }
+
+      const mappedSkuIds = new Set(mappings?.map(m => m.sku_id) || []);
+      const unmappedSkuIds = Array.from(allSkuIds).filter(sku => !mappedSkuIds.has(sku));
+
+      if (unmappedSkuIds.length > 0) {
+        // ดึงชื่อ SKU สำหรับแสดงใน error message
+        const { data: skuNames } = await supabase
+          .from('master_sku')
+          .select('sku_id, sku_name')
+          .in('sku_id', unmappedSkuIds);
+
+        const skuList = skuNames?.map(s => `${s.sku_id} (${s.sku_name})`).join(', ') || unmappedSkuIds.join(', ');
+        
+        console.error('❌ [Bonus FS] SKUs without mapping:', unmappedSkuIds);
+        return NextResponse.json(
+          { 
+            success: false, 
+            error: `SKU ต่อไปนี้ยังไม่ได้กำหนดบ้านหยิบ: ${skuList}\n\nกรุณาตั้งค่าที่หน้า Master Data > Preparation Area ก่อนสร้างใบปะหน้า`,
+            unmapped_skus: unmappedSkuIds
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     // Generate face sheet number
     const { data: faceSheetNoData, error: faceSheetNoError } = await supabase
       .rpc('generate_bonus_face_sheet_no');

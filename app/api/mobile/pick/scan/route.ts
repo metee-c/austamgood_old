@@ -1,6 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getUserIdFromCookie, setDatabaseUserContext } from '@/lib/database/user-context';
+import { isPrepArea, upsertPrepAreaBalance } from '@/lib/database/prep-area-balance';
+
+/**
+ * ✅ Helper: ตรวจสอบว่า location เป็น Preparation Area หรือไม่
+ * Preparation Area อนุญาตให้สต็อคติดลบได้
+ * Note: ใช้ isPrepArea จาก lib/database/prep-area-balance.ts แทน
+ */
+async function isPreparationArea(supabase: any, locationId: string): Promise<boolean> {
+  return isPrepArea(supabase, locationId);
+}
 
 /**
  * POST /api/mobile/pick/scan
@@ -147,6 +157,7 @@ export async function POST(request: NextRequest) {
     const processedReservations: number[] = [];
     let sourceProductionDate: string | null = null;
     let sourceExpiryDate: string | null = null;
+    let sourcePalletId: string | null = null;  // ✅ FIX: Track pallet_id for Dispatch
 
     // ✅ กรณีที่ 1: มี reservations (picklist ใหม่)
     if (reservations && reservations.length > 0) {
@@ -158,10 +169,10 @@ export async function POST(request: NextRequest) {
       const qtyToDeduct = Math.min(reservation.reserved_piece_qty, remainingQty);
       const packToDeduct = qtyToDeduct / qtyPerPack;
 
-      // ดึงข้อมูล balance ปัจจุบัน (รวมวันที่)
+      // ดึงข้อมูล balance ปัจจุบัน (รวมวันที่ และ pallet_id)
       const { data: balance, error: balanceError } = await supabase
         .from('wms_inventory_balances')
-        .select('balance_id, total_piece_qty, reserved_piece_qty, total_pack_qty, reserved_pack_qty, production_date, expiry_date')
+        .select('balance_id, location_id, total_piece_qty, reserved_piece_qty, total_pack_qty, reserved_pack_qty, production_date, expiry_date, pallet_id')
         .eq('balance_id', reservation.balance_id)
         .single();
 
@@ -173,18 +184,35 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // เก็บวันที่จาก balance แรก
+      // เก็บวันที่และ pallet_id จาก balance แรก
       if (!sourceProductionDate && balance.production_date) {
         sourceProductionDate = balance.production_date;
       }
       if (!sourceExpiryDate && balance.expiry_date) {
         sourceExpiryDate = balance.expiry_date;
       }
+      if (!sourcePalletId && balance.pallet_id) {
+        sourcePalletId = balance.pallet_id;
+      }
 
-      // ตรวจสอบว่ามีสต็อคเพียงพอ - ✅ อนุญาตให้หักติดลบได้
-      // ไม่ block การหยิบแม้สต็อคไม่พอ เพื่อให้งานดำเนินต่อได้
+      // ตรวจสอบว่ามีสต็อคเพียงพอ
+      // ✅ Protection: Block negative outside Preparation Area
       if (balance.total_piece_qty < qtyToDeduct) {
-        console.warn(`⚠️ สต็อคไม่พอ: ต้องการ ${qtyToDeduct} แต่มีเพียง ${balance.total_piece_qty} ชิ้น - จะหักติดลบ`);
+        const isPrepArea = await isPreparationArea(supabase, balance.location_id || item.source_location_id);
+        
+        if (!isPrepArea) {
+          // 🔴 ไม่ใช่ Preparation Area - ไม่อนุญาตติดลบ
+          console.error(`🔴 Block negative: ${balance.location_id} is not a Prep Area`);
+          return NextResponse.json({
+            success: false,
+            error: `สต็อคไม่พอ: ต้องการ ${qtyToDeduct} แต่มีเพียง ${balance.total_piece_qty} ชิ้น`,
+            error_code: 'INSUFFICIENT_STOCK',
+            location_id: balance.location_id
+          }, { status: 400 });
+        }
+        
+        // ✅ Preparation Area - อนุญาตให้ติดลบ
+        console.log(`⚠️ Prep Area (${balance.location_id}): อนุญาตหักติดลบ ${qtyToDeduct - balance.total_piece_qty} ชิ้น`);
       }
 
       // ลดยอดจองและสต็อคจริง (อนุญาตติดลบ)
@@ -209,16 +237,17 @@ export async function POST(request: NextRequest) {
 
       // บันทึก ledger: OUT จาก source_location
       // ✅ CRITICAL FIX: Include order_id and order_item_id for BRCGS traceability
-      // ✅ FIX: Include production_date and expiry_date for proper balance matching
+      // ✅ FIX: Include production_date, expiry_date, AND pallet_id for proper balance matching
       ledgerEntries.push({
         movement_at: now,
         transaction_type: 'pick',
         direction: 'out',
         warehouse_id: warehouseId,
-        location_id: item.source_location_id,
+        location_id: balance.location_id || item.source_location_id, // ✅ ใช้ location จาก balance
         sku_id: item.sku_id,
         pack_qty: packToDeduct,
         piece_qty: qtyToDeduct,
+        pallet_id: balance.pallet_id || null,              // ✅ FIX: Include pallet_id from balance
         production_date: balance.production_date || null,  // ✅ FIX: Include for balance matching
         expiry_date: balance.expiry_date || null,          // ✅ FIX: Include for balance matching
         reference_no: item.picklists.picklist_code,
@@ -226,7 +255,7 @@ export async function POST(request: NextRequest) {
         reference_doc_id: picklist_id,
         order_id: item.order_id,           // ✅ BRCGS: Link to order
         order_item_id: item.order_item_id, // ✅ BRCGS: Link to order line
-        remarks: `หยิบจาก ${item.source_location_id} (balance_id: ${balance.balance_id}) - ${item.picklists.picklist_code}`,
+        remarks: `หยิบจาก ${balance.location_id || item.source_location_id} (balance_id: ${balance.balance_id}, pallet: ${balance.pallet_id || 'N/A'}) - ${item.picklists.picklist_code}`,
         created_by: userId,
         skip_balance_sync: true  // ✅ API อัปเดต balance ด้วยตัวเองแล้ว
       });
@@ -276,10 +305,10 @@ export async function POST(request: NextRequest) {
         locationIds = [item.source_location_id];
       }
 
-      // Query FEFO/FIFO (รวมวันที่)
+      // Query FEFO/FIFO (รวมวันที่ และ pallet_id)
       const { data: balances } = await supabase
         .from('wms_inventory_balances')
-        .select('balance_id, location_id, total_piece_qty, total_pack_qty, reserved_piece_qty, reserved_pack_qty, production_date, expiry_date')
+        .select('balance_id, location_id, total_piece_qty, total_pack_qty, reserved_piece_qty, reserved_pack_qty, production_date, expiry_date, pallet_id')
         .eq('warehouse_id', warehouseId)
         .in('location_id', locationIds)
         .eq('sku_id', item.sku_id)
@@ -367,12 +396,15 @@ export async function POST(request: NextRequest) {
         const availableQty = (balance.total_piece_qty || 0) - (balance.reserved_piece_qty || 0);
         if (availableQty <= 0) continue;
 
-        // เก็บวันที่จาก balance แรก
+        // เก็บวันที่และ pallet_id จาก balance แรก
         if (!sourceProductionDate && balance.production_date) {
           sourceProductionDate = balance.production_date;
         }
         if (!sourceExpiryDate && balance.expiry_date) {
           sourceExpiryDate = balance.expiry_date;
+        }
+        if (!sourcePalletId && balance.pallet_id) {
+          sourcePalletId = balance.pallet_id;
         }
 
         const qtyToDeduct = Math.min(availableQty, remainingQty);
@@ -388,7 +420,7 @@ export async function POST(request: NextRequest) {
           .eq('balance_id', balance.balance_id);
 
         // ✅ CRITICAL FIX: Include order_id and order_item_id for BRCGS traceability
-        // ✅ FIX: Include production_date and expiry_date for proper balance matching
+        // ✅ FIX: Include production_date, expiry_date, AND pallet_id for proper balance matching
         ledgerEntries.push({
           movement_at: now,
           transaction_type: 'pick',
@@ -398,6 +430,7 @@ export async function POST(request: NextRequest) {
           sku_id: item.sku_id,
           pack_qty: packToDeduct,
           piece_qty: qtyToDeduct,
+          pallet_id: balance.pallet_id || null,              // ✅ FIX: Include pallet_id from balance
           production_date: balance.production_date || null,  // ✅ FIX: Include for balance matching
           expiry_date: balance.expiry_date || null,          // ✅ FIX: Include for balance matching
           reference_no: item.picklists.picklist_code,
@@ -405,7 +438,7 @@ export async function POST(request: NextRequest) {
           reference_doc_id: picklist_id,
           order_id: item.order_id,           // ✅ BRCGS: Link to order
           order_item_id: item.order_item_id, // ✅ BRCGS: Link to order line
-          remarks: `หยิบจาก ${balance.location_id} (FEFO) - ${item.picklists.picklist_code}`,
+          remarks: `หยิบจาก ${balance.location_id} (FEFO, pallet: ${balance.pallet_id || 'N/A'}) - ${item.picklists.picklist_code}`,
           created_by: userId,
           skip_balance_sync: true
         });
@@ -413,9 +446,23 @@ export async function POST(request: NextRequest) {
         remainingQty -= qtyToDeduct;
       }
 
-      // ✅ อนุญาตให้หยิบได้แม้สต็อคไม่พอ (จะหักติดลบ)
+      // ✅ Protection: Block negative outside Preparation Area
         if (remainingQty > 0) {
-          console.warn(`⚠️ สต็อคไม่เพียงพอ ขาดอีก ${remainingQty} ชิ้น - ดำเนินการต่อ`);
+          const isPrepArea = await isPreparationArea(supabase, item.source_location_id);
+          
+          if (!isPrepArea) {
+            // 🔴 ไม่ใช่ Preparation Area - ไม่อนุญาตติดลบ
+            console.error(`🔴 Block negative: ${item.source_location_id} is not a Prep Area, short ${remainingQty} pieces`);
+            return NextResponse.json({
+              success: false,
+              error: `สต็อคไม่พอ: ขาดอีก ${remainingQty} ชิ้น`,
+              error_code: 'INSUFFICIENT_STOCK',
+              location_id: item.source_location_id,
+              shortage: remainingQty
+            }, { status: 400 });
+          }
+          
+          console.log(`⚠️ Prep Area (${item.source_location_id}): อนุญาตหักติดลบ ${remainingQty} ชิ้น`);
         }
       } // ปิด else block
     }
@@ -475,7 +522,8 @@ export async function POST(request: NextRequest) {
 
     // บันทึก ledger: IN ไปยัง Dispatch
     // ✅ CRITICAL FIX: Include order_id and order_item_id for BRCGS traceability
-    // ✅ FIX: Include production_date and expiry_date for proper balance matching
+    // ✅ FIX: Include production_date, expiry_date, AND pallet_id for proper balance matching
+    // Note: Dispatch ไม่ track pallet_id เพราะเป็นพื้นที่รวมสินค้าก่อนส่ง
     ledgerEntries.push({
       movement_at: now,
       transaction_type: 'pick',
@@ -485,6 +533,7 @@ export async function POST(request: NextRequest) {
       sku_id: item.sku_id,
       pack_qty: packQty,
       piece_qty: quantity_picked,
+      pallet_id: null,                                // Dispatch ไม่ track pallet
       production_date: sourceProductionDate || null,  // ✅ FIX: Include for balance matching
       expiry_date: sourceExpiryDate || null,          // ✅ FIX: Include for balance matching
       reference_no: item.picklists.picklist_code,
