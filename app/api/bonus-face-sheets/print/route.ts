@@ -2,17 +2,19 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
 /**
- * GET /api/bonus-face-sheets/print?id=xxx&trip_number=yyy
+ * GET /api/bonus-face-sheets/print?id=xxx&face_sheet_id=yyy
  * สร้างเอกสารปริ้นแบบใบหยิบสำหรับใบปะหน้าของแถม
- * ถ้ามี trip_number จะกรองเฉพาะ packages ที่มี trip_number ตรงกัน
+ * ถ้ามี face_sheet_id จะกรองเฉพาะ packages ที่ตรงกับร้านค้าในใบปะหน้านั้น
+ * (Legacy: trip_number ยังใช้ได้)
  */
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
+    const faceSheetId = searchParams.get('face_sheet_id');
     const tripNumber = searchParams.get('trip_number');
-    // Legacy support: loadlist_id (deprecated, use trip_number instead)
+    // Legacy support: loadlist_id (deprecated, use face_sheet_id instead)
     const loadlistId = searchParams.get('loadlist_id');
 
     if (!id) {
@@ -74,8 +76,28 @@ export async function GET(request: NextRequest) {
       .eq('face_sheet_id', bonusFaceSheetId)
       .order('package_number', { ascending: true });
 
-    // กรองตาม trip_number ถ้ามี (วิธีใหม่ - แนะนำ)
-    if (tripNumber) {
+    // กรองตาม face_sheet_id (วิธีใหม่ - แนะนำ)
+    // หมายเหตุ: เนื่องจาก bonus face sheet และ face sheet อาจมีร้านค้าคนละชุดกัน
+    // การกรองด้วย face_sheet_id จะแสดง packages ทั้งหมดของ bonus face sheet
+    // (ไม่กรองตาม customer เพราะไม่ตรงกัน)
+    if (faceSheetId) {
+      const faceSheetIdNum = parseInt(faceSheetId);
+      if (!isNaN(faceSheetIdNum)) {
+        // ดึงข้อมูล face_sheet
+        const { data: faceSheet } = await supabase
+          .from('face_sheets')
+          .select('face_sheet_no')
+          .eq('id', faceSheetIdNum)
+          .single();
+        
+        filterLabel = faceSheet?.face_sheet_no ? `ใบปะหน้า: ${faceSheet.face_sheet_no}` : null;
+        console.log(`🔍 Printing bonus face sheet for face_sheet_id: ${faceSheetIdNum} (${faceSheet?.face_sheet_no})`);
+        // ไม่กรอง packages เพราะ bonus face sheet และ face sheet มีร้านค้าคนละชุดกัน
+        // แสดง packages ทั้งหมดของ bonus face sheet
+      }
+    }
+    // กรองตาม trip_number ถ้ามี (Legacy)
+    else if (tripNumber) {
       packagesQuery = packagesQuery.eq('trip_number', tripNumber);
       filterLabel = `สายรถ: ${tripNumber}`;
       console.log(`🔍 Filtering bonus face sheet packages by trip_number: ${tripNumber}`);

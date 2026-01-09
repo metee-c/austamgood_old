@@ -267,11 +267,12 @@ const LoadlistsPage = () => {
   const [showDeliveryDocModal, setShowDeliveryDocModal] = useState(false);
   const [createdLoadlistId, setCreatedLoadlistId] = useState<number | null>(null);
 
-  // State สำหรับ modal เลือก trip ที่จะปริ้นใบปะหน้าของแถม
+  // State สำหรับ modal เลือกใบปะหน้าที่จะปริ้นใบเช็คของแถม
   const [isBonusPrintModalOpen, setIsBonusPrintModalOpen] = useState(false);
   const [bonusFaceSheetToPrint, setBonusFaceSheetToPrint] = useState<{ id: number; face_sheet_no: string } | null>(null);
-  const [bonusTripCounts, setBonusTripCounts] = useState<Array<{ trip_number: string; trip_number_raw: string; delivery_number: string | null; packageCount: number; orderCount: number }>>([]);
-  const [selectedTripsForPrint, setSelectedTripsForPrint] = useState<string[]>([]); // เก็บ trip_number_raw สำหรับ filter
+  const [currentLoadlistIdForPrint, setCurrentLoadlistIdForPrint] = useState<number | null>(null);
+  const [mappedFaceSheets, setMappedFaceSheets] = useState<Array<{ face_sheet_id: number; face_sheet_no: string; created_date: string | null; total_orders: number; total_packages: number; bonus_package_count: number; bonus_order_count: number }>>([]);
+  const [selectedFaceSheetsForPrint, setSelectedFaceSheetsForPrint] = useState<number[]>([]); // เก็บ face_sheet_id สำหรับ filter
   const [printingPickListId, setPrintingPickListId] = useState<number | null>(null);
   const [confirmingPickId, setConfirmingPickId] = useState<number | null>(null); // สำหรับปุ่มยืนยันหยิบ
   const fetchLoadlists = async () => {
@@ -842,18 +843,19 @@ const LoadlistsPage = () => {
         face_sheet_no: firstBonusFaceSheet.face_sheet_no
       });
       
-      // ดึงจำนวน bonus packages แยกตาม trip
-      setSelectedTripsForPrint([]);
-      setBonusTripCounts([]);
+      // ดึงรายการใบปะหน้าที่แมพกับ loadlist นี้
+      setSelectedFaceSheetsForPrint([]);
+      setMappedFaceSheets([]);
+      setCurrentLoadlistIdForPrint(loadlist.id);
       
-      fetch(`/api/bonus-face-sheets/trip-counts?bonus_face_sheet_id=${firstBonusFaceSheet.id}`)
+      fetch(`/api/bonus-face-sheets/mapped-face-sheets?loadlist_id=${loadlist.id}&bonus_face_sheet_id=${firstBonusFaceSheet.id}`)
         .then(res => res.json())
         .then(result => {
           if (result.success && result.data) {
-            setBonusTripCounts(result.data);
+            setMappedFaceSheets(result.data);
           }
         })
-        .catch(err => console.error('Failed to fetch bonus trip counts:', err));
+        .catch(err => console.error('Failed to fetch mapped face sheets:', err));
       
       setIsBonusPrintModalOpen(true);
       return;
@@ -942,24 +944,25 @@ const LoadlistsPage = () => {
     }, 100);
   };
 
-  // ฟังก์ชันปริ้นใบปะหน้าของแถมตาม trip ที่เลือก
-  const handlePrintBonusFaceSheetByTrips = () => {
-    if (!bonusFaceSheetToPrint || selectedTripsForPrint.length === 0) {
-      alert('กรุณาเลือกสายรถอย่างน้อย 1 รายการ');
+  // ฟังก์ชันปริ้นใบปะหน้าของแถมตามใบปะหน้าที่เลือก
+  const handlePrintBonusFaceSheetByFaceSheets = () => {
+    if (!bonusFaceSheetToPrint || selectedFaceSheetsForPrint.length === 0) {
+      alert('กรุณาเลือกใบปะหน้าอย่างน้อย 1 รายการ');
       return;
     }
 
-    // เปิดหน้าปริ้นสำหรับแต่ละ trip ที่เลือก (ใช้ trip_number_raw สำหรับ filter)
-    selectedTripsForPrint.forEach((tripNumberRaw) => {
+    // เปิดหน้าปริ้นสำหรับแต่ละ face_sheet ที่เลือก
+    selectedFaceSheetsForPrint.forEach((faceSheetId) => {
       window.open(
-        `/api/bonus-face-sheets/print?id=${bonusFaceSheetToPrint.id}&trip_number=${encodeURIComponent(tripNumberRaw)}`,
+        `/api/bonus-face-sheets/print?id=${bonusFaceSheetToPrint.id}&face_sheet_id=${faceSheetId}`,
         '_blank'
       );
     });
 
     setIsBonusPrintModalOpen(false);
     setBonusFaceSheetToPrint(null);
-    setSelectedTripsForPrint([]);
+    setSelectedFaceSheetsForPrint([]);
+    setCurrentLoadlistIdForPrint(null);
   };
 
   // ฟังก์ชันปริ้นใบหยิบสินค้า (Pick List) สำหรับ bonus face sheet
@@ -2270,7 +2273,8 @@ const LoadlistsPage = () => {
         onClose={() => {
           setIsBonusPrintModalOpen(false);
           setBonusFaceSheetToPrint(null);
-          setSelectedTripsForPrint([]);
+          setSelectedFaceSheetsForPrint([]);
+          setCurrentLoadlistIdForPrint(null);
         }}
         title={`พิมพ์ใบเช็คของแถม: ${bonusFaceSheetToPrint?.face_sheet_no || ''}`}
         size="lg"
@@ -2278,10 +2282,10 @@ const LoadlistsPage = () => {
         <div className="space-y-4">
           <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
             <p className="text-sm text-blue-800">
-              <strong>คำแนะนำ:</strong> เลือกสายรถที่ต้องการปริ้นใบเช็คของแถม แต่ละสายรถจะปริ้นแยก 1 ใบ โดยแสดงเฉพาะรายการของแถมที่อยู่ในสายรถนั้น
+              <strong>คำแนะนำ:</strong> เลือกใบปะหน้าที่ต้องการปริ้นใบเช็คของแถม แต่ละใบปะหน้าจะปริ้นแยก 1 ใบ โดยแสดงเฉพาะรายการของแถมที่อยู่ในใบปะหน้านั้น
             </p>
             <p className="text-sm text-blue-600 mt-2">
-              <strong>หมายเหตุ:</strong> สายรถถูกกำหนดตอนสร้างใบปะหน้าของแถม (ขั้นตอนที่ 2: ตรวจสอบแผนการจัดส่ง)
+              <strong>หมายเหตุ:</strong> ใบปะหน้าถูกแมพตอนสร้างใบโหลดสินค้า
             </p>
           </div>
 
@@ -2290,20 +2294,20 @@ const LoadlistsPage = () => {
               <input
                 type="checkbox"
                 checked={
-                  bonusTripCounts.length > 0 &&
-                  selectedTripsForPrint.length === bonusTripCounts.length
+                  mappedFaceSheets.length > 0 &&
+                  selectedFaceSheetsForPrint.length === mappedFaceSheets.length
                 }
                 onChange={() => {
-                  if (selectedTripsForPrint.length === bonusTripCounts.length) {
-                    setSelectedTripsForPrint([]);
+                  if (selectedFaceSheetsForPrint.length === mappedFaceSheets.length) {
+                    setSelectedFaceSheetsForPrint([]);
                   } else {
-                    setSelectedTripsForPrint(bonusTripCounts.map(t => t.trip_number_raw));
+                    setSelectedFaceSheetsForPrint(mappedFaceSheets.map(fs => fs.face_sheet_id));
                   }
                 }}
                 className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
               />
               <span className="text-sm font-medium text-gray-700">
-                เลือกทั้งหมด ({selectedTripsForPrint.length}/{bonusTripCounts.length})
+                เลือกทั้งหมด ({selectedFaceSheetsForPrint.length}/{mappedFaceSheets.length})
               </span>
             </label>
           </div>
@@ -2313,53 +2317,49 @@ const LoadlistsPage = () => {
               <thead className="sticky top-0 z-10 bg-gray-100">
                 <tr>
                   <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 w-12"></th>
-                  <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">สายรถ</th>
-                  <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">เลขเที่ยว</th>
-                  <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200">จำนวนแพ็ค</th>
+                  <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">เลขใบปะหน้า</th>
+                  <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200">จำนวนแพ็คของแถม</th>
                   <th className="px-2 py-2 text-center text-xs font-semibold border-b">จำนวนร้าน</th>
                 </tr>
               </thead>
               <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
-                {bonusTripCounts.length === 0 ? (
+                {mappedFaceSheets.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
+                    <td colSpan={4} className="px-4 py-8 text-center text-gray-500">
                       <Loader2 className="w-5 h-5 animate-spin mx-auto mb-2" />
                       กำลังโหลดข้อมูล...
                     </td>
                   </tr>
                 ) : (
-                  bonusTripCounts.map((trip) => (
+                  mappedFaceSheets.map((fs) => (
                     <tr
-                      key={trip.trip_number_raw}
+                      key={fs.face_sheet_id}
                       className={`hover:bg-blue-50/30 transition-colors duration-150 ${
-                        selectedTripsForPrint.includes(trip.trip_number_raw) ? 'bg-green-50' : ''
+                        selectedFaceSheetsForPrint.includes(fs.face_sheet_id) ? 'bg-green-50' : ''
                       }`}
                     >
                       <td className="px-2 py-1 border-r border-gray-100">
                         <input
                           type="checkbox"
-                          checked={selectedTripsForPrint.includes(trip.trip_number_raw)}
+                          checked={selectedFaceSheetsForPrint.includes(fs.face_sheet_id)}
                           onChange={() => {
-                            if (selectedTripsForPrint.includes(trip.trip_number_raw)) {
-                              setSelectedTripsForPrint(selectedTripsForPrint.filter(t => t !== trip.trip_number_raw));
+                            if (selectedFaceSheetsForPrint.includes(fs.face_sheet_id)) {
+                              setSelectedFaceSheetsForPrint(selectedFaceSheetsForPrint.filter(id => id !== fs.face_sheet_id));
                             } else {
-                              setSelectedTripsForPrint([...selectedTripsForPrint, trip.trip_number_raw]);
+                              setSelectedFaceSheetsForPrint([...selectedFaceSheetsForPrint, fs.face_sheet_id]);
                             }
                           }}
                           className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
                         />
                       </td>
                       <td className="px-2 py-1 border-r border-gray-100 font-mono text-purple-600 font-semibold">
-                        {trip.trip_number}
-                      </td>
-                      <td className="px-2 py-1 border-r border-gray-100 font-mono text-orange-600 font-semibold">
-                        {trip.delivery_number || '-'}
+                        {fs.face_sheet_no}
                       </td>
                       <td className="px-2 py-1 text-center border-r border-gray-100 font-semibold text-blue-600">
-                        {trip.packageCount} แพ็ค
+                        {fs.bonus_package_count} แพ็ค
                       </td>
                       <td className="px-2 py-1 text-center font-semibold text-green-600">
-                        {trip.orderCount} ร้าน
+                        {fs.bonus_order_count} ร้าน
                       </td>
                     </tr>
                   ))
@@ -2372,7 +2372,7 @@ const LoadlistsPage = () => {
             <Button
               variant="outline"
               onClick={() => {
-                // ปริ้นใบเช็คของแถมทั้งหมด (ไม่กรองตาม trip)
+                // ปริ้นใบเช็คของแถมทั้งหมด (ไม่กรองตาม face sheet)
                 if (bonusFaceSheetToPrint) {
                   window.open(
                     `/api/bonus-face-sheets/print?id=${bonusFaceSheetToPrint.id}`,
@@ -2390,18 +2390,19 @@ const LoadlistsPage = () => {
                 onClick={() => {
                   setIsBonusPrintModalOpen(false);
                   setBonusFaceSheetToPrint(null);
-                  setSelectedTripsForPrint([]);
+                  setSelectedFaceSheetsForPrint([]);
+                  setCurrentLoadlistIdForPrint(null);
                 }}
               >
                 ยกเลิก
               </Button>
               <Button
                 variant="primary"
-                onClick={handlePrintBonusFaceSheetByTrips}
-                disabled={selectedTripsForPrint.length === 0}
+                onClick={handlePrintBonusFaceSheetByFaceSheets}
+                disabled={selectedFaceSheetsForPrint.length === 0}
                 className="bg-green-500 hover:bg-green-600"
               >
-                พิมพ์ ({selectedTripsForPrint.length} ใบ)
+                พิมพ์ ({selectedFaceSheetsForPrint.length} ใบ)
               </Button>
             </div>
           </div>
