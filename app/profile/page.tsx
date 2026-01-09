@@ -10,7 +10,8 @@ import {
   Hash,
   Key,
   LogOut,
-  ChevronRight
+  ChevronRight,
+  ClipboardList
 } from 'lucide-react';
 
 export default function ProfilePage() {
@@ -120,6 +121,22 @@ export default function ProfilePage() {
               <div className="text-left">
                 <p className="font-semibold text-gray-900 font-thai">เปลี่ยนรหัสผ่าน</p>
                 <p className="text-xs text-gray-500 font-thai">อัพเดทรหัสผ่านของคุณ</p>
+              </div>
+            </div>
+            <ChevronRight className="w-5 h-5 text-gray-400" />
+          </button>
+
+          <button
+            onClick={() => router.push('/mobile/stock-count')}
+            className="w-full bg-white rounded-xl shadow-sm p-4 flex items-center justify-between hover:shadow-md transition-all active:scale-[0.98]"
+          >
+            <div className="flex items-center">
+              <div className="w-11 h-11 bg-blue-50 rounded-xl flex items-center justify-center mr-4">
+                <ClipboardList className="w-5 h-5 text-blue-600" />
+              </div>
+              <div className="text-left">
+                <p className="font-semibold text-gray-900 font-thai">นับสต็อก</p>
+                <p className="text-xs text-gray-500 font-thai">ตรวจนับสินค้าคงคลัง</p>
               </div>
             </div>
             <ChevronRight className="w-5 h-5 text-gray-400" />

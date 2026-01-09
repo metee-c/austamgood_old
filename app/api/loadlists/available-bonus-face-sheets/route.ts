@@ -8,6 +8,10 @@ import { createClient } from '@/lib/supabase/server';
  * ✅ FIX: กรองเฉพาะ packages ที่มี trip_number (ถูกแมพเข้าสายรถแล้ว)
  * - แสดงจำนวน packages/items/orders เฉพาะที่มี trip_number
  * - แสดงจำนวน packages ที่ยังไม่แมพ (unmapped_packages)
+ * 
+ * ✅ FIX 2: รองรับ partial loading
+ * - BFS ที่เคยสร้าง loadlist แล้วแต่ยังมี packages เหลือ (storage_location IS NOT NULL) 
+ *   จะยังแสดงให้เลือกได้
  */
 export async function GET(request: NextRequest) {
   try {
@@ -15,7 +19,7 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const warehouseId = searchParams.get('warehouse_id');
 
-    // Query bonus face sheets ที่ status = completed และยังไม่ได้อยู่ใน loadlist
+    // Query bonus face sheets ที่ status = completed
     let query = supabase
       .from('bonus_face_sheets')
       .select(`
@@ -48,26 +52,45 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Filter out bonus face sheets ที่อยู่ใน loadlist แล้ว
-    const { data: usedBonusFaceSheets } = await supabase
-      .from('wms_loadlist_bonus_face_sheets')
-      .select('bonus_face_sheet_id');
+    // ✅ FIX: แทนที่จะกรอง BFS ที่เคยใช้ใน loadlist ออกทั้งหมด
+    // ให้ตรวจสอบว่ายังมี packages ที่ยังไม่ได้โหลด (storage_location IS NOT NULL) หรือไม่
+    // packages ที่โหลดแล้วจะมี storage_location = null (ถูกย้ายไป staging แล้ว)
+    
+    // ดึง packages ที่ยังไม่ได้โหลด (storage_location IS NOT NULL) สำหรับทุก BFS
+    const bfsIds = bonusFaceSheets?.map(bfs => bfs.id) || [];
+    
+    // Query packages ที่ยังมี storage_location (ยังไม่ได้ย้ายไป staging/โหลด)
+    const { data: unloadedPackages } = await supabase
+      .from('bonus_face_sheet_packages')
+      .select('id, face_sheet_id, trip_number, order_id, storage_location')
+      .in('face_sheet_id', bfsIds)
+      .not('storage_location', 'is', null);
 
-    const usedIds = new Set(usedBonusFaceSheets?.map(lbfs => lbfs.bonus_face_sheet_id) || []);
-    const availableBonusFaceSheets = bonusFaceSheets?.filter(bfs => !usedIds.has(bfs.id)) || [];
+    // สร้าง map ของ BFS ID -> packages ที่ยังไม่ได้โหลด
+    const unloadedPackagesByBfs = new Map<number, typeof unloadedPackages>();
+    for (const pkg of unloadedPackages || []) {
+      const existing = unloadedPackagesByBfs.get(pkg.face_sheet_id) || [];
+      existing.push(pkg);
+      unloadedPackagesByBfs.set(pkg.face_sheet_id, existing);
+    }
+
+    // กรองเฉพาะ BFS ที่ยังมี packages ที่ยังไม่ได้โหลด
+    const availableBonusFaceSheets = bonusFaceSheets?.filter(bfs => {
+      const unloaded = unloadedPackagesByBfs.get(bfs.id);
+      return unloaded && unloaded.length > 0;
+    }) || [];
+    
+    console.log(`📦 Available BFS check: total=${bonusFaceSheets?.length}, with_unloaded_packages=${availableBonusFaceSheets.length}`);
 
     // ดึงข้อมูล trips (เลขคัน) สำหรับแต่ละ bonus face sheet
     const enrichedBonusFaceSheets = await Promise.all(
       availableBonusFaceSheets.map(async (bfs) => {
-        // ✅ ดึง packages ทั้งหมดพร้อม trip_number
-        const { data: packages } = await supabase
-          .from('bonus_face_sheet_packages')
-          .select('id, trip_number, order_id')
-          .eq('face_sheet_id', bfs.id);
+        // ✅ FIX: ใช้ packages ที่ยังไม่ได้โหลดจาก unloadedPackagesByBfs แทนการ query ใหม่
+        const packages = unloadedPackagesByBfs.get(bfs.id) || [];
 
-        // ✅ แยก packages ที่มี trip_number กับไม่มี
-        const mappedPackages = packages?.filter(p => p.trip_number && p.trip_number.trim() !== '') || [];
-        const unmappedPackages = packages?.filter(p => !p.trip_number || p.trip_number.trim() === '') || [];
+        // ✅ แยก packages ที่มี trip_number กับไม่มี (เฉพาะที่ยังไม่ได้โหลด)
+        const mappedPackages = packages.filter(p => p.trip_number && p.trip_number.trim() !== '');
+        const unmappedPackages = packages.filter(p => !p.trip_number || p.trip_number.trim() === '');
         
         // ✅ นับจำนวน items เฉพาะจาก packages ที่มี trip_number
         const mappedPackageIds = mappedPackages.map(p => p.id);
@@ -199,7 +222,14 @@ export async function GET(request: NextRequest) {
       // ✅ ข้อมูลเพิ่มเติมสำหรับ debug
       with_trip_count: withTripNumber.length,
       without_trip_count: withoutTripNumber.length,
-      total_available: enrichedBonusFaceSheets.length
+      total_available: enrichedBonusFaceSheets.length,
+      // ✅ Debug info for partial loading
+      debug: {
+        total_completed_bfs: bonusFaceSheets?.length || 0,
+        bfs_with_unloaded_packages: availableBonusFaceSheets.length,
+        bfs_ids_checked: bfsIds,
+        unloaded_packages_count: unloadedPackages?.length || 0
+      }
     });
 
   } catch (error) {
