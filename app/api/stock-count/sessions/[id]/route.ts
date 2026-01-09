@@ -18,13 +18,30 @@ export async function GET(
 
     if (sessionError) throw sessionError;
 
-    const { data: items, error: itemsError } = await supabase
-      .from('wms_stock_count_items')
-      .select('*')
-      .eq('session_id', id)
-      .order('location_code');
+    // ตรวจสอบ count_type เพื่อดึงข้อมูลจากตารางที่ถูกต้อง
+    let items: unknown[] = [];
+    
+    if (session.count_type === 'prep_area') {
+      // ดึงจาก wms_prep_area_count_items
+      const { data: prepItems, error: prepError } = await supabase
+        .from('wms_prep_area_count_items')
+        .select('*')
+        .eq('session_id', id)
+        .order('created_at', { ascending: false });
 
-    if (itemsError) throw itemsError;
+      if (prepError) throw prepError;
+      items = prepItems || [];
+    } else {
+      // ดึงจาก wms_stock_count_items (standard)
+      const { data: stdItems, error: itemsError } = await supabase
+        .from('wms_stock_count_items')
+        .select('*')
+        .eq('session_id', id)
+        .order('location_code');
+
+      if (itemsError) throw itemsError;
+      items = stdItems || [];
+    }
 
     return NextResponse.json({
       success: true,

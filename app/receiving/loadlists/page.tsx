@@ -131,6 +131,13 @@ interface AvailableFaceSheet {
   warehouse_id: string;
   created_at: string;
   picking_completed_at?: string;
+  picking_started_at?: string;
+  // ข้อมูล trips
+  daily_trip_numbers?: number[];
+  daily_trip_numbers_display?: string;
+  // สถานะการใช้งาน
+  is_used?: boolean;
+  used_in_loadlist_id?: number | null;
 }
 
 interface AvailableBonusFaceSheet {
@@ -161,6 +168,9 @@ interface AvailableBonusFaceSheet {
   // ✅ NEW: category สำหรับแยกแสดง
   category?: 'with_trip' | 'no_trip';
   category_label?: string;
+  // ✅ NEW: สถานะการใช้งานใน loadlist
+  is_used?: boolean;
+  used_in_loadlist_id?: number | null;
 }
 
 interface Employee {
@@ -221,6 +231,22 @@ const LoadlistsPage = () => {
 
   // ✅ NEW: เก็บค่า checker แยกต่างหากแต่ละ bonus face sheet (key = bonus_face_sheet_id)
   const [bonusFaceSheetCheckers, setBonusFaceSheetCheckers] = useState<Record<number, number | ''>>({});
+
+  // ✅ NEW: เก็บการแมพ bonus face sheet กับ picklist และ face sheet (key = bonus_face_sheet_id)
+  const [bonusFaceSheetMappings, setBonusFaceSheetMappings] = useState<Record<number, {
+    selectedPicklistId: number | null;  // picklist_id ที่เลือก
+    selectedFaceSheetId: number | null;  // face_sheet_id ที่เลือกแมพ
+  }>>({});
+
+  // ✅ NEW: รายการ picklists ทั้งหมดสำหรับ dropdown ในแทบ bonus face sheets
+  const [allPicklistsForDropdown, setAllPicklistsForDropdown] = useState<Array<{
+    id: number;
+    picklist_code: string;
+    daily_trip_number: number | null;
+    trip_code: string;
+    plan_code: string;
+    vehicle_plate?: string;
+  }>>([]);
 
   // Form fields (ใช้สำหรับ face sheets และ bonus face sheets)
   const [checkerEmployeeId, setCheckerEmployeeId] = useState<number | ''>('');
@@ -376,6 +402,38 @@ const LoadlistsPage = () => {
     }
   };
 
+  // ✅ NEW: ดึงรายการ picklists ทั้งหมดสำหรับ dropdown ในแทบ bonus face sheets
+  const fetchAllPicklistsForDropdown = async () => {
+    try {
+      const response = await fetch('/api/picklists');
+      if (!response.ok) {
+        throw new Error('Unable to load picklists');
+      }
+      const result = await response.json();
+      
+      if (result.data) {
+        // แปลงข้อมูลเป็น format ที่ต้องการ
+        const picklists = result.data.map((p: any) => ({
+          id: p.id,
+          picklist_code: p.picklist_code,
+          daily_trip_number: p.receiving_route_trips?.daily_trip_number || null,
+          trip_code: p.receiving_route_trips?.trip_sequence ? `TRIP-${String(p.receiving_route_trips.trip_sequence).padStart(3, '0')}` : '',
+          plan_code: p.receiving_route_trips?.receiving_route_plans?.plan_code || '',
+          vehicle_plate: null // จะดึงเพิ่มถ้าต้องการ
+        }));
+        
+        // Sort by daily_trip_number
+        picklists.sort((a: any, b: any) => (a.daily_trip_number || 0) - (b.daily_trip_number || 0));
+        setAllPicklistsForDropdown(picklists);
+      } else {
+        setAllPicklistsForDropdown([]);
+      }
+    } catch (err: any) {
+      console.error('Failed to fetch picklists for dropdown:', err);
+      setAllPicklistsForDropdown([]);
+    }
+  };
+
   const fetchEmployees = async () => {
     try {
       const response = await fetch('/api/master-employee');
@@ -476,10 +534,12 @@ const LoadlistsPage = () => {
     setLoadingDoorNumber('');
     setPicklistFormData({}); // ✅ Reset picklist form data
     setBonusFaceSheetCheckers({}); // ✅ Reset bonus face sheet checkers
+    setBonusFaceSheetMappings({}); // ✅ Reset bonus face sheet mappings
     await Promise.all([
       fetchAvailablePicklists(),
       fetchAvailableFaceSheets(),
       fetchAvailableBonusFaceSheets(),
+      fetchAllPicklistsForDropdown(), // ✅ NEW: ดึงรายการ picklists สำหรับ dropdown
       fetchEmployees(),
       fetchVehicles()
     ]);
@@ -1735,6 +1795,7 @@ const LoadlistsPage = () => {
                         <span className="sr-only">เลือก</span>
                       </th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสใบปะหน้า</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">เลขคัน</th>
                       <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">แพ็ค</th>
                       <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชิ้น</th>
                       <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ออเดอร์</th>
@@ -1746,7 +1807,7 @@ const LoadlistsPage = () => {
                   <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
                     {availableFaceSheets.length === 0 ? (
                       <tr>
-                        <td colSpan={8} className="px-4 py-8 text-center text-gray-500">
+                        <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
                           ไม่พบใบปะหน้าที่สถานะ "เสร็จสิ้น"
                         </td>
                       </tr>
@@ -1774,6 +1835,13 @@ const LoadlistsPage = () => {
                           </td>
                           <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap font-mono text-blue-600">
                             {faceSheet.face_sheet_no}
+                          </td>
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                            {faceSheet.daily_trip_numbers_display && faceSheet.daily_trip_numbers_display !== '-' ? (
+                              <span className="text-green-600 font-semibold">{faceSheet.daily_trip_numbers_display}</span>
+                            ) : (
+                              <span className="text-gray-400">-</span>
+                            )}
                           </td>
                           <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap font-semibold text-blue-600">
                             {faceSheet.total_packages}
@@ -1821,30 +1889,16 @@ const LoadlistsPage = () => {
             </div>
           )}
 
-          {/* Bonus Face Sheets Tab */}
+          {/* Bonus Face Sheets Tab - ให้ผู้ใช้เลือกแมพสายรถและใบปะหน้าเอง */}
           {activeTab === 'bonus-face-sheets' && (
             <div className="space-y-2">
               <div className="flex items-center justify-between bg-gray-50 px-4 py-2 rounded">
-                <label className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={selectedBonusFaceSheets.length === availableBonusFaceSheets.length && availableBonusFaceSheets.length > 0}
-                    onChange={() => {
-                      if (selectedBonusFaceSheets.length === availableBonusFaceSheets.length) {
-                        setSelectedBonusFaceSheets([]);
-                      } else {
-                        setSelectedBonusFaceSheets(availableBonusFaceSheets.map(bfs => bfs.id));
-                      }
-                    }}
-                    className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
-                  />
-                  <span className="text-sm font-medium text-gray-700">
-                    เลือกใบปะหน้าของแถมทั้งหมด ({selectedBonusFaceSheets.length}/{availableBonusFaceSheets.length})
-                  </span>
-                </label>
+                <span className="text-sm font-medium text-gray-700">
+                  เลือกใบปะหน้าของแถมและแมพกับสายรถ/ใบปะหน้า ({selectedBonusFaceSheets.length}/{availableBonusFaceSheets.length})
+                </span>
               </div>
 
-              <div className="max-h-64 overflow-y-auto border rounded-lg">
+              <div className="max-h-80 overflow-y-auto border rounded-lg">
                 <table className="w-full border-collapse text-sm">
                   <thead className="sticky top-0 z-10 bg-gray-100">
                     <tr>
@@ -1852,181 +1906,192 @@ const LoadlistsPage = () => {
                         <span className="sr-only">เลือก</span>
                       </th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสใบปะหน้าของแถม</th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">เลขคัน</th>
                       <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">แพ็ค</th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชิ้น</th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ออเดอร์</th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">คลัง</th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ผู้เช็ค</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap min-w-[180px]">เลือกใบหยิบ</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap min-w-[180px]">เลือกใบปะหน้า</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap min-w-[140px]">ผู้เช็ค</th>
                       <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap">สถานะ</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
                     {availableBonusFaceSheets.length === 0 ? (
                       <tr>
-                        <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
+                        <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
                           ไม่พบใบปะหน้าของแถมที่สถานะ "เสร็จสิ้น"
                         </td>
                       </tr>
                     ) : (
-                      <>
-                        {/* แสดงใบปะหน้าที่มีสายรถก่อน */}
-                        {availableBonusFaceSheets.filter(bfs => bfs.category === 'with_trip').length > 0 && (
-                          <>
-                            <tr className="bg-blue-50">
-                              <td colSpan={9} className="px-3 py-1.5 text-xs font-semibold text-blue-700">
-                                📦 มีสายรถ ({availableBonusFaceSheets.filter(bfs => bfs.category === 'with_trip').length} รายการ)
-                              </td>
-                            </tr>
-                            {availableBonusFaceSheets.filter(bfs => bfs.category === 'with_trip').map((bonusFaceSheet, index) => (
-                              <tr
-                                key={bonusFaceSheet.id}
-                                className={`hover:bg-blue-50/30 transition-colors duration-150 ${
-                                  selectedBonusFaceSheets.includes(bonusFaceSheet.id) ? 'bg-green-50' : ''
-                                }`}
-                              >
-                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedBonusFaceSheets.includes(bonusFaceSheet.id)}
-                                    onChange={() => {
-                                      if (selectedBonusFaceSheets.includes(bonusFaceSheet.id)) {
-                                        setSelectedBonusFaceSheets(selectedBonusFaceSheets.filter(id => id !== bonusFaceSheet.id));
-                                      } else {
-                                        setSelectedBonusFaceSheets([...selectedBonusFaceSheets, bonusFaceSheet.id]);
-                                      }
-                                    }}
-                                    className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
-                                  />
-                                </td>
-                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap font-mono text-purple-600">
-                                  {bonusFaceSheet.face_sheet_no}
-                                </td>
-                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap font-semibold text-orange-600">
-                                  {bonusFaceSheet.daily_trip_numbers_display || '-'}
-                                </td>
-                                <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
-                                  <span className="font-semibold text-blue-600">
-                                    {bonusFaceSheet.mapped_packages ?? bonusFaceSheet.total_packages}
-                                  </span>
-                                  {bonusFaceSheet.has_unmapped_packages && (
-                                    <span className="text-gray-400 text-[10px]">
-                                      /{bonusFaceSheet.total_packages}
-                                    </span>
-                                  )}
-                                </td>
-                                <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap font-semibold text-purple-600">
-                                  {bonusFaceSheet.mapped_items ?? bonusFaceSheet.total_items}
-                                </td>
-                                <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap font-semibold text-green-600">
-                                  {bonusFaceSheet.mapped_orders ?? bonusFaceSheet.total_orders}
-                                </td>
-                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700">
-                                  {bonusFaceSheet.warehouse_id}
-                                </td>
-                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                                  <select
-                                    value={bonusFaceSheetCheckers[bonusFaceSheet.id] ?? ''}
-                                    onChange={(e) => setBonusFaceSheetCheckers(prev => ({
-                                      ...prev,
-                                      [bonusFaceSheet.id]: e.target.value ? Number(e.target.value) : ''
-                                    }))}
-                                    className="w-32 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
-                                  >
-                                    <option value="">-- เลือก --</option>
-                                    {employees.map((emp) => (
-                                      <option key={emp.employee_id} value={emp.employee_id}>
-                                        {emp.first_name} {emp.last_name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </td>
-                                <td className="px-3 py-2 text-center">
-                                  <Badge variant="success" size="sm">เสร็จสิ้น</Badge>
-                                </td>
-                              </tr>
-                            ))}
-                          </>
-                        )}
+                      availableBonusFaceSheets.map((bonusFaceSheet) => {
+                        const isUsed = bonusFaceSheet.is_used === true;
+                        const isSelected = selectedBonusFaceSheets.includes(bonusFaceSheet.id);
+                        const mapping = bonusFaceSheetMappings[bonusFaceSheet.id] || { selectedPicklistId: null, selectedFaceSheetId: null };
                         
-                        {/* แสดงใบปะหน้าที่ไม่มีสายรถ (เช่น ส่งฝ่ายการตลาด) */}
-                        {availableBonusFaceSheets.filter(bfs => bfs.category === 'no_trip').length > 0 && (
-                          <>
-                            <tr className="bg-orange-50">
-                              <td colSpan={9} className="px-3 py-1.5 text-xs font-semibold text-orange-700">
-                                🏢 ไม่ระบุสายรถ ({availableBonusFaceSheets.filter(bfs => bfs.category === 'no_trip').length} รายการ) - เช่น ส่งฝ่ายการตลาด
-                              </td>
-                            </tr>
-                            {availableBonusFaceSheets.filter(bfs => bfs.category === 'no_trip').map((bonusFaceSheet, index) => (
-                              <tr
-                                key={bonusFaceSheet.id}
-                                className={`hover:bg-orange-50/30 transition-colors duration-150 ${
-                                  selectedBonusFaceSheets.includes(bonusFaceSheet.id) ? 'bg-green-50' : ''
-                                }`}
+                        return (
+                          <tr
+                            key={bonusFaceSheet.id}
+                            className={`hover:bg-blue-50/30 transition-colors duration-150 ${
+                              isSelected 
+                                ? 'bg-green-50' 
+                                : isUsed 
+                                  ? 'bg-gray-100 opacity-60' 
+                                  : ''
+                            }`}
+                          >
+                            <td className="px-2 py-1 border-r border-gray-100 whitespace-nowrap">
+                              <input
+                                type="checkbox"
+                                checked={isSelected}
+                                onChange={() => {
+                                  if (isSelected) {
+                                    setSelectedBonusFaceSheets(selectedBonusFaceSheets.filter(id => id !== bonusFaceSheet.id));
+                                  } else {
+                                    if (isUsed) {
+                                      const confirmSelect = window.confirm(
+                                        `ใบปะหน้าของแถม ${bonusFaceSheet.face_sheet_no} ถูกใช้ในใบโหลดแล้ว\nต้องการเลือกหรือไม่?`
+                                      );
+                                      if (!confirmSelect) return;
+                                    }
+                                    setSelectedBonusFaceSheets([...selectedBonusFaceSheets, bonusFaceSheet.id]);
+                                  }
+                                }}
+                                className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                              />
+                            </td>
+                            <td className="px-2 py-1 border-r border-gray-100 whitespace-nowrap">
+                              <div className="flex flex-col">
+                                <span className="font-mono text-purple-600 font-semibold">{bonusFaceSheet.face_sheet_no}</span>
+                                <span className="text-[10px] text-gray-500">
+                                  {bonusFaceSheet.delivery_date ? `ส่ง: ${bonusFaceSheet.delivery_date}` : ''}
+                                </span>
+                                {isUsed && (
+                                  <Badge variant="warning" size="sm" className="mt-0.5 w-fit">
+                                    <span className="text-[9px]">ใช้แล้ว</span>
+                                  </Badge>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-2 py-1 text-center border-r border-gray-100 whitespace-nowrap">
+                              <span className="font-semibold text-blue-600">{bonusFaceSheet.total_packages}</span>
+                            </td>
+                            <td className="px-2 py-1 border-r border-gray-100">
+                              <select
+                                value={mapping.selectedPicklistId || ''}
+                                onChange={(e) => setBonusFaceSheetMappings(prev => ({
+                                  ...prev,
+                                  [bonusFaceSheet.id]: {
+                                    ...prev[bonusFaceSheet.id],
+                                    selectedPicklistId: e.target.value ? Number(e.target.value) : null
+                                  }
+                                }))}
+                                className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                                disabled={!isSelected}
                               >
-                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                                  <input
-                                    type="checkbox"
-                                    checked={selectedBonusFaceSheets.includes(bonusFaceSheet.id)}
-                                    onChange={() => {
-                                      if (selectedBonusFaceSheets.includes(bonusFaceSheet.id)) {
-                                        setSelectedBonusFaceSheets(selectedBonusFaceSheets.filter(id => id !== bonusFaceSheet.id));
-                                      } else {
-                                        setSelectedBonusFaceSheets([...selectedBonusFaceSheets, bonusFaceSheet.id]);
-                                      }
-                                    }}
-                                    className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
-                                  />
-                                </td>
-                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap font-mono text-purple-600">
-                                  {bonusFaceSheet.face_sheet_no}
-                                </td>
-                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-orange-500 italic">
-                                  ไม่ระบุ
-                                </td>
-                                <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
-                                  <span className="font-semibold text-blue-600">
-                                    {bonusFaceSheet.mapped_packages ?? bonusFaceSheet.total_packages}
-                                  </span>
-                                </td>
-                                <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap font-semibold text-purple-600">
-                                  {bonusFaceSheet.mapped_items ?? bonusFaceSheet.total_items}
-                                </td>
-                                <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap font-semibold text-green-600">
-                                  {bonusFaceSheet.mapped_orders ?? bonusFaceSheet.total_orders}
-                                </td>
-                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700">
-                                  {bonusFaceSheet.warehouse_id}
-                                </td>
-                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                                  <select
-                                    value={bonusFaceSheetCheckers[bonusFaceSheet.id] ?? ''}
-                                    onChange={(e) => setBonusFaceSheetCheckers(prev => ({
-                                      ...prev,
-                                      [bonusFaceSheet.id]: e.target.value ? Number(e.target.value) : ''
-                                    }))}
-                                    className="w-32 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
-                                  >
-                                    <option value="">-- เลือก --</option>
-                                    {employees.map((emp) => (
-                                      <option key={emp.employee_id} value={emp.employee_id}>
-                                        {emp.first_name} {emp.last_name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </td>
-                                <td className="px-3 py-2 text-center">
-                                  <Badge variant="success" size="sm">เสร็จสิ้น</Badge>
-                                </td>
-                              </tr>
-                            ))}
-                          </>
-                        )}
-                      </>
+                                <option value="">-- เลือกใบหยิบ --</option>
+                                {allPicklistsForDropdown.map((pl) => (
+                                  <option key={pl.id} value={pl.id}>
+                                    {pl.picklist_code}
+                                    {pl.daily_trip_number ? ` (คัน ${pl.daily_trip_number})` : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="px-2 py-1 border-r border-gray-100">
+                              <select
+                                value={mapping.selectedFaceSheetId || ''}
+                                onChange={(e) => setBonusFaceSheetMappings(prev => ({
+                                  ...prev,
+                                  [bonusFaceSheet.id]: {
+                                    ...prev[bonusFaceSheet.id],
+                                    selectedFaceSheetId: e.target.value ? Number(e.target.value) : null
+                                  }
+                                }))}
+                                className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                                disabled={!isSelected}
+                              >
+                                <option value="">-- เลือกใบปะหน้า --</option>
+                                {availableFaceSheets.map((fs) => (
+                                  <option key={fs.id} value={fs.id}>
+                                    {fs.face_sheet_no} ({fs.total_packages} แพ็ค)
+                                    {fs.daily_trip_numbers_display && fs.daily_trip_numbers_display !== '-' 
+                                      ? ` - คัน ${fs.daily_trip_numbers_display}` 
+                                      : ''}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="px-2 py-1 border-r border-gray-100">
+                              <select
+                                value={bonusFaceSheetCheckers[bonusFaceSheet.id] ?? ''}
+                                onChange={(e) => setBonusFaceSheetCheckers(prev => ({
+                                  ...prev,
+                                  [bonusFaceSheet.id]: e.target.value ? Number(e.target.value) : ''
+                                }))}
+                                className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                                disabled={!isSelected}
+                              >
+                                <option value="">-- เลือกผู้เช็ค --</option>
+                                {employees.map((emp) => (
+                                  <option key={emp.employee_id} value={emp.employee_id}>
+                                    {emp.first_name} {emp.last_name}
+                                  </option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="px-2 py-1 text-center">
+                              {isUsed ? (
+                                <Badge variant="default" size="sm">
+                                  <span className="text-[10px]">ใช้แล้ว</span>
+                                </Badge>
+                              ) : isSelected && mapping.selectedPicklistId && mapping.selectedFaceSheetId ? (
+                                <Badge variant="success" size="sm">
+                                  <span className="text-[10px]">พร้อม</span>
+                                </Badge>
+                              ) : isSelected ? (
+                                <Badge variant="warning" size="sm">
+                                  <span className="text-[10px]">รอเลือก</span>
+                                </Badge>
+                              ) : (
+                                <Badge variant="info" size="sm">
+                                  <span className="text-[10px]">รอเลือก</span>
+                                </Badge>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })
                     )}
                   </tbody>
                 </table>
               </div>
+              
+              {/* แสดงสรุปการเลือก */}
+              {selectedBonusFaceSheets.length > 0 && (
+                <div className="bg-blue-50 p-3 rounded-lg text-xs">
+                  <div className="font-semibold text-blue-700 mb-2">สรุปการเลือก:</div>
+                  <div className="space-y-1">
+                    {selectedBonusFaceSheets.map(bfsId => {
+                      const bfs = availableBonusFaceSheets.find(b => b.id === bfsId);
+                      const mapping = bonusFaceSheetMappings[bfsId] || { selectedPicklistId: null, selectedFaceSheetId: null };
+                      const selectedPicklist = allPicklistsForDropdown.find(p => p.id === mapping.selectedPicklistId);
+                      const selectedFs = availableFaceSheets.find(f => f.id === mapping.selectedFaceSheetId);
+                      
+                      return (
+                        <div key={bfsId} className="flex items-center gap-2 text-gray-700">
+                          <span className="font-mono text-purple-600">{bfs?.face_sheet_no}</span>
+                          <span>→</span>
+                          <span className={selectedPicklist ? 'text-green-600' : 'text-red-500'}>
+                            {selectedPicklist ? `${selectedPicklist.picklist_code}` : 'ยังไม่เลือกใบหยิบ'}
+                          </span>
+                          <span>+</span>
+                          <span className={selectedFs ? 'text-green-600' : 'text-red-500'}>
+                            {selectedFs ? selectedFs.face_sheet_no : 'ยังไม่เลือกใบปะหน้า'}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

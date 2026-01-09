@@ -3,14 +3,14 @@
 
    Creating an optimized production build ...
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
- ✓ Compiled successfully in 24.1s
+ ✓ Compiled successfully in 11.9s
    Running TypeScript ...
    Collecting page data using 13 workers ...
-   Generating static pages using 13 workers (0/212) ...
-   Generating static pages using 13 workers (53/212) 
-   Generating static pages using 13 workers (106/212) 
-   Generating static pages using 13 workers (159/212) 
- ✓ Generating static pages using 13 workers (212/212) in 1459.1ms
+   Generating static pages using 13 workers (0/218) ...
+   Generating static pages using 13 workers (54/218) 
+   Generating static pages using 13 workers (108/218) 
+   Generating static pages using 13 workers (163/218) 
+ ✓ Generating static pages using 13 workers (218/218) in 1460.5ms
    Finalizing page optimization ...
 
 Route (app)
@@ -192,6 +192,7 @@ Route (app)
 ├ ƒ /api/roles/[id]
 ├ ƒ /api/roles/[id]/permissions
 ├ ƒ /api/route-plans
+├ ƒ /api/route-plans/all-trips
 ├ ƒ /api/route-plans/draft-orders
 ├ ƒ /api/route-plans/[id]
 ├ ƒ /api/route-plans/[id]/add-order
@@ -222,9 +223,18 @@ Route (app)
 ├ ƒ /api/stock-adjustments/reasons
 ├ ƒ /api/stock-alerts
 ├ ƒ /api/stock-count/locations
+├ ƒ /api/stock-count/prep-area/areas
+├ ƒ /api/stock-count/prep-area/items
+├ ƒ /api/stock-count/prep-area/items/[id]
+├ ƒ /api/stock-count/prep-area/sessions
+├ ƒ /api/stock-count/prep-area/sessions/[id]
+├ ƒ /api/stock-count/prep-area/sessions/[id]/items
+├ ƒ /api/stock-count/prep-area/sku
 ├ ƒ /api/stock-count/scan
 ├ ƒ /api/stock-count/sessions
 ├ ƒ /api/stock-count/sessions/[id]
+├ ƒ /api/stock-count/sessions/[id]/compare
+├ ƒ /api/stock-count/sessions/[id]/create-adjustment
 ├ ƒ /api/stock-health
 ├ ƒ /api/stock-import/batches
 ├ ƒ /api/stock-import/batches/[id]
@@ -287,6 +297,7 @@ Route (app)
 ├ ○ /mobile/receive/new
 ├ ○ /mobile/receive/production
 ├ ○ /mobile/stock-count
+├ ○ /mobile/stock-count/prep-area
 ├ ○ /mobile/transfer
 ├ ƒ /mobile/transfer/[id]
 ├ ƒ /mobile/transfer/replenishment/[id]

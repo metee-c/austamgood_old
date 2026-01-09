@@ -35,10 +35,20 @@ interface CountItem {
   notes: string | null;
 }
 
+interface PrepAreaCountItem {
+  id: number;
+  sku_code: string;
+  sku_name: string | null;
+  quantity: number;
+  counted_at: string | null;
+  counted_by: string | null;
+}
+
 interface Session {
   id: number;
   session_code: string;
   warehouse_id: string;
+  count_type?: 'standard' | 'prep_area';
   status: 'in_progress' | 'completed' | 'cancelled';
   total_locations: number;
   matched_count: number;
@@ -49,6 +59,7 @@ interface Session {
   completed_at: string | null;
   counted_by: string | null;
   items?: CountItem[];
+  prepAreaItems?: PrepAreaCountItem[];
 }
 
 type SessionStatus = 'in_progress' | 'completed' | 'cancelled' | 'all';
@@ -79,7 +90,13 @@ export default function StockCountReportPage() {
     const res = await fetch(`/api/stock-count/sessions/${session.id}`);
     const detail = await res.json();
     if (detail.success) {
-      setViewingSession(detail.data);
+      const sessionData = detail.data;
+      // ถ้าเป็น prep_area ให้ใส่ items ใน prepAreaItems
+      if (sessionData.count_type === 'prep_area') {
+        sessionData.prepAreaItems = sessionData.items;
+        sessionData.items = [];
+      }
+      setViewingSession(sessionData);
     }
   };
 
@@ -256,6 +273,7 @@ export default function StockCountReportPage() {
           session={viewingSession}
           onClose={() => setViewingSession(null)}
           getItemStatusBadge={getItemStatusBadge}
+          onRefresh={() => mutate()}
         />
       )}
     </PageContainer>
@@ -273,13 +291,21 @@ function SessionRow({
   getStatusBadge: (status: string) => React.ReactNode;
 }) {
   const totalItems = (session.matched_count || 0) + (session.mismatched_count || 0) + (session.empty_count || 0) + (session.extra_count || 0);
+  const isPrepArea = session.count_type === 'prep_area';
 
   return (
     <tr className="hover:bg-thai-gray-50 transition-colors">
       <td className="px-3 py-2 whitespace-nowrap">
-        <span className="text-xs font-medium text-thai-gray-900 font-thai">
-          {session.session_code}
-        </span>
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-thai-gray-900 font-thai">
+            {session.session_code}
+          </span>
+          {isPrepArea && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-orange-100 text-orange-700 font-thai">
+              บ้านหยิบ
+            </span>
+          )}
+        </div>
       </td>
       <td className="px-3 py-2 whitespace-nowrap text-xs text-thai-gray-700 font-thai">
         {session.warehouse_id}
@@ -314,9 +340,9 @@ function SessionRow({
             onClick={() => onView(session)}
             className="text-thai-primary hover:text-thai-primary-dark p-2 rounded-lg hover:bg-thai-primary/10 transition-colors"
             title="ดูรายละเอียด"
-            disabled={totalItems === 0}
+            disabled={totalItems === 0 && !isPrepArea}
           >
-            <Eye className={`w-4 h-4 ${totalItems === 0 ? 'opacity-30' : ''}`} />
+            <Eye className={`w-4 h-4 ${totalItems === 0 && !isPrepArea ? 'opacity-30' : ''}`} />
           </button>
         </div>
       </td>
@@ -329,12 +355,98 @@ function SessionDetailModal({
   session,
   onClose,
   getItemStatusBadge,
+  onRefresh,
 }: {
   session: Session;
   onClose: () => void;
   getItemStatusBadge: (status: string) => React.ReactNode;
+  onRefresh?: () => void;
 }) {
   const items = session.items || [];
+  const prepAreaItems = session.prepAreaItems || [];
+  const isPrepArea = session.count_type === 'prep_area';
+  const [viewMode, setViewMode] = useState<'items' | 'compare'>('items');
+  const [comparison, setComparison] = useState<any>(null);
+  const [loadingCompare, setLoadingCompare] = useState(false);
+  const [creatingAdjustment, setCreatingAdjustment] = useState(false);
+
+  // โหลดผลเปรียบเทียบ
+  const loadComparison = async () => {
+    if (!isPrepArea) return;
+    setLoadingCompare(true);
+    try {
+      const res = await fetch(`/api/stock-count/sessions/${session.id}/compare`);
+      const data = await res.json();
+      if (data.success) {
+        setComparison(data.data);
+      }
+    } catch (error) {
+      console.error('Error loading comparison:', error);
+    } finally {
+      setLoadingCompare(false);
+    }
+  };
+
+  // สร้างใบปรับสต็อก
+  const handleCreateAdjustment = async () => {
+    if (!confirm('ยืนยันการสร้างใบปรับสต็อกจากผลนับนี้?')) return;
+    
+    setCreatingAdjustment(true);
+    try {
+      const res = await fetch(`/api/stock-count/sessions/${session.id}/create-adjustment`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+      
+      if (data.success) {
+        if (data.data.adjustment_ids?.length > 0) {
+          const goToAdjustment = confirm(
+            `สร้างใบปรับสต็อกสำเร็จ ${data.data.adjustment_ids.length} ใบ\n\n` +
+            `เพิ่ม: ${data.data.increase_count} รายการ\n` +
+            `ลด: ${data.data.decrease_count} รายการ\n\n` +
+            `ต้องการไปหน้าปรับสต็อกหรือไม่?`
+          );
+          if (goToAdjustment) {
+            window.open('/stock-management/adjustment', '_blank');
+          }
+          onRefresh?.();
+        } else {
+          alert(data.message || 'ผลนับตรงกับระบบ ไม่จำเป็นต้องปรับสต็อก');
+        }
+      } else {
+        alert(data.error || 'เกิดข้อผิดพลาด');
+      }
+    } catch (error) {
+      console.error('Error creating adjustment:', error);
+      alert('เกิดข้อผิดพลาดในการสร้างใบปรับสต็อก');
+    } finally {
+      setCreatingAdjustment(false);
+    }
+  };
+
+  // โหลดผลเปรียบเทียบเมื่อเปลี่ยน tab
+  React.useEffect(() => {
+    if (viewMode === 'compare' && !comparison && isPrepArea) {
+      loadComparison();
+    }
+  }, [viewMode]);
+
+  const getCompareStatusBadge = (status: string) => {
+    switch (status) {
+      case 'matched':
+        return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-100 text-green-800"><Check className="w-3 h-3" />ตรง</span>;
+      case 'over':
+        return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-800"><Plus className="w-3 h-3" />เกิน</span>;
+      case 'short':
+        return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-100 text-red-800"><AlertTriangle className="w-3 h-3" />ขาด</span>;
+      case 'missing':
+        return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-yellow-100 text-yellow-800"><AlertCircle className="w-3 h-3" />ไม่ได้นับ</span>;
+      case 'extra':
+        return <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-800"><Plus className="w-3 h-3" />พบเพิ่ม</span>;
+      default:
+        return <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-gray-100 text-gray-800">{status}</span>;
+    }
+  };
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
@@ -342,7 +454,14 @@ function SessionDetailModal({
         {/* Header */}
         <div className="px-6 py-4 border-b flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold font-thai">รายละเอียดการนับสต็อก</h2>
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-bold font-thai">รายละเอียดการนับสต็อก</h2>
+              {isPrepArea && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-orange-100 text-orange-700 font-thai">
+                  บ้านหยิบ
+                </span>
+              )}
+            </div>
             <p className="text-sm text-gray-500">{session.session_code}</p>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-gray-100 rounded-lg">
@@ -350,83 +469,273 @@ function SessionDetailModal({
           </button>
         </div>
 
-        {/* Summary */}
-        <div className="px-6 py-4 border-b bg-gray-50">
-          <div className="grid grid-cols-5 gap-4 text-center">
-            <div>
-              <p className="text-2xl font-bold">{items.length}</p>
-              <p className="text-xs text-gray-500 font-thai">รายการทั้งหมด</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-green-600">{session.matched_count || 0}</p>
-              <p className="text-xs text-green-600 font-thai">ถูกต้อง</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-red-600">{session.mismatched_count || 0}</p>
-              <p className="text-xs text-red-600 font-thai">ไม่ตรง</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-yellow-600">{session.empty_count || 0}</p>
-              <p className="text-xs text-yellow-600 font-thai">ว่าง (ในระบบมี)</p>
-            </div>
-            <div>
-              <p className="text-2xl font-bold text-blue-600">{session.extra_count || 0}</p>
-              <p className="text-xs text-blue-600 font-thai">เพิ่มเติม</p>
+        {/* Tabs for prep_area */}
+        {isPrepArea && (
+          <div className="px-6 pt-4 border-b bg-white">
+            <div className="flex gap-4">
+              <button
+                onClick={() => setViewMode('items')}
+                className={`pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${
+                  viewMode === 'items'
+                    ? 'border-orange-500 text-orange-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                รายการที่นับ ({prepAreaItems.length})
+              </button>
+              <button
+                onClick={() => setViewMode('compare')}
+                className={`pb-2 px-1 text-sm font-medium border-b-2 transition-colors ${
+                  viewMode === 'compare'
+                    ? 'border-orange-500 text-orange-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                }`}
+              >
+                เปรียบเทียบกับระบบ
+              </button>
             </div>
           </div>
+        )}
+
+        {/* Summary */}
+        <div className="px-6 py-4 border-b bg-gray-50">
+          {isPrepArea && viewMode === 'compare' && comparison ? (
+            // Summary สำหรับการเปรียบเทียบ
+            <div className="grid grid-cols-6 gap-3 text-center">
+              <div>
+                <p className="text-xl font-bold">{comparison.summary.total_items}</p>
+                <p className="text-[10px] text-gray-500 font-thai">รายการทั้งหมด</p>
+              </div>
+              <div className="bg-green-50 rounded-lg p-2">
+                <p className="text-xl font-bold text-green-600">{comparison.summary.matched_count}</p>
+                <p className="text-[10px] text-green-600 font-thai">ตรง</p>
+              </div>
+              <div className="bg-blue-50 rounded-lg p-2">
+                <p className="text-xl font-bold text-blue-600">{comparison.summary.over_count}</p>
+                <p className="text-[10px] text-blue-600 font-thai">เกิน</p>
+              </div>
+              <div className="bg-red-50 rounded-lg p-2">
+                <p className="text-xl font-bold text-red-600">{comparison.summary.short_count}</p>
+                <p className="text-[10px] text-red-600 font-thai">ขาด</p>
+              </div>
+              <div className="bg-yellow-50 rounded-lg p-2">
+                <p className="text-xl font-bold text-yellow-600">{comparison.summary.missing_count}</p>
+                <p className="text-[10px] text-yellow-600 font-thai">ไม่ได้นับ</p>
+              </div>
+              <div className="bg-purple-50 rounded-lg p-2">
+                <p className="text-xl font-bold text-purple-600">{comparison.summary.extra_count}</p>
+                <p className="text-[10px] text-purple-600 font-thai">พบเพิ่ม</p>
+              </div>
+            </div>
+          ) : isPrepArea ? (
+            // Summary สำหรับบ้านหยิบ (รายการที่นับ)
+            <div className="grid grid-cols-2 gap-4 text-center">
+              <div>
+                <p className="text-2xl font-bold">{prepAreaItems.length}</p>
+                <p className="text-xs text-gray-500 font-thai">รายการทั้งหมด</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-orange-600">
+                  {prepAreaItems.reduce((sum, item) => sum + (item.quantity || 0), 0).toLocaleString()}
+                </p>
+                <p className="text-xs text-orange-600 font-thai">จำนวนรวม (ชิ้น)</p>
+              </div>
+            </div>
+          ) : (
+            // Summary สำหรับ standard
+            <div className="grid grid-cols-5 gap-4 text-center">
+              <div>
+                <p className="text-2xl font-bold">{items.length}</p>
+                <p className="text-xs text-gray-500 font-thai">รายการทั้งหมด</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-green-600">{session.matched_count || 0}</p>
+                <p className="text-xs text-green-600 font-thai">ถูกต้อง</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-red-600">{session.mismatched_count || 0}</p>
+                <p className="text-xs text-red-600 font-thai">ไม่ตรง</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-yellow-600">{session.empty_count || 0}</p>
+                <p className="text-xs text-yellow-600 font-thai">ว่าง (ในระบบมี)</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-blue-600">{session.extra_count || 0}</p>
+                <p className="text-xs text-blue-600 font-thai">เพิ่มเติม</p>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Items Table */}
         <div className="flex-1 overflow-auto">
-          <table className="w-full">
-            <thead className="bg-gray-100 sticky top-0">
-              <tr>
-                <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">#</th>
-                <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">โลเคชั่น</th>
-                <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">พาเลท (คาดหวัง)</th>
-                <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">พาเลท (สแกน)</th>
-                <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">SKU</th>
-                <th className="px-3 py-2 text-right text-[10px] font-medium text-gray-600 font-thai">จำนวน (คาดหวัง)</th>
-                <th className="px-3 py-2 text-right text-[10px] font-medium text-gray-600 font-thai">จำนวน (จริง)</th>
-                <th className="px-3 py-2 text-center text-[10px] font-medium text-gray-600 font-thai">สถานะ</th>
-                <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">เวลานับ</th>
-                <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">หมายเหตุ</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.length > 0 ? (
-                items.map((item, idx) => (
-                  <tr key={item.id} className="border-t border-gray-100 hover:bg-gray-50">
-                    <td className="px-3 py-2 text-[10px] text-gray-500">{idx + 1}</td>
-                    <td className="px-3 py-2 text-xs font-mono text-gray-900">{item.location_code}</td>
-                    <td className="px-3 py-2 text-xs font-mono text-gray-700">{item.expected_pallet_id || '-'}</td>
-                    <td className="px-3 py-2 text-xs font-mono text-gray-700">{item.scanned_pallet_id || '-'}</td>
-                    <td className="px-3 py-2">
-                      <div className="text-xs text-gray-900 font-thai">{item.expected_sku_name || item.actual_sku_name || '-'}</div>
-                      <div className="text-[10px] text-gray-500">{item.expected_sku_code || item.actual_sku_code || ''}</div>
-                    </td>
-                    <td className="px-3 py-2 text-xs text-right font-mono">{item.expected_quantity?.toLocaleString() || '-'}</td>
-                    <td className="px-3 py-2 text-xs text-right font-mono">{item.actual_quantity?.toLocaleString() || '-'}</td>
-                    <td className="px-3 py-2 text-center">{getItemStatusBadge(item.status)}</td>
-                    <td className="px-3 py-2 text-[10px] text-gray-500">
-                      {item.counted_at ? format(new Date(item.counted_at), 'HH:mm:ss') : '-'}
-                    </td>
-                    <td className="px-3 py-2 text-[10px] text-gray-500 font-thai max-w-[150px] truncate">{item.notes || '-'}</td>
+          {isPrepArea && viewMode === 'compare' ? (
+            // ตารางเปรียบเทียบ
+            loadingCompare ? (
+              <div className="flex items-center justify-center py-12">
+                <div className="w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+                <span className="ml-2 text-sm text-gray-500 font-thai">กำลังโหลด...</span>
+              </div>
+            ) : comparison ? (
+              <table className="w-full">
+                <thead className="bg-gray-100 sticky top-0">
+                  <tr>
+                    <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">#</th>
+                    <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">รหัส SKU</th>
+                    <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">ชื่อสินค้า</th>
+                    <th className="px-3 py-2 text-right text-[10px] font-medium text-gray-600 font-thai">นับได้</th>
+                    <th className="px-3 py-2 text-right text-[10px] font-medium text-gray-600 font-thai">ในระบบ</th>
+                    <th className="px-3 py-2 text-right text-[10px] font-medium text-gray-600 font-thai">ผลต่าง</th>
+                    <th className="px-3 py-2 text-center text-[10px] font-medium text-gray-600 font-thai">สถานะ</th>
                   </tr>
-                ))
-              ) : (
+                </thead>
+                <tbody>
+                  {comparison.items.length > 0 ? (
+                    comparison.items.map((item: any, idx: number) => (
+                      <tr key={idx} className={`border-t border-gray-100 hover:bg-gray-50 ${
+                        item.status !== 'matched' ? 'bg-red-50/30' : ''
+                      }`}>
+                        <td className="px-3 py-2 text-[10px] text-gray-500">{idx + 1}</td>
+                        <td className="px-3 py-2 text-xs font-mono text-gray-900">{item.sku_id}</td>
+                        <td className="px-3 py-2 text-xs text-gray-700 font-thai">{item.sku_name || '-'}</td>
+                        <td className="px-3 py-2 text-sm text-right font-mono font-bold text-orange-600">
+                          {item.counted_qty.toLocaleString()}
+                        </td>
+                        <td className="px-3 py-2 text-sm text-right font-mono text-gray-600">
+                          {item.system_qty.toLocaleString()}
+                        </td>
+                        <td className={`px-3 py-2 text-sm text-right font-mono font-bold ${
+                          item.variance > 0 ? 'text-blue-600' : item.variance < 0 ? 'text-red-600' : 'text-green-600'
+                        }`}>
+                          {item.variance > 0 ? '+' : ''}{item.variance.toLocaleString()}
+                        </td>
+                        <td className="px-3 py-2 text-center">{getCompareStatusBadge(item.status)}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={7} className="px-4 py-8 text-center text-gray-400 font-thai">
+                        ไม่มีข้อมูลเปรียบเทียบ
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            ) : (
+              <div className="flex items-center justify-center py-12 text-gray-400 font-thai">
+                ไม่สามารถโหลดข้อมูลเปรียบเทียบได้
+              </div>
+            )
+          ) : isPrepArea ? (
+            // ตารางสำหรับบ้านหยิบ
+            <table className="w-full">
+              <thead className="bg-gray-100 sticky top-0">
                 <tr>
-                  <td colSpan={10} className="px-4 py-8 text-center text-gray-400 font-thai">
-                    ยังไม่มีรายการที่สแกน
-                  </td>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">#</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">รหัส SKU</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">ชื่อสินค้า</th>
+                  <th className="px-3 py-2 text-right text-[10px] font-medium text-gray-600 font-thai">จำนวน (ชิ้น)</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">เวลานับ</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {prepAreaItems.length > 0 ? (
+                  prepAreaItems.map((item, idx) => (
+                    <tr key={item.id} className="border-t border-gray-100 hover:bg-gray-50">
+                      <td className="px-3 py-2 text-[10px] text-gray-500">{idx + 1}</td>
+                      <td className="px-3 py-2 text-xs font-mono text-gray-900">{item.sku_code}</td>
+                      <td className="px-3 py-2 text-xs text-gray-700 font-thai">{item.sku_name || '-'}</td>
+                      <td className="px-3 py-2 text-sm text-right font-mono font-bold text-orange-600">
+                        {item.quantity?.toLocaleString()}
+                      </td>
+                      <td className="px-3 py-2 text-[10px] text-gray-500">
+                        {item.counted_at ? format(new Date(item.counted_at), 'HH:mm:ss') : '-'}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={5} className="px-4 py-8 text-center text-gray-400 font-thai">
+                      ยังไม่มีรายการที่สแกน
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          ) : (
+            // ตารางสำหรับ standard
+            <table className="w-full">
+              <thead className="bg-gray-100 sticky top-0">
+                <tr>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">#</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">โลเคชั่น</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">พาเลท (คาดหวัง)</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">พาเลท (สแกน)</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">SKU</th>
+                  <th className="px-3 py-2 text-right text-[10px] font-medium text-gray-600 font-thai">จำนวน (คาดหวัง)</th>
+                  <th className="px-3 py-2 text-right text-[10px] font-medium text-gray-600 font-thai">จำนวน (จริง)</th>
+                  <th className="px-3 py-2 text-center text-[10px] font-medium text-gray-600 font-thai">สถานะ</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">เวลานับ</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">หมายเหตุ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {items.length > 0 ? (
+                  items.map((item, idx) => (
+                    <tr key={item.id} className="border-t border-gray-100 hover:bg-gray-50">
+                      <td className="px-3 py-2 text-[10px] text-gray-500">{idx + 1}</td>
+                      <td className="px-3 py-2 text-xs font-mono text-gray-900">{item.location_code}</td>
+                      <td className="px-3 py-2 text-xs font-mono text-gray-700">{item.expected_pallet_id || '-'}</td>
+                      <td className="px-3 py-2 text-xs font-mono text-gray-700">{item.scanned_pallet_id || '-'}</td>
+                      <td className="px-3 py-2">
+                        <div className="text-xs text-gray-900 font-thai">{item.expected_sku_name || item.actual_sku_name || '-'}</div>
+                        <div className="text-[10px] text-gray-500">{item.expected_sku_code || item.actual_sku_code || ''}</div>
+                      </td>
+                      <td className="px-3 py-2 text-xs text-right font-mono">{item.expected_quantity?.toLocaleString() || '-'}</td>
+                      <td className="px-3 py-2 text-xs text-right font-mono">{item.actual_quantity?.toLocaleString() || '-'}</td>
+                      <td className="px-3 py-2 text-center">{getItemStatusBadge(item.status)}</td>
+                      <td className="px-3 py-2 text-[10px] text-gray-500">
+                        {item.counted_at ? format(new Date(item.counted_at), 'HH:mm:ss') : '-'}
+                      </td>
+                      <td className="px-3 py-2 text-[10px] text-gray-500 font-thai max-w-[150px] truncate">{item.notes || '-'}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={10} className="px-4 py-8 text-center text-gray-400 font-thai">
+                      ยังไม่มีรายการที่สแกน
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          )}
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t flex justify-end">
+        <div className="px-6 py-4 border-t flex justify-between items-center">
+          <div>
+            {isPrepArea && session.status === 'completed' && (
+              <button
+                onClick={handleCreateAdjustment}
+                disabled={creatingAdjustment}
+                className="px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed font-thai flex items-center gap-2"
+              >
+                {creatingAdjustment ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    กำลังสร้าง...
+                  </>
+                ) : (
+                  <>
+                    <FileText className="w-4 h-4" />
+                    สร้างใบปรับสต็อก
+                  </>
+                )}
+              </button>
+            )}
+          </div>
           <button
             onClick={onClose}
             className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 font-thai"

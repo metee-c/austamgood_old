@@ -58,6 +58,13 @@ export async function GET(request: NextRequest) {
     
     // ดึง packages ที่ยังไม่ได้โหลด (storage_location IS NOT NULL) สำหรับทุก BFS
     const bfsIds = bonusFaceSheets?.map(bfs => bfs.id) || [];
+
+    // ✅ ดึงข้อมูลว่า bonus face sheet ไหนถูกใช้ใน loadlist แล้ว
+    const { data: usedBonusFaceSheets } = await supabase
+      .from('loadlist_bonus_face_sheets')
+      .select('bonus_face_sheet_id, loadlist_id');
+
+    const usedBfsMap = new Map(usedBonusFaceSheets?.map(lbfs => [lbfs.bonus_face_sheet_id, lbfs.loadlist_id]) || []);
     
     // Query packages ที่ยังมี storage_location (ยังไม่ได้ย้ายไป staging/โหลด)
     const { data: unloadedPackages } = await supabase
@@ -185,7 +192,10 @@ export async function GET(request: NextRequest) {
           // ✅ Flag บอกว่ามี packages ที่ยังไม่แมพหรือไม่
           has_unmapped_packages: unmappedPackages.length > 0,
           // ✅ ถ้าไม่มี packages ที่แมพเลย ให้ซ่อนจากรายการ
-          is_ready_for_loadlist: mappedPackages.length > 0
+          is_ready_for_loadlist: mappedPackages.length > 0,
+          // ✅ สถานะการใช้งานใน loadlist
+          is_used: usedBfsMap.has(bfs.id),
+          used_in_loadlist_id: usedBfsMap.get(bfs.id) || null
         };
       })
     );
