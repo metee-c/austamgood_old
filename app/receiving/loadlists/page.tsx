@@ -723,6 +723,7 @@ const LoadlistsPage = () => {
         for (const bfsId of selectedBonusFaceSheets) {
           const bfs = availableBonusFaceSheets.find(b => b.id === bfsId);
           const checkerId = bonusFaceSheetCheckers[bfsId];
+          const mapping = bonusFaceSheetMappings[bfsId] || { selectedPicklistId: null, selectedFaceSheetId: null };
           
           const requestBody: any = {
             checker_employee_id: checkerId,
@@ -732,11 +733,18 @@ const LoadlistsPage = () => {
             driver_employee_id: driverEmployeeId || null,
             loading_queue_number: loadingQueueNumber || null,
             loading_door_number: loadingDoorNumber || null,
-            bonus_face_sheet_ids: [bfsId]
+            bonus_face_sheet_ids: [bfsId],
+            // ✅ NEW: ส่ง mapping ของ picklist และ face sheet ที่ผู้ใช้เลือก
+            bonus_face_sheet_mappings: [{
+              bonus_face_sheet_id: bfsId,
+              picklist_id: mapping.selectedPicklistId,
+              face_sheet_id: mapping.selectedFaceSheetId
+            }]
           };
 
           console.log(`🚀 Creating loadlist for ${bfs?.face_sheet_no}:`, {
-            checker_employee_id: requestBody.checker_employee_id
+            checker_employee_id: requestBody.checker_employee_id,
+            mapping: requestBody.bonus_face_sheet_mappings[0]
           });
 
           const response = await fetch('/api/loadlists', {
@@ -754,6 +762,7 @@ const LoadlistsPage = () => {
         setIsCreateModalOpen(false);
         setSelectedBonusFaceSheets([]);
         setBonusFaceSheetCheckers({});
+        setBonusFaceSheetMappings({});
         await fetchLoadlists();
         return;
       }

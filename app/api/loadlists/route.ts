@@ -259,6 +259,7 @@ export async function POST(request: NextRequest) {
       picklist_ids,
       face_sheet_ids,
       bonus_face_sheet_ids,
+      bonus_face_sheet_mappings, // ✅ NEW: รับ mapping ของ bonus face sheet กับ picklist และ face sheet
       checker_employee_id,
       vehicle_type,
       delivery_number,
@@ -509,6 +510,72 @@ export async function POST(request: NextRequest) {
           { error: 'Failed to link bonus face sheets to loadlist', details: linkError.message },
           { status: 500 }
         );
+      }
+
+      // ✅ NEW: บันทึก mapping ของ bonus face sheet กับ face sheet ลง loadlist_face_sheets
+      if (bonus_face_sheet_mappings && Array.isArray(bonus_face_sheet_mappings)) {
+        const mappedFaceSheetIds = bonus_face_sheet_mappings
+          .filter((m: any) => m.face_sheet_id)
+          .map((m: any) => m.face_sheet_id);
+
+        if (mappedFaceSheetIds.length > 0) {
+          const loadlistFaceSheetsData = mappedFaceSheetIds.map((face_sheet_id: number) => ({
+            loadlist_id: loadlist.id,
+            face_sheet_id: face_sheet_id
+          }));
+
+          console.log('🔗 Linking mapped face sheets to loadlist:', { loadlist_id: loadlist.id, face_sheet_ids: mappedFaceSheetIds });
+
+          const { error: fsMappingError } = await supabase
+            .from('loadlist_face_sheets')
+            .insert(loadlistFaceSheetsData);
+
+          if (fsMappingError) {
+            console.error('Failed to link mapped face sheets:', fsMappingError);
+            // ไม่ต้อง rollback เพราะเป็น optional mapping
+          }
+        }
+
+        // ✅ NEW: บันทึก picklist_id ลง loadlist ถ้ามี
+        const mappedPicklistIds = bonus_face_sheet_mappings
+          .filter((m: any) => m.picklist_id)
+          .map((m: any) => m.picklist_id);
+
+        if (mappedPicklistIds.length > 0) {
+          // ดึง trip_id จาก picklist ที่เลือก
+          const { data: selectedPicklist } = await supabase
+            .from('picklists')
+            .select('trip_id')
+            .eq('id', mappedPicklistIds[0])
+            .single();
+
+          if (selectedPicklist?.trip_id) {
+            // อัปเดต loadlist ให้มี trip_id
+            await supabase
+              .from('loadlists')
+              .update({ trip_id: selectedPicklist.trip_id })
+              .eq('id', loadlist.id);
+
+            console.log('✅ Updated loadlist with trip_id:', selectedPicklist.trip_id);
+          }
+
+          // Link picklist to loadlist
+          const loadlistPicklistsData = mappedPicklistIds.map((picklist_id: number) => ({
+            loadlist_id: loadlist.id,
+            picklist_id: picklist_id
+          }));
+
+          console.log('🔗 Linking mapped picklists to loadlist:', { loadlist_id: loadlist.id, picklist_ids: mappedPicklistIds });
+
+          const { error: plMappingError } = await supabase
+            .from('wms_loadlist_picklists')
+            .insert(loadlistPicklistsData);
+
+          if (plMappingError) {
+            console.error('Failed to link mapped picklists:', plMappingError);
+            // ไม่ต้อง rollback เพราะเป็น optional mapping
+          }
+        }
       }
     }
 
