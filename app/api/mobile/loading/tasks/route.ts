@@ -152,7 +152,9 @@ export async function GET(request: NextRequest) {
       }
       
       // Calculate from face sheets
-      if (faceSheetIds.length > 0) {
+      // ✅ FIX: ไม่นับ face_sheet_items ถ้า loadlist มี BFS (เพราะ FS เป็น mapping target ไม่ใช่ source)
+      const hasBonusFaceSheets = bonusFaceSheetIds.length > 0;
+      if (faceSheetIds.length > 0 && !hasBonusFaceSheets) {
         const { data: faceSheetItems } = await supabase
           .from('face_sheet_items')
           .select(`
@@ -178,16 +180,42 @@ export async function GET(request: NextRequest) {
       }
       
       // Calculate from bonus face sheets
+      // ✅ FIX: กรองเฉพาะ items ที่อยู่ใน matched_package_ids (แมพกับ loadlist นี้)
       if (bonusFaceSheetIds.length > 0) {
-        // Fetch bonus face sheet items
+        // Get matched_package_ids from wms_loadlist_bonus_face_sheets
+        const matchedPackageIds = new Set<number>(
+          bonusFaceSheets.flatMap((bfs: any) => {
+            // ต้อง query matched_package_ids จาก wms_loadlist_bonus_face_sheets
+            return [];
+          })
+        );
+        
+        // Query matched_package_ids separately
+        const { data: bfsLinks } = await supabase
+          .from('wms_loadlist_bonus_face_sheets')
+          .select('matched_package_ids')
+          .eq('loadlist_id', loadlist.id);
+        
+        const allMatchedPackageIds = new Set<number>(
+          bfsLinks?.flatMap((link: any) => link.matched_package_ids || []) || []
+        );
+        
+        // Fetch bonus face sheet items with package_id
         const { data: bonusFaceSheetItems } = await supabase
           .from('bonus_face_sheet_items')
-          .select('quantity_picked, sku_id')
+          .select('quantity_picked, sku_id, package_id')
           .in('face_sheet_id', bonusFaceSheetIds);
         
         if (bonusFaceSheetItems && bonusFaceSheetItems.length > 0) {
+          // Filter items by matched_package_ids (if any)
+          const filteredItems = allMatchedPackageIds.size > 0
+            ? bonusFaceSheetItems.filter((item: any) => 
+                item.package_id && allMatchedPackageIds.has(item.package_id)
+              )
+            : bonusFaceSheetItems;
+          
           // Get unique SKU IDs
-          const skuIds = [...new Set(bonusFaceSheetItems.map((item: any) => item.sku_id))];
+          const skuIds = [...new Set(filteredItems.map((item: any) => item.sku_id))];
           
           // Fetch SKU data
           const { data: skuData } = await supabase
@@ -202,7 +230,7 @@ export async function GET(request: NextRequest) {
           });
           
           // Calculate totals
-          bonusFaceSheetItems.forEach((item: any) => {
+          filteredItems.forEach((item: any) => {
             const qty = parseFloat(item.quantity_picked) || 0;
             const sku = skuMap[item.sku_id];
             const qtyPerPack = sku?.qty_per_pack || 1;

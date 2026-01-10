@@ -3,6 +3,126 @@ import { createClient } from '@/lib/supabase/server';
 import { getUserIdFromCookie, setDatabaseUserContext } from '@/lib/database/user-context';
 
 /**
+ * GET /api/bonus-face-sheets/confirm-pick-to-staging?loadlist_id=xxx
+ * ตรวจสอบสถานะการย้ายสต็อกไป staging
+ * 
+ * Returns:
+ * - total_packages: จำนวน packages ทั้งหมดที่มี trip_number
+ * - moved_packages: จำนวน packages ที่ย้ายไป staging แล้ว (storage_location = null)
+ * - pending_packages: จำนวน packages ที่ยังไม่ได้ย้าย (storage_location != null)
+ * - is_complete: true ถ้าย้ายครบแล้ว
+ */
+export async function GET(request: NextRequest) {
+  try {
+    const supabase = await createClient();
+    const searchParams = request.nextUrl.searchParams;
+    const loadlist_id = searchParams.get('loadlist_id');
+
+    if (!loadlist_id) {
+      return NextResponse.json(
+        { success: false, error: 'กรุณาระบุ loadlist_id' },
+        { status: 400 }
+      );
+    }
+
+    // ดึง bonus_face_sheet_ids จาก loadlist mapping
+    const { data: bfsLinks, error: bfsLinksError } = await supabase
+      .from('wms_loadlist_bonus_face_sheets')
+      .select('bonus_face_sheet_id, matched_package_ids, mapping_type')
+      .eq('loadlist_id', loadlist_id);
+
+    if (bfsLinksError) {
+      console.error('Error fetching BFS links:', bfsLinksError);
+      return NextResponse.json(
+        { success: false, error: 'ไม่สามารถดึงข้อมูลได้' },
+        { status: 500 }
+      );
+    }
+
+    if (!bfsLinks || bfsLinks.length === 0) {
+      return NextResponse.json({
+        success: true,
+        total_packages: 0,
+        moved_packages: 0,
+        pending_packages: 0,
+        is_complete: true // ไม่มี BFS = ถือว่าเสร็จแล้ว
+      });
+    }
+
+    // ✅ FIX (edit11): ตรวจสอบว่า BFS ถูกใช้หมดแล้วหรือไม่ (legacy_exhausted)
+    const hasExhaustedBFS = bfsLinks.some(link => link.mapping_type === 'legacy_exhausted');
+    
+    // ดึง matched_package_ids ทั้งหมด
+    let matchedPackageIds = bfsLinks.flatMap(link => link.matched_package_ids || []);
+    
+    // ✅ FIX (edit10): Fallback สำหรับ loadlist เก่าที่ไม่มี matched_package_ids
+    // ให้ดึงทุก packages จาก BFS แทน
+    // ✅ FIX (edit11): ไม่ทำ fallback ถ้า mapping_type = 'legacy_exhausted' (packages ถูกใช้หมดแล้ว)
+    if (matchedPackageIds.length === 0 && !hasExhaustedBFS) {
+      console.log('⚠️ No matched_package_ids found, using fallback: all packages from BFS');
+      const bfsIds = bfsLinks.map(link => link.bonus_face_sheet_id);
+      
+      const { data: allPackages } = await supabase
+        .from('bonus_face_sheet_packages')
+        .select('id')
+        .in('face_sheet_id', bfsIds);
+      
+      matchedPackageIds = allPackages?.map(p => p.id) || [];
+      console.log(`📦 Fallback: found ${matchedPackageIds.length} packages from ${bfsIds.length} BFS`);
+    } else if (hasExhaustedBFS) {
+      console.log('⚠️ BFS has legacy_exhausted mapping_type, skipping fallback');
+    }
+    
+    if (matchedPackageIds.length === 0) {
+      return NextResponse.json({
+        success: true,
+        total_packages: 0,
+        moved_packages: 0,
+        pending_packages: 0,
+        is_complete: true
+      });
+    }
+
+    // ✅ FIX (edit11): ใช้ matched_package_ids แทนการตรวจสอบ trip_number
+    // เพราะ packages ที่ถูกแมพกับ loadlist นี้คือ packages ที่ต้องย้ายไป staging
+    const { data: packages, error: pkgError } = await supabase
+      .from('bonus_face_sheet_packages')
+      .select('id, storage_location')
+      .in('id', matchedPackageIds);
+
+    if (pkgError) {
+      console.error('Error fetching packages:', pkgError);
+      return NextResponse.json(
+        { success: false, error: 'ไม่สามารถดึงข้อมูลแพ็คได้' },
+        { status: 500 }
+      );
+    }
+
+    // ✅ FIX: นับ packages จาก matched_package_ids (ไม่ต้องตรวจสอบ trip_number)
+    const totalPackages = packages?.length || 0;
+    
+    // นับ packages ที่ย้ายไป staging แล้ว (storage_location = null หรือ empty)
+    const movedPackages = packages?.filter(p => !p.storage_location || p.storage_location.trim() === '').length || 0;
+    const pendingPackages = totalPackages - movedPackages;
+
+    return NextResponse.json({
+      success: true,
+      total_packages: totalPackages,
+      moved_packages: movedPackages,
+      pending_packages: pendingPackages,
+      is_complete: pendingPackages === 0
+    });
+
+  } catch (error: any) {
+    console.error('Error in GET confirm-pick-to-staging:', error);
+    return NextResponse.json(
+      { success: false, error: error.message || 'เกิดข้อผิดพลาดภายในระบบ' },
+      { status: 500 }
+    );
+  }
+}
+
+/**
  * POST /api/bonus-face-sheets/confirm-pick-to-staging
  * ยืนยันหยิบของแถมจาก Storage Location (PQ01-PQ10, MR01-MR10) ไปยัง Staging (PQTD/MRTD)
  * 
@@ -86,7 +206,23 @@ export async function POST(request: NextRequest) {
 
     console.log(`📋 Found loadlist: ${loadlist.loadlist_code}, trip_id: ${loadlist.trip_id}`);
 
-    // 3. ดึง packages จากทุก BFS ที่มี storage_location และมี trip_number (แมพสายรถแล้ว)
+    // ✅ FIX (edit11): ดึง matched_package_ids จาก wms_loadlist_bonus_face_sheets
+    const { data: bfsLinks } = await supabase
+      .from('wms_loadlist_bonus_face_sheets')
+      .select('bonus_face_sheet_id, matched_package_ids')
+      .eq('loadlist_id', loadlist_id)
+      .in('bonus_face_sheet_id', bfsIds);
+
+    const matchedPackageIds = bfsLinks?.flatMap(link => link.matched_package_ids || []) || [];
+    
+    if (matchedPackageIds.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'ไม่พบแพ็คที่แมพกับใบโหลดนี้' },
+        { status: 400 }
+      );
+    }
+
+    // 3. ดึง packages จาก matched_package_ids ที่มี storage_location
     const { data: packages, error: pkgError } = await supabase
       .from('bonus_face_sheet_packages')
       .select(`
@@ -100,10 +236,8 @@ export async function POST(request: NextRequest) {
         trip_number,
         face_sheet_id
       `)
-      .in('face_sheet_id', bfsIds)
-      .not('storage_location', 'is', null)
-      .not('trip_number', 'is', null)
-      .neq('trip_number', ''); // กรอง empty string ด้วย
+      .in('id', matchedPackageIds)
+      .not('storage_location', 'is', null);
 
     if (pkgError) {
       console.error('Error fetching packages:', pkgError);
@@ -115,14 +249,14 @@ export async function POST(request: NextRequest) {
 
     if (!packages || packages.length === 0) {
       return NextResponse.json(
-        { success: false, error: 'ไม่พบแพ็คที่มีโลเคชั่นจัดวางและแมพสายรถแล้ว กรุณาจัดสรรโลเคชั่นและแมพสายรถก่อน' },
+        { success: false, error: 'ไม่พบแพ็คที่มีโลเคชั่นจัดวาง กรุณาจัดสรรโลเคชั่นก่อน' },
         { status: 400 }
       );
     }
 
-    console.log(`📦 Found ${packages.length} packages with storage locations and trip_number from ${bonusFaceSheets.length} BFS`);
+    console.log(`📦 Found ${packages.length} packages with storage locations from ${bonusFaceSheets.length} BFS (matched_package_ids: ${matchedPackageIds.length})`);
 
-    // 4. ดึง items ของแต่ละ package ที่มี trip_number เพื่อย้ายสต็อก
+    // 4. ดึง items ของแต่ละ package เพื่อย้ายสต็อก
     const packageIds = packages.map(p => p.id);
     const { data: items, error: itemsError } = await supabase
       .from('bonus_face_sheet_items')

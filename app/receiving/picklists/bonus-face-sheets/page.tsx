@@ -31,12 +31,19 @@ interface BonusFaceSheet {
   face_sheet_no: string;
   status: string;
   created_date: string;
+  created_at: string;
   created_by: string;
   total_packages: number;
   total_items: number;
   total_orders: number;
   warehouse_id: string;
   notes?: string;
+  assigned_packages: number;
+  unassigned_packages: number;
+  // ✅ FIX (edit12): เพิ่ม fields สำหรับแสดงแพ็คคงเหลือ
+  used_packages: number;
+  remaining_packages: number;
+  is_fully_mapped: boolean;
 }
 
 interface PreviewOrder {
@@ -167,6 +174,42 @@ const BonusFaceSheetsPage = () => {
     } finally {
       setEditingStatusId(null);
     }
+  };
+
+  // ✅ FIX (edit12): Helper functions สำหรับคำนวณอายุและสีแถว
+  const getAgeInDays = (bfs: BonusFaceSheet): number => {
+    const today = new Date();
+    const createdDate = new Date(bfs.created_at || bfs.created_date);
+    return Math.floor((today.getTime() - createdDate.getTime()) / (1000 * 60 * 60 * 24));
+  };
+
+  const getRowStyle = (bfs: BonusFaceSheet): string => {
+    // ถ้าแมพหมดแล้ว → ไม่ไฮไลท์
+    if (bfs.is_fully_mapped || bfs.remaining_packages === 0) {
+      return '';
+    }
+    
+    // คำนวณอายุ
+    const ageInDays = getAgeInDays(bfs);
+    
+    // กำหนดสีตามอายุ (SLA = 4 วัน)
+    if (ageInDays > 4) {
+      return 'bg-red-200'; // เกิน SLA - แดงเข้ม
+    } else if (ageInDays >= 3) {
+      return 'bg-red-100'; // ใกล้เกิน - แดงอ่อน
+    } else if (ageInDays >= 1) {
+      return 'bg-orange-50'; // ปานกลาง - ส้มอ่อน
+    }
+    
+    return ''; // ใหม่ - ปกติ
+  };
+
+  const getAgeLabel = (bfs: BonusFaceSheet): string => {
+    const ageInDays = getAgeInDays(bfs);
+    
+    if (ageInDays === 0) return 'วันนี้';
+    if (ageInDays === 1) return '1 วัน';
+    return `${ageInDays} วัน`;
   };
 
   const getStatusLabel = (status: string) => {
@@ -761,6 +804,8 @@ const BonusFaceSheetsPage = () => {
                   <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">สถานะ</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">วันที่สร้าง</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">แพ็คทั้งหมด</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">แพ็คคงเหลือ</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">อายุ</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">รายการสินค้า</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">จำนวนออเดอร์</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">จัดการ</th>
@@ -769,7 +814,7 @@ const BonusFaceSheetsPage = () => {
               <tbody className="bg-white divide-y divide-gray-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-8 text-center text-sm text-gray-500">
+                    <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-500">
                       <div className="flex items-center justify-center space-x-2">
                         <Loader2 className="w-4 h-4 animate-spin" />
                         <span>กำลังโหลดข้อมูล...</span>
@@ -778,7 +823,7 @@ const BonusFaceSheetsPage = () => {
                   </tr>
                 ) : filteredBonusFaceSheets.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-4 py-12 text-center">
+                    <td colSpan={10} className="px-4 py-12 text-center">
                       <div className="flex flex-col items-center justify-center">
                         <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mb-4">
                           <Gift className="w-8 h-8 text-purple-600" />
@@ -790,7 +835,7 @@ const BonusFaceSheetsPage = () => {
                   </tr>
                 ) : (
                   filteredBonusFaceSheets.map((sheet) => (
-                    <tr key={sheet.id} className="hover:bg-gray-50/80 transition-colors duration-200">
+                    <tr key={sheet.id} className={`${getRowStyle(sheet)} hover:bg-gray-50/80 transition-colors duration-200`}>
                       <td className="px-4 py-3 text-xs whitespace-nowrap">
                         <div className="font-semibold text-purple-600 font-mono">{sheet.face_sheet_no}</div>
                       </td>
@@ -818,6 +863,28 @@ const BonusFaceSheetsPage = () => {
                       <td className="px-4 py-3 text-xs text-center whitespace-nowrap">
                         <div className="font-bold text-purple-600">{sheet.total_packages}</div>
                       </td>
+                      {/* ✅ FIX (edit12): คอลัมน์แพ็คคงเหลือ */}
+                      <td className="px-4 py-3 text-xs text-center whitespace-nowrap">
+                        {sheet.is_fully_mapped ? (
+                          <span className="inline-flex items-center text-green-600">
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            แมพหมด
+                          </span>
+                        ) : sheet.remaining_packages === sheet.total_packages ? (
+                          <span className="inline-flex items-center text-orange-600">
+                            <AlertTriangle className="w-3 h-3 mr-1" />
+                            {sheet.remaining_packages}/{sheet.total_packages}
+                          </span>
+                        ) : (
+                          <span className="text-gray-700">{sheet.remaining_packages}/{sheet.total_packages}</span>
+                        )}
+                      </td>
+                      {/* ✅ FIX (edit12): คอลัมน์อายุ */}
+                      <td className="px-4 py-3 text-xs text-center whitespace-nowrap">
+                        <span className={getAgeInDays(sheet) > 4 ? 'text-red-600 font-bold' : getAgeInDays(sheet) >= 3 ? 'text-red-500' : ''}>
+                          {getAgeLabel(sheet)}
+                        </span>
+                      </td>
                       <td className="px-4 py-3 text-xs text-center whitespace-nowrap">
                         <div className="font-bold text-blue-600">{sheet.total_items}</div>
                       </td>
@@ -834,10 +901,16 @@ const BonusFaceSheetsPage = () => {
                             <Eye className="w-4 h-4" />
                           </button>
                           <button
-                            className="p-1 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors disabled:opacity-60"
-                            title="จัดสรรโลเคชั่น (PQ/MR)"
+                            className={`p-1 rounded transition-colors disabled:opacity-40 disabled:cursor-not-allowed ${
+                              sheet.unassigned_packages === 0 
+                                ? 'text-gray-400 cursor-not-allowed' 
+                                : 'hover:bg-blue-50 hover:text-blue-600'
+                            }`}
+                            title={sheet.unassigned_packages === 0 
+                              ? 'จัดสรรโลเคชั่นครบแล้ว' 
+                              : `จัดสรรโลเคชั่น (${sheet.unassigned_packages} แพ็ครอจัดสรร)`}
                             onClick={() => handleAssignLocations(sheet.id)}
-                            disabled={assigningLocationId === sheet.id}
+                            disabled={assigningLocationId === sheet.id || sheet.unassigned_packages === 0}
                           >
                             {assigningLocationId === sheet.id ? (
                               <Loader2 className="w-4 h-4 animate-spin" />

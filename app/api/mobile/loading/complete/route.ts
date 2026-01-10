@@ -101,18 +101,37 @@ export async function POST(request: NextRequest) {
 
     const { data: bonusFaceSheetLinks } = await supabase
       .from('wms_loadlist_bonus_face_sheets')
-      .select('bonus_face_sheet_id, matched_package_ids')
+      .select('bonus_face_sheet_id, matched_package_ids, mapping_type')
       .eq('loadlist_id', loadlist.id);
 
     const picklistIds = picklistLinks?.map(lp => lp.picklist_id) || [];
     const faceSheetIds = faceSheetLinks?.map(fs => fs.face_sheet_id) || [];
     const bonusFaceSheetIds = bonusFaceSheetLinks?.map(bfs => bfs.bonus_face_sheet_id) || [];
     
+    // ✅ FIX (edit11): ตรวจสอบว่า BFS ถูกใช้หมดแล้วหรือไม่ (legacy_exhausted)
+    const hasExhaustedBFS = bonusFaceSheetLinks?.some(bfs => bfs.mapping_type === 'legacy_exhausted');
+    
     // ✅ FIX: ใช้ matched_package_ids จาก wms_loadlist_bonus_face_sheets แทนการใช้ trip_number
     // เพื่อให้แสดงเฉพาะ packages ที่ถูกแมพกับ loadlist นี้จริงๆ
-    const matchedPackageIds = new Set<number>(
+    let matchedPackageIds = new Set<number>(
       bonusFaceSheetLinks?.flatMap(bfs => bfs.matched_package_ids || []) || []
     );
+    
+    // ✅ FIX (edit10): Fallback สำหรับ loadlist เก่าที่ไม่มี matched_package_ids
+    // ให้ดึงทุก packages จาก BFS แทน
+    // ✅ FIX (edit11): ไม่ทำ fallback ถ้า mapping_type = 'legacy_exhausted' (packages ถูกใช้หมดแล้ว)
+    if (matchedPackageIds.size === 0 && bonusFaceSheetIds.length > 0 && !hasExhaustedBFS) {
+      console.log('⚠️ No matched_package_ids found, using fallback: all packages from BFS');
+      
+      const { data: allPackages } = await supabase
+        .from('bonus_face_sheet_packages')
+        .select('id')
+        .in('face_sheet_id', bonusFaceSheetIds);
+      
+      matchedPackageIds = new Set<number>(allPackages?.map(p => p.id) || []);
+      console.log(`📦 Fallback: found ${matchedPackageIds.size} packages from ${bonusFaceSheetIds.length} BFS`);
+    }
+    
     console.log('📦 Matched package IDs from loadlist mapping:', [...matchedPackageIds]);
 
     console.log('📋 Document IDs:', { picklistIds, faceSheetIds, bonusFaceSheetIds });
@@ -151,9 +170,15 @@ export async function POST(request: NextRequest) {
       picklists = picklistData || [];
     }
 
+    // ✅ ตรวจสอบว่า loadlist นี้มี bonus face sheets หรือไม่
+    // ถ้ามี BFS แสดงว่า loadlist นี้สร้างจาก BFS แมพ FS/Picklist
+    // ดังนั้นไม่ควรดึง items จาก face_sheets (เพราะ FS เป็น mapping target ไม่ใช่ source)
+    const hasBonusFaceSheets = bonusFaceSheetIds.length > 0;
+
     // Fetch face sheets with items (including order_id)
+    // ✅ FIX: ไม่ดึง face_sheet_items ถ้ามี BFS (เพราะ items จะมาจาก BFS แทน)
     let faceSheets: any[] = [];
-    if (faceSheetIds.length > 0) {
+    if (faceSheetIds.length > 0 && !hasBonusFaceSheets) {
       console.log('🔍 Fetching face sheets:', faceSheetIds);
       const { data: faceSheetData, error: faceSheetsError } = await supabase
         .from('face_sheets')
@@ -179,6 +204,8 @@ export async function POST(request: NextRequest) {
         );
       }
       faceSheets = faceSheetData || [];
+    } else if (faceSheetIds.length > 0 && hasBonusFaceSheets) {
+      console.log('⏭️ Skipping face sheet items because loadlist has BFS (FS is mapping target, not source)');
     }
 
     // Fetch bonus face sheets with items (including package_id)

@@ -39,9 +39,64 @@ export async function GET(request: NextRequest) {
       );
     }
     
+    // ✅ เพิ่มข้อมูล assigned/unassigned packages สำหรับแต่ละ face sheet
+    const faceSheetIds = data?.map(fs => fs.id) || [];
+    let packageStats: Record<number, { assigned: number; unassigned: number }> = {};
+    
+    if (faceSheetIds.length > 0) {
+      const { data: packages, error: pkgError } = await supabase
+        .from('bonus_face_sheet_packages')
+        .select('id, face_sheet_id, storage_location')
+        .in('face_sheet_id', faceSheetIds);
+      
+      if (!pkgError && packages) {
+        // Group by face_sheet_id and count assigned/unassigned
+        for (const pkg of packages) {
+          if (!packageStats[pkg.face_sheet_id]) {
+            packageStats[pkg.face_sheet_id] = { assigned: 0, unassigned: 0 };
+          }
+          if (pkg.storage_location) {
+            packageStats[pkg.face_sheet_id].assigned++;
+          } else {
+            packageStats[pkg.face_sheet_id].unassigned++;
+          }
+        }
+      }
+    }
+    
+    // ✅ FIX (edit12): ดึง matched_package_ids ที่ใช้แล้วจากทุก loadlist
+    const { data: usedMappings } = await supabase
+      .from('wms_loadlist_bonus_face_sheets')
+      .select('bonus_face_sheet_id, matched_package_ids')
+      .not('matched_package_ids', 'is', null);
+
+    // สร้าง Map นับ packages ที่ใช้แล้ว (แมพกับ loadlist แล้ว)
+    const usedPackagesCount = new Map<number, number>();
+    usedMappings?.forEach(mapping => {
+      const bfsId = mapping.bonus_face_sheet_id;
+      const count = (mapping.matched_package_ids || []).length;
+      usedPackagesCount.set(bfsId, (usedPackagesCount.get(bfsId) || 0) + count);
+    });
+    
+    // Merge stats into data
+    const enrichedData = data?.map(fs => {
+      const usedCount = usedPackagesCount.get(fs.id) || 0;
+      const remainingPackages = Math.max(0, fs.total_packages - usedCount);
+      
+      return {
+        ...fs,
+        assigned_packages: packageStats[fs.id]?.assigned ?? 0,
+        unassigned_packages: packageStats[fs.id]?.unassigned ?? fs.total_packages,
+        // ✅ FIX (edit12): เพิ่ม remaining_packages, used_packages, is_fully_mapped
+        used_packages: usedCount,
+        remaining_packages: remainingPackages,
+        is_fully_mapped: remainingPackages <= 0
+      };
+    }) || [];
+    
     return NextResponse.json({
       success: true,
-      data: data || []
+      data: enrichedData
     });
   } catch (error: any) {
     console.error('Error in GET /api/bonus-face-sheets:', error);

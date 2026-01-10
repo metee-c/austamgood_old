@@ -198,6 +198,51 @@ export async function POST(request: NextRequest) {
 
     const matchedPackageIds = matchedPackages.map(pkg => pkg.id);
 
+    // ✅ FIX (edit11): ดึง checker_employee_id จาก loadlist ที่มี picklist/face_sheet นี้อยู่แล้ว
+    let existingCheckerEmployeeId: number | null = null;
+    
+    if (picklist_id) {
+      // ค้นหา loadlist ที่มี picklist นี้
+      const { data: existingLoadlistData } = await supabase
+        .from('wms_loadlist_picklists')
+        .select('loadlist_id')
+        .eq('picklist_id', picklist_id)
+        .limit(1)
+        .single();
+      
+      if (existingLoadlistData?.loadlist_id) {
+        const { data: loadlist } = await supabase
+          .from('loadlists')
+          .select('checker_employee_id')
+          .eq('id', existingLoadlistData.loadlist_id)
+          .single();
+        
+        if (loadlist?.checker_employee_id) {
+          existingCheckerEmployeeId = loadlist.checker_employee_id;
+        }
+      }
+    } else if (face_sheet_id) {
+      // ค้นหา loadlist ที่มี face_sheet นี้
+      const { data: existingLoadlistData } = await supabase
+        .from('loadlist_face_sheets')
+        .select('loadlist_id')
+        .eq('face_sheet_id', face_sheet_id)
+        .limit(1)
+        .single();
+      
+      if (existingLoadlistData?.loadlist_id) {
+        const { data: loadlist } = await supabase
+          .from('loadlists')
+          .select('checker_employee_id')
+          .eq('id', existingLoadlistData.loadlist_id)
+          .single();
+        
+        if (loadlist?.checker_employee_id) {
+          existingCheckerEmployeeId = loadlist.checker_employee_id;
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
       matched: matchedPackageIds.length > 0,
@@ -206,6 +251,7 @@ export async function POST(request: NextRequest) {
       matched_package_ids: matchedPackageIds,
       matched_customer_ids: matchedCustomerIds,
       mapping_type: mappingType!,
+      checker_employee_id: existingCheckerEmployeeId, // ✅ NEW: คืน checker จาก loadlist ที่มีอยู่แล้ว
       matched_packages: matchedPackages.map(pkg => ({
         id: pkg.id,
         customer_id: pkg.effective_customer_id,

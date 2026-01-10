@@ -117,32 +117,61 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get face sheets
-    const { data: faceSheetData } = await supabase
-      .from('loadlist_face_sheets')
-      .select(`
-        face_sheet_id,
-        face_sheets:face_sheet_id (
-          face_sheet_no,
-          picker_employee_ids,
-          checker_employee_ids,
-          face_sheet_items (
-            sku_id,
-            quantity,
-            order_id,
-            master_sku:sku_id (
-              sku_name,
-              weight_per_piece_kg
-            ),
-            wms_orders:order_id (
+    // ✅ ตรวจสอบว่า loadlist นี้มี bonus face sheets หรือไม่
+    // ถ้ามี BFS แสดงว่า loadlist นี้สร้างจาก BFS แมพ FS/Picklist
+    // ดังนั้นไม่ควรดึง items จาก face_sheets (เพราะ FS เป็น mapping target ไม่ใช่ source)
+    const { data: bonusFaceSheetCheck } = await supabase
+      .from('wms_loadlist_bonus_face_sheets')
+      .select('bonus_face_sheet_id')
+      .eq('loadlist_id', loadlist.id)
+      .limit(1);
+    
+    const hasBonusFaceSheets = bonusFaceSheetCheck && bonusFaceSheetCheck.length > 0;
+
+    // Get face sheets - แต่ไม่ดึง items ถ้ามี BFS (เพราะ items จะมาจาก BFS แทน)
+    let faceSheetData: any[] | null = null;
+    if (!hasBonusFaceSheets) {
+      const { data } = await supabase
+        .from('loadlist_face_sheets')
+        .select(`
+          face_sheet_id,
+          face_sheets:face_sheet_id (
+            face_sheet_no,
+            picker_employee_ids,
+            checker_employee_ids,
+            face_sheet_items (
+              sku_id,
+              quantity,
               order_id,
-              order_no,
-              shop_name
+              master_sku:sku_id (
+                sku_name,
+                weight_per_piece_kg
+              ),
+              wms_orders:order_id (
+                order_id,
+                order_no,
+                shop_name
+              )
             )
           )
-        )
-      `)
-      .eq('loadlist_id', loadlist.id);
+        `)
+        .eq('loadlist_id', loadlist.id);
+      faceSheetData = data;
+    } else {
+      // ถ้ามี BFS ให้ดึงเฉพาะข้อมูล face sheet สำหรับ picker/checker info (ไม่ดึง items)
+      const { data } = await supabase
+        .from('loadlist_face_sheets')
+        .select(`
+          face_sheet_id,
+          face_sheets:face_sheet_id (
+            face_sheet_no,
+            picker_employee_ids,
+            checker_employee_ids
+          )
+        `)
+        .eq('loadlist_id', loadlist.id);
+      faceSheetData = data;
+    }
 
     // Process face sheet items
     for (const fs of faceSheetData || []) {
