@@ -96,6 +96,13 @@ interface Loadlist {
     total_packages: number;
     total_items: number;
   }>;
+  // ✅ FIX (edit03): เพิ่ม mapped_documents
+  mapped_documents?: Array<{
+    type: 'picklist' | 'face_sheet';
+    code: string;
+    id: number;
+    matched_package_count?: number;
+  }>;
 }
 
 interface AvailablePicklist {
@@ -171,6 +178,10 @@ interface AvailableBonusFaceSheet {
   // ✅ NEW: สถานะการใช้งานใน loadlist
   is_used?: boolean;
   used_in_loadlist_id?: number | null;
+  // ✅ FIX (edit02): จำนวน packages ที่เหลือและทั้งหมด
+  available_package_ids?: number[];
+  total_available_packages?: number;
+  original_total_packages?: number;
 }
 
 interface Employee {
@@ -238,6 +249,15 @@ const LoadlistsPage = () => {
     selectedFaceSheetId: number | null;  // face_sheet_id ที่เลือกแมพ
   }>>({});
 
+  // ✅ NEW: เก็บผลลัพธ์ preview จำนวน packages ที่จะ match (key = bonus_face_sheet_id)
+  const [matchingPreviews, setMatchingPreviews] = useState<Record<number, {
+    loading: boolean;
+    matched: boolean;
+    matched_count: number;
+    total_packages: number;
+    message: string;
+  }>>({});
+
   // ✅ NEW: รายการ picklists ทั้งหมดสำหรับ dropdown ในแทบ bonus face sheets
   const [allPicklistsForDropdown, setAllPicklistsForDropdown] = useState<Array<{
     id: number;
@@ -271,7 +291,7 @@ const LoadlistsPage = () => {
   const [isBonusPrintModalOpen, setIsBonusPrintModalOpen] = useState(false);
   const [bonusFaceSheetToPrint, setBonusFaceSheetToPrint] = useState<{ id: number; face_sheet_no: string } | null>(null);
   const [currentLoadlistIdForPrint, setCurrentLoadlistIdForPrint] = useState<number | null>(null);
-  const [mappedFaceSheets, setMappedFaceSheets] = useState<Array<{ face_sheet_id: number; face_sheet_no: string; created_date: string | null; total_orders: number; total_packages: number; bonus_package_count: number; bonus_order_count: number }>>([]);
+  const [mappedFaceSheets, setMappedFaceSheets] = useState<Array<{ face_sheet_id: number; face_sheet_no: string; created_date: string | null; total_orders: number; total_packages: number; bonus_package_count: number; bonus_order_count: number; mapping_type?: string; is_picklist?: boolean }>>([]);
   const [selectedFaceSheetsForPrint, setSelectedFaceSheetsForPrint] = useState<number[]>([]); // เก็บ face_sheet_id สำหรับ filter
   const [printingPickListId, setPrintingPickListId] = useState<number | null>(null);
   const [confirmingPickId, setConfirmingPickId] = useState<number | null>(null); // สำหรับปุ่มยืนยันหยิบ
@@ -284,12 +304,6 @@ const LoadlistsPage = () => {
         throw new Error('Unable to load loadlists');
       }
       const data = await response.json();
-      console.log('📦 Fetched loadlists:', data.map((l: any) => ({
-        code: l.loadlist_code,
-        loading_door: l.loading_door_number,
-        vehicle: l.vehicle,
-        driver: l.driver
-      })));
       setLoadlists(data);
     } catch (err: any) {
       setError(err.message ?? 'An unexpected error occurred');
@@ -311,22 +325,9 @@ const LoadlistsPage = () => {
       const firstSelectedPicklist = availablePicklists.find(p => p.id === selectedPicklists[0]);
       
       if (firstSelectedPicklist) {
-        console.log('🔄 Auto-filling from picklist:', {
-          picklist_code: firstSelectedPicklist.picklist_code,
-          loading_door: firstSelectedPicklist.loading_door_number,
-          vehicle_id: firstSelectedPicklist.trip?.vehicle_id,
-          driver_id: firstSelectedPicklist.trip?.driver_id,
-          current_state: {
-            loadingDoorNumber,
-            vehicleId,
-            driverEmployeeId
-          }
-        });
-
         // Set loading door number from picklist (always override)
         if (firstSelectedPicklist.loading_door_number) {
           setLoadingDoorNumber(firstSelectedPicklist.loading_door_number);
-          console.log('✅ Set loading door:', firstSelectedPicklist.loading_door_number);
         }
         
         // Set vehicle and driver from trip
@@ -335,15 +336,11 @@ const LoadlistsPage = () => {
           if (firstSelectedPicklist.trip.vehicle_id) {
             const vehicleIdStr = String(firstSelectedPicklist.trip.vehicle_id);
             setVehicleId(vehicleIdStr);
-            console.log('✅ Set vehicle ID:', vehicleIdStr);
           }
           
           // Set driver if available (always override)
           if (firstSelectedPicklist.trip.driver_id) {
             setDriverEmployeeId(firstSelectedPicklist.trip.driver_id);
-            console.log('✅ Set driver ID:', firstSelectedPicklist.trip.driver_id);
-          } else {
-            console.log('⚠️ No driver_id in trip (driver_id is null)');
           }
         }
       }
@@ -357,16 +354,6 @@ const LoadlistsPage = () => {
         throw new Error('Unable to load available picklists');
       }
       const data = await response.json();
-      console.log('📋 Available picklists:', JSON.stringify(data.map((p: any) => ({
-        code: p.picklist_code,
-        loading_door: p.loading_door_number,
-        trip: p.trip ? {
-          vehicle_id: p.trip.vehicle_id,
-          driver_id: p.trip.driver_id,
-          vehicle_plate: p.trip.vehicle?.plate_number,
-          driver_name: p.trip.driver_name
-        } : null
-      })), null, 2));
       setAvailablePicklists(data);
     } catch (err: any) {
       setCreateError('Unable to load picklists: ' + (err.message ?? 'unknown error'));
@@ -400,6 +387,67 @@ const LoadlistsPage = () => {
       }
     } catch (err: any) {
       setCreateError('Unable to load bonus face sheets: ' + (err.message ?? 'unknown error'));
+    }
+  };
+
+  // ✅ NEW: ฟังก์ชันเรียก check-matching API เพื่อแสดง preview จำนวน packages ที่จะ match
+  const fetchMatchingPreview = async (bfsId: number, picklistId: number | null, faceSheetId: number | null) => {
+    if (!picklistId && !faceSheetId) {
+      // Clear preview if no mapping selected
+      setMatchingPreviews(prev => {
+        const newPreviews = { ...prev };
+        delete newPreviews[bfsId];
+        return newPreviews;
+      });
+      return;
+    }
+
+    // Set loading state
+    setMatchingPreviews(prev => ({
+      ...prev,
+      [bfsId]: {
+        loading: true,
+        matched: false,
+        matched_count: 0,
+        total_packages: 0,
+        message: 'กำลังตรวจสอบ...'
+      }
+    }));
+
+    try {
+      const response = await fetch('/api/bonus-face-sheets/check-matching', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bonus_face_sheet_id: bfsId,
+          picklist_id: picklistId,
+          face_sheet_id: faceSheetId
+        })
+      });
+      const result = await response.json();
+
+      setMatchingPreviews(prev => ({
+        ...prev,
+        [bfsId]: {
+          loading: false,
+          matched: result.matched || false,
+          matched_count: result.matched_count || 0,
+          total_packages: result.total_bfs_packages || 0,
+          message: result.message || (result.matched ? 'พบรายการที่ตรงกัน' : 'ไม่พบรายการที่ตรงกัน')
+        }
+      }));
+    } catch (err) {
+      console.error('Error checking matching:', err);
+      setMatchingPreviews(prev => ({
+        ...prev,
+        [bfsId]: {
+          loading: false,
+          matched: false,
+          matched_count: 0,
+          total_packages: 0,
+          message: 'เกิดข้อผิดพลาดในการตรวจสอบ'
+        }
+      }));
     }
   };
 
@@ -444,7 +492,6 @@ const LoadlistsPage = () => {
       const result = await response.json();
       // API returns array directly
       const employeeData = Array.isArray(result) ? result : [];
-      console.log('👥 Fetched employees:', employeeData.length, employeeData.slice(0, 3));
       setEmployees(employeeData);
       setDrivers(employeeData); // Use same employee list for drivers
     } catch (err: any) {
@@ -462,7 +509,6 @@ const LoadlistsPage = () => {
       }
       const result = await response.json();
       const vehicleData = Array.isArray(result.data) ? result.data : [];
-      console.log('🚗 Fetched vehicles:', vehicleData.length, vehicleData.slice(0, 3));
       setVehicles(vehicleData);
     } catch (err: any) {
       console.error('Failed to fetch vehicles:', err);
@@ -517,7 +563,6 @@ const LoadlistsPage = () => {
   }, [loadlists, searchTerm, sortField, sortDirection]);
 
   const handleOpenCreateModal = async () => {
-    console.log('🔓 Opening create modal...');
     setIsCreateModalOpen(true);
     setCreateError(null);
     setSelectedPicklists([]);
@@ -536,6 +581,7 @@ const LoadlistsPage = () => {
     setPicklistFormData({}); // ✅ Reset picklist form data
     setBonusFaceSheetCheckers({}); // ✅ Reset bonus face sheet checkers
     setBonusFaceSheetMappings({}); // ✅ Reset bonus face sheet mappings
+    setMatchingPreviews({}); // ✅ Reset matching previews
     await Promise.all([
       fetchAvailablePicklists(),
       fetchAvailableFaceSheets(),
@@ -544,11 +590,6 @@ const LoadlistsPage = () => {
       fetchEmployees(),
       fetchVehicles()
     ]);
-    console.log('✅ Modal data loaded:', {
-      vehicles: vehicles.length,
-      employees: employees.length,
-      availablePicklists: availablePicklists.length
-    });
   };
 
   // ✅ Helper function สำหรับอัปเดตค่าแต่ละ picklist
@@ -692,13 +733,6 @@ const LoadlistsPage = () => {
             picklist_ids: [picklistId]
           };
 
-          console.log(`🚀 Creating loadlist for ${picklist?.picklist_code}:`, {
-            vehicle_id: requestBody.vehicle_id,
-            driver_employee_id: requestBody.driver_employee_id,
-            loading_door_number: requestBody.loading_door_number,
-            checker_employee_id: requestBody.checker_employee_id
-          });
-
           const response = await fetch('/api/loadlists', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -726,38 +760,78 @@ const LoadlistsPage = () => {
           const checkerId = bonusFaceSheetCheckers[bfsId];
           const mapping = bonusFaceSheetMappings[bfsId] || { selectedPicklistId: null, selectedFaceSheetId: null };
           
-          const requestBody: any = {
-            checker_employee_id: checkerId,
-            vehicle_type: vehicleType || 'N/A',
-            delivery_number: deliveryNumber || `BFS-${Date.now()}`,
-            vehicle_id: vehicleId || null,
-            driver_employee_id: driverEmployeeId || null,
-            loading_queue_number: loadingQueueNumber || null,
-            loading_door_number: loadingDoorNumber || null,
-            bonus_face_sheet_ids: [bfsId],
-            // ✅ NEW: ส่ง mapping ของ picklist และ face sheet ที่ผู้ใช้เลือก
-            bonus_face_sheet_mappings: [{
+          // ✅ Validate: ต้องมี checker
+          if (!checkerId) {
+            throw new Error(`กรุณาเลือกผู้เช็คโหลดสำหรับ ${bfs?.face_sheet_no}`);
+          }
+
+          // ✅ Validate: ต้องเลือก Picklist หรือ Face Sheet อย่างใดอย่างหนึ่ง
+          if (!mapping.selectedPicklistId && !mapping.selectedFaceSheetId) {
+            throw new Error(`กรุณาเลือกใบหยิบหรือใบปะหน้าสำหรับ ${bfs?.face_sheet_no}`);
+          }
+
+          // ✅ Pre-check customer_id matching ก่อนสร้าง loadlist
+          const checkResponse = await fetch('/api/bonus-face-sheets/check-matching', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
               bonus_face_sheet_id: bfsId,
               picklist_id: mapping.selectedPicklistId,
               face_sheet_id: mapping.selectedFaceSheetId
-            }]
-          };
-
-          console.log(`🚀 Creating loadlist for ${bfs?.face_sheet_no}:`, {
-            checker_employee_id: requestBody.checker_employee_id,
-            mapping: requestBody.bonus_face_sheet_mappings[0]
+            })
           });
-
-          const response = await fetch('/api/loadlists', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestBody)
-          });
-          const result = await response.json();
-          if (!response.ok) {
-            throw new Error(result.error || `ไม่สามารถสร้างใบโหลดสำหรับ ${bfs?.face_sheet_no}`);
+          const checkResult = await checkResponse.json();
+          
+          if (!checkResponse.ok || !checkResult.matched) {
+            throw new Error(
+              `${bfs?.face_sheet_no}: ${checkResult.message || 'ไม่พบรหัสลูกค้าที่ตรงกัน ไม่สามารถสร้างใบโหลดได้'}`
+            );
           }
-          results.push(result);
+        }
+
+        // ✅ FIX (edit09): ส่ง BFS ทั้งหมดพร้อม mappings ในครั้งเดียว
+        // API จะจัดกลุ่มตามเอกสารที่แมพและสร้าง loadlist ตามกลุ่ม
+        const allMappings = selectedBonusFaceSheets.map(bfsId => {
+          const mapping = bonusFaceSheetMappings[bfsId] || { selectedPicklistId: null, selectedFaceSheetId: null };
+          return {
+            bonus_face_sheet_id: bfsId,
+            picklist_id: mapping.selectedPicklistId,
+            face_sheet_id: mapping.selectedFaceSheetId
+          };
+        });
+
+        // ใช้ checker จาก BFS แรก (หรือจะใช้ shared checker ก็ได้)
+        const firstBfsId = selectedBonusFaceSheets[0];
+        const firstCheckerId = bonusFaceSheetCheckers[firstBfsId];
+
+        // ✅ FIX: สร้าง delivery_number จากเลข BFS จริงที่เลือก
+        const selectedBfsNos = selectedBonusFaceSheets
+          .map(bfsId => availableBonusFaceSheets.find(b => b.id === bfsId)?.face_sheet_no)
+          .filter(Boolean);
+        const bfsDeliveryNumber = selectedBfsNos.length > 0 
+          ? selectedBfsNos.join(', ')
+          : `BFS-${Date.now()}`;
+
+        const requestBody: any = {
+          checker_employee_id: firstCheckerId,
+          vehicle_type: vehicleType || 'N/A',
+          delivery_number: deliveryNumber || bfsDeliveryNumber,
+          vehicle_id: vehicleId || null,
+          driver_employee_id: driverEmployeeId || null,
+          loading_queue_number: loadingQueueNumber || null,
+          loading_door_number: loadingDoorNumber || null,
+          bonus_face_sheet_ids: selectedBonusFaceSheets,
+          bonus_face_sheet_mappings: allMappings
+        };
+
+        const response = await fetch('/api/loadlists', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(requestBody)
+        });
+        const result = await response.json();
+        if (!response.ok) {
+          throw new Error(result.error || 'ไม่สามารถสร้างใบโหลดได้');
         }
         
         setIsCreateModalOpen(false);
@@ -778,13 +852,6 @@ const LoadlistsPage = () => {
         loading_queue_number: loadingQueueNumber || null,
         loading_door_number: loadingDoorNumber || null
       };
-
-      console.log('🚀 Creating loadlist with data:', {
-        vehicle_id: requestBody.vehicle_id,
-        driver_employee_id: requestBody.driver_employee_id,
-        loading_door_number: requestBody.loading_door_number,
-        checker_employee_id: requestBody.checker_employee_id
-      });
       
       if (hasFaceSheets) {
         requestBody.face_sheet_ids = selectedFaceSheets;
@@ -836,11 +903,12 @@ const LoadlistsPage = () => {
 
     // Priority: Check Bonus Face Sheets FIRST (ตรวจสอบของแถมก่อน)
     if (hasBonusFaceSheets) {
-      // แสดง modal ให้เลือก trip ที่จะปริ้น (1 trip = 1 ใบ)
-      const firstBonusFaceSheet = (loadlist as any).bonus_face_sheets[0];
+      // ✅ FIX: แสดงทุก BFS ที่แมพกับ loadlist นี้ (ไม่ใช่แค่ BFS แรก)
+      const allBonusFaceSheets = (loadlist as any).bonus_face_sheets || [];
+      const allBfsNos = allBonusFaceSheets.map((bfs: any) => bfs.face_sheet_no).filter(Boolean);
       setBonusFaceSheetToPrint({
-        id: firstBonusFaceSheet.id,
-        face_sheet_no: firstBonusFaceSheet.face_sheet_no
+        id: allBonusFaceSheets[0]?.id || 0,
+        face_sheet_no: allBfsNos.join(', ') // รวมทุก BFS เป็น string
       });
       
       // ดึงรายการใบปะหน้าที่แมพกับ loadlist นี้
@@ -848,7 +916,8 @@ const LoadlistsPage = () => {
       setMappedFaceSheets([]);
       setCurrentLoadlistIdForPrint(loadlist.id);
       
-      fetch(`/api/bonus-face-sheets/mapped-face-sheets?loadlist_id=${loadlist.id}&bonus_face_sheet_id=${firstBonusFaceSheet.id}`)
+      // ✅ FIX: ไม่ส่ง bonus_face_sheet_id เพื่อให้ API return ทุก BFS ที่แมพกับ loadlist นี้
+      fetch(`/api/bonus-face-sheets/mapped-face-sheets?loadlist_id=${loadlist.id}`)
         .then(res => res.json())
         .then(result => {
           if (result.success && result.data) {
@@ -872,15 +941,6 @@ const LoadlistsPage = () => {
     }
     
     // Original print logic for picklists
-    console.log('Printing loadlist:', loadlist);
-    console.log('Loading door:', loadlist.loading_door_number);
-    console.log('Loading queue:', loadlist.loading_queue_number);
-    console.log('Picklists:', loadlist.picklists);
-    console.log('Orders in picklists:', loadlist.picklists?.map(p => ({ 
-      picklist_code: p.picklist_code, 
-      orders_count: p.orders?.length || 0,
-      orders: p.orders 
-    })));
     setPrintLoadlist(loadlist);
     setIsPrintModalOpen(true);
 
@@ -945,19 +1005,18 @@ const LoadlistsPage = () => {
   };
 
   // ฟังก์ชันปริ้นใบปะหน้าของแถมตามใบปะหน้าที่เลือก
+  // ✅ FIX (edit06): ใช้ loadlist_id แทน face_sheet_id เพื่อให้ API ดึง matched_package_ids ได้ถูกต้อง
   const handlePrintBonusFaceSheetByFaceSheets = () => {
-    if (!bonusFaceSheetToPrint || selectedFaceSheetsForPrint.length === 0) {
+    if (!bonusFaceSheetToPrint || !currentLoadlistIdForPrint) {
       alert('กรุณาเลือกใบปะหน้าอย่างน้อย 1 รายการ');
       return;
     }
 
-    // เปิดหน้าปริ้นสำหรับแต่ละ face_sheet ที่เลือก
-    selectedFaceSheetsForPrint.forEach((faceSheetId) => {
-      window.open(
-        `/api/bonus-face-sheets/print?id=${bonusFaceSheetToPrint.id}&face_sheet_id=${faceSheetId}`,
-        '_blank'
-      );
-    });
+    // เปิดหน้าปริ้นโดยส่ง loadlist_id เพื่อให้ API กรอง packages ตาม matched_package_ids
+    window.open(
+      `/api/bonus-face-sheets/print?id=${bonusFaceSheetToPrint.id}&loadlist_id=${currentLoadlistIdForPrint}`,
+      '_blank'
+    );
 
     setIsBonusPrintModalOpen(false);
     setBonusFaceSheetToPrint(null);
@@ -1069,12 +1128,16 @@ const LoadlistsPage = () => {
       return;
     }
 
-    const bonusFaceSheet = (loadlist as any).bonus_face_sheets[0];
+    // ✅ FIX (edit09): ดึงทุก BFS ที่แมพกับ loadlist นี้
+    const allBonusFaceSheets = (loadlist as any).bonus_face_sheets || [];
+    const allBfsIds = allBonusFaceSheets.map((bfs: any) => bfs.id);
+    const allBfsNos = allBonusFaceSheets.map((bfs: any) => bfs.face_sheet_no).filter(Boolean);
     
-    // ดึงจำนวน packages ที่มี trip_number (แมพสายรถแล้ว)
-    let mappedPackagesCount = bonusFaceSheet.total_packages;
+    // ดึงจำนวน packages ที่มี trip_number (แมพสายรถแล้ว) จากทุก BFS
+    let mappedPackagesCount = 0;
     try {
-      const countResponse = await fetch(`/api/bonus-face-sheets/pick-list?id=${bonusFaceSheet.id}&loadlist_id=${loadlist.id}`);
+      // ใช้ BFS แรกเพื่อดึงข้อมูล (API จะรวมทุก BFS ที่แมพกับ loadlist)
+      const countResponse = await fetch(`/api/bonus-face-sheets/pick-list?id=${allBfsIds[0]}&loadlist_id=${loadlist.id}`);
       const countResult = await countResponse.json();
       if (countResult.success && countResult.data) {
         // นับจำนวน packages จาก trip_groups
@@ -1094,7 +1157,7 @@ const LoadlistsPage = () => {
     // Confirm before proceeding
     const confirmed = window.confirm(
       `ยืนยันหยิบของแถมไปจุดพักรอโหลด?\n\n` +
-      `ใบปะหน้า: ${bonusFaceSheet.face_sheet_no}\n` +
+      `ใบปะหน้า: ${allBfsNos.join(', ')}\n` +
       `จำนวนแพ็คที่มีสายรถ: ${mappedPackagesCount} แพ็ค\n\n` +
       `ระบบจะย้ายสต็อกจาก PQ01-PQ10, MR01-MR10 ไปยัง PQTD/MRTD`
     );
@@ -1109,7 +1172,7 @@ const LoadlistsPage = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           loadlist_id: loadlist.id,
-          bonus_face_sheet_id: bonusFaceSheet.id
+          bonus_face_sheet_ids: allBfsIds // ✅ FIX: ส่งทุก BFS ids
         })
       });
 
@@ -1188,6 +1251,9 @@ const LoadlistsPage = () => {
                       <th className="w-[8%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
                         เลขงานจัดส่ง
                       </th>
+                      <th className="w-[10%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
+                        เอกสารที่แมพ
+                      </th>
                       <th className="w-[6%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
                         ประตูโหลด
                       </th>
@@ -1224,24 +1290,35 @@ const LoadlistsPage = () => {
                       const hasFaceSheets = (loadlist as any).face_sheets && (loadlist as any).face_sheets.length > 0;
                       const hasBonusFaceSheets = (loadlist as any).bonus_face_sheets && (loadlist as any).bonus_face_sheets.length > 0;
                       
-                      // แสดงเลขงานจัดส่งตามประเภท
-                      let displayDeliveryNumber = '-';
+                      // ✅ FIX: คอลัม "เลขงานจัดส่ง" แสดงเลข BFS ทั้งหมดที่นำไปแมพ (ใช้ face_sheet_no จาก bonus_face_sheets)
+                      let deliveryNumbers: string[] = [];
                       let deliveryNumberStyle = 'text-gray-700 font-medium';
                       
                       if (hasPicklists) {
                         // Picklist: แสดง delivery_number จริง
-                        displayDeliveryNumber = loadlist.delivery_number || '-';
+                        deliveryNumbers = [loadlist.delivery_number || '-'];
                       } else if (hasFaceSheets) {
                         // Face Sheet: แสดง face_sheet_no
                         const faceSheet = (loadlist as any).face_sheets[0];
-                        displayDeliveryNumber = faceSheet?.face_sheet_no || loadlist.delivery_number || '-';
+                        deliveryNumbers = [faceSheet?.face_sheet_no || loadlist.delivery_number || '-'];
                         deliveryNumberStyle = 'text-orange-600 font-medium';
                       } else if (hasBonusFaceSheets) {
-                        // Bonus Face Sheet: แสดง face_sheet_no
-                        const bonusFaceSheet = (loadlist as any).bonus_face_sheets[0];
-                        displayDeliveryNumber = bonusFaceSheet?.face_sheet_no || loadlist.delivery_number || '-';
+                        // Bonus Face Sheet: แสดงเลข BFS ทั้งหมดที่นำไปแมพ (ใช้ face_sheet_no ไม่ใช่ delivery_number)
+                        const bfsList = (loadlist as any).bonus_face_sheets || [];
+                        // ดึง face_sheet_no จากทุก BFS และ deduplicate
+                        const bfsNos = bfsList.map((bfs: any) => bfs.face_sheet_no).filter(Boolean);
+                        deliveryNumbers = [...new Set(bfsNos)] as string[];
+                        // ถ้าไม่มี face_sheet_no ให้ fallback ไป delivery_number
+                        if (deliveryNumbers.length === 0) {
+                          deliveryNumbers = [loadlist.delivery_number || '-'];
+                        }
                         deliveryNumberStyle = 'text-pink-600 font-medium';
                       }
+                      
+                      // ✅ FIX: คอลัม "เอกสารที่แมพ" แสดงเลขเอกสารไม่ซ้ำ
+                      const uniqueMappedDocs = loadlist.mapped_documents 
+                        ? [...new Map(loadlist.mapped_documents.map(doc => [doc.code, doc])).values()]
+                        : [];
                       
                       return (
                       <tr key={loadlist.id} className="hover:bg-blue-50/30 transition-colors duration-150">
@@ -1254,8 +1331,29 @@ const LoadlistsPage = () => {
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-purple-600 font-mono text-xs">
                           {loadlist.trip?.daily_trip_number ? `คันที่ ${loadlist.trip.daily_trip_number}` : '-'}
                         </td>
+                        {/* คอลัม "เลขงานจัดส่ง" - แสดงเลข BFS ทั้งหมดที่นำไปแมพ */}
                         <td className={`px-2 py-0.5 border-r border-gray-100 whitespace-nowrap ${deliveryNumberStyle}`}>
-                          {displayDeliveryNumber}
+                          {deliveryNumbers.length > 0 ? (
+                            <div className="space-y-0.5">
+                              {deliveryNumbers.map((num, idx) => (
+                                <div key={idx}>{num}</div>
+                              ))}
+                            </div>
+                          ) : '-'}
+                        </td>
+                        {/* คอลัม "เอกสารที่แมพ" - แสดงเลขเอกสารที่เลือกแมพไม่ซ้ำ */}
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                          {uniqueMappedDocs.length > 0 ? (
+                            <div className="space-y-0.5">
+                              {uniqueMappedDocs.map((doc, idx) => (
+                                <div key={idx} className={doc.type === 'picklist' ? 'text-blue-600 font-medium' : 'text-orange-600 font-medium'}>
+                                  {doc.code}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <span className="text-gray-400">-</span>
+                          )}
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                           <select
@@ -1362,7 +1460,6 @@ const LoadlistsPage = () => {
                             value={loadlist.vehicle?.vehicle_id || ''}
                             onChange={async (e) => {
                               const newVehicleId = e.target.value || null;
-                              console.log('🚗 Updating vehicle:', { loadlist_id: loadlist.id, new_vehicle_id: newVehicleId });
                               try {
                                 const response = await fetch(`/api/loadlists/${loadlist.id}`, {
                                   method: 'PUT',
@@ -1396,7 +1493,6 @@ const LoadlistsPage = () => {
                             value={loadlist.driver?.employee_id || ''}
                             onChange={async (e) => {
                               const newDriverId = e.target.value ? Number(e.target.value) : null;
-                              console.log('👤 Updating driver:', { loadlist_id: loadlist.id, new_driver_id: newDriverId });
                               try {
                                 const response = await fetch(`/api/loadlists/${loadlist.id}`, {
                                   method: 'PUT',
@@ -1983,20 +2079,39 @@ const LoadlistsPage = () => {
                               </div>
                             </td>
                             <td className="px-2 py-1 text-center border-r border-gray-100 whitespace-nowrap">
-                              <span className="font-semibold text-blue-600">{bonusFaceSheet.total_packages}</span>
+                              {/* ✅ FIX (edit02): แสดงจำนวน packages ที่เหลือ (ไม่ใช่ทั้งหมด) */}
+                              <span className="font-semibold text-blue-600">
+                                {bonusFaceSheet.mapped_packages ?? bonusFaceSheet.total_packages}
+                              </span>
+                              {/* แสดง (จาก X) ถ้ามีการใช้ไปบางส่วน */}
+                              {bonusFaceSheet.original_total_packages && 
+                               bonusFaceSheet.mapped_packages !== bonusFaceSheet.original_total_packages && (
+                                <span className="text-[10px] text-gray-500 ml-1">
+                                  (จาก {bonusFaceSheet.original_total_packages})
+                                </span>
+                              )}
                             </td>
                             <td className="px-2 py-1 border-r border-gray-100">
                               <select
                                 value={mapping.selectedPicklistId || ''}
-                                onChange={(e) => setBonusFaceSheetMappings(prev => ({
-                                  ...prev,
-                                  [bonusFaceSheet.id]: {
-                                    ...prev[bonusFaceSheet.id],
-                                    selectedPicklistId: e.target.value ? Number(e.target.value) : null
-                                  }
-                                }))}
-                                className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
-                                disabled={!isSelected}
+                                onChange={(e) => {
+                                  const newPicklistId = e.target.value ? Number(e.target.value) : null;
+                                  setBonusFaceSheetMappings(prev => ({
+                                    ...prev,
+                                    [bonusFaceSheet.id]: {
+                                      selectedPicklistId: newPicklistId,
+                                      // ✅ Clear Face Sheet เมื่อเลือก Picklist (Exclusive)
+                                      selectedFaceSheetId: newPicklistId ? null : prev[bonusFaceSheet.id]?.selectedFaceSheetId || null
+                                    }
+                                  }));
+                                  // ✅ NEW: เรียก check-matching API เพื่อแสดง preview
+                                  fetchMatchingPreview(bonusFaceSheet.id, newPicklistId, null);
+                                }}
+                                className={`w-full px-2 py-1 border rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500 ${
+                                  mapping.selectedFaceSheetId ? 'bg-gray-100 border-gray-200 text-gray-400' : 'border-gray-300'
+                                }`}
+                                disabled={!isSelected || !!mapping.selectedFaceSheetId}
+                                title={mapping.selectedFaceSheetId ? 'ยกเลิกการเลือกใบปะหน้าก่อน' : ''}
                               >
                                 <option value="">-- เลือกใบหยิบ --</option>
                                 {allPicklistsForDropdown.map((pl) => (
@@ -2010,15 +2125,24 @@ const LoadlistsPage = () => {
                             <td className="px-2 py-1 border-r border-gray-100">
                               <select
                                 value={mapping.selectedFaceSheetId || ''}
-                                onChange={(e) => setBonusFaceSheetMappings(prev => ({
-                                  ...prev,
-                                  [bonusFaceSheet.id]: {
-                                    ...prev[bonusFaceSheet.id],
-                                    selectedFaceSheetId: e.target.value ? Number(e.target.value) : null
-                                  }
-                                }))}
-                                className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
-                                disabled={!isSelected}
+                                onChange={(e) => {
+                                  const newFaceSheetId = e.target.value ? Number(e.target.value) : null;
+                                  setBonusFaceSheetMappings(prev => ({
+                                    ...prev,
+                                    [bonusFaceSheet.id]: {
+                                      // ✅ Clear Picklist เมื่อเลือก Face Sheet (Exclusive)
+                                      selectedPicklistId: newFaceSheetId ? null : prev[bonusFaceSheet.id]?.selectedPicklistId || null,
+                                      selectedFaceSheetId: newFaceSheetId
+                                    }
+                                  }));
+                                  // ✅ NEW: เรียก check-matching API เพื่อแสดง preview
+                                  fetchMatchingPreview(bonusFaceSheet.id, null, newFaceSheetId);
+                                }}
+                                className={`w-full px-2 py-1 border rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500 ${
+                                  mapping.selectedPicklistId ? 'bg-gray-100 border-gray-200 text-gray-400' : 'border-gray-300'
+                                }`}
+                                disabled={!isSelected || !!mapping.selectedPicklistId}
+                                title={mapping.selectedPicklistId ? 'ยกเลิกการเลือกใบหยิบก่อน' : ''}
                               >
                                 <option value="">-- เลือกใบปะหน้า --</option>
                                 {availableFaceSheets.map((fs) => (
@@ -2030,6 +2154,30 @@ const LoadlistsPage = () => {
                                   </option>
                                 ))}
                               </select>
+                              {/* ✅ NEW: แสดง preview จำนวน packages ที่จะ match */}
+                              {matchingPreviews[bonusFaceSheet.id] && (
+                                <div className={`mt-1 text-[10px] ${
+                                  matchingPreviews[bonusFaceSheet.id].loading 
+                                    ? 'text-gray-500' 
+                                    : matchingPreviews[bonusFaceSheet.id].matched 
+                                      ? 'text-green-600' 
+                                      : 'text-red-500'
+                                }`}>
+                                  {matchingPreviews[bonusFaceSheet.id].loading ? (
+                                    <span className="flex items-center gap-1">
+                                      <Loader2 className="w-3 h-3 animate-spin" />
+                                      กำลังตรวจสอบ...
+                                    </span>
+                                  ) : (
+                                    <span>
+                                      {matchingPreviews[bonusFaceSheet.id].matched 
+                                        ? `✓ ${matchingPreviews[bonusFaceSheet.id].matched_count}/${matchingPreviews[bonusFaceSheet.id].total_packages} แพ็ค`
+                                        : `✗ ${matchingPreviews[bonusFaceSheet.id].message}`
+                                      }
+                                    </span>
+                                  )}
+                                </div>
+                              )}
                             </td>
                             <td className="px-2 py-1 border-r border-gray-100">
                               <select
@@ -2317,7 +2465,7 @@ const LoadlistsPage = () => {
               <thead className="sticky top-0 z-10 bg-gray-100">
                 <tr>
                   <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 w-12"></th>
-                  <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">เลขใบปะหน้า</th>
+                  <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">เลขเอกสาร</th>
                   <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200">จำนวนแพ็คของแถม</th>
                   <th className="px-2 py-2 text-center text-xs font-semibold border-b">จำนวนร้าน</th>
                 </tr>
@@ -2352,8 +2500,19 @@ const LoadlistsPage = () => {
                           className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
                         />
                       </td>
-                      <td className="px-2 py-1 border-r border-gray-100 font-mono text-purple-600 font-semibold">
-                        {fs.face_sheet_no}
+                      <td className="px-2 py-1 border-r border-gray-100">
+                        <div className="flex items-center gap-2">
+                          {fs.is_picklist ? (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700">
+                              📋 ใบหยิบ
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-medium bg-orange-100 text-orange-700">
+                              📄 ใบปะหน้า
+                            </span>
+                          )}
+                          <span className="font-mono text-purple-600 font-semibold">{fs.face_sheet_no}</span>
+                        </div>
                       </td>
                       <td className="px-2 py-1 text-center border-r border-gray-100 font-semibold text-blue-600">
                         {fs.bonus_package_count} แพ็ค
@@ -2399,10 +2558,10 @@ const LoadlistsPage = () => {
               <Button
                 variant="primary"
                 onClick={handlePrintBonusFaceSheetByFaceSheets}
-                disabled={selectedFaceSheetsForPrint.length === 0}
+                disabled={!currentLoadlistIdForPrint}
                 className="bg-green-500 hover:bg-green-600"
               >
-                พิมพ์ ({selectedFaceSheetsForPrint.length} ใบ)
+                พิมพ์ใบเช็คของแถม
               </Button>
             </div>
           </div>

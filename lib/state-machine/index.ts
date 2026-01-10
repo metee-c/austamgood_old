@@ -24,12 +24,12 @@ export type OrderStatus = typeof ORDER_STATES[number];
 
 export const ORDER_TRANSITIONS: Record<OrderStatus, OrderStatus[]> = {
   'draft': ['confirmed', 'cancelled'],
-  'confirmed': ['in_picking', 'cancelled'],
-  'in_picking': ['picked', 'confirmed', 'cancelled'],  // Allow rollback to confirmed
-  'picked': ['loaded', 'in_picking', 'cancelled'],     // Allow rollback to in_picking
-  'loaded': ['in_transit', 'picked', 'cancelled'],     // Allow rollback to picked
-  'in_transit': ['delivered', 'loaded'],               // Allow rollback to loaded
-  'delivered': [],  // Terminal state
+  'confirmed': ['in_picking', 'cancelled', 'draft'],           // Allow rollback to draft
+  'in_picking': ['picked', 'confirmed', 'cancelled', 'draft'], // Allow rollback to draft
+  'picked': ['loaded', 'in_picking', 'cancelled', 'draft'],    // Allow rollback to draft
+  'loaded': ['in_transit', 'picked', 'cancelled', 'draft'],    // Allow rollback to draft
+  'in_transit': ['delivered', 'loaded', 'draft'],              // Allow rollback to draft
+  'delivered': ['draft'],  // Allow rollback to draft (for full return)
   'cancelled': []   // Terminal state
 };
 
@@ -99,8 +99,8 @@ export const LOADLIST_STATES = [
 export type LoadlistStatus = typeof LOADLIST_STATES[number];
 
 export const LOADLIST_TRANSITIONS: Record<LoadlistStatus, LoadlistStatus[]> = {
-  'pending': ['loaded', 'cancelled'],
-  'loaded': ['in_transit', 'pending', 'cancelled', 'completed'],
+  'pending': ['loaded', 'cancelled', 'voided'],  // Allow void for rollback scenarios
+  'loaded': ['in_transit', 'pending', 'cancelled', 'completed', 'voided'],  // Allow void for rollback scenarios
   'in_transit': ['completed', 'loaded'],
   'completed': ['voided'],
   'cancelled': [],

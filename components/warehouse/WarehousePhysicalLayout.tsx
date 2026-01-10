@@ -85,6 +85,15 @@ export default function WarehousePhysicalLayout() {
   const [showRepackModal, setShowRepackModal] = useState(false);
   const [repackData, setRepackData] = useState<any[]>([]);
   const [loadingRepack, setLoadingRepack] = useState(false);
+  // State สำหรับ PQ/MR Modal
+  const [showPrepAreaModal, setShowPrepAreaModal] = useState(false);
+  const [prepAreaZone, setPrepAreaZone] = useState<'PQ' | 'MR'>('PQ');
+  const [prepAreaData, setPrepAreaData] = useState<any[]>([]);
+  const [loadingPrepArea, setLoadingPrepArea] = useState(false);
+  const [prepAreaSummary, setPrepAreaSummary] = useState<{ total_locations: number; occupied_locations: number; total_packages: number; staging_packages?: number } | null>(null);
+  // State สำหรับ Package tooltip ใน PrepAreaModal
+  const [selectedPackage, setSelectedPackage] = useState<any | null>(null);
+  const [packageMousePos, setPackageMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
 
   // Fetch occupancy summary
   const fetchOccupancy = useCallback(async () => {
@@ -233,7 +242,47 @@ export default function WarehousePhysicalLayout() {
     setShowRack3D(false);
     setShowBlock3D(false);
     setShowPickingZone1Modal(false);
+    setShowPrepAreaModal(false);
     fetchRepackData();
+  };
+
+  // Fetch Prep Area (PQ/MR) packages
+  const fetchPrepAreaData = useCallback(async (zone: 'PQ' | 'MR') => {
+    setLoadingPrepArea(true);
+    try {
+      const response = await fetch(`/api/warehouse/prep-area-packages?zone=${zone}`);
+      const result = await response.json();
+      if (result.success) {
+        setPrepAreaData(result.data);
+        setPrepAreaSummary(result.summary);
+      }
+    } catch (error) {
+      console.error('Error fetching Prep Area data:', error);
+    } finally {
+      setLoadingPrepArea(false);
+    }
+  }, []);
+
+  // Handle PQ click
+  const handlePQClick = () => {
+    setPrepAreaZone('PQ');
+    setShowPrepAreaModal(true);
+    setShowRack3D(false);
+    setShowBlock3D(false);
+    setShowPickingZone1Modal(false);
+    setShowRepackModal(false);
+    fetchPrepAreaData('PQ');
+  };
+
+  // Handle MR click
+  const handleMRClick = () => {
+    setPrepAreaZone('MR');
+    setShowPrepAreaModal(true);
+    setShowRack3D(false);
+    setShowBlock3D(false);
+    setShowPickingZone1Modal(false);
+    setShowRepackModal(false);
+    fetchPrepAreaData('MR');
   };
 
   // Get cell color based on occupancy rate (percentage) - Red gradient
@@ -632,6 +681,286 @@ export default function WarehousePhysicalLayout() {
             </div>
             <button
               onClick={() => setShowRepackModal(false)}
+              className="bg-gray-100 hover:bg-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium transition-all"
+            >
+              ปิด
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // Prep Area Modal (PQ/MR) - แสดง 3D view ของ packages ใน PQ01-PQ10, MR01-MR10, PQTD, MRTD
+  const PrepAreaModal = () => {
+    if (!showPrepAreaModal) return null;
+
+    const zoneName = prepAreaZone === 'PQ' ? 'PQ (ของแถม PQ)' : 'MR (ของแถม MR)';
+    const zoneColor = prepAreaZone === 'PQ' ? 'blue' : 'purple';
+
+    return (
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl p-4 max-w-6xl w-full shadow-2xl border border-blue-100 max-h-[90vh] overflow-hidden flex flex-col">
+          {/* Header */}
+          <div className="flex justify-between items-start mb-4 flex-shrink-0">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <div className={`w-3 h-3 rounded-full ${loadingPrepArea ? 'bg-yellow-500 animate-pulse' : 'bg-green-500'}`}></div>
+                <span className={`text-sm font-medium ${loadingPrepArea ? 'text-yellow-600' : 'text-green-600'}`}>
+                  {loadingPrepArea ? 'กำลังโหลด...' : 'ACTIVE'}
+                </span>
+              </div>
+              <h2 className="text-2xl font-bold text-gray-800">{zoneName} - พื้นที่จัดเก็บของแถม</h2>
+              <p className="text-gray-500 text-sm mt-1">
+                {prepAreaSummary?.occupied_locations || 0}/{prepAreaSummary?.total_locations || 0} ตำแหน่งมีของ • 
+                {prepAreaSummary?.total_packages || 0} แพ็ค
+                {(prepAreaSummary?.staging_packages || 0) > 0 && (
+                  <span className="text-amber-600"> • {prepAreaSummary?.staging_packages} แพ็ครอโหลด</span>
+                )}
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              {/* Toggle Zone */}
+              <button
+                onClick={() => {
+                  const newZone = prepAreaZone === 'PQ' ? 'MR' : 'PQ';
+                  setPrepAreaZone(newZone);
+                  setSelectedPackage(null);
+                  fetchPrepAreaData(newZone);
+                }}
+                className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                  prepAreaZone === 'PQ' 
+                    ? 'bg-blue-100 text-blue-700 hover:bg-blue-200' 
+                    : 'bg-purple-100 text-purple-700 hover:bg-purple-200'
+                }`}
+              >
+                สลับไป {prepAreaZone === 'PQ' ? 'MR' : 'PQ'}
+              </button>
+              <button
+                onClick={() => setShowPrepAreaModal(false)}
+                className="text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg p-2 transition-all"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          {/* 3D Pallet View */}
+          <div className="flex-1 overflow-auto">
+            {loadingPrepArea ? (
+              <div className="flex items-center justify-center h-64">
+                <div className="flex items-center gap-2 text-gray-500">
+                  <svg className="w-6 h-6 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+                  กำลังโหลดข้อมูล...
+                </div>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 gap-4">
+                {/* Storage Locations (01-10) */}
+                <div className="grid grid-cols-5 gap-3">
+                  {prepAreaData.filter(loc => !loc.location_code.endsWith('TD')).map((location) => (
+                    <div
+                      key={location.location_code}
+                      className={`border-2 rounded-xl p-3 transition-all ${
+                        location.packages.length > 0 
+                          ? prepAreaZone === 'PQ' ? 'border-blue-300 bg-blue-50' : 'border-purple-300 bg-purple-50'
+                          : 'border-gray-200 bg-gray-50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-2">
+                        <span className={`font-bold text-sm ${
+                          location.packages.length > 0 
+                            ? prepAreaZone === 'PQ' ? 'text-blue-700' : 'text-purple-700'
+                            : 'text-gray-400'
+                        }`}>
+                          {location.location_code}
+                        </span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${
+                          location.packages.length > 0 
+                            ? prepAreaZone === 'PQ' ? 'bg-blue-200 text-blue-800' : 'bg-purple-200 text-purple-800'
+                            : 'bg-gray-200 text-gray-500'
+                        }`}>
+                          {location.packages.length} แพ็ค
+                        </span>
+                      </div>
+                      
+                      {/* 3D Pallet visualization */}
+                      <div className="relative h-32 bg-gradient-to-b from-gray-100 to-gray-200 rounded-lg overflow-hidden" onClick={() => setSelectedPackage(null)}>
+                        {location.packages.length === 0 ? (
+                          <div className="absolute inset-0 flex items-center justify-center text-gray-400 text-xs">
+                            ว่าง
+                          </div>
+                        ) : (
+                          <div className="absolute inset-0 p-1">
+                            {/* Grid of packages (max 12 visible) */}
+                            <div className="grid grid-cols-3 gap-0.5 h-full">
+                              {location.packages.slice(0, 12).map((pkg: any, idx: number) => (
+                                <div
+                                  key={pkg.id}
+                                  className={`rounded text-[8px] flex items-center justify-center font-medium truncate px-0.5 cursor-pointer hover:ring-2 hover:ring-white hover:ring-opacity-50 transition-all ${
+                                    pkg.trip_number 
+                                      ? 'bg-green-400 text-green-900 hover:bg-green-500' 
+                                      : prepAreaZone === 'PQ' ? 'bg-blue-400 text-blue-900 hover:bg-blue-500' : 'bg-purple-400 text-purple-900 hover:bg-purple-500'
+                                  } ${selectedPackage?.id === pkg.id ? 'ring-2 ring-white' : ''}`}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    if (selectedPackage?.id === pkg.id) {
+                                      setSelectedPackage(null);
+                                    } else {
+                                      setSelectedPackage(pkg);
+                                      const rect = (e.currentTarget.closest('.relative') as HTMLElement)?.getBoundingClientRect();
+                                      if (rect) {
+                                        setPackageMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+                                      }
+                                    }
+                                  }}
+                                >
+                                  #{pkg.package_number}
+                                </div>
+                              ))}
+                              {location.packages.length > 12 && (
+                                <div className="rounded bg-gray-300 text-gray-600 text-[8px] flex items-center justify-center font-medium">
+                                  +{location.packages.length - 12}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        
+                        {/* Package Tooltip */}
+                        {selectedPackage && location.packages.some((p: any) => p.id === selectedPackage.id) && (
+                          <div 
+                            className="absolute bg-gray-800 text-white rounded-md shadow-lg px-3 py-2 text-xs z-50 pointer-events-none"
+                            style={{ 
+                              left: Math.min(Math.max(packageMousePos.x - 60, 5), 80), 
+                              top: Math.max(packageMousePos.y - 80, 5),
+                              minWidth: '140px'
+                            }}
+                          >
+                            <div className={`font-semibold mb-1 ${prepAreaZone === 'PQ' ? 'text-blue-300' : 'text-purple-300'}`}>
+                              แพ็ค #{selectedPackage.package_number}
+                            </div>
+                            <div className="space-y-0.5">
+                              <div className="truncate"><span className="text-gray-400">ร้าน:</span> {selectedPackage.shop_name || '-'}</div>
+                              <div><span className="text-gray-400">BFS:</span> <span className="font-mono text-[10px]">{selectedPackage.face_sheet_no}</span></div>
+                              {selectedPackage.trip_number && (
+                                <div><span className="text-gray-400">สายรถ:</span> <span className="text-green-300">{selectedPackage.trip_number}</span></div>
+                              )}
+                              {selectedPackage.hub && (
+                                <div><span className="text-gray-400">Hub:</span> {selectedPackage.hub}</div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {/* Package list (collapsed) */}
+                      {location.packages.length > 0 && (
+                        <details className="mt-2">
+                          <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-700">
+                            ดูรายละเอียด
+                          </summary>
+                          <div className="mt-1 max-h-32 overflow-y-auto text-xs space-y-1">
+                            {location.packages.map((pkg: any) => (
+                              <div key={pkg.id} className={`p-1.5 rounded ${pkg.trip_number ? 'bg-green-100' : 'bg-gray-100'}`}>
+                                <div className="font-medium">#{pkg.package_number} - {pkg.shop_name || 'N/A'}</div>
+                                <div className="text-gray-500 text-[10px]">
+                                  {pkg.face_sheet_no} {pkg.trip_number && `• ${pkg.trip_number}`}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </details>
+                      )}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Staging Area (TD) - แสดงแพ็ครอโหลดจาก loadlist ที่ยังไม่โหลด */}
+                {prepAreaData.filter(loc => loc.location_code.endsWith('TD')).map((location) => {
+                  const hasStagingPackages = location.staging_packages && location.staging_packages.length > 0;
+                  
+                  return (
+                  <div
+                    key={location.location_code}
+                    className={`border-2 rounded-xl p-4 ${
+                      hasStagingPackages 
+                        ? 'border-amber-400 bg-amber-50' 
+                        : 'border-gray-200 bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2">
+                        <span className={`font-bold text-lg ${hasStagingPackages ? 'text-amber-700' : 'text-gray-400'}`}>
+                          {location.location_code}
+                        </span>
+                        <span className="text-sm text-gray-500">- จุดพักรอโหลด (Staging)</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {hasStagingPackages && (
+                          <span className="text-sm px-3 py-1 rounded-full bg-amber-200 text-amber-800">
+                            {location.staging_packages.length} แพ็ค
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {!hasStagingPackages ? (
+                      <div className="text-center py-8 text-gray-400">
+                        ไม่มีแพ็ครอโหลด
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {/* แสดงแพ็ครอโหลด: แพ็ค x/x, ชื่อร้าน, เลขเอกสาร */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                          {location.staging_packages.map((pkg: any, idx: number) => (
+                            <div
+                              key={pkg.package_id}
+                              className="bg-amber-100 border border-amber-300 rounded-lg p-2 text-sm"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-amber-900">แพ็ค {pkg.package_number}</span>
+                              </div>
+                              <div className="text-amber-800 truncate" title={pkg.shop_name}>
+                                {pkg.shop_name || '-'}
+                              </div>
+                              <div className="text-amber-600 font-mono text-xs">
+                                {pkg.order_no}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Footer */}
+          <div className="flex justify-between items-center mt-4 flex-shrink-0 pt-3 border-t">
+            <div className="flex items-center gap-4 text-sm text-gray-600">
+              <div className="flex items-center gap-1">
+                <div className={`w-3 h-3 rounded ${prepAreaZone === 'PQ' ? 'bg-blue-400' : 'bg-purple-400'}`}></div>
+                <span>รอแมพสายรถ</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded bg-green-400"></div>
+                <span>แมพสายรถแล้ว</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-3 rounded bg-amber-300"></div>
+                <span>รอโหลด (Staging)</span>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowPrepAreaModal(false)}
               className="bg-gray-100 hover:bg-gray-200 text-gray-600 px-4 py-2 rounded-lg text-sm font-medium transition-all"
             >
               ปิด
@@ -1305,13 +1634,13 @@ export default function WarehousePhysicalLayout() {
             <rect x="0" y="0" width="75" height="60" fill="#e3f2fd" stroke="#90caf9" strokeWidth={1} strokeDasharray="3,2" />
             <text x="37" y="35" textAnchor="middle" fill="#1976d2" fontSize="8" fontWeight="bold">E-Commerce</text>
           </g>
-          <g transform="translate(966, 520)">
-            <rect x="0" y="0" width="45" height="60" fill="#e3f2fd" stroke="#90caf9" strokeWidth={1} strokeDasharray="3,2" />
-            <text x="22" y="35" textAnchor="middle" fill="#1976d2" fontSize="10" fontWeight="bold">PQ</text>
+          <g transform="translate(966, 520)" style={{ cursor: 'pointer' }} onClick={handlePQClick}>
+            <rect x="0" y="0" width="45" height="60" rx="4" fill="#dbeafe" stroke="#3b82f6" strokeWidth={2} className="hover:fill-blue-300 transition-colors" />
+            <text x="22" y="35" textAnchor="middle" fill="#1e40af" fontSize="10" fontWeight="bold" style={{ pointerEvents: 'none' }}>PQ</text>
           </g>
-          <g transform="translate(1019, 520)">
-            <rect x="0" y="0" width="35" height="60" fill="#e3f2fd" stroke="#90caf9" strokeWidth={1} strokeDasharray="3,2" />
-            <text x="17" y="35" textAnchor="middle" fill="#1976d2" fontSize="10" fontWeight="bold">MR</text>
+          <g transform="translate(1019, 520)" style={{ cursor: 'pointer' }} onClick={handleMRClick}>
+            <rect x="0" y="0" width="35" height="60" rx="4" fill="#e9d5ff" stroke="#9333ea" strokeWidth={2} className="hover:fill-purple-300 transition-colors" />
+            <text x="17" y="35" textAnchor="middle" fill="#7c3aed" fontSize="10" fontWeight="bold" style={{ pointerEvents: 'none' }}>MR</text>
           </g>
         </svg>
       </div>
@@ -1331,6 +1660,9 @@ export default function WarehousePhysicalLayout() {
       
       {/* Repack Modal */}
       <RepackModal />
+      
+      {/* Prep Area (PQ/MR) Modal */}
+      <PrepAreaModal />
     </div>
   );
 }

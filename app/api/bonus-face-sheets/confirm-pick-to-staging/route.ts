@@ -6,8 +6,10 @@ import { getUserIdFromCookie, setDatabaseUserContext } from '@/lib/database/user
  * POST /api/bonus-face-sheets/confirm-pick-to-staging
  * ยืนยันหยิบของแถมจาก Storage Location (PQ01-PQ10, MR01-MR10) ไปยัง Staging (PQTD/MRTD)
  * 
+ * ✅ FIX (edit09): รองรับหลาย BFS ใน loadlist เดียว
+ * 
  * Flow:
- * 1. ดึงข้อมูล packages จาก bonus_face_sheet ที่อยู่ใน loadlist
+ * 1. ดึงข้อมูล packages จากทุก bonus_face_sheet ที่อยู่ใน loadlist
  * 2. ย้ายสต็อกจาก storage_location (PQ01-PQ10, MR01-MR10) ไป PQTD/MRTD
  * 3. บันทึก ledger entries
  */
@@ -21,33 +23,49 @@ export async function POST(request: NextRequest) {
     await setDatabaseUserContext(supabase, userId);
     
     const body = await request.json();
-    const { loadlist_id, bonus_face_sheet_id } = body;
+    const { loadlist_id, bonus_face_sheet_id, bonus_face_sheet_ids } = body;
 
-    if (!loadlist_id || !bonus_face_sheet_id) {
+    if (!loadlist_id) {
       return NextResponse.json(
-        { success: false, error: 'กรุณาระบุ loadlist_id และ bonus_face_sheet_id' },
+        { success: false, error: 'กรุณาระบุ loadlist_id' },
         { status: 400 }
       );
     }
 
-    console.log(`📦 Confirming pick to staging: loadlist=${loadlist_id}, bonus_face_sheet=${bonus_face_sheet_id}`);
+    // ✅ FIX: รองรับทั้ง single id และ array of ids
+    let bfsIds: number[] = [];
+    if (bonus_face_sheet_ids && Array.isArray(bonus_face_sheet_ids)) {
+      bfsIds = bonus_face_sheet_ids;
+    } else if (bonus_face_sheet_id) {
+      bfsIds = [bonus_face_sheet_id];
+    }
 
-    // 1. ดึงข้อมูล bonus_face_sheet
-    const { data: bonusFaceSheet, error: bfsError } = await supabase
+    if (bfsIds.length === 0) {
+      return NextResponse.json(
+        { success: false, error: 'กรุณาระบุ bonus_face_sheet_id หรือ bonus_face_sheet_ids' },
+        { status: 400 }
+      );
+    }
+
+    console.log(`📦 Confirming pick to staging: loadlist=${loadlist_id}, bonus_face_sheets=${bfsIds.join(', ')}`);
+
+    // 1. ดึงข้อมูล bonus_face_sheets ทั้งหมด
+    const { data: bonusFaceSheets, error: bfsError } = await supabase
       .from('bonus_face_sheets')
       .select('id, face_sheet_no, status, warehouse_id')
-      .eq('id', bonus_face_sheet_id)
-      .single();
+      .in('id', bfsIds);
 
-    if (bfsError || !bonusFaceSheet) {
+    if (bfsError || !bonusFaceSheets || bonusFaceSheets.length === 0) {
       return NextResponse.json(
         { success: false, error: 'ไม่พบใบปะหน้าของแถม' },
         { status: 404 }
       );
     }
 
-    // 2. ดึง packages ที่มี storage_location และอยู่ใน loadlist นี้
-    // packages ที่แมพกับ loadlist จะมี trip_number ที่ตรงกับ trip ของ loadlist
+    const bfsNos = bonusFaceSheets.map(b => b.face_sheet_no).join(', ');
+    console.log(`📋 Found ${bonusFaceSheets.length} bonus face sheets: ${bfsNos}`);
+
+    // 2. ดึง loadlist
     const { data: loadlist, error: loadlistError } = await supabase
       .from('loadlists')
       .select(`
@@ -68,8 +86,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`📋 Found loadlist: ${loadlist.loadlist_code}, trip_id: ${loadlist.trip_id}`);
 
-    // 3. ดึง packages ที่มี storage_location และมี trip_number (แมพสายรถแล้ว)
-    // ✅ กรองเฉพาะ packages ที่มี trip_number (ไม่ใช่ null และไม่ใช่ empty string)
+    // 3. ดึง packages จากทุก BFS ที่มี storage_location และมี trip_number (แมพสายรถแล้ว)
     const { data: packages, error: pkgError } = await supabase
       .from('bonus_face_sheet_packages')
       .select(`
@@ -80,9 +97,10 @@ export async function POST(request: NextRequest) {
         hub,
         order_id,
         shop_name,
-        trip_number
+        trip_number,
+        face_sheet_id
       `)
-      .eq('face_sheet_id', bonus_face_sheet_id)
+      .in('face_sheet_id', bfsIds)
       .not('storage_location', 'is', null)
       .not('trip_number', 'is', null)
       .neq('trip_number', ''); // กรอง empty string ด้วย
@@ -102,7 +120,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`📦 Found ${packages.length} packages with storage locations and trip_number`);
+    console.log(`📦 Found ${packages.length} packages with storage locations and trip_number from ${bonusFaceSheets.length} BFS`);
 
     // 4. ดึง items ของแต่ละ package ที่มี trip_number เพื่อย้ายสต็อก
     const packageIds = packages.map(p => p.id);
@@ -114,9 +132,10 @@ export async function POST(request: NextRequest) {
         sku_id,
         quantity,
         quantity_picked,
-        status
+        status,
+        face_sheet_id
       `)
-      .eq('face_sheet_id', bonus_face_sheet_id)
+      .in('face_sheet_id', bfsIds)
       .eq('status', 'picked') // เฉพาะ items ที่หยิบแล้ว
       .in('package_id', packageIds); // เฉพาะ items ใน packages ที่มี trip_number
 
@@ -152,7 +171,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`📍 Grouped items by ${locationGroups.size} storage locations`);
 
-    const warehouseId = bonusFaceSheet.warehouse_id || 'WH001';
+    const warehouseId = bonusFaceSheets[0].warehouse_id || 'WH001';
     const now = new Date().toISOString();
     const ledgerEntries: any[] = [];
     let totalMoved = 0;
@@ -236,9 +255,9 @@ export async function POST(request: NextRequest) {
             piece_qty: quantity,
             production_date: sourceBalance.production_date,
             expiry_date: sourceBalance.expiry_date,
-            reference_no: bonusFaceSheet.face_sheet_no,
+            reference_no: bfsNos,
             reference_doc_type: 'bonus_face_sheet_staging',
-            reference_doc_id: bonus_face_sheet_id,
+            reference_doc_id: bfsIds[0],
             remarks: `ย้ายจาก ${storageLocation} ไป ${stagingLocation}`,
             created_by: userId,
             skip_balance_sync: true
@@ -296,9 +315,9 @@ export async function POST(request: NextRequest) {
             piece_qty: quantity,
             production_date: sourceBalance.production_date,
             expiry_date: sourceBalance.expiry_date,
-            reference_no: bonusFaceSheet.face_sheet_no,
+            reference_no: bfsNos,
             reference_doc_type: 'bonus_face_sheet_staging',
-            reference_doc_id: bonus_face_sheet_id,
+            reference_doc_id: bfsIds[0],
             remarks: `รับจาก ${storageLocation} ไป ${stagingLocation}`,
             created_by: userId,
             skip_balance_sync: true
@@ -329,14 +348,15 @@ export async function POST(request: NextRequest) {
       })
       .in('id', packageIds);
 
-    console.log(`✅ Moved ${totalMoved} pieces to staging locations`);
+    console.log(`✅ Moved ${totalMoved} pieces to staging locations from ${bonusFaceSheets.length} BFS`);
 
     return NextResponse.json({
       success: true,
-      message: `ย้ายสินค้าไปจุดพักรอโหลดสำเร็จ ${totalMoved} ชิ้น`,
+      message: `ย้ายสินค้าไปจุดพักรอโหลดสำเร็จ ${totalMoved} ชิ้น จาก ${bonusFaceSheets.length} ใบปะหน้า`,
       total_moved: totalMoved,
       packages_processed: packages.length,
-      ledger_entries: ledgerEntries.length
+      ledger_entries: ledgerEntries.length,
+      bonus_face_sheets_processed: bonusFaceSheets.length
     });
 
   } catch (error: any) {

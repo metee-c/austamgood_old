@@ -5,27 +5,106 @@ import { createClient } from '@/lib/supabase/server';
  * GET /api/bonus-face-sheets/pick-list?id=xxx&loadlist_id=xxx
  * Get data for printing pick list form (ใบหยิบสินค้า)
  * Groups packages by trip_number and determines destination (PQTD/MRTD)
- * ✅ NEW: ดึงข้อมูลร้านค้าจาก face sheet ที่แมพด้วย
+ * 
+ * ✅ FIX (edit08): ใช้ matched_package_ids จาก wms_loadlist_bonus_face_sheets
+ * เพื่อแสดงเฉพาะ packages ที่ถูกแมพตอนสร้าง loadlist
+ * 
+ * ✅ FIX (edit09): รองรับ loadlist ที่มีหลาย BFS - รวม packages จากทุก BFS
  */
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const searchParams = request.nextUrl.searchParams;
-    const id = searchParams.get('id'); // bonus_face_sheet_id
+    const id = searchParams.get('id'); // bonus_face_sheet_id (optional if loadlist_id provided)
     const loadlistId = searchParams.get('loadlist_id');
 
-    if (!id) {
+    // ✅ FIX (edit09): ถ้ามี loadlist_id ให้ดึงทุก BFS ใน loadlist
+    let matchedPackageIds: number[] = [];
+    let mappingInfos: Array<{ bfs_id: number; bfs_no: string; mapping_type: string | null; mapped_doc_code: string | null; matched_count: number }> = [];
+    let loadlistCode: string | null = null;
+    let allBfsIds: number[] = [];
+
+    if (loadlistId) {
+      const loadlistIdNum = parseInt(loadlistId);
+      if (!isNaN(loadlistIdNum)) {
+        // ดึง loadlist_code
+        const { data: loadlist } = await supabase
+          .from('loadlists')
+          .select('loadlist_code')
+          .eq('id', loadlistIdNum)
+          .single();
+        loadlistCode = loadlist?.loadlist_code || null;
+
+        // ✅ FIX (edit09): ดึง mapping info จากทุก BFS ใน loadlist
+        const { data: allMappings } = await supabase
+          .from('wms_loadlist_bonus_face_sheets')
+          .select('bonus_face_sheet_id, matched_package_ids, mapping_type, mapped_picklist_id, mapped_face_sheet_id')
+          .eq('loadlist_id', loadlistIdNum);
+
+        if (allMappings && allMappings.length > 0) {
+          // รวม matched_package_ids จากทุก BFS
+          for (const mapping of allMappings) {
+            const pkgIds = mapping.matched_package_ids || [];
+            matchedPackageIds.push(...pkgIds);
+            allBfsIds.push(mapping.bonus_face_sheet_id);
+
+            // ดึงเลข BFS
+            const { data: bfs } = await supabase
+              .from('bonus_face_sheets')
+              .select('face_sheet_no')
+              .eq('id', mapping.bonus_face_sheet_id)
+              .single();
+
+            // ดึงเลขเอกสารที่แมพ
+            let mappedDocCode: string | null = null;
+            if (mapping.mapping_type === 'picklist' && mapping.mapped_picklist_id) {
+              const { data: picklist } = await supabase
+                .from('picklists')
+                .select('picklist_code')
+                .eq('id', mapping.mapped_picklist_id)
+                .single();
+              mappedDocCode = picklist?.picklist_code || null;
+            } else if (mapping.mapping_type === 'face_sheet' && mapping.mapped_face_sheet_id) {
+              const { data: fs } = await supabase
+                .from('face_sheets')
+                .select('face_sheet_no')
+                .eq('id', mapping.mapped_face_sheet_id)
+                .single();
+              mappedDocCode = fs?.face_sheet_no || null;
+            }
+
+            mappingInfos.push({
+              bfs_id: mapping.bonus_face_sheet_id,
+              bfs_no: bfs?.face_sheet_no || `BFS-${mapping.bonus_face_sheet_id}`,
+              mapping_type: mapping.mapping_type,
+              mapped_doc_code: mappedDocCode,
+              matched_count: pkgIds.length
+            });
+          }
+
+          console.log(`🔍 [pick-list] Found ${allMappings.length} BFS mappings, total matched_package_ids: ${matchedPackageIds.length}`);
+        }
+      }
+    }
+
+    // ถ้าไม่มี loadlist_id หรือไม่พบ mappings ให้ใช้ id เดิม
+    if (matchedPackageIds.length === 0 && id) {
+      allBfsIds = [parseInt(id)];
+    }
+
+    if (allBfsIds.length === 0 && !id) {
       return NextResponse.json(
-        { success: false, error: 'กรุณาระบุ id' },
+        { success: false, error: 'กรุณาระบุ id หรือ loadlist_id' },
         { status: 400 }
       );
     }
 
-    // Get face sheet info
+    // ดึงข้อมูล BFS แรกสำหรับแสดงใน header (หรือรวมถ้ามีหลายตัว)
+    const primaryBfsId = id ? parseInt(id) : allBfsIds[0];
     const { data: faceSheet, error: fsError } = await supabase
       .from('bonus_face_sheets')
       .select('id, face_sheet_no, total_packages, created_date, status')
-      .eq('id', id)
+      .eq('id', primaryBfsId)
       .single();
 
     if (fsError || !faceSheet) {
@@ -35,79 +114,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Get loadlist info if provided
-    let loadlistCode = null;
-    let mappedFaceSheetId: number | null = null;
-    let mappedPicklistId: number | null = null;
-    
-    if (loadlistId) {
-      const { data: loadlist } = await supabase
-        .from('loadlists')
-        .select('loadlist_code, trip_id')
-        .eq('id', loadlistId)
-        .single();
-      loadlistCode = loadlist?.loadlist_code;
-
-      // ✅ NEW: ดึง face_sheet_id ที่แมพกับ loadlist นี้
-      const { data: mappedFaceSheets } = await supabase
-        .from('loadlist_face_sheets')
-        .select('face_sheet_id')
-        .eq('loadlist_id', loadlistId);
-      
-      if (mappedFaceSheets && mappedFaceSheets.length > 0) {
-        mappedFaceSheetId = mappedFaceSheets[0].face_sheet_id;
-        console.log('📋 Found mapped face_sheet_id:', mappedFaceSheetId);
-      }
-
-      // ✅ NEW: ดึง picklist_id ที่แมพกับ loadlist นี้
-      const { data: mappedPicklists } = await supabase
-        .from('wms_loadlist_picklists')
-        .select('picklist_id')
-        .eq('loadlist_id', loadlistId);
-      
-      if (mappedPicklists && mappedPicklists.length > 0) {
-        mappedPicklistId = mappedPicklists[0].picklist_id;
-        console.log('📋 Found mapped picklist_id:', mappedPicklistId);
-      }
-    }
-
-    // ✅ NEW: ดึงข้อมูลร้านค้าจาก face sheet ที่แมพ
-    let faceSheetOrders: Array<{ order_no: string; shop_name: string; hub: string }> = [];
-    if (mappedFaceSheetId) {
-      const { data: faceSheetPackages } = await supabase
-        .from('face_sheet_packages')
-        .select('order_no, shop_name, hub')
-        .eq('face_sheet_id', mappedFaceSheetId);
-      
-      if (faceSheetPackages) {
-        // Deduplicate by order_no
-        const orderMap = new Map<string, { order_no: string; shop_name: string; hub: string }>();
-        faceSheetPackages.forEach((pkg: any) => {
-          if (pkg.order_no && !orderMap.has(pkg.order_no)) {
-            orderMap.set(pkg.order_no, {
-              order_no: pkg.order_no,
-              shop_name: pkg.shop_name || '',
-              hub: pkg.hub || ''
-            });
-          }
-        });
-        faceSheetOrders = Array.from(orderMap.values());
-        console.log('📋 Found face sheet orders:', faceSheetOrders.length);
-      }
-    }
-
-    // Get packages with storage locations and trip info
-    // ✅ ถ้ามี mapping กับ face sheet แล้ว ดึง packages ทั้งหมด (ไม่กรอง trip_number)
-    // ✅ ถ้าไม่มี mapping ให้กรองเฉพาะ packages ที่มี trip_number
+    // ✅ FIX (edit09): ดึง packages จากทุก BFS ที่อยู่ใน loadlist
     let packages: any[] = [];
-    let pkgError: any = null;
-
-    if (mappedFaceSheetId || mappedPicklistId) {
-      // มี mapping แล้ว - ดึง packages ทั้งหมด
-      const result = await supabase
+    
+    if (matchedPackageIds.length > 0) {
+      // ดึงเฉพาะ matched packages จากทุก BFS
+      const { data: pkgData, error: pkgError } = await supabase
         .from('bonus_face_sheet_packages')
         .select(`
           id, 
+          face_sheet_id,
           package_number, 
           barcode_id, 
           shop_name, 
@@ -116,17 +132,25 @@ export async function GET(request: NextRequest) {
           storage_location,
           trip_number
         `)
-        .eq('face_sheet_id', id)
+        .in('id', matchedPackageIds)
         .order('package_number');
-      
-      packages = result.data || [];
-      pkgError = result.error;
-    } else {
-      // ไม่มี mapping - กรองเฉพาะ packages ที่มี trip_number
-      const result = await supabase
+
+      if (pkgError) {
+        console.error('Error fetching packages:', pkgError);
+        return NextResponse.json(
+          { success: false, error: pkgError.message },
+          { status: 500 }
+        );
+      }
+      packages = pkgData || [];
+      console.log(`🔍 [pick-list] Fetched ${packages.length} packages from ${matchedPackageIds.length} matched IDs`);
+    } else if (allBfsIds.length > 0) {
+      // Fallback: ดึงทุก packages จาก BFS ที่ระบุ
+      const { data: pkgData, error: pkgError } = await supabase
         .from('bonus_face_sheet_packages')
         .select(`
           id, 
+          face_sheet_id,
           package_number, 
           barcode_id, 
           shop_name, 
@@ -135,29 +159,26 @@ export async function GET(request: NextRequest) {
           storage_location,
           trip_number
         `)
-        .eq('face_sheet_id', id)
-        .not('trip_number', 'is', null)
-        .neq('trip_number', '')
-        .order('trip_number')
+        .in('face_sheet_id', allBfsIds)
         .order('package_number');
-      
-      packages = result.data || [];
-      pkgError = result.error;
-    }
 
-    if (pkgError) {
-      console.error('Error fetching packages:', pkgError);
-      return NextResponse.json(
-        { success: false, error: pkgError.message },
-        { status: 500 }
-      );
+      if (pkgError) {
+        console.error('Error fetching packages:', pkgError);
+        return NextResponse.json(
+          { success: false, error: pkgError.message },
+          { status: 500 }
+        );
+      }
+      packages = pkgData || [];
     }
 
     if (!packages || packages.length === 0) {
       return NextResponse.json({
         success: false,
         error: 'ไม่พบแพ็คในใบปะหน้าของแถมนี้',
-        no_mapped_packages: true
+        no_mapped_packages: true,
+        loadlist_code: loadlistCode,
+        bfs_count: allBfsIds.length
       }, { status: 400 });
     }
 
@@ -231,19 +252,31 @@ export async function GET(request: NextRequest) {
         return a.trip_number.localeCompare(b.trip_number);
       });
 
+    // นับจำนวนร้านค้า (unique shop_name)
+    const uniqueShops = new Set(packages.map(p => p.shop_name).filter(Boolean));
+
+    // ✅ FIX (edit09): สร้าง summary ของ BFS ที่รวมอยู่
+    const bfsSummary = mappingInfos.length > 0 
+      ? mappingInfos.map(m => `${m.bfs_no} → ${m.mapped_doc_code || '-'} (${m.matched_count})`).join(', ')
+      : faceSheet.face_sheet_no;
+
     return NextResponse.json({
       success: true,
       data: {
-        face_sheet_no: faceSheet.face_sheet_no,
+        face_sheet_no: mappingInfos.length > 1 
+          ? `${mappingInfos.length} BFS รวม` 
+          : faceSheet.face_sheet_no,
         created_date: faceSheet.created_date,
         total_packages: packages.length,
+        total_shops: uniqueShops.size,
         status: faceSheet.status,
         loadlist_code: loadlistCode,
         trip_groups: tripGroups,
-        // ✅ NEW: ข้อมูลร้านค้าจาก face sheet ที่แมพ
-        mapped_face_sheet_id: mappedFaceSheetId,
-        mapped_picklist_id: mappedPicklistId,
-        face_sheet_orders: faceSheetOrders
+        // ✅ FIX (edit09): ข้อมูล mapping จากทุก BFS
+        mapping_infos: mappingInfos,
+        bfs_summary: bfsSummary,
+        matched_package_count: matchedPackageIds.length,
+        total_bfs_count: allBfsIds.length
       }
     });
   } catch (error: any) {

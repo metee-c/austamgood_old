@@ -172,11 +172,12 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Get bonus face sheets
+    // Get bonus face sheets with matched_package_ids
     const { data: bonusFaceSheetData } = await supabase
       .from('wms_loadlist_bonus_face_sheets')
       .select(`
         bonus_face_sheet_id,
+        matched_package_ids,
         bonus_face_sheets:bonus_face_sheet_id (
           face_sheet_no,
           bonus_face_sheet_items (
@@ -194,14 +195,21 @@ export async function GET(request: NextRequest) {
       if (!bonusFaceSheet) continue;
 
       const items = bonusFaceSheet.bonus_face_sheet_items || [];
-
-      // Get unique package IDs from bonus face sheet items
-      const packageIds = [...new Set(items.map((item: any) => item.package_id).filter(Boolean))];
       
-      // ✅ Fetch package data พร้อม trip_number เพื่อกรองเฉพาะ packages ที่ถูกแมพสายรถแล้ว
+      // ✅ FIX: ใช้ matched_package_ids จาก wms_loadlist_bonus_face_sheets เพื่อกรองเฉพาะ packages ของ loadlist นี้
+      const matchedPackageIds = new Set<number>((bfs.matched_package_ids || []).map((id: any) => Number(id)));
+
+      // Get unique package IDs from bonus face sheet items (กรองเฉพาะที่อยู่ใน matched_package_ids)
+      const packageIds = [...new Set(
+        items
+          .map((item: any) => item.package_id)
+          .filter((id: any) => id && matchedPackageIds.has(Number(id)))
+      )];
+      
+      // ✅ Fetch package data
       let packageOrderMap: Record<number, number> = {};
       let packageNumberMap: Record<number, string> = {};
-      let validPackageIds = new Set<number>(); // เก็บ package_id ที่มี trip_number
+      let validPackageIds = new Set<number>(); // เก็บ package_id ที่อยู่ใน matched_package_ids
       
       if (packageIds.length > 0) {
         const { data: packageData } = await supabase
@@ -210,16 +218,14 @@ export async function GET(request: NextRequest) {
           .in('id', packageIds);
         
         packageData?.forEach((pkg: any) => {
-          // ✅ กรองเฉพาะ packages ที่มี trip_number (ถูกแมพเข้าสายรถแล้ว)
-          if (pkg.trip_number && pkg.trip_number.trim() !== '') {
-            packageOrderMap[pkg.id] = pkg.order_id;
-            packageNumberMap[pkg.id] = pkg.package_number;
-            validPackageIds.add(pkg.id);
-          }
+          // ✅ ใช้ matched_package_ids แทนการตรวจสอบ trip_number
+          packageOrderMap[pkg.id] = pkg.order_id;
+          packageNumberMap[pkg.id] = pkg.package_number;
+          validPackageIds.add(pkg.id);
         });
       }
 
-      // ✅ กรอง items เฉพาะที่อยู่ใน packages ที่มี trip_number
+      // ✅ กรอง items เฉพาะที่อยู่ใน matched_package_ids ของ loadlist นี้
       const filteredItems = items.filter((item: any) => validPackageIds.has(item.package_id));
 
       // Get unique SKU IDs from filtered items

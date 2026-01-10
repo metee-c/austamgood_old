@@ -58,6 +58,28 @@ interface Loadlist {
       total_weight?: number | string;
     }>;
   }>;
+  // ✅ NEW: mapped_documents สำหรับแสดงเลขเอกสารที่แมพ BFS
+  mapped_documents?: Array<{
+    type: 'picklist' | 'face_sheet';
+    code: string;
+    id: number;
+    matched_package_count?: number;
+  }>;
+  // ✅ NEW: bonus_face_sheets สำหรับแสดงเลข BFS
+  bonus_face_sheets?: Array<{
+    id: number;
+    face_sheet_no: string;
+    status: string;
+    total_packages: number;
+    total_items: number;
+    total_orders?: number;
+    mapping_type?: string;
+    mapped_picklist_id?: number;
+    mapped_face_sheet_id?: number;
+    matched_package_count?: number;
+  }>;
+  // ✅ FIX (edit09): related_bfs_orders - order_no จาก BFS ที่แมพกับ picklist เดียวกัน
+  related_bfs_orders?: string[];
 }
 
 interface DeliveryOrderDocumentProps {
@@ -279,6 +301,32 @@ const DeliveryOrderDocument: React.FC<DeliveryOrderDocumentProps> = ({
               </div>
             </td>
           </tr>
+          {/* ✅ FIX (edit09): แสดงเลข order_no จาก BFS ที่แมพกับ picklist เดียวกัน */}
+          {loadlist.related_bfs_orders && loadlist.related_bfs_orders.length > 0 && (
+            <tr>
+              <td colSpan={6} style={{
+                padding: '5px 6px',
+                backgroundColor: '#e8f4fd',
+                borderTop: '1px solid #000'
+              }}>
+                <div style={{ fontWeight: 'bold', marginBottom: '3px', color: '#1e40af' }}>
+                  ใบโหลดของแถม (MR PQ)
+                </div>
+                <div style={{ fontSize: '10pt', fontWeight: 'bold', display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                  {loadlist.related_bfs_orders.map((orderNo, idx) => (
+                    <span key={idx} style={{ 
+                      backgroundColor: '#dbeafe',
+                      padding: '3px 8px',
+                      borderRadius: '4px',
+                      border: '1px solid #93c5fd'
+                    }}>
+                      {orderNo}
+                    </span>
+                  ))}
+                </div>
+              </td>
+            </tr>
+          )}
         </tbody>
       </table>
 
@@ -364,6 +412,9 @@ const DeliveryOrderDocument: React.FC<DeliveryOrderDocumentProps> = ({
                 }
               });
 
+              // ✅ FIX (edit09): เพิ่ม MR PQ orders ต่อท้าย
+              const bfsOrders = loadlist.related_bfs_orders || [];
+
               return (
                 <>
                   {allOrders.map((order, index) => (
@@ -401,6 +452,44 @@ const DeliveryOrderDocument: React.FC<DeliveryOrderDocumentProps> = ({
                       </td>
                     </tr>
                   ))}
+                  {/* ✅ FIX (edit09): แสดง MR PQ orders ต่อท้ายแถวสุดท้าย */}
+                  {bfsOrders.length > 0 && (
+                    <tr style={{ backgroundColor: '#e8f4fd' }}>
+                      <td style={{
+                        border: '1px solid #000',
+                        padding: '5px 4px',
+                        textAlign: 'center'
+                      }}>
+                        {allOrders.length + 1}
+                      </td>
+                      <td style={{
+                        border: '1px solid #000',
+                        padding: '5px 4px',
+                        fontWeight: 'bold'
+                      }}>
+                        {bfsOrders.join(', ')}
+                      </td>
+                      <td style={{
+                        border: '1px solid #000',
+                        padding: '5px 4px',
+                        fontStyle: 'italic',
+                        color: '#1e40af'
+                      }}>
+                        (ของแถม MR PQ)
+                      </td>
+                      <td style={{
+                        border: '1px solid #000',
+                        padding: '5px 4px',
+                        textAlign: 'right'
+                      }}>
+                      </td>
+                      <td style={{
+                        border: '1px solid #000',
+                        padding: '5px 4px'
+                      }}>
+                      </td>
+                    </tr>
+                  )}
                   {/* Add 5 empty rows after data rows */}
                   {Array.from({ length: 5 }).map((_, i) => (
                     <tr key={`empty-${i}`}>

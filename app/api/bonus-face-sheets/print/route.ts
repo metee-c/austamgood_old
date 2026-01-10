@@ -2,31 +2,110 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
 /**
- * GET /api/bonus-face-sheets/print?id=xxx&face_sheet_id=yyy
+ * GET /api/bonus-face-sheets/print?id=xxx&loadlist_id=yyy
  * สร้างเอกสารปริ้นแบบใบหยิบสำหรับใบปะหน้าของแถม
- * ถ้ามี face_sheet_id จะกรองเฉพาะ packages ที่ตรงกับร้านค้าในใบปะหน้านั้น
- * (Legacy: trip_number ยังใช้ได้)
+ * 
+ * ✅ FIX (edit06): ใช้ matched_package_ids จาก wms_loadlist_bonus_face_sheets
+ * เพื่อแสดงเฉพาะ packages ที่ถูกแมพตอนสร้าง loadlist
+ * 
+ * ✅ FIX (edit09): รองรับ loadlist ที่มีหลาย BFS - รวม packages จากทุก BFS
  */
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
-    const faceSheetId = searchParams.get('face_sheet_id');
-    const tripNumber = searchParams.get('trip_number');
-    // Legacy support: loadlist_id (deprecated, use face_sheet_id instead)
     const loadlistId = searchParams.get('loadlist_id');
 
-    if (!id) {
+    // ตัวแปรสำหรับแสดงในเอกสาร
+    let filterLabel: string | null = null;
+    let matchedPackageIds: number[] = [];
+    let allBfsIds: number[] = [];
+    let mappingInfos: Array<{ bfs_id: number; bfs_no: string; mapping_type: string | null; mapped_doc_code: string | null; matched_count: number }> = [];
+    let loadlistCode: string | null = null;
+
+    // ✅ FIX (edit09): ถ้ามี loadlist_id ให้ดึงทุก BFS ใน loadlist
+    if (loadlistId) {
+      const loadlistIdNum = parseInt(loadlistId);
+      if (!isNaN(loadlistIdNum)) {
+        // ดึง loadlist_code
+        const { data: loadlist } = await supabase
+          .from('loadlists')
+          .select('loadlist_code')
+          .eq('id', loadlistIdNum)
+          .single();
+        loadlistCode = loadlist?.loadlist_code || null;
+
+        // ดึง mapping info จากทุก BFS ใน loadlist
+        const { data: allMappings } = await supabase
+          .from('wms_loadlist_bonus_face_sheets')
+          .select('bonus_face_sheet_id, matched_package_ids, mapping_type, mapped_picklist_id, mapped_face_sheet_id')
+          .eq('loadlist_id', loadlistIdNum);
+
+        if (allMappings && allMappings.length > 0) {
+          for (const mapping of allMappings) {
+            const pkgIds = mapping.matched_package_ids || [];
+            matchedPackageIds.push(...pkgIds);
+            allBfsIds.push(mapping.bonus_face_sheet_id);
+
+            // ดึงเลข BFS
+            const { data: bfs } = await supabase
+              .from('bonus_face_sheets')
+              .select('face_sheet_no')
+              .eq('id', mapping.bonus_face_sheet_id)
+              .single();
+
+            // ดึงเลขเอกสารที่แมพ
+            let mappedDocCode: string | null = null;
+            if (mapping.mapping_type === 'picklist' && mapping.mapped_picklist_id) {
+              const { data: picklist } = await supabase
+                .from('picklists')
+                .select('picklist_code')
+                .eq('id', mapping.mapped_picklist_id)
+                .single();
+              mappedDocCode = picklist?.picklist_code || null;
+            } else if (mapping.mapping_type === 'face_sheet' && mapping.mapped_face_sheet_id) {
+              const { data: fs } = await supabase
+                .from('face_sheets')
+                .select('face_sheet_no')
+                .eq('id', mapping.mapped_face_sheet_id)
+                .single();
+              mappedDocCode = fs?.face_sheet_no || null;
+            }
+
+            mappingInfos.push({
+              bfs_id: mapping.bonus_face_sheet_id,
+              bfs_no: bfs?.face_sheet_no || `BFS-${mapping.bonus_face_sheet_id}`,
+              mapping_type: mapping.mapping_type,
+              mapped_doc_code: mappedDocCode,
+              matched_count: pkgIds.length
+            });
+          }
+
+          console.log(`[print] Found ${allMappings.length} BFS mappings, total matched_package_ids: ${matchedPackageIds.length}`);
+          
+          // สร้าง filterLabel
+          if (loadlistCode) {
+            filterLabel = `ใบโหลด: ${loadlistCode} (${allMappings.length} BFS, ${matchedPackageIds.length} แพ็ค)`;
+          }
+        }
+      }
+    }
+
+    // ถ้าไม่มี loadlist_id หรือไม่พบ mappings ให้ใช้ id เดิม
+    if (allBfsIds.length === 0 && id) {
+      const bonusFaceSheetId = parseInt(id);
+      if (!isNaN(bonusFaceSheetId)) {
+        allBfsIds = [bonusFaceSheetId];
+      }
+    }
+
+    if (allBfsIds.length === 0) {
       return new NextResponse('ID is required', { status: 400 });
     }
 
-    const bonusFaceSheetId = parseInt(id);
-    if (isNaN(bonusFaceSheetId)) {
-      return new NextResponse('Invalid ID', { status: 400 });
-    }
-
-    // ดึงข้อมูลใบปะหน้าของแถม
+    // ดึงข้อมูล BFS แรกสำหรับแสดงใน header
+    const primaryBfsId = id ? parseInt(id) : allBfsIds[0];
     const { data: bonusFaceSheet, error: bonusFaceSheetError } = await supabase
       .from('bonus_face_sheets')
       .select(`
@@ -41,7 +120,7 @@ export async function GET(request: NextRequest) {
         created_date,
         created_by
       `)
-      .eq('id', bonusFaceSheetId)
+      .eq('id', primaryBfsId)
       .single();
 
     if (bonusFaceSheetError || !bonusFaceSheet) {
@@ -49,153 +128,76 @@ export async function GET(request: NextRequest) {
       return new NextResponse('ไม่พบใบปะหน้าของแถม', { status: 404 });
     }
 
-    // ตัวแปรสำหรับแสดงในเอกสาร
-    let filterLabel: string | null = null;
-
-    // ดึงข้อมูล packages และ items
-    let packagesQuery = supabase
-      .from('bonus_face_sheet_packages')
-      .select(`
-        id,
-        package_number,
-        order_id,
-        order_no,
-        shop_name,
-        barcode_id,
-        trip_number,
-        bonus_face_sheet_items (
+    // ✅ FIX (edit09): ดึง packages จากทุก BFS
+    let packages: any[] = [];
+    
+    if (matchedPackageIds.length > 0) {
+      // ดึงเฉพาะ matched packages จากทุก BFS
+      const { data: pkgData, error: pkgError } = await supabase
+        .from('bonus_face_sheet_packages')
+        .select(`
           id,
-          sku_id,
-          product_name,
-          quantity_to_pick,
-          quantity_picked,
-          status,
-          source_location_id
-        )
-      `)
-      .eq('face_sheet_id', bonusFaceSheetId)
-      .order('package_number', { ascending: true });
+          package_number,
+          order_id,
+          order_no,
+          shop_name,
+          barcode_id,
+          trip_number,
+          customer_id,
+          bonus_face_sheet_items (
+            id,
+            sku_id,
+            product_name,
+            quantity_to_pick,
+            quantity_picked,
+            status,
+            source_location_id
+          )
+        `)
+        .in('id', matchedPackageIds)
+        .order('package_number', { ascending: true });
 
-    // กรองตาม face_sheet_id (วิธีใหม่ - แนะนำ)
-    // หมายเหตุ: เนื่องจาก bonus face sheet และ face sheet อาจมีร้านค้าคนละชุดกัน
-    // การกรองด้วย face_sheet_id จะแสดง packages ทั้งหมดของ bonus face sheet
-    // (ไม่กรองตาม customer เพราะไม่ตรงกัน)
-    if (faceSheetId) {
-      const faceSheetIdNum = parseInt(faceSheetId);
-      if (!isNaN(faceSheetIdNum)) {
-        // ดึงข้อมูล face_sheet
-        const { data: faceSheet } = await supabase
-          .from('face_sheets')
-          .select('face_sheet_no')
-          .eq('id', faceSheetIdNum)
-          .single();
-        
-        filterLabel = faceSheet?.face_sheet_no ? `ใบปะหน้า: ${faceSheet.face_sheet_no}` : null;
-        console.log(`🔍 Printing bonus face sheet for face_sheet_id: ${faceSheetIdNum} (${faceSheet?.face_sheet_no})`);
-        // ไม่กรอง packages เพราะ bonus face sheet และ face sheet มีร้านค้าคนละชุดกัน
-        // แสดง packages ทั้งหมดของ bonus face sheet
+      if (pkgError) {
+        console.error('Error fetching packages:', pkgError);
+        return new NextResponse('ไม่สามารถดึงข้อมูลแพ็คเกจได้', { status: 500 });
       }
-    }
-    // กรองตาม trip_number ถ้ามี (Legacy)
-    else if (tripNumber) {
-      packagesQuery = packagesQuery.eq('trip_number', tripNumber);
-      filterLabel = `สายรถ: ${tripNumber}`;
-      console.log(`🔍 Filtering bonus face sheet packages by trip_number: ${tripNumber}`);
-    }
-    // Legacy: กรองตาม loadlist_id (deprecated)
-    else if (loadlistId) {
-      const loadlistIdNum = parseInt(loadlistId);
-      if (!isNaN(loadlistIdNum)) {
-        // ดึง loadlist_code
-        const { data: loadlist } = await supabase
-          .from('loadlists')
-          .select('loadlist_code')
-          .eq('id', loadlistIdNum)
-          .single();
-        
-        filterLabel = loadlist?.loadlist_code ? `ใบโหลด: ${loadlist.loadlist_code}` : null;
+      packages = pkgData || [];
+    } else if (allBfsIds.length > 0) {
+      // Fallback: ดึงทุก packages จาก BFS ที่ระบุ
+      const { data: pkgData, error: pkgError } = await supabase
+        .from('bonus_face_sheet_packages')
+        .select(`
+          id,
+          package_number,
+          order_id,
+          order_no,
+          shop_name,
+          barcode_id,
+          trip_number,
+          customer_id,
+          bonus_face_sheet_items (
+            id,
+            sku_id,
+            product_name,
+            quantity_to_pick,
+            quantity_picked,
+            status,
+            source_location_id
+          )
+        `)
+        .in('face_sheet_id', allBfsIds)
+        .order('package_number', { ascending: true });
 
-        const orderIds = new Set<number>();
-
-        // แหล่งที่ 1: ดึง order_ids จาก loadlist_items โดยตรง
-        const { data: directItems } = await supabase
-          .from('loadlist_items')
-          .select('order_id')
-          .eq('loadlist_id', loadlistIdNum);
-
-        if (directItems && directItems.length > 0) {
-          directItems.forEach((item: any) => {
-            if (item.order_id) {
-              orderIds.add(item.order_id);
-            }
-          });
-        }
-
-        // แหล่งที่ 2: ดึง order_ids จาก picklist_items
-        const { data: picklistItems } = await supabase
-          .from('wms_loadlist_picklists')
-          .select(`
-            picklist_id,
-            picklists:picklist_id (
-              picklist_items (
-                order_id
-              )
-            )
-          `)
-          .eq('loadlist_id', loadlistIdNum);
-
-        if (picklistItems && picklistItems.length > 0) {
-          picklistItems.forEach((lp: any) => {
-            const items = lp.picklists?.picklist_items || [];
-            items.forEach((item: any) => {
-              if (item.order_id) {
-                orderIds.add(item.order_id);
-              }
-            });
-          });
-        }
-
-        // แหล่งที่ 3: ดึง order_ids จาก face_sheet_packages
-        const { data: faceSheetData } = await supabase
-          .from('loadlist_face_sheets')
-          .select(`
-            face_sheet_id,
-            face_sheets:face_sheet_id (
-              face_sheet_packages (
-                order_id
-              )
-            )
-          `)
-          .eq('loadlist_id', loadlistIdNum);
-
-        if (faceSheetData && faceSheetData.length > 0) {
-          faceSheetData.forEach((lfs: any) => {
-            const packages = lfs.face_sheets?.face_sheet_packages || [];
-            packages.forEach((pkg: any) => {
-              if (pkg.order_id) {
-                orderIds.add(pkg.order_id);
-              }
-            });
-          });
-        }
-
-        if (orderIds.size > 0) {
-          packagesQuery = packagesQuery.in('order_id', Array.from(orderIds));
-          console.log(`🔍 Filtering bonus face sheet packages by ${orderIds.size} order IDs from loadlist ${loadlistIdNum}`);
-        }
+      if (pkgError) {
+        console.error('Error fetching packages:', pkgError);
+        return new NextResponse('ไม่สามารถดึงข้อมูลแพ็คเกจได้', { status: 500 });
       }
-    }
-
-    const { data: packages, error: packagesError } = await packagesQuery;
-
-    if (packagesError) {
-      console.error('Error fetching packages:', packagesError);
-      return new NextResponse('ไม่สามารถดึงข้อมูลแพ็คเกจได้', { status: 500 });
+      packages = pkgData || [];
     }
 
     // ถ้าไม่มี packages ที่ตรงกับ loadlist
     if (!packages || packages.length === 0) {
-      return new NextResponse(`ไม่พบรายการของแถมสำหรับใบโหลดนี้`, { status: 404 });
+      return new NextResponse('ไม่พบรายการของแถมสำหรับใบโหลดนี้', { status: 404 });
     }
 
     const formatDate = (dateStr: string) => {
@@ -212,6 +214,21 @@ export async function GET(request: NextRequest) {
         itemSum + (item.quantity_to_pick || 0), 0
       ), 0
     );
+
+    // นับจำนวนร้านค้า (unique shop_name)
+    const uniqueShops = new Set((packages || []).map((pkg: any) => pkg.shop_name).filter(Boolean));
+
+    // สร้าง badge สำหรับเอกสารที่แมพ (สำหรับ multi-BFS)
+    const mappedDocsBadges = mappingInfos.length > 0
+      ? mappingInfos.map(m => {
+          const color = m.mapping_type === 'picklist' 
+            ? 'background-color: #dbeafe; color: #1e40af;' 
+            : 'background-color: #ffedd5; color: #c2410c;';
+          return `<span style="display: inline-block; padding: 2px 6px; border-radius: 4px; font-size: 10px; font-weight: bold; margin: 2px; ${color}">
+            ${m.bfs_no} → ${m.mapped_doc_code || '-'} (${m.matched_count})
+          </span>`;
+        }).join('')
+      : '';
 
     // Generate HTML for print
     const packagesHtml = (packages || []).map((pkg: any, pkgIndex: number) => {
@@ -276,13 +293,18 @@ export async function GET(request: NextRequest) {
       `;
     }).join('');
 
+    // สร้าง title ตามจำนวน BFS
+    const documentTitle = mappingInfos.length > 1 
+      ? `ใบเช็คสินค้าของแถม (${mappingInfos.length} BFS รวม)`
+      : `ใบเช็คสินค้าของแถม - ${bonusFaceSheet.face_sheet_no}`;
+
     const html = `
       <!DOCTYPE html>
       <html lang="th">
         <head>
           <meta charset="UTF-8" />
           <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-          <title>ใบเช็คสินค้าของแถม - ${bonusFaceSheet.face_sheet_no}</title>
+          <title>${documentTitle}</title>
           <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&family=Noto+Sans+Thai:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
           <style>
             @page { size: A4 portrait; margin: 10mm; }
@@ -318,8 +340,12 @@ export async function GET(request: NextRequest) {
             <!-- Face Sheet Info -->
             <div style="display: flex; justify-content: space-between; margin-bottom: 12px; font-size: 13px; padding: 8px 10px; background-color: #f5f5f5; border: 1px solid #ccc;">
               <div>
-                <div style="margin-bottom: 5px;"><strong>เลขที่ใบปะหน้า:</strong> <span style="font-size: 15px; font-weight: bold;">${bonusFaceSheet.face_sheet_no}</span></div>
-                ${filterLabel ? `<div style="margin-bottom: 5px;"><strong>${filterLabel.includes('สายรถ') ? 'สายรถ' : 'ใบโหลด'}:</strong> <span style="font-size: 14px; font-weight: bold; color: #0066cc;">${filterLabel.split(': ')[1]}</span></div>` : ''}
+                <div style="margin-bottom: 5px;">
+                  <strong>เลขที่ใบปะหน้าของแถม:</strong> 
+                  <span style="font-size: 15px; font-weight: bold;">${mappingInfos.length > 1 ? `${mappingInfos.length} BFS รวม` : bonusFaceSheet.face_sheet_no}</span>
+                </div>
+                ${filterLabel ? `<div style="margin-bottom: 5px;"><strong>ใบโหลด:</strong> <span style="font-size: 14px; font-weight: bold;">${loadlistCode}</span></div>` : ''}
+                ${mappedDocsBadges ? `<div style="margin-bottom: 5px;"><strong>เอกสารที่แมพ:</strong><br/>${mappedDocsBadges}</div>` : ''}
                 <div style="margin-bottom: 5px;"><strong>คลังสินค้า:</strong> ${bonusFaceSheet.warehouse_id}</div>
                 <div><strong>วันที่สร้าง:</strong> ${formatDate(bonusFaceSheet.created_date)}</div>
               </div>
@@ -335,15 +361,15 @@ export async function GET(request: NextRequest) {
               <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; text-align: center; font-size: 13px;">
                 <div>
                   <div style="font-size: 20px; font-weight: bold;">${packages?.length || 0}</div>
-                  <div>แพ็ค</div>
+                  <div>แพ็ค${matchedPackageIds.length > 0 ? ' (แมพเจอ)' : ''}</div>
                 </div>
                 <div>
                   <div style="font-size: 20px; font-weight: bold;">${(packages || []).reduce((sum: number, pkg: any) => sum + (pkg.bonus_face_sheet_items?.length || 0), 0)}</div>
                   <div>รายการ</div>
                 </div>
                 <div>
-                  <div style="font-size: 20px; font-weight: bold;">${new Set((packages || []).map((pkg: any) => pkg.order_id)).size}</div>
-                  <div>ออเดอร์</div>
+                  <div style="font-size: 20px; font-weight: bold;">${uniqueShops.size}</div>
+                  <div>ร้านค้า</div>
                 </div>
                 <div>
                   <div style="font-size: 20px; font-weight: bold;">${totalQuantityToPick}</div>

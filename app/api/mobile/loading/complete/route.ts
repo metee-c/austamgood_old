@@ -101,12 +101,19 @@ export async function POST(request: NextRequest) {
 
     const { data: bonusFaceSheetLinks } = await supabase
       .from('wms_loadlist_bonus_face_sheets')
-      .select('bonus_face_sheet_id')
+      .select('bonus_face_sheet_id, matched_package_ids')
       .eq('loadlist_id', loadlist.id);
 
     const picklistIds = picklistLinks?.map(lp => lp.picklist_id) || [];
     const faceSheetIds = faceSheetLinks?.map(fs => fs.face_sheet_id) || [];
     const bonusFaceSheetIds = bonusFaceSheetLinks?.map(bfs => bfs.bonus_face_sheet_id) || [];
+    
+    // ✅ FIX: ใช้ matched_package_ids จาก wms_loadlist_bonus_face_sheets แทนการใช้ trip_number
+    // เพื่อให้แสดงเฉพาะ packages ที่ถูกแมพกับ loadlist นี้จริงๆ
+    const matchedPackageIds = new Set<number>(
+      bonusFaceSheetLinks?.flatMap(bfs => bfs.matched_package_ids || []) || []
+    );
+    console.log('📦 Matched package IDs from loadlist mapping:', [...matchedPackageIds]);
 
     console.log('📋 Document IDs:', { picklistIds, faceSheetIds, bonusFaceSheetIds });
 
@@ -174,12 +181,14 @@ export async function POST(request: NextRequest) {
       faceSheets = faceSheetData || [];
     }
 
-    // Fetch bonus face sheets with items (including package_id for trip_number filtering)
+    // Fetch bonus face sheets with items (including package_id)
+    // ✅ FIX: ใช้ matchedPackageIds จาก wms_loadlist_bonus_face_sheets แทนการใช้ trip_number
     let bonusFaceSheets: any[] = [];
-    let validBonusPackageIds = new Set<number>(); // เก็บ package_id ที่มี trip_number (ถูกแมพเข้าสายรถแล้ว)
     
     if (bonusFaceSheetIds.length > 0) {
       console.log('🔍 Fetching bonus face sheets:', bonusFaceSheetIds);
+      console.log('📦 Using matched package IDs:', [...matchedPackageIds]);
+      
       const { data: bonusFaceSheetData, error: bonusFaceSheetsError } = await supabase
         .from('bonus_face_sheets')
         .select(`
@@ -205,52 +214,38 @@ export async function POST(request: NextRequest) {
         );
       }
       
-      // ✅ FIX: กรองเฉพาะ items ที่อยู่ใน packages ที่มี trip_number (ถูกแมพเข้าสายรถแล้ว)
-      // ดึง package_id ทั้งหมดจาก bonus face sheet items
-      const allPackageIds = [...new Set(
-        (bonusFaceSheetData || []).flatMap(bfs => 
-          (bfs.bonus_face_sheet_items || []).map((item: any) => item.package_id).filter(Boolean)
-        )
-      )];
-      
-      if (allPackageIds.length > 0) {
-        // ดึงข้อมูล packages พร้อม trip_number และ storage_location
+      // ✅ AUTO-MOVE: ถ้า packages ยังมี storage_location อยู่ ให้ย้ายไป staging อัตโนมัติ
+      // (กรณีโหลดพร้อมของแถมจาก popup)
+      if (matchedPackageIds.size > 0) {
         const { data: packageData } = await supabase
           .from('bonus_face_sheet_packages')
-          .select('id, trip_number, storage_location')
-          .in('id', allPackageIds);
+          .select('id, storage_location')
+          .in('id', [...matchedPackageIds]);
         
-        // เก็บเฉพาะ package_id ที่มี trip_number
-        packageData?.forEach((pkg: any) => {
-          if (pkg.trip_number && pkg.trip_number.trim() !== '') {
-            validBonusPackageIds.add(pkg.id);
-          }
-        });
-        
-        console.log(`📦 Bonus packages: total=${allPackageIds.length}, with trip_number=${validBonusPackageIds.size}`);
-        
-        // ✅ NEW: ตรวจสอบว่า packages ที่มี trip_number ได้ถูกย้ายไป staging แล้วหรือยัง
-        // packages ที่ยังมี storage_location อยู่ = ยังไม่ได้กด "ยืนยันหยิบไปพักรอโหลด"
         const packagesNotMovedToStaging = packageData?.filter((pkg: any) => 
-          pkg.trip_number && 
-          pkg.trip_number.trim() !== '' && 
           pkg.storage_location && 
           pkg.storage_location.trim() !== ''
         ) || [];
         
         if (packagesNotMovedToStaging.length > 0) {
-          console.error(`❌ ${packagesNotMovedToStaging.length} packages not moved to staging yet`);
-          return NextResponse.json(
-            { 
-              error: 'กรุณากด "ยืนยันหยิบไปพักรอโหลด" ก่อนยืนยันโหลด',
-              details: `มี ${packagesNotMovedToStaging.length} แพ็คที่ยังไม่ได้ย้ายไปจุดพักรอโหลด`,
-              packages_pending: packagesNotMovedToStaging.map((p: any) => ({
-                id: p.id,
-                storage_location: p.storage_location
-              }))
-            },
-            { status: 400 }
-          );
+          console.log(`📦 Auto-moving ${packagesNotMovedToStaging.length} packages to staging...`);
+          
+          // Clear storage_location สำหรับ packages เหล่านี้
+          const packageIdsToMove = packagesNotMovedToStaging.map((p: any) => p.id);
+          const { error: clearStorageError } = await supabase
+            .from('bonus_face_sheet_packages')
+            .update({ storage_location: null })
+            .in('id', packageIdsToMove);
+          
+          if (clearStorageError) {
+            console.error('❌ Error clearing storage_location:', clearStorageError);
+            return NextResponse.json(
+              { error: 'ไม่สามารถย้ายแพ็คไปจุดพักรอโหลดได้', details: clearStorageError.message },
+              { status: 500 }
+            );
+          }
+          
+          console.log(`✅ Cleared storage_location for ${packageIdsToMove.length} packages`);
         }
       }
       
@@ -476,7 +471,7 @@ export async function POST(request: NextRequest) {
 
     // Process bonus face sheet items
     // ✅ FIX: กรองเฉพาะ items ที่อยู่ใน packages ที่มี trip_number (ถูกแมพเข้าสายรถแล้ว)
-    // ✅ BACKWARD COMPATIBLE: ตรวจสอบสต็อกจาก PQTD/MRTD ก่อน ถ้าไม่มีให้ fallback ไป Dispatch (legacy data)
+    // ✅ BACKWARD COMPATIBLE: ตรวจสอบสต็อกจาก prep area (MR01-MR10, PQ01-PQ10) หรือ PQTD/MRTD หรือ Dispatch
     
     // Get PQTD and MRTD locations
     const { data: pqtdLocation } = await supabase
@@ -491,18 +486,33 @@ export async function POST(request: NextRequest) {
       .eq('location_code', 'MRTD')
       .single();
 
-    // Get package hub info for determining which staging location to use
-    const packageHubMap = new Map<number, string>(); // package_id -> hub
+    // Get all prep area locations (MR01-MR10, PQ01-PQ10)
+    const { data: prepAreaLocations } = await supabase
+      .from('master_location')
+      .select('location_id, location_code')
+      .or('location_code.like.MR%,location_code.like.PQ%')
+      .not('location_code', 'in', '(MRTD,PQTD)');
+    
+    const prepAreaLocationMap = new Map<string, number>();
+    prepAreaLocations?.forEach((loc: any) => {
+      prepAreaLocationMap.set(loc.location_code, loc.location_id);
+    });
+
+    // Get package hub and storage_location info for determining which location to use
+    const packageInfoMap = new Map<number, { hub: string; storage_location: string | null }>(); // package_id -> { hub, storage_location }
     if (bonusFaceSheetIds.length > 0) {
-      const allBonusPackageIds = [...validBonusPackageIds];
+      const allBonusPackageIds = [...matchedPackageIds];
       if (allBonusPackageIds.length > 0) {
-        const { data: packageHubs } = await supabase
+        const { data: packageInfos } = await supabase
           .from('bonus_face_sheet_packages')
-          .select('id, hub')
+          .select('id, hub, storage_location')
           .in('id', allBonusPackageIds);
         
-        packageHubs?.forEach((pkg: any) => {
-          packageHubMap.set(pkg.id, pkg.hub || '');
+        packageInfos?.forEach((pkg: any) => {
+          packageInfoMap.set(pkg.id, { 
+            hub: pkg.hub || '', 
+            storage_location: pkg.storage_location 
+          });
         });
       }
     }
@@ -510,9 +520,9 @@ export async function POST(request: NextRequest) {
     for (const bonusFaceSheet of bonusFaceSheets) {
       if (!bonusFaceSheet.bonus_face_sheet_items) continue;
 
-      // กรอง items เฉพาะที่อยู่ใน packages ที่มี trip_number
+      // ✅ FIX: กรอง items เฉพาะที่อยู่ใน matched_package_ids (แมพกับ loadlist นี้)
       const filteredItems = bonusFaceSheet.bonus_face_sheet_items.filter(
-        (item: any) => item.package_id && validBonusPackageIds.has(item.package_id)
+        (item: any) => item.package_id && matchedPackageIds.has(item.package_id)
       );
       
       console.log(`🔍 Processing bonus face sheet ${bonusFaceSheet.face_sheet_no}: total items=${bonusFaceSheet.bonus_face_sheet_items.length}, filtered (with trip)=${filteredItems.length}`);
@@ -546,21 +556,50 @@ export async function POST(request: NextRequest) {
         const qtyPack = qty / qtyPerPack;
         console.log(`✅ SKU info: qty_per_pack=${qtyPerPack}, qtyPack=${qtyPack}`);
 
-        // ✅ Determine staging location based on package hub
+        // ✅ Get package info (hub and storage_location)
+        const packageInfo = packageInfoMap.get(item.package_id) || { hub: '', storage_location: null };
+        const packageHub = packageInfo.hub;
+        const packageStorageLocation = packageInfo.storage_location;
+        
+        // Determine staging location based on package hub
         // PQ hubs (กรุงเทพ/ภาคกลาง) → PQTD
         // MR hubs (ต่างจังหวัด) → MRTD
-        const packageHub = packageHubMap.get(item.package_id) || '';
-        const isPQHub = packageHub.includes('BKK') || packageHub.includes('Central') || packageHub.includes('Marketing');
+        const isPQHub = packageHub.includes('BKK') || packageHub.includes('Central') || packageHub.includes('Marketing') || packageHub.includes('กรุงเทพ') || packageHub.includes('ภาคกลาง');
         const stagingLocationId = isPQHub ? pqtdLocation?.location_id : mrtdLocation?.location_id;
         const stagingLocationName = isPQHub ? 'PQTD' : 'MRTD';
 
-        // ✅ BACKWARD COMPATIBLE: ตรวจสอบ staging location ก่อน ถ้าไม่มีให้ fallback ไป Dispatch
+        // ✅ BACKWARD COMPATIBLE: ตรวจสอบสต็อกตามลำดับ:
+        // 1. Prep area (MR01-MR10, PQ01-PQ10) - ถ้า package ยังมี storage_location
+        // 2. Staging (PQTD/MRTD) - ถ้า package ถูกย้ายไป staging แล้ว
+        // 3. Dispatch - legacy data
         let sourceBalance: any = null;
         let sourceLocationId: number | null = null;
         let sourceLocationName: string = '';
 
-        // 1. ตรวจสอบ staging location (PQTD/MRTD) - new workflow
-        if (stagingLocationId) {
+        // 1. ตรวจสอบ prep area ก่อน (ถ้า package ยังมี storage_location)
+        if (packageStorageLocation && prepAreaLocationMap.has(packageStorageLocation)) {
+          const prepAreaLocationId = prepAreaLocationMap.get(packageStorageLocation)!;
+          console.log(`🔍 Checking prep area ${packageStorageLocation} balance for ${item.sku_id}`);
+          
+          const { data: prepAreaBalance, error: prepAreaError } = await supabase
+            .from('wms_inventory_balances')
+            .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
+            .eq('warehouse_id', 'WH001')
+            .eq('location_id', prepAreaLocationId)
+            .eq('sku_id', item.sku_id)
+            .gt('total_piece_qty', 0)
+            .maybeSingle();
+
+          if (!prepAreaError && prepAreaBalance && Number(prepAreaBalance.total_piece_qty) >= qty) {
+            sourceBalance = prepAreaBalance;
+            sourceLocationId = prepAreaLocationId;
+            sourceLocationName = packageStorageLocation;
+            console.log(`✅ Found stock at prep area ${packageStorageLocation}: ${prepAreaBalance.total_piece_qty} pieces`);
+          }
+        }
+
+        // 2. ตรวจสอบ staging location (PQTD/MRTD) - ถ้าไม่พบที่ prep area
+        if (!sourceBalance && stagingLocationId) {
           console.log(`🔍 Checking ${stagingLocationName} balance for ${item.sku_id} (hub: ${packageHub})`);
           const { data: stagingBalance, error: stagingError } = await supabase
             .from('wms_inventory_balances')
@@ -571,7 +610,7 @@ export async function POST(request: NextRequest) {
             .gt('total_piece_qty', 0)
             .maybeSingle();
 
-          if (!stagingError && stagingBalance && stagingBalance.total_piece_qty >= qty) {
+          if (!stagingError && stagingBalance && Number(stagingBalance.total_piece_qty) >= qty) {
             sourceBalance = stagingBalance;
             sourceLocationId = stagingLocationId;
             sourceLocationName = stagingLocationName;
@@ -579,7 +618,7 @@ export async function POST(request: NextRequest) {
           }
         }
 
-        // 2. ถ้าไม่มีที่ staging → fallback ไป Dispatch (legacy data)
+        // 3. ถ้าไม่มีที่ staging → fallback ไป Dispatch (legacy data)
         if (!sourceBalance) {
           console.log(`🔍 Fallback: Checking Dispatch balance for ${item.sku_id} (legacy data)`);
           const { data: dispatchBonusBalance, error: dispatchError } = await supabase
