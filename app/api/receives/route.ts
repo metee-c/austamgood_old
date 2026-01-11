@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { receiveService, CreateReceivePayload } from '@/lib/database/receive';
+import { withAuth } from '@/lib/api/with-auth';
 
-export async function GET(request: NextRequest) {
+async function handleGet(request: NextRequest, context: any) {
   try {
     const { searchParams } = new URL(request.url);
     const filters = Object.fromEntries(searchParams.entries());
@@ -22,7 +23,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function handlePost(request: NextRequest, context: any) {
   try {
     const body: CreateReceivePayload = await request.json();
     
@@ -88,3 +89,7 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+// Export with auth wrappers
+export const GET = withAuth(handleGet);
+export const POST = withAuth(handlePost);

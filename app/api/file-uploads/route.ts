@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
+import { createServiceRoleClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { FileManagementService } from '@/lib/database/file-management';
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 
 export async function GET(request: Request) {
   const supabase = await createClient();
@@ -33,11 +33,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // Create Supabase client with service role for file uploads
-    const supabase = createSupabaseClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
+    // Create Supabase client with service role for file uploads (needs storage access)
+    const supabase = createServiceRoleClient();
 
     const formData = await request.formData();
     const file = formData.get('file') as File;

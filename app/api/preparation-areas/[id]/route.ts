@@ -1,12 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createServiceRoleClient } from '@/lib/supabase/server';
 
 export const dynamic = 'force-dynamic';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-const supabase = createClient(supabaseUrl, serviceRoleKey);
 
 const PREPARATION_AREA_FIELDS = `
   area_id,
@@ -35,6 +30,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const supabase = createServiceRoleClient();
     const { id } = await params;
     const { data: preparationArea, error } = await supabase
       .from('preparation_area')
@@ -67,6 +63,7 @@ export async function PUT(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const supabase = createServiceRoleClient();
     const { id } = await params;
     const body = await request.json();
     
@@ -132,6 +129,7 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const supabase = createServiceRoleClient();
     const { id } = await params;
     const { error } = await supabase
       .from('preparation_area')

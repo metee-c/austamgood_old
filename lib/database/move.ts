@@ -1,9 +1,8 @@
-import { createClient } from '@supabase/supabase-js';
+import { createServiceRoleClient } from '@/lib/supabase/server';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Use service role client for admin operations (bypasses RLS)
+// This is intentional for move operations that need full access
+const supabase = createServiceRoleClient();
 
 export type MoveType = 'putaway' | 'transfer' | 'replenishment' | 'adjustment';
 export type MoveStatus = 'draft' | 'pending' | 'in_progress' | 'completed' | 'cancelled';

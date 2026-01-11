@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createServiceRoleClient } from '@/lib/supabase/server';
 import { parse } from 'csv-parse/sync';
 
 export const dynamic = 'force-dynamic';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-const supabase = createClient(supabaseUrl, serviceRoleKey);
 
 const REQUIRED_FIELDS = ['area_code', 'area_name', 'warehouse_id', 'zone', 'area_type', 'status'];
 const VALID_AREA_TYPES = ['packing', 'quality_check', 'consolidation', 'labeling', 'other'];
@@ -122,6 +117,7 @@ function validateRow(row: any, lineNumber: number): { isValid: boolean; data?: P
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = createServiceRoleClient();
     const formData = await request.formData();
     const file = formData.get('file') as File;
 

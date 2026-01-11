@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getUserIdFromCookie, setDatabaseUserContext } from '@/lib/database/user-context';
-import { isPrepArea, upsertPrepAreaBalance } from '@/lib/database/prep-area-balance';
+import { setDatabaseUserContext } from '@/lib/database/user-context';
+import { isPrepArea } from '@/lib/database/prep-area-balance';
+import { withAuth } from '@/lib/api/with-auth';
 
 /**
  * ✅ Helper: ตรวจสอบว่า location เป็น Preparation Area หรือไม่
@@ -26,13 +27,12 @@ async function isPreparationArea(supabase: any, locationId: string): Promise<boo
  * 5. อัปเดต picklist_items และ reservation status
  * 6. อัปเดต picklist status
  */
-export async function POST(request: NextRequest) {
+async function handlePost(request: NextRequest, context: any) {
   try {
     const supabase = await createClient();
     
-    // ✅ Set user context for audit trail
-    const cookieHeader = request.headers.get('cookie');
-    const userId = await getUserIdFromCookie(cookieHeader) || 1; // Fallback to system user
+    // ✅ Get userId from auth context (provided by withAuth wrapper)
+    const userId = context.user.user_id;
     await setDatabaseUserContext(supabase, userId);
     
     const {
@@ -668,3 +668,6 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+// Export with auth wrapper
+export const POST = withAuth(handlePost);

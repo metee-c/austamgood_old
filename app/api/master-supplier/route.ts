@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withAuth, withAdminAuth } from '@/lib/api/with-auth';
 
-export async function GET(request: NextRequest) {
+async function handleGet(request: NextRequest, context: any) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -65,7 +66,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function handlePost(request: NextRequest, context: any) {
   try {
     const supabase = await createClient();
     const body = await request.json();
@@ -144,7 +145,7 @@ export async function POST(request: NextRequest) {
   }
 }
 
-export async function PUT(request: NextRequest) {
+async function handlePut(request: NextRequest, context: any) {
   try {
     const supabase = await createClient();
     const body = await request.json();
@@ -222,7 +223,7 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-export async function DELETE(request: NextRequest) {
+async function handleDelete(request: NextRequest, context: any) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -257,3 +258,9 @@ export async function DELETE(request: NextRequest) {
     );
   }
 }
+
+// Export with auth wrappers
+export const GET = withAuth(handleGet);
+export const POST = withAuth(handlePost);
+export const PUT = withAuth(handlePut);
+export const DELETE = withAdminAuth(handleDelete);

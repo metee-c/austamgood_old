@@ -1,10 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+import { createServiceRoleClient } from '@/lib/supabase/server';
 
 const UPDATABLE_FIELDS = new Set([
   'status',
@@ -39,6 +34,7 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const supabase = createServiceRoleClient();
     const { id } = await params;
     const moveItemId = Number(id);
     if (Number.isNaN(moveItemId)) {
@@ -85,6 +81,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const supabase = createServiceRoleClient();
     const { id } = await params;
     const moveItemId = Number(id);
     if (Number.isNaN(moveItemId)) {

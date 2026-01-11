@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { Supplier } from '@/types/supplier'; // Import the Supplier type
+import { withAdminAuth } from '@/lib/api/with-auth';
 
-export async function POST(request: NextRequest) {
+async function handlePost(request: NextRequest, context: any) {
   try {
     const supabase = await createClient();
     
@@ -139,3 +140,7 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+
+// Export with admin auth wrapper
+export const POST = withAdminAuth(handlePost);

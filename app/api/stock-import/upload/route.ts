@@ -6,10 +6,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { stockImportService } from '@/lib/database/stock-import';
+import { withAuth } from '@/lib/api/with-auth';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: NextRequest) {
+async function handlePost(request: NextRequest, context: any) {
   try {
     const supabase = await createClient();
 
@@ -60,8 +61,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'ไฟล์ว่างเปล่า' }, { status: 400 });
     }
 
-    // Use a default user ID (1) since there's no authentication
-    const userId = 1;
+    // Use authenticated user ID from context
+    const userId = context.user.user_id;
 
     // สร้าง Import Batch
     const batch = await stockImportService.createImportBatch(
@@ -149,3 +150,6 @@ function parseCSVLine(line: string): string[] {
   values.push(current.trim());
   return values.map(v => v.replace(/^"|"$/g, ''));
 }
+
+// Export with auth wrapper
+export const POST = withAuth(handlePost);

@@ -6,6 +6,7 @@ import { createPasswordResetToken, validatePasswordResetToken, usePasswordResetT
 import { logLoginAttempt, checkLoginRateLimit } from './login-attempts';
 import { logAuthEvent } from './audit';
 import { getAuthSettings } from './settings';
+import { sendPasswordResetEmail } from '@/lib/email/nodemailer';
 
 export interface LoginCredentials {
   email: string;
@@ -54,6 +55,7 @@ export interface PasswordResetRequest {
 export interface PasswordResetResult {
   success: boolean;
   token?: string;
+  message?: string;
   error?: string;
 }
 
@@ -78,10 +80,10 @@ export async function login(credentials: LoginCredentials): Promise<LoginResult>
   try {
     const supabase = await createClient();
 
-    // Check rate limiting (TEMPORARILY DISABLED FOR TESTING)
+    // Check rate limiting (temporarily disabled for development)
     // const rateLimitCheck = await checkLoginRateLimit(email, ip_address || '127.0.0.1');
     // console.log('⏱️  [AUTH-SERVICE] Rate limit check:', rateLimitCheck);
-
+    // 
     // if (!rateLimitCheck.allowed) {
     //   await logLoginAttempt({
     //     email,
@@ -90,15 +92,14 @@ export async function login(credentials: LoginCredentials): Promise<LoginResult>
     //     success: false,
     //     failure_reason: 'Rate limit exceeded'
     //   });
-
+    // 
     //   return {
     //     success: false,
     //     error: 'คุณพยายามเข้าสู่ระบบบ่อยเกินไป กรุณารอสักครู่แล้วลองใหม่',
     //     error_code: 'RATE_LIMIT'
     //   };
     // }
-
-    console.log('⚠️  [AUTH-SERVICE] Rate limiting is DISABLED for testing');
+    console.log('⏱️  [AUTH-SERVICE] Rate limit check: DISABLED for development');
 
     // Get user by email
     console.log('🔍 [AUTH-SERVICE] Querying user:', email);
@@ -490,7 +491,7 @@ export async function requestPasswordReset(request: PasswordResetRequest): Promi
     // Get user by email
     const { data: userData, error: userError } = await supabase
       .from('master_system_user')
-      .select('user_id, email, is_active')
+      .select('user_id, email, full_name, is_active')
       .eq('email', request.email)
       .single();
 
@@ -524,11 +525,30 @@ export async function requestPasswordReset(request: PasswordResetRequest): Promi
       token_id: tokenResult.token_id
     });
 
-    // In a real application, you would send an email here
-    // For now, we'll return the token (in production, never do this!)
+    // Send password reset email via Resend
+    const emailResult = await sendPasswordResetEmail(
+      userData.email,
+      tokenResult.token,
+      userData.full_name
+    );
+
+    if (!emailResult.success) {
+      console.error('Failed to send password reset email:', emailResult.error);
+      // Still return success to prevent information leakage
+      // But include token in development mode for testing
+      if (process.env.NODE_ENV === 'development') {
+        return {
+          success: true,
+          token: tokenResult.token, // Only in development
+          message: 'ส่งลิงก์รีเซ็ตรหัสผ่านไปยังอีเมลของคุณแล้ว (dev mode: email failed, token included)'
+        };
+      }
+    }
+
+    console.log(`✅ Password reset email sent to ${request.email}`);
     return {
       success: true,
-      token: tokenResult.token
+      message: 'ส่งลิงก์รีเซ็ตรหัสผ่านไปยังอีเมลของคุณแล้ว'
     };
   } catch (error) {
     console.error('Password reset request error:', error);

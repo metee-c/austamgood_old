@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
+import { withAuth } from '@/lib/api/with-auth';
 
-export async function GET(request: NextRequest) {
+async function handleGet(request: NextRequest, context: any) {
   try {
     const { searchParams } = new URL(request.url)
     const search = searchParams.get('search')
@@ -63,7 +64,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function handlePost(request: NextRequest, context: any) {
   try {
     const body = await request.json()
     const supabase = await createServerClient()
@@ -91,3 +92,7 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+// Export with auth wrappers
+export const GET = withAuth(handleGet);
+export const POST = withAuth(handlePost);

@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withAuth } from '@/lib/api/with-auth';
 
 /**
  * GET /api/mobile/pick/tasks
  * ดึงรายการ Picklists ที่พนักงานสามารถหยิบได้ (status = assigned)
  */
-export async function GET(request: NextRequest) {
+async function handleGet(request: NextRequest, context: any) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -62,3 +63,6 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+// Export with auth wrapper
+export const GET = withAuth(handleGet);

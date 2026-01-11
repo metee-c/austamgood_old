@@ -1,10 +1,8 @@
-﻿import { createClient } from '@supabase/supabase-js';
+﻿import { createServiceRoleClient } from '@/lib/supabase/server';
 
-// This should ideally use the server client, but we keep it for now to minimize changes.
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Use service role client for admin operations (bypasses RLS)
+// This is intentional for database service layer operations
+const supabase = createServiceRoleClient();
 
 // --- ENUM Types ---
 export type ReceiveType = 

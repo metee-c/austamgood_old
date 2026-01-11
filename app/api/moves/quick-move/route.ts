@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/client';
+import { withAuth } from '@/lib/api/with-auth';
 
-export async function POST(request: NextRequest) {
+async function handlePost(request: NextRequest, context: any) {
   try {
     const body = await request.json();
     const { pallet_id, to_location_id, notes } = body;
@@ -175,3 +176,6 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+// Export with auth wrapper
+export const POST = withAuth(handlePost);

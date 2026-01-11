@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withAuth } from '@/lib/api/with-auth';
 
-export async function PATCH(
+async function handlePatch(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params?: Promise<{ id: string }>; user: any }
 ) {
   try {
     const supabase = await createClient();
-    const { id } = await params;
+    const { id } = await context.params!;
     const body = await request.json();
 
     // Build update object from allowed fields
@@ -62,3 +63,6 @@ export async function PATCH(
     );
   }
 }
+
+// Export with auth wrapper
+export const PATCH = withAuth(handlePatch);

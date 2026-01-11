@@ -5,12 +5,11 @@
  * รองรับ BRCGS Audit Trail และ Reverse Ledger Pattern
  */
 
-import { createClient } from '@supabase/supabase-js';
+import { createServiceRoleClient } from '@/lib/supabase/server';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Use service role client for admin operations (bypasses RLS)
+// This is intentional for rollback operations that need full access
+const supabase = createServiceRoleClient();
 
 // ============================================================================
 // Debug Logger

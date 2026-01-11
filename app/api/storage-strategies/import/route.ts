@@ -1,13 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createServiceRoleClient } from '@/lib/supabase/server';
 import { parse } from 'csv-parse/sync';
 
 export const dynamic = 'force-dynamic';
-
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
-
-const supabase = createClient(supabaseUrl, serviceRoleKey);
 
 const STORAGE_STRATEGY_FIELDS = `
   strategy_id,
@@ -34,6 +29,7 @@ const STORAGE_STRATEGY_FIELDS = `
 
 export async function POST(request: NextRequest) {
   try {
+    const supabase = createServiceRoleClient();
     const formData = await request.formData();
     const file = formData.get('file') as File;
 

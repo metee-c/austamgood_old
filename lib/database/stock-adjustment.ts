@@ -1,5 +1,5 @@
 // Stock Adjustment Service Layer
-import { createClient } from '@supabase/supabase-js';
+import { createServiceRoleClient } from '@/lib/supabase/server';
 import type {
   AdjustmentRecord,
   AdjustmentReason,
@@ -10,10 +10,9 @@ import type {
   StockAdjustmentItem,
 } from '@/types/stock-adjustment-schema';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+// Use service role client for admin operations (bypasses RLS)
+// This is intentional for stock adjustment operations that need full access
+const supabase = createServiceRoleClient();
 
 const ADJUSTMENT_SELECT = `
   *,

@@ -3,14 +3,14 @@
 
    Creating an optimized production build ...
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
- ✓ Compiled successfully in 13.6s
+ ✓ Compiled successfully in 17.0s
    Running TypeScript ...
    Collecting page data using 13 workers ...
-   Generating static pages using 13 workers (0/222) ...
-   Generating static pages using 13 workers (55/222) 
-   Generating static pages using 13 workers (110/222) 
-   Generating static pages using 13 workers (166/222) 
- ✓ Generating static pages using 13 workers (222/222) in 1470.7ms
+   Generating static pages using 13 workers (0/221) ...
+   Generating static pages using 13 workers (55/221) 
+   Generating static pages using 13 workers (110/221) 
+   Generating static pages using 13 workers (165/221) 
+ ✓ Generating static pages using 13 workers (221/221) in 3.8s
    Finalizing page optimization ...
 
 Route (app)
@@ -37,14 +37,14 @@ Route (app)
 ├ ƒ /api/ai/warehouse/locations
 ├ ƒ /api/auth/audit-logs
 ├ ƒ /api/auth/change-password
+├ ƒ /api/auth/check-email
 ├ ƒ /api/auth/login
 ├ ƒ /api/auth/login-attempts
 ├ ƒ /api/auth/logout
 ├ ƒ /api/auth/me
-├ ƒ /api/auth/password-reset/request
-├ ƒ /api/auth/password-reset/reset
 ├ ƒ /api/auth/permissions
 ├ ƒ /api/auth/register
+├ ƒ /api/auth/reset-password-direct
 ├ ƒ /api/auth/sessions
 ├ ƒ /api/auth/sessions/[id]
 ├ ƒ /api/auth/settings
@@ -335,7 +335,6 @@ Route (app)
 ├ ○ /reports
 ├ ○ /reports/391
 ├ ○ /reports/production
-├ ○ /reset-password
 ├ ○ /shipping
 ├ ○ /stock-management/adjustment
 ├ ○ /stock-management/count

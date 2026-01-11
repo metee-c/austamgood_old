@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { orderRollbackService } from '@/lib/database/order-rollback';
-import { getUserIdFromCookie } from '@/lib/database/user-context';
+import { withAuth } from '@/lib/api/with-auth';
 
 /**
  * POST /api/orders/[id]/rollback
@@ -9,14 +9,14 @@ import { getUserIdFromCookie } from '@/lib/database/user-context';
  * Body:
  * - reason: string (required) - เหตุผลในการ Rollback
  */
-export async function POST(
+async function handlePost(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: { params?: { id: string }; user: any }
 ) {
   console.log('[rollback] === START POST /api/orders/[id]/rollback ===');
   
   try {
-    const { id } = await params;
+    const { id } = await (context.params as any);
     const orderId = parseInt(id, 10);
 
     console.log('[rollback] Parsed orderId:', orderId);
@@ -42,11 +42,10 @@ export async function POST(
       );
     }
 
-    // Get user ID from cookie
-    const cookieHeader = request.headers.get('cookie');
-    const userId = await getUserIdFromCookie(cookieHeader) || 1;
+    // Get user ID from auth context
+    const userId = context.user.user_id;
 
-    console.log('[rollback] User ID from cookie:', userId);
+    console.log('[rollback] User ID from auth context:', userId);
 
     // Get IP address and user agent for audit
     const ipAddress = request.headers.get('x-forwarded-for') || 
@@ -99,6 +98,8 @@ export async function POST(
     );
   }
 }
+
+export const POST = withAuth(handlePost);
 
 /**
  * GET /api/orders/[id]/rollback

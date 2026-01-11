@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getUserIdFromCookie, setDatabaseUserContext } from '@/lib/database/user-context';
+import { setDatabaseUserContext } from '@/lib/database/user-context';
+import { withAuth } from '@/lib/api/with-auth';
 
 /**
  * GET /api/bonus-face-sheets/confirm-pick-to-staging?loadlist_id=xxx
@@ -133,13 +134,12 @@ export async function GET(request: NextRequest) {
  * 2. ย้ายสต็อกจาก storage_location (PQ01-PQ10, MR01-MR10) ไป PQTD/MRTD
  * 3. บันทึก ledger entries
  */
-export async function POST(request: NextRequest) {
+async function handlePost(request: NextRequest, context: any) {
   try {
     const supabase = await createClient();
     
     // Set user context for audit trail
-    const cookieHeader = request.headers.get('cookie');
-    const userId = await getUserIdFromCookie(cookieHeader) || 1;
+    const userId = context.user.user_id;
     await setDatabaseUserContext(supabase, userId);
     
     const body = await request.json();
@@ -501,3 +501,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = withAuth(handlePost);

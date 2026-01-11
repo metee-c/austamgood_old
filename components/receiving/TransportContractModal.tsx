@@ -183,10 +183,10 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
     setLoading(true);
     setError(null);
     try {
-      // ดึงข้อมูลแผนและ bonus orders พร้อมกัน
+      // ดึงข้อมูลแผนและ bonus orders พร้อมกัน (ใช้ cache: 'no-store' เพื่อให้ได้ข้อมูลล่าสุดเสมอ)
       const [editorRes, bonusRes] = await Promise.all([
-        fetch(`/api/route-plans/${id}/editor`),
-        fetch(`/api/route-plans/${id}/bonus-orders`)
+        fetch(`/api/route-plans/${id}/editor`, { cache: 'no-store' }),
+        fetch(`/api/route-plans/${id}/bonus-orders`, { cache: 'no-store' })
       ]);
       
       const { data } = await editorRes.json();
@@ -284,6 +284,8 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
       setSelectedSupplier(null);
       setSupplierSummaries([]);
       setError(null);
+      setBonusOrdersMap({});
+      setContractNo('');
     }
   }, [isOpen]);
 
@@ -348,8 +350,8 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
     // Fetch full trip details และ bonus orders พร้อมกัน
     try {
       const [editorRes, bonusRes] = await Promise.all([
-        fetch(`/api/route-plans/${plan.plan_id}/editor`),
-        fetch(`/api/route-plans/${plan.plan_id}/bonus-orders`)
+        fetch(`/api/route-plans/${plan.plan_id}/editor`, { cache: 'no-store' }),
+        fetch(`/api/route-plans/${plan.plan_id}/bonus-orders`, { cache: 'no-store' })
       ]);
       
       const { data } = await editorRes.json();

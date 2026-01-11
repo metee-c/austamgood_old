@@ -1,25 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient } from '@/lib/supabase/server';
+import { withAuth } from '@/lib/api/with-auth';
 
-export const dynamic = 'force-dynamic'; // Add this line
+export const dynamic = 'force-dynamic';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-  {
-    db: {
-      schema: 'public',
-    },
-    global: {
-      headers: {
-        'Prefer': 'return=representation',
-      },
-    },
-  }
-);
-
-export async function GET(request: NextRequest) {
+async function handleGet(request: NextRequest, context: any) {
   try {
+    const supabase = await createClient();
     const { searchParams } = new URL(request.url);
     const warehouse_id = searchParams.get('warehouse_id');
     const location_id = searchParams.get('location_id');
@@ -137,3 +124,6 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+// Export with auth wrapper
+export const GET = withAuth(handleGet);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getUserIdFromCookie, setDatabaseUserContext } from '@/lib/database/user-context';
+import { setDatabaseUserContext } from '@/lib/database/user-context';
+import { withAuth } from '@/lib/api/with-auth';
 
 /**
  * POST /api/mobile/loading/complete
@@ -15,13 +16,12 @@ import { getUserIdFromCookie, setDatabaseUserContext } from '@/lib/database/user
  * 4. บันทึก Inventory Ledger (OUT + IN)
  * 5. อัปเดต loadlist status
  */
-export async function POST(request: NextRequest) {
+async function handlePost(request: NextRequest, context: any) {
   try {
     const supabase = await createClient();
     
-    // ✅ Set user context for audit trail
-    const cookieHeader = request.headers.get('cookie');
-    const userId = await getUserIdFromCookie(cookieHeader) || 1; // Fallback to system user
+    // ✅ Get userId from auth context (provided by withAuth wrapper)
+    const userId = context.user.user_id;
     await setDatabaseUserContext(supabase, userId);
     
     const body = await request.json();
@@ -1062,3 +1062,6 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+// Export with auth wrapper
+export const POST = withAuth(handlePost);

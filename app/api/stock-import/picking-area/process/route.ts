@@ -4,18 +4,15 @@
 // ============================================================================
 
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
 import { stockImportService } from '@/lib/database/stock-import';
+import { withAuth } from '@/lib/api/with-auth';
 
 export const dynamic = 'force-dynamic';
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
-export async function POST(request: NextRequest) {
+async function handlePost(request: NextRequest, context: any) {
   try {
+    // Get user ID from auth context
+    const userId = context.user.user_id;
 
     // รับข้อมูล
     const body = await request.json();
@@ -42,9 +39,6 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-
-    // Use default user ID (1) since there's no authentication
-    const userId = 1;
 
     // ประมวลผลการนำเข้า Picking Area
     const processingSummary = await stockImportService.processPickingAreaImport(
@@ -78,3 +72,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = withAuth(handlePost);

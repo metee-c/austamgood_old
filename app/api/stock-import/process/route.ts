@@ -6,11 +6,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { stockImportService } from '@/lib/database/stock-import';
-import { setDatabaseUserContext, getUserIdFromCookie } from '@/lib/database/user-context';
+import { setDatabaseUserContext } from '@/lib/database/user-context';
+import { withAuth } from '@/lib/api/with-auth';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(request: NextRequest) {
+async function handlePost(request: NextRequest, context: any) {
   try {
     const supabase = await createClient();
 
@@ -37,9 +38,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get user ID from session cookie
-    const cookieHeader = request.headers.get('cookie');
-    const userId = await getUserIdFromCookie(cookieHeader) || 1; // Fallback to system user if no session
+    // Get user ID from authenticated session
+    const userId = context.user.user_id;
 
     // Set user context for audit trail
     await setDatabaseUserContext(supabase, userId);
@@ -75,3 +75,6 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+// Export with auth wrapper
+export const POST = withAuth(handlePost);

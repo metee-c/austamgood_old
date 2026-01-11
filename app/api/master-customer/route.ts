@@ -1,9 +1,9 @@
-
 import { createClient } from '@/lib/supabase/server';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { customerSchema } from '@/types/customer-schema';
+import { withAuth, withAdminAuth } from '@/lib/api/with-auth';
 
-export async function GET(request: Request) {
+async function handleGet(request: NextRequest, context: any) {
   const { searchParams } = new URL(request.url);
   const search = searchParams.get('search');
   const supabase = await createClient();
@@ -26,7 +26,7 @@ export async function GET(request: Request) {
   return NextResponse.json(customers);
 }
 
-export async function POST(request: Request) {
+async function handlePost(request: NextRequest, context: any) {
   const supabase = await createClient();
   const body = await request.json();
 
@@ -48,7 +48,7 @@ export async function POST(request: Request) {
   return NextResponse.json(data);
 }
 
-export async function PUT(request: Request) {
+async function handlePut(request: NextRequest, context: any) {
   const supabase = await createClient();
   const body = await request.json();
 
@@ -71,7 +71,7 @@ export async function PUT(request: Request) {
   return NextResponse.json(data);
 }
 
-export async function DELETE(request: Request) {
+async function handleDelete(request: NextRequest, context: any) {
   const supabase = await createClient();
   const { searchParams } = new URL(request.url);
   const customer_id = searchParams.get('id');
@@ -91,3 +91,9 @@ export async function DELETE(request: Request) {
 
   return NextResponse.json({ message: 'Customer deleted successfully' });
 }
+
+// Export with auth wrappers
+export const GET = withAuth(handleGet);
+export const POST = withAuth(handlePost);
+export const PUT = withAuth(handlePut);
+export const DELETE = withAdminAuth(handleDelete);
