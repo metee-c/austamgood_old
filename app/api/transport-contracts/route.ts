@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
 // GET - Get transport contract by plan_id and supplier_id
-// POST - Create or get transport contract
+// POST - Create or get transport contract (single plan or multi-plan)
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -41,8 +41,49 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient();
     const body = await request.json();
-    const { plan_id, supplier_id, supplier_name, total_trips, total_cost, printed_by } = body;
+    const { 
+      plan_id, 
+      supplier_id, 
+      supplier_name, 
+      total_trips, 
+      total_cost, 
+      printed_by,
+      // Multi-plan support
+      is_multi_plan,
+      plan_ids,
+      plan_codes
+    } = body;
 
+    // Multi-plan contract
+    if (is_multi_plan && plan_ids && plan_ids.length > 1) {
+      if (!supplier_id) {
+        return NextResponse.json(
+          { error: 'supplier_id is required for multi-plan contract' },
+          { status: 400 }
+        );
+      }
+
+      // Call the stored function to create multi-plan contract
+      const { data, error } = await supabase.rpc('create_multi_plan_transport_contract', {
+        p_supplier_id: supplier_id,
+        p_plan_ids: plan_ids,
+        p_plan_codes: plan_codes || [],
+        p_supplier_name: supplier_name || null,
+        p_total_trips: total_trips || 0,
+        p_total_cost: total_cost || 0,
+        p_printed_by: printed_by || null,
+      });
+
+      if (error) {
+        console.error('Error creating multi-plan transport contract:', error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      const contract = Array.isArray(data) ? data[0] : data;
+      return NextResponse.json({ data: contract });
+    }
+
+    // Single plan contract (original logic)
     if (!plan_id || !supplier_id) {
       return NextResponse.json(
         { error: 'plan_id and supplier_id are required' },

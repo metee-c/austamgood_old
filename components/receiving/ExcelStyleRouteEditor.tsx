@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { Plus, Trash2, Save, X, AlertTriangle, ChevronDown, ChevronUp, Scissors, ArrowRight } from 'lucide-react';
+import { Plus, Trash2, Save, X, AlertTriangle, ChevronDown, ChevronUp, Scissors, ArrowRight, ExternalLink } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 
@@ -57,6 +57,7 @@ interface ExcelStyleRouteEditorProps {
   onSave: (changes: RouteChanges) => Promise<void>;
   onClose: () => void;
   loading?: boolean;
+  onCrossPlanTransfer?: (stop: OrderRow, tripId: number | string) => void;
 }
 
 interface RouteChanges {
@@ -93,7 +94,8 @@ export default function ExcelStyleRouteEditor({
   trips,
   onSave,
   onClose,
-  loading = false
+  loading = false,
+  onCrossPlanTransfer
 }: ExcelStyleRouteEditorProps) {
   // Convert trips data to flat rows
   const initialRows = useMemo(() => {
@@ -150,7 +152,7 @@ export default function ExcelStyleRouteEditor({
             customerName: order.shop_name || order.customer_name || stop.stop_name || '-',
             province: order.province || null,
             weightKg: Number(order.allocated_weight_kg || order.total_order_weight_kg || 0),
-            totalQty: order.total_qty || 0,
+            totalQty: Number(order.total_qty) || 0,
             tripNumber,
             stopSequence: stop.sequence_no || stopIndex + 1,
             note: order.note || stop.notes || null,
@@ -632,16 +634,16 @@ export default function ExcelStyleRouteEditor({
         <table className="w-full border-collapse text-sm">
           <thead className="bg-gray-100 sticky top-0">
             <tr>
-              <th className="border px-3 py-2 text-left w-20">คัน</th>
-              <th className="border px-3 py-2 text-left w-20">จุด</th>
-              <th className="border px-3 py-2 text-left w-32">เลขออเดอร์</th>
-              <th className="border px-3 py-2 text-left w-24">รหัสลูกค้า</th>
-              <th className="border px-3 py-2 text-left">ชื่อร้าน</th>
-              <th className="border px-3 py-2 text-left w-24">จังหวัด</th>
-              <th className="border px-3 py-2 text-right w-24">น้ำหนัก (kg)</th>
-              <th className="border px-3 py-2 text-right w-20">จำนวน</th>
-              <th className="border px-3 py-2 text-left">หมายเหตุ</th>
-              <th className="border px-3 py-2 text-center w-24">จัดการ</th>
+              <th className="border px-2 py-2 text-left w-24">คัน</th>
+              <th className="border px-2 py-2 text-left w-20">จุด</th>
+              <th className="border px-2 py-2 text-left w-32">เลขออเดอร์</th>
+              <th className="border px-2 py-2 text-left w-28">รหัสลูกค้า</th>
+              <th className="border px-2 py-2 text-left min-w-[150px]">ชื่อร้าน</th>
+              <th className="border px-2 py-2 text-left w-28">จังหวัด</th>
+              <th className="border px-2 py-2 text-right w-24">น้ำหนัก (kg)</th>
+              <th className="border px-2 py-2 text-right w-20">จำนวน</th>
+              <th className="border px-2 py-2 text-left min-w-[100px]">หมายเหตุ</th>
+              <th className="border px-2 py-2 text-center w-28">จัดการ</th>
             </tr>
           </thead>
           <tbody>
@@ -733,6 +735,15 @@ export default function ExcelStyleRouteEditor({
                               title="แบ่งออเดอร์"
                             >
                               <Scissors size={14} />
+                            </button>
+                          )}
+                          {!row.isSplit && onCrossPlanTransfer && (
+                            <button
+                              onClick={() => onCrossPlanTransfer(row, tripNumberToIdMap.get(row.tripNumber) || row.tripNumber)}
+                              className="p-1 text-purple-600 hover:bg-purple-100 rounded"
+                              title="ย้ายไปแผนอื่น"
+                            >
+                              <ExternalLink size={14} />
                             </button>
                           )}
                           <button
