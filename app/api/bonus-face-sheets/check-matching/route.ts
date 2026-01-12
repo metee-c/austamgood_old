@@ -200,6 +200,8 @@ export async function POST(request: NextRequest) {
 
     // ✅ FIX (edit11): ดึง checker_employee_id จาก loadlist ที่มี picklist/face_sheet นี้อยู่แล้ว
     let existingCheckerEmployeeId: number | null = null;
+    let hasLoadlist = false; // ✅ NEW: ตรวจสอบว่า picklist มี loadlist แล้วหรือยัง
+    let existingLoadlistCode: string | null = null; // ✅ NEW: เก็บ loadlist_code ที่มีอยู่
     
     if (picklist_id) {
       // ค้นหา loadlist ที่มี picklist นี้
@@ -211,14 +213,19 @@ export async function POST(request: NextRequest) {
         .single();
       
       if (existingLoadlistData?.loadlist_id) {
+        hasLoadlist = true; // ✅ มี loadlist แล้ว
+        
         const { data: loadlist } = await supabase
           .from('loadlists')
-          .select('checker_employee_id')
+          .select('checker_employee_id, loadlist_code')
           .eq('id', existingLoadlistData.loadlist_id)
           .single();
         
         if (loadlist?.checker_employee_id) {
           existingCheckerEmployeeId = loadlist.checker_employee_id;
+        }
+        if (loadlist?.loadlist_code) {
+          existingLoadlistCode = loadlist.loadlist_code;
         }
       }
     } else if (face_sheet_id) {
@@ -231,16 +238,44 @@ export async function POST(request: NextRequest) {
         .single();
       
       if (existingLoadlistData?.loadlist_id) {
+        hasLoadlist = true; // ✅ มี loadlist แล้ว
+        
         const { data: loadlist } = await supabase
           .from('loadlists')
-          .select('checker_employee_id')
+          .select('checker_employee_id, loadlist_code')
           .eq('id', existingLoadlistData.loadlist_id)
           .single();
         
         if (loadlist?.checker_employee_id) {
           existingCheckerEmployeeId = loadlist.checker_employee_id;
         }
+        if (loadlist?.loadlist_code) {
+          existingLoadlistCode = loadlist.loadlist_code;
+        }
       }
+    }
+
+    // ✅ NEW: ถ้า picklist ยังไม่มี loadlist ให้คืน error
+    if (picklist_id && !hasLoadlist) {
+      // ดึงข้อมูล picklist เพื่อแสดงชื่อ
+      const { data: picklistInfo } = await supabase
+        .from('picklists')
+        .select('picklist_code')
+        .eq('id', picklist_id)
+        .single();
+      
+      const picklistCode = picklistInfo?.picklist_code || `ID:${picklist_id}`;
+      
+      return NextResponse.json({
+        success: false,
+        matched: false,
+        matched_count: 0,
+        matched_package_ids: [],
+        matched_customer_ids: [],
+        has_loadlist: false,
+        picklist_code: picklistCode,
+        message: `ใบหยิบ ${picklistCode} ยังไม่ได้สร้างใบโหลด กรุณาติดต่อเฟรินให้สร้างใบโหลดของใบหยิบก่อน`
+      });
     }
 
     return NextResponse.json({
@@ -251,6 +286,8 @@ export async function POST(request: NextRequest) {
       matched_package_ids: matchedPackageIds,
       matched_customer_ids: matchedCustomerIds,
       mapping_type: mappingType!,
+      has_loadlist: hasLoadlist, // ✅ NEW: คืนสถานะว่ามี loadlist แล้วหรือยัง
+      loadlist_code: existingLoadlistCode, // ✅ NEW: คืน loadlist_code ที่มีอยู่
       checker_employee_id: existingCheckerEmployeeId, // ✅ NEW: คืน checker จาก loadlist ที่มีอยู่แล้ว
       matched_packages: matchedPackages.map(pkg => ({
         id: pkg.id,

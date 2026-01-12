@@ -1584,8 +1584,8 @@ const RoutesPage = () => {
                 const tripId = trip.trip_id;
                 const tripNumber = trip.daily_trip_number || trip.trip_sequence;
                 
-                // ดึง delivery_number สำหรับ trip นี้
-                const deliveryNumber = deliveryNumbersByTrip[tripId] || '';
+                // ดึง delivery_number จาก loadlist (ผ่าน trip.delivery_number) หรือ fallback จาก bonus-orders API
+                const deliveryNumber = trip.delivery_number || deliveryNumbersByTrip[tripId] || '';
                 
                 // ดึง bonus orders สำหรับ trip นี้
                 const tripBonusOrders = bonusOrdersByTrip[tripId] || {};
@@ -1678,7 +1678,15 @@ const RoutesPage = () => {
                         'กำหนด - วันที่จัดส่ง': formattedDate,
                         'คันที่': tripNumber,
                         'จุดส่ง': customerData.stopSequence,
-                        'เลขออเดอร์': customerData.orderNos.join(',')
+                        'วันเวลาที่ปิดงาน': '', // I - ปล่อยว่าง
+                        'ลิงก์รูปภาพยืนยัน': '', // J - ปล่อยว่าง
+                        'รูปภาพยืนยัน': '', // K - ปล่อยว่าง
+                        'สถานะบันทึกรูป': '', // L - ปล่อยว่าง
+                        'บริษัทขนส่ง': trip.supplier_name || '', // M - จากหน้าจัดเส้นทาง
+                        'ชื่อพนักงานขับ': '', // N - ปล่อยว่าง
+                        'ทะเบียน': '', // O - ปล่อยว่าง
+                        'พนักงานเช็ค': trip.checker_employee_name || '', // P - จากใบโหลด
+                        'เลขที่เอกสาร': customerData.orderNos.join(',') // Q - ตามเดิม
                     });
                 }
             }
@@ -1695,15 +1703,23 @@ const RoutesPage = () => {
 
             // ปรับความกว้างคอลัมน์
             ws['!cols'] = [
-                { wch: 20 }, // รหัสงานจัดส่ง
-                { wch: 35 }, // ชื่อร้านค้า
-                { wch: 15 }, // ละติจูด
-                { wch: 15 }, // ลองจิจูด
-                { wch: 15 }, // น้ำหนัก
-                { wch: 18 }, // วันที่จัดส่ง
-                { wch: 8 },  // คันที่
-                { wch: 8 },  // จุดส่ง
-                { wch: 50 }  // เลขออเดอร์ (เพิ่มความกว้างเพราะมี bonus orders)
+                { wch: 20 }, // A - รหัสงานจัดส่ง
+                { wch: 35 }, // B - ชื่อร้านค้า
+                { wch: 15 }, // C - ละติจูด
+                { wch: 15 }, // D - ลองจิจูด
+                { wch: 15 }, // E - น้ำหนัก
+                { wch: 18 }, // F - วันที่จัดส่ง
+                { wch: 8 },  // G - คันที่
+                { wch: 8 },  // H - จุดส่ง
+                { wch: 18 }, // I - วันเวลาที่ปิดงาน
+                { wch: 30 }, // J - ลิงก์รูปภาพยืนยัน
+                { wch: 15 }, // K - รูปภาพยืนยัน
+                { wch: 15 }, // L - สถานะบันทึกรูป
+                { wch: 25 }, // M - บริษัทขนส่ง
+                { wch: 20 }, // N - ชื่อพนักงานขับ
+                { wch: 12 }, // O - ทะเบียน
+                { wch: 20 }, // P - พนักงานเช็ค
+                { wch: 50 }  // Q - เลขที่เอกสาร
             ];
 
             // Download file

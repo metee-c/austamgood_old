@@ -102,6 +102,70 @@ const OrdersPage = () => {
   // Advanced filter panel state
   const [showFilters, setShowFilters] = useState(false);
   
+  // Column widths state for resizable columns
+  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({
+    select: 32,
+    expand: 32,
+    order_no: 100,
+    order_type: 90,
+    status: 80,
+    customer_id: 80,
+    shop_name: 120,
+    province: 80,
+    order_date: 80,
+    delivery_date: 100,
+    plan_code: 90,
+    address: 100,
+    remarks: 80,
+    items_count: 50,
+    total_qty: 60,
+    total_weight: 70,
+    delivery_type: 60,
+    sales_territory: 60,
+    created_by: 70,
+    updated_by: 70,
+    created_at: 80,
+    updated_at: 80,
+    actions: 80,
+  });
+  
+  // Resizing state
+  const [resizingColumn, setResizingColumn] = useState<string | null>(null);
+  const [resizeStartX, setResizeStartX] = useState(0);
+  const [resizeStartWidth, setResizeStartWidth] = useState(0);
+  
+  // Handle column resize start
+  const handleResizeStart = (e: React.MouseEvent, columnKey: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setResizingColumn(columnKey);
+    setResizeStartX(e.clientX);
+    setResizeStartWidth(columnWidths[columnKey] || 100);
+  };
+  
+  // Handle column resize move
+  useEffect(() => {
+    if (!resizingColumn) return;
+    
+    const handleMouseMove = (e: MouseEvent) => {
+      const diff = e.clientX - resizeStartX;
+      const newWidth = Math.max(40, resizeStartWidth + diff);
+      setColumnWidths(prev => ({ ...prev, [resizingColumn]: newWidth }));
+    };
+    
+    const handleMouseUp = () => {
+      setResizingColumn(null);
+    };
+    
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+    
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [resizingColumn, resizeStartX, resizeStartWidth]);
+  
   // Advanced filters
   interface AdvancedFilters {
     customer_id?: string;
@@ -284,6 +348,24 @@ const OrdersPage = () => {
     total_value: 0
   };
 
+  // Helper function to check if value matches any of comma-separated search terms
+  const matchesMultiValue = (value: string | null | undefined, searchTerms: string): boolean => {
+    if (!value || !searchTerms) return false;
+    const terms = searchTerms.split(',').map(t => t.trim().toLowerCase()).filter(t => t);
+    if (terms.length === 0) return false;
+    const valueLower = value.toLowerCase();
+    return terms.some(term => valueLower.includes(term));
+  };
+
+  // Helper function for exact match with comma-separated values
+  const matchesMultiValueExact = (value: string | null | undefined, searchTerms: string): boolean => {
+    if (!value || !searchTerms) return false;
+    const terms = searchTerms.split(',').map(t => t.trim().toLowerCase()).filter(t => t);
+    if (terms.length === 0) return false;
+    const valueLower = value.toLowerCase();
+    return terms.some(term => valueLower === term);
+  };
+
   // Filter orders by location and advanced filters
   const locationFilteredOrders = useMemo(() => {
     if (!orders) return [];
@@ -296,20 +378,22 @@ const OrdersPage = () => {
         if (selectedLocationFilter === 'no_location' && hasLocation) return false;
       }
 
-      // Advanced filters
-      if (advancedFilters.customer_id && !order.customer_id?.toLowerCase().includes(advancedFilters.customer_id.toLowerCase())) return false;
-      if (advancedFilters.shop_name && !order.shop_name?.toLowerCase().includes(advancedFilters.shop_name.toLowerCase())) return false;
-      if (advancedFilters.province && order.province !== advancedFilters.province) return false;
-      if (advancedFilters.plan_code && !order.plan_code?.toLowerCase().includes(advancedFilters.plan_code.toLowerCase())) return false;
-      if (advancedFilters.sales_territory && order.sales_territory !== advancedFilters.sales_territory) return false;
-      if (advancedFilters.delivery_type && order.delivery_type !== advancedFilters.delivery_type) return false;
+      // Advanced filters - support comma-separated multi-value search
+      if (advancedFilters.customer_id && !matchesMultiValue(order.customer_id, advancedFilters.customer_id)) return false;
+      if (advancedFilters.shop_name && !matchesMultiValue(order.shop_name, advancedFilters.shop_name)) return false;
+      if (advancedFilters.province && !matchesMultiValue(order.province, advancedFilters.province)) return false;
+      if (advancedFilters.plan_code && !matchesMultiValue(order.plan_code, advancedFilters.plan_code)) return false;
+      if (advancedFilters.sales_territory && !matchesMultiValue(order.sales_territory, advancedFilters.sales_territory)) return false;
+      if (advancedFilters.delivery_type && !matchesMultiValue(order.delivery_type, advancedFilters.delivery_type)) return false;
       
-      // Product name filter - search in order items
+      // Product name filter - search in order items (also supports comma-separated)
       if (advancedFilters.product_name) {
-        const searchTerm = advancedFilters.product_name.toLowerCase();
+        const searchTerms = advancedFilters.product_name.split(',').map(t => t.trim().toLowerCase()).filter(t => t);
         const hasMatchingProduct = order.items?.some((item: any) => 
-          item.sku_name?.toLowerCase().includes(searchTerm) ||
-          item.sku_id?.toLowerCase().includes(searchTerm)
+          searchTerms.some(term => 
+            item.sku_name?.toLowerCase().includes(term) ||
+            item.sku_id?.toLowerCase().includes(term)
+          )
         );
         if (!hasMatchingProduct) return false;
       }
@@ -318,7 +402,7 @@ const OrdersPage = () => {
     });
   }, [orders, selectedLocationFilter, advancedFilters]);
 
-  // Sort orders
+  // Sort orders - support ALL columns
   const sortedOrders = useMemo(() => {
     if (!locationFilteredOrders || !sortField) return locationFilteredOrders || [];
 
@@ -328,28 +412,85 @@ const OrdersPage = () => {
 
       switch (sortField) {
         case 'order_no':
-          aValue = a.order_no;
-          bValue = b.order_no;
+          aValue = a.order_no || '';
+          bValue = b.order_no || '';
+          break;
+        case 'order_type':
+          aValue = a.order_type || '';
+          bValue = b.order_type || '';
+          break;
+        case 'status':
+          aValue = a.status || '';
+          bValue = b.status || '';
+          break;
+        case 'customer_id':
+          aValue = a.customer_id || '';
+          bValue = b.customer_id || '';
           break;
         case 'customer':
-          aValue = a.customer_name || '';
-          bValue = b.customer_name || '';
+        case 'shop_name':
+          aValue = a.shop_name || '';
+          bValue = b.shop_name || '';
+          break;
+        case 'province':
+          aValue = a.province || '';
+          bValue = b.province || '';
           break;
         case 'order_date':
-          aValue = new Date(a.order_date);
-          bValue = new Date(b.order_date);
+          aValue = a.order_date ? new Date(a.order_date).getTime() : 0;
+          bValue = b.order_date ? new Date(b.order_date).getTime() : 0;
           break;
         case 'delivery_date':
-          aValue = new Date(a.delivery_date);
-          bValue = new Date(b.delivery_date);
+          aValue = a.delivery_date ? new Date(a.delivery_date).getTime() : 0;
+          bValue = b.delivery_date ? new Date(b.delivery_date).getTime() : 0;
+          break;
+        case 'plan_code':
+          aValue = a.plan_code || '';
+          bValue = b.plan_code || '';
+          break;
+        case 'address':
+          aValue = a.text_field_long_1 || '';
+          bValue = b.text_field_long_1 || '';
+          break;
+        case 'remarks':
+          aValue = a.text_field_additional_4 || '';
+          bValue = b.text_field_additional_4 || '';
+          break;
+        case 'items_count':
+          aValue = a.items?.length || 0;
+          bValue = b.items?.length || 0;
+          break;
+        case 'total_qty':
+          aValue = Number(a.total_qty) || 0;
+          bValue = Number(b.total_qty) || 0;
+          break;
+        case 'total_weight':
+          aValue = Number(a.total_weight) || 0;
+          bValue = Number(b.total_weight) || 0;
+          break;
+        case 'delivery_type':
+          aValue = a.delivery_type || '';
+          bValue = b.delivery_type || '';
+          break;
+        case 'sales_territory':
+          aValue = a.sales_territory || '';
+          bValue = b.sales_territory || '';
+          break;
+        case 'created_by':
+          aValue = a.created_by_user?.full_name || a.created_by_user?.username || '';
+          bValue = b.created_by_user?.full_name || b.created_by_user?.username || '';
+          break;
+        case 'updated_by':
+          aValue = a.updated_by_user?.full_name || a.updated_by_user?.username || '';
+          bValue = b.updated_by_user?.full_name || b.updated_by_user?.username || '';
           break;
         case 'created_at':
-          aValue = new Date(a.created_at);
-          bValue = new Date(b.created_at);
+          aValue = a.created_at ? new Date(a.created_at).getTime() : 0;
+          bValue = b.created_at ? new Date(b.created_at).getTime() : 0;
           break;
         case 'updated_at':
-          aValue = new Date(a.updated_at);
-          bValue = new Date(b.updated_at);
+          aValue = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+          bValue = b.updated_at ? new Date(b.updated_at).getTime() : 0;
           break;
         default:
           return 0;
@@ -376,14 +517,70 @@ const OrdersPage = () => {
   // Get sort icon
   const getSortIcon = (field: string) => {
     if (sortField !== field) {
-      return <ChevronsUpDown className="w-3 h-3 ml-1 inline-block" />;
+      return <ChevronsUpDown className="w-3 h-3 ml-1 inline-block opacity-40" />;
     }
     return sortDirection === 'asc' ? (
-      <ChevronUp className="w-3 h-3 ml-1 inline-block" />
+      <ChevronUp className="w-3 h-3 ml-1 inline-block text-blue-600" />
     ) : (
-      <ChevronDown className="w-3 h-3 ml-1 inline-block" />
+      <ChevronDown className="w-3 h-3 ml-1 inline-block text-blue-600" />
     );
   };
+
+  // Resizable header cell component
+  const ResizableHeader = ({ 
+    columnKey, 
+    children, 
+    sortable = true,
+    className = ''
+  }: { 
+    columnKey: string; 
+    children: React.ReactNode; 
+    sortable?: boolean;
+    className?: string;
+  }) => (
+    <th
+      className={`relative px-2 py-1.5 text-left text-[10px] font-semibold text-gray-700 uppercase tracking-wider whitespace-nowrap select-none ${sortable ? 'cursor-pointer hover:bg-gray-100' : ''} ${className}`}
+      style={{ width: columnWidths[columnKey], minWidth: columnWidths[columnKey], maxWidth: columnWidths[columnKey] }}
+      onClick={sortable ? () => handleSort(columnKey) : undefined}
+    >
+      <div className="flex items-center">
+        <span className="truncate">{children}</span>
+        {sortable && getSortIcon(columnKey)}
+      </div>
+      {/* Resize handle */}
+      <div
+        className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-400 group"
+        onMouseDown={(e) => handleResizeStart(e, columnKey)}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="absolute right-0 top-1/2 -translate-y-1/2 w-0.5 h-4 bg-gray-300 group-hover:bg-blue-500" />
+      </div>
+    </th>
+  );
+
+  // Resizable data cell component - ใช้ความกว้างเดียวกับ header และ truncate ข้อมูล
+  const ResizableCell = ({ 
+    columnKey, 
+    children, 
+    className = ''
+  }: { 
+    columnKey: string; 
+    children: React.ReactNode; 
+    className?: string;
+  }) => (
+    <td
+      className={`px-2 py-1 text-[10px] ${className}`}
+      style={{ width: columnWidths[columnKey], minWidth: columnWidths[columnKey], maxWidth: columnWidths[columnKey] }}
+    >
+      <div 
+        className="overflow-hidden text-ellipsis whitespace-nowrap" 
+        style={{ maxWidth: columnWidths[columnKey] - 16 }}
+        title={typeof children === 'string' ? children : undefined}
+      >
+        {children}
+      </div>
+    </td>
+  );
 
   // Toggle expanded row
   const toggleRow = (orderId: string) => {
@@ -1077,16 +1274,13 @@ const OrdersPage = () => {
             {/* Province */}
             <div>
               <label className="block text-xs font-medium text-thai-gray-700 mb-1 font-thai">จังหวัด</label>
-              <select
+              <input
+                type="text"
                 value={tempAdvancedFilters.province || ''}
                 onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, province: e.target.value || undefined }))}
+                placeholder="เช่น เพชรบุรี,ราชบุรี"
                 className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
-              >
-                <option value="">ทั้งหมด</option>
-                {provinceOptions.map(p => (
-                  <option key={p} value={p}>{p}</option>
-                ))}
-              </select>
+              />
             </div>
 
             {/* Plan Code */}
@@ -1104,30 +1298,25 @@ const OrdersPage = () => {
             {/* Sales Territory */}
             <div>
               <label className="block text-xs font-medium text-thai-gray-700 mb-1 font-thai">เขตการขาย</label>
-              <select
+              <input
+                type="text"
                 value={tempAdvancedFilters.sales_territory || ''}
                 onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, sales_territory: e.target.value || undefined }))}
+                placeholder="เช่น BKK01,Central"
                 className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
-              >
-                <option value="">ทั้งหมด</option>
-                {salesTerritoryOptions.map(t => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
+              />
             </div>
 
             {/* Delivery Type */}
             <div>
               <label className="block text-xs font-medium text-thai-gray-700 mb-1 font-thai">ประเภทจัดส่ง</label>
-              <select
+              <input
+                type="text"
                 value={tempAdvancedFilters.delivery_type || ''}
                 onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, delivery_type: e.target.value || undefined }))}
+                placeholder="เช่น delivery,pickup"
                 className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
-              >
-                <option value="">ทั้งหมด</option>
-                <option value="delivery">จัดส่ง</option>
-                <option value="pickup">รับเอง</option>
-              </select>
+              />
             </div>
 
             {/* Product Name */}
@@ -1256,10 +1445,13 @@ const OrdersPage = () => {
           </div>
         ) : (
           <div className="flex-1 overflow-auto">
-          <Table>
+          <Table className="table-fixed">
             <Table.Header>
               <tr>
-                <Table.Head className="w-8">
+                <th 
+                  className="px-1 py-1.5 text-left text-[10px] font-semibold text-gray-700"
+                  style={{ width: columnWidths.select, minWidth: columnWidths.select }}
+                >
                   <button
                     onClick={toggleSelectAll}
                     className="p-1 hover:bg-gray-100 rounded"
@@ -1271,29 +1463,39 @@ const OrdersPage = () => {
                       <Square className="w-4 h-4 text-gray-400" />
                     )}
                   </button>
-                </Table.Head>
-                <Table.Head>ดู</Table.Head>
-                <Table.Head onClick={() => handleSort('order_no')}>เลขที่{getSortIcon('order_no')}</Table.Head>
-                <Table.Head width="100px" onClick={() => handleSort('order_type')}>ประเภท{getSortIcon('order_type')}</Table.Head>
-                <Table.Head width="80px">สถานะ</Table.Head>
-                <Table.Head onClick={() => handleSort('customer')}>รหัส{getSortIcon('customer')}</Table.Head>
-                <Table.Head>ชื่อลูกค้า</Table.Head>
-                <Table.Head>จังหวัด</Table.Head>
-                <Table.Head onClick={() => handleSort('order_date')}>วันสั่ง{getSortIcon('order_date')}</Table.Head>
-                <Table.Head onClick={() => handleSort('delivery_date')}>แผนส่ง{getSortIcon('delivery_date')}</Table.Head>
-                <Table.Head>เอกสาร</Table.Head>
-                <Table.Head>ที่อยู่</Table.Head>
-                <Table.Head>หมายเหตุ</Table.Head>
-                <Table.Head>รายการ</Table.Head>
-                <Table.Head onClick={() => handleSort('total_qty')}>จำนวน{getSortIcon('total_qty')}</Table.Head>
-                <Table.Head onClick={() => handleSort('total_weight')}>น้ำหนัก{getSortIcon('total_weight')}</Table.Head>
-                <Table.Head>จัดส่ง</Table.Head>
-                <Table.Head>เขต</Table.Head>
-                <Table.Head>สร้าง</Table.Head>
-                <Table.Head>แก้ไข</Table.Head>
-                <Table.Head onClick={() => handleSort('created_at')}>วันสร้าง{getSortIcon('created_at')}</Table.Head>
-                <Table.Head onClick={() => handleSort('updated_at')}>วันแก้ไข{getSortIcon('updated_at')}</Table.Head>
-                <Table.Head>จัดการ</Table.Head>
+                </th>
+                <th 
+                  className="px-1 py-1.5 text-left text-[10px] font-semibold text-gray-700"
+                  style={{ width: columnWidths.expand, minWidth: columnWidths.expand }}
+                >
+                  ดู
+                </th>
+                <ResizableHeader columnKey="order_no">เลขที่</ResizableHeader>
+                <ResizableHeader columnKey="order_type">ประเภท</ResizableHeader>
+                <ResizableHeader columnKey="status">สถานะ</ResizableHeader>
+                <ResizableHeader columnKey="customer_id">รหัส</ResizableHeader>
+                <ResizableHeader columnKey="shop_name">ชื่อลูกค้า</ResizableHeader>
+                <ResizableHeader columnKey="province">จังหวัด</ResizableHeader>
+                <ResizableHeader columnKey="order_date">วันสั่ง</ResizableHeader>
+                <ResizableHeader columnKey="delivery_date">แผนส่ง</ResizableHeader>
+                <ResizableHeader columnKey="plan_code">เอกสาร</ResizableHeader>
+                <ResizableHeader columnKey="address">ที่อยู่</ResizableHeader>
+                <ResizableHeader columnKey="remarks">หมายเหตุ</ResizableHeader>
+                <ResizableHeader columnKey="items_count">รายการ</ResizableHeader>
+                <ResizableHeader columnKey="total_qty">จำนวน</ResizableHeader>
+                <ResizableHeader columnKey="total_weight">น้ำหนัก</ResizableHeader>
+                <ResizableHeader columnKey="delivery_type">จัดส่ง</ResizableHeader>
+                <ResizableHeader columnKey="sales_territory">เขต</ResizableHeader>
+                <ResizableHeader columnKey="created_by">สร้าง</ResizableHeader>
+                <ResizableHeader columnKey="updated_by">แก้ไข</ResizableHeader>
+                <ResizableHeader columnKey="created_at">วันสร้าง</ResizableHeader>
+                <ResizableHeader columnKey="updated_at">วันแก้ไข</ResizableHeader>
+                <th 
+                  className="px-1 py-1.5 text-left text-[10px] font-semibold text-gray-700"
+                  style={{ width: columnWidths.actions, minWidth: columnWidths.actions }}
+                >
+                  จัดการ
+                </th>
               </tr>
             </Table.Header>
             <Table.Body>
@@ -1339,7 +1541,7 @@ const OrdersPage = () => {
                           ? 'bg-red-100'
                           : ''
                       } ${selectedOrderIds.has(order.order_id.toString()) ? 'bg-blue-50' : ''}`}>
-                        <Table.Cell className="w-6 !px-1">
+                        <td className="px-1 py-1" style={{ width: columnWidths.select, minWidth: columnWidths.select }}>
                           <button
                             onClick={() => toggleSelectOrder(order.order_id.toString())}
                             className="p-0.5 hover:bg-gray-100 rounded"
@@ -1350,8 +1552,8 @@ const OrdersPage = () => {
                               <Square className="w-3.5 h-3.5 text-gray-400" />
                             )}
                           </button>
-                        </Table.Cell>
-                        <Table.Cell className="!px-1">
+                        </td>
+                        <td className="px-1 py-1" style={{ width: columnWidths.expand, minWidth: columnWidths.expand }}>
                           <button
                             onClick={() => toggleExpandOrder(order.order_id)}
                             className="text-thai-gray-500 hover:text-thai-gray-700 p-0.5"
@@ -1362,11 +1564,11 @@ const OrdersPage = () => {
                               <ChevronUp className="w-3 h-3" />
                             )}
                           </button>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <span className="font-mono text-blue-600 font-medium text-[10px]">{order.order_no}</span>
-                        </Table.Cell>
-                        <Table.Cell width="100px">
+                        </td>
+                        <ResizableCell columnKey="order_no">
+                          <span className="font-mono text-blue-600 font-medium">{order.order_no}</span>
+                        </ResizableCell>
+                        <ResizableCell columnKey="order_type">
                           <select
                             value={order.order_type || ''}
                             onChange={(e) => handleTypeChange(order.order_id, e.target.value as OrderType)}
@@ -1382,9 +1584,9 @@ const OrdersPage = () => {
                             <option value="express">ส่งรายชิ้น</option>
                             <option value="special">สินค้าพิเศษ</option>
                           </select>
-                        </Table.Cell>
-                        <Table.Cell width="80px">
-                          <span className={`inline-block px-1.5 py-0 rounded text-[10px] font-thai font-medium ${
+                        </ResizableCell>
+                        <ResizableCell columnKey="status">
+                          <span className={`inline-block px-1.5 py-0 rounded font-thai font-medium whitespace-nowrap ${
                             order.status === 'draft' ? 'bg-gray-100 text-gray-600' :
                             order.status === 'confirmed' ? 'bg-blue-100 text-blue-700' :
                             order.status === 'in_picking' ? 'bg-yellow-100 text-yellow-700' :
@@ -1397,77 +1599,69 @@ const OrdersPage = () => {
                           }`}>
                             {getStatusText(order.status) || '-'}
                           </span>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <span className="font-mono text-gray-600 text-[10px]">{order.customer_id}</span>
-                        </Table.Cell>
-                        <Table.Cell><span className="text-[10px]">{order.shop_name || '-'}</span></Table.Cell>
-                        <Table.Cell><span className="text-[10px]">{order.province || '-'}</span></Table.Cell>
-                        <Table.Cell>
-                          <span className="font-mono text-[10px]">{formatDate(order.order_date)}</span>
-                        </Table.Cell>
-                        <Table.Cell>
+                        </ResizableCell>
+                        <ResizableCell columnKey="customer_id">
+                          <span className="font-mono text-gray-600">{order.customer_id}</span>
+                        </ResizableCell>
+                        <ResizableCell columnKey="shop_name">{order.shop_name || '-'}</ResizableCell>
+                        <ResizableCell columnKey="province">{order.province || '-'}</ResizableCell>
+                        <ResizableCell columnKey="order_date">
+                          <span className="font-mono">{formatDate(order.order_date)}</span>
+                        </ResizableCell>
+                        <ResizableCell columnKey="delivery_date">
                           <input
                             type="date"
                             value={order.delivery_date || ''}
                             onChange={(e) => handleRequiredDateChange(order.order_id, e.target.value)}
-                            className="px-1 py-0 border border-gray-200 rounded text-[10px] font-mono focus:outline-none cursor-pointer w-[90px]"
+                            className="px-1 py-0 border border-gray-200 rounded text-[10px] font-mono focus:outline-none cursor-pointer w-full"
                             onClick={(e) => e.stopPropagation()}
                           />
-                        </Table.Cell>
-                        <Table.Cell>
+                        </ResizableCell>
+                        <ResizableCell columnKey="plan_code">
                           {order.order_type === 'special' || order.order_type === 'express' ? (
                             order.loadlist_code ? (
-                              <span className="font-medium text-green-600 text-[10px]">{order.loadlist_code}</span>
-                            ) : <span className="text-gray-400 text-[10px]">-</span>
+                              <span className="font-medium text-green-600">{order.loadlist_code}</span>
+                            ) : <span className="text-gray-400">-</span>
                           ) : (
                             order.plan_code ? (
-                              <span className="font-medium text-blue-600 text-[10px]">{order.plan_code}{order.trip_code ? ` T${order.trip_sequence || '?'}` : ''}</span>
-                            ) : <span className="text-gray-400 text-[10px]">-</span>
+                              <span className="font-medium text-blue-600">{order.plan_code}{order.trip_code ? ` T${order.trip_sequence || '?'}` : ''}</span>
+                            ) : <span className="text-gray-400">-</span>
                           )}
-                        </Table.Cell>
-                        <Table.Cell><span className="text-[10px] truncate max-w-[100px] block">{order.text_field_long_1 || '-'}</span></Table.Cell>
-                        <Table.Cell><span className="text-[10px] truncate max-w-[80px] block">{order.text_field_additional_4 || '-'}</span></Table.Cell>
-                        <Table.Cell className="text-center">
-                          <span className="font-mono text-[10px]">{order.items?.length || 0}</span>
-                        </Table.Cell>
-                        <Table.Cell className="text-center">
-                          <span className="font-mono font-medium text-[10px]">{order.total_qty || 0}</span>
-                        </Table.Cell>
-                        <Table.Cell className="text-center">
-                          <span className="font-mono text-[10px]">{order.total_weight || 0}</span>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <span className="text-[10px]">
-                            {order.delivery_type === 'pickup' ? 'รับเอง' : 
-                             order.delivery_type === 'delivery' ? 'จัดส่ง' : 
-                             order.delivery_type || '-'}
-                          </span>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <span className="text-[10px]">{order.sales_territory || '-'}</span>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <span className="text-[10px]">
-                            {(order as any).created_by_user?.full_name || 
-                             (order as any).created_by_user?.username || 
-                             (order.created_by ? `#${order.created_by}` : '-')}
-                          </span>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <span className="text-[10px]">
-                            {(order as any).updated_by_user?.full_name || 
-                             (order as any).updated_by_user?.username || 
-                             (order.updated_by ? `#${order.updated_by}` : '-')}
-                          </span>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <span className="text-[10px] text-gray-500">{formatDate(order.created_at)}</span>
-                        </Table.Cell>
-                        <Table.Cell>
-                          <span className="text-[10px] text-gray-500">{formatDate(order.updated_at)}</span>
-                        </Table.Cell>
-                        <Table.Cell className="!px-1">
+                        </ResizableCell>
+                        <ResizableCell columnKey="address">{order.text_field_long_1 || '-'}</ResizableCell>
+                        <ResizableCell columnKey="remarks">{order.text_field_additional_4 || '-'}</ResizableCell>
+                        <ResizableCell columnKey="items_count" className="text-center">
+                          <span className="font-mono">{order.items?.length || 0}</span>
+                        </ResizableCell>
+                        <ResizableCell columnKey="total_qty" className="text-center">
+                          <span className="font-mono font-medium">{order.total_qty || 0}</span>
+                        </ResizableCell>
+                        <ResizableCell columnKey="total_weight" className="text-center">
+                          <span className="font-mono">{order.total_weight || 0}</span>
+                        </ResizableCell>
+                        <ResizableCell columnKey="delivery_type">
+                          {order.delivery_type === 'pickup' ? 'รับเอง' : 
+                           order.delivery_type === 'delivery' ? 'จัดส่ง' : 
+                           order.delivery_type || '-'}
+                        </ResizableCell>
+                        <ResizableCell columnKey="sales_territory">{order.sales_territory || '-'}</ResizableCell>
+                        <ResizableCell columnKey="created_by">
+                          {(order as any).created_by_user?.full_name || 
+                           (order as any).created_by_user?.username || 
+                           (order.created_by ? `#${order.created_by}` : '-')}
+                        </ResizableCell>
+                        <ResizableCell columnKey="updated_by">
+                          {(order as any).updated_by_user?.full_name || 
+                           (order as any).updated_by_user?.username || 
+                           (order.updated_by ? `#${order.updated_by}` : '-')}
+                        </ResizableCell>
+                        <ResizableCell columnKey="created_at">
+                          <span className="text-gray-500">{formatDate(order.created_at)}</span>
+                        </ResizableCell>
+                        <ResizableCell columnKey="updated_at">
+                          <span className="text-gray-500">{formatDate(order.updated_at)}</span>
+                        </ResizableCell>
+                        <td className="px-1 py-1" style={{ width: columnWidths.actions, minWidth: columnWidths.actions }}>
                           <div className="flex items-center space-x-0.5">
                             <button
                               className="p-0.5 text-gray-500 hover:bg-gray-100 rounded"
@@ -1510,7 +1704,7 @@ const OrdersPage = () => {
                               <Trash2 className="w-3 h-3" />
                             </button>
                           </div>
-                        </Table.Cell>
+                        </td>
                       </Table.Row>
 
                       {/* Expanded Row - Order Items */}

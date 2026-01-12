@@ -256,6 +256,8 @@ const LoadlistsPage = () => {
     matched_count: number;
     total_packages: number;
     message: string;
+    has_loadlist?: boolean; // ✅ NEW: ตรวจสอบว่า picklist มี loadlist แล้วหรือยัง
+    no_loadlist_warning?: boolean; // ✅ NEW: แสดง warning ว่า picklist ยังไม่มี loadlist
   }>>({});
 
   // ✅ NEW: รายการ picklists ทั้งหมดสำหรับ dropdown ในแทบ bonus face sheets
@@ -484,6 +486,23 @@ const LoadlistsPage = () => {
       });
       const result = await response.json();
 
+      // ✅ NEW: ตรวจสอบว่า picklist ยังไม่มี loadlist
+      if (result.has_loadlist === false && picklistId) {
+        setMatchingPreviews(prev => ({
+          ...prev,
+          [bfsId]: {
+            loading: false,
+            matched: false,
+            matched_count: 0,
+            total_packages: 0,
+            message: result.message || `ใบหยิบยังไม่ได้สร้างใบโหลด กรุณาติดต่อเฟรินให้สร้างใบโหลดของใบหยิบก่อน`,
+            has_loadlist: false,
+            no_loadlist_warning: true
+          }
+        }));
+        return;
+      }
+
       setMatchingPreviews(prev => ({
         ...prev,
         [bfsId]: {
@@ -491,7 +510,9 @@ const LoadlistsPage = () => {
           matched: result.matched || false,
           matched_count: result.matched_count || 0,
           total_packages: result.total_bfs_packages || 0,
-          message: result.message || (result.matched ? 'พบรายการที่ตรงกัน' : 'ไม่พบรายการที่ตรงกัน')
+          message: result.message || (result.matched ? 'พบรายการที่ตรงกัน' : 'ไม่พบรายการที่ตรงกัน'),
+          has_loadlist: result.has_loadlist,
+          no_loadlist_warning: false
         }
       }));
 
@@ -2530,14 +2551,21 @@ const LoadlistsPage = () => {
                                 <div className={`mt-1 text-[10px] ${
                                   matchingPreviews[bonusFaceSheet.id].loading 
                                     ? 'text-gray-500' 
-                                    : matchingPreviews[bonusFaceSheet.id].matched 
-                                      ? 'text-green-600' 
-                                      : 'text-red-500'
+                                    : matchingPreviews[bonusFaceSheet.id].no_loadlist_warning
+                                      ? 'text-orange-600 bg-orange-50 p-1 rounded border border-orange-200'
+                                      : matchingPreviews[bonusFaceSheet.id].matched 
+                                        ? 'text-green-600' 
+                                        : 'text-red-500'
                                 }`}>
                                   {matchingPreviews[bonusFaceSheet.id].loading ? (
                                     <span className="flex items-center gap-1">
                                       <Loader2 className="w-3 h-3 animate-spin" />
                                       กำลังตรวจสอบ...
+                                    </span>
+                                  ) : matchingPreviews[bonusFaceSheet.id].no_loadlist_warning ? (
+                                    <span className="flex items-center gap-1">
+                                      <AlertTriangle className="w-3 h-3" />
+                                      {matchingPreviews[bonusFaceSheet.id].message}
                                     </span>
                                   ) : (
                                     <span>

@@ -41,10 +41,22 @@ export async function GET(
           supplier_code
         ),
         picklists (
+          id,
+          picklist_code,
           loading_door_number,
           wms_loadlist_picklists (
             loadlist:loadlists (
-              loading_queue_number
+              id,
+              loadlist_code,
+              loading_queue_number,
+              delivery_number,
+              checker_employee_id,
+              checker_employee:checker_employee_id (
+                employee_id,
+                first_name,
+                last_name,
+                employee_code
+              )
             )
           )
         )
@@ -390,7 +402,17 @@ export async function GET(
       const loadingDoorNumber = trip.picklists?.[0]?.loading_door_number || null;
       
       // Extract loading_queue_number from loadlist (first loadlist)
-      const loadingQueueNumber = trip.picklists?.[0]?.wms_loadlist_picklists?.[0]?.loadlist?.loading_queue_number || null;
+      const loadlistData = trip.picklists?.[0]?.wms_loadlist_picklists?.[0]?.loadlist;
+      const loadingQueueNumber = loadlistData?.loading_queue_number || null;
+      
+      // Extract delivery_number from loadlist (รหัสงานจัดส่ง)
+      const deliveryNumber = loadlistData?.delivery_number || null;
+      
+      // Extract checker employee from loadlist
+      const checkerEmployee = loadlistData?.checker_employee as any;
+      const checkerEmployeeName = checkerEmployee 
+        ? `${checkerEmployee.first_name || ''} ${checkerEmployee.last_name || ''}`.trim()
+        : null;
       
       // Extract supplier info
       const supplierInfo = trip.supplier as any;
@@ -399,8 +421,13 @@ export async function GET(
         ...trip,
         loading_door_number: loadingDoorNumber,
         loading_queue_number: loadingQueueNumber,
+        delivery_number: deliveryNumber,
         supplier_name: supplierInfo?.supplier_name || null,
         supplier_code: supplierInfo?.supplier_code || null,
+        checker_employee_id: loadlistData?.checker_employee_id || null,
+        checker_employee_name: checkerEmployeeName,
+        checker_employee: checkerEmployee || null,
+        loadlist_code: loadlistData?.loadlist_code || null,
         stops: stopsByTrip[trip.trip_id] || []
       };
     }) || [];
