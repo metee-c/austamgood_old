@@ -11,7 +11,7 @@ import { withAuth } from '@/lib/api/with-auth';
  * - total_packages: จำนวน packages ทั้งหมดที่มี trip_number
  * - moved_packages: จำนวน packages ที่ย้ายไป staging แล้ว (storage_location = null)
  * - pending_packages: จำนวน packages ที่ยังไม่ได้ย้าย (storage_location != null)
- * - is_complete: true ถ้าย้ายครบแล้ว
+ * - is_complete: true ถ้าย้ายครบแล้ว หรือ loadlist status = 'loaded'
  */
 export async function GET(request: NextRequest) {
   try {
@@ -24,6 +24,34 @@ export async function GET(request: NextRequest) {
         { success: false, error: 'กรุณาระบุ loadlist_id' },
         { status: 400 }
       );
+    }
+
+    // ✅ FIX (edit26): ตรวจสอบ loadlist status ก่อน
+    // ถ้า loadlist status = 'loaded' แล้ว ถือว่าเสร็จสิ้น (ของถูกโหลดขึ้นรถไปแล้ว)
+    const { data: loadlist, error: loadlistError } = await supabase
+      .from('loadlists')
+      .select('id, status')
+      .eq('id', loadlist_id)
+      .single();
+
+    if (loadlistError) {
+      console.error('Error fetching loadlist:', loadlistError);
+      return NextResponse.json(
+        { success: false, error: 'ไม่สามารถดึงข้อมูล loadlist ได้' },
+        { status: 500 }
+      );
+    }
+
+    // ถ้า loadlist status = 'loaded' → ถือว่าเสร็จสิ้นแล้ว
+    if (loadlist?.status === 'loaded') {
+      return NextResponse.json({
+        success: true,
+        total_packages: 0,
+        moved_packages: 0,
+        pending_packages: 0,
+        is_complete: true,
+        reason: 'loadlist_already_loaded'
+      });
     }
 
     // ดึง bonus_face_sheet_ids จาก loadlist mapping

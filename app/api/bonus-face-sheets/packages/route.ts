@@ -109,7 +109,7 @@ async function handleGet(request: NextRequest) {
           bonus_face_sheet_id, 
           matched_package_ids,
           loaded_at,
-          wms_loadlists!inner (
+          loadlists!inner (
             status
           )
         `)
@@ -119,7 +119,7 @@ async function handleGet(request: NextRequest) {
       if (mappings) {
         for (const m of mappings) {
           const packageIds = m.matched_package_ids || [];
-          const loadlist = m.wms_loadlists as any;
+          const loadlist = m.loadlists as any;
           // ถือว่าโหลดแล้วถ้า: มี loaded_at หรือ loadlist status เป็น loaded/completed/dispatched
           const isLoaded = !!m.loaded_at || 
             ['loaded', 'completed', 'dispatched', 'delivered'].includes(loadlist?.status);

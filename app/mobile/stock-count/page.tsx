@@ -569,6 +569,12 @@ export default function MobileStockCountPage() {
             >
               นับสต็อกบ้านหยิบ
             </a>
+            <a
+              href="/mobile/stock-count/premium-packages"
+              className="block w-full py-3 bg-purple-500 text-white rounded-xl font-thai text-base font-semibold text-center"
+            >
+              นับสต็อกบ้านหยิบพรีเมี่ยม
+            </a>
           </div>
         )}
 

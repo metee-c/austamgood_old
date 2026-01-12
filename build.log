@@ -3,14 +3,14 @@
 
    Creating an optimized production build ...
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
- ✓ Compiled successfully in 11.7s
+ ✓ Compiled successfully in 15.8s
    Running TypeScript ...
    Collecting page data using 13 workers ...
-   Generating static pages using 13 workers (0/224) ...
-   Generating static pages using 13 workers (56/224) 
-   Generating static pages using 13 workers (112/224) 
-   Generating static pages using 13 workers (168/224) 
- ✓ Generating static pages using 13 workers (224/224) in 4.1s
+   Generating static pages using 13 workers (0/229) ...
+   Generating static pages using 13 workers (57/229) 
+   Generating static pages using 13 workers (114/229) 
+   Generating static pages using 13 workers (171/229) 
+ ✓ Generating static pages using 13 workers (229/229) in 3.9s
    Finalizing page optimization ...
 
 Route (app)
@@ -229,6 +229,11 @@ Route (app)
 ├ ƒ /api/stock-adjustments/reasons
 ├ ƒ /api/stock-alerts
 ├ ƒ /api/stock-count/locations
+├ ƒ /api/stock-count/premium-packages/items
+├ ƒ /api/stock-count/premium-packages/locations
+├ ƒ /api/stock-count/premium-packages/scan
+├ ƒ /api/stock-count/premium-packages/sessions
+├ ƒ /api/stock-count/premium-packages/sessions/[id]
 ├ ƒ /api/stock-count/prep-area/areas
 ├ ƒ /api/stock-count/prep-area/items
 ├ ƒ /api/stock-count/prep-area/items/[id]
@@ -304,6 +309,7 @@ Route (app)
 ├ ○ /mobile/receive/new
 ├ ○ /mobile/receive/production
 ├ ○ /mobile/stock-count
+├ ○ /mobile/stock-count/premium-packages
 ├ ○ /mobile/stock-count/prep-area
 ├ ○ /mobile/transfer
 ├ ƒ /mobile/transfer/[id]

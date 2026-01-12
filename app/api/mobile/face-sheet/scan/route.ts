@@ -64,6 +64,19 @@ async function handlePost(request: NextRequest, context: any) {
 
     console.log('✅ Item found:', { item_id, sku_id: item.sku_id, status: item.status });
 
+    // ✅ FIX: ตรวจสอบว่า item ถูก pick ไปแล้วหรือยัง - ป้องกัน duplicate scan
+    if (item.status === 'picked') {
+      console.log('⚠️ Item already picked, returning success without processing');
+      return NextResponse.json({
+        success: true,
+        message: 'รายการนี้ถูกหยิบไปแล้ว',
+        already_processed: true,
+        face_sheet_status: (item.face_sheets as any).status,
+        face_sheet_completed: (item.face_sheets as any).status === 'completed',
+        quantity_picked: item.quantity_picked
+      });
+    }
+
     // 2. ตรวจสอบ QR Code (ถ้ามี)
     if (scanned_code && scanned_code !== (item.face_sheets as any).face_sheet_no) {
       console.error('❌ QR Code mismatch:', { scanned: scanned_code, expected: (item.face_sheets as any).face_sheet_no });

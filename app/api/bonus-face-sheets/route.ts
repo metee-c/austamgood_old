@@ -65,18 +65,33 @@ async function handleGet(request: NextRequest, context: any) {
       }
     }
     
-    // ✅ FIX (edit12): ดึง matched_package_ids ที่ใช้แล้วจากทุก loadlist
+    // ✅ FIX (edit26): ดึง matched_package_ids ที่ใช้แล้วจากทุก loadlist
+    // และนับ UNIQUE packages เท่านั้น (ไม่นับซ้ำถ้า package เดียวกันอยู่หลาย loadlist)
     const { data: usedMappings } = await supabase
       .from('wms_loadlist_bonus_face_sheets')
       .select('bonus_face_sheet_id, matched_package_ids')
       .not('matched_package_ids', 'is', null);
 
-    // สร้าง Map นับ packages ที่ใช้แล้ว (แมพกับ loadlist แล้ว)
-    const usedPackagesCount = new Map<number, number>();
+    // สร้าง Map เก็บ Set ของ unique package_ids ที่ใช้แล้ว
+    const usedPackagesSet = new Map<number, Set<number>>();
     usedMappings?.forEach(mapping => {
       const bfsId = mapping.bonus_face_sheet_id;
-      const count = (mapping.matched_package_ids || []).length;
-      usedPackagesCount.set(bfsId, (usedPackagesCount.get(bfsId) || 0) + count);
+      const packageIds = mapping.matched_package_ids || [];
+      
+      if (!usedPackagesSet.has(bfsId)) {
+        usedPackagesSet.set(bfsId, new Set());
+      }
+      
+      // เพิ่ม package_ids เข้า Set (จะไม่ซ้ำโดยอัตโนมัติ)
+      packageIds.forEach((pkgId: number) => {
+        usedPackagesSet.get(bfsId)!.add(pkgId);
+      });
+    });
+    
+    // แปลง Set เป็น count
+    const usedPackagesCount = new Map<number, number>();
+    usedPackagesSet.forEach((pkgSet, bfsId) => {
+      usedPackagesCount.set(bfsId, pkgSet.size);
     });
     
     // Merge stats into data
