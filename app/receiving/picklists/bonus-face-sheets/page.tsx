@@ -73,6 +73,41 @@ interface PreviewOrder {
   }>;
 }
 
+// ✅ Interface สำหรับมุมมองแพ็ค (edit23)
+interface PackageRow {
+  id: number;
+  face_sheet_id: number;
+  face_sheet_no: string;
+  face_sheet_status: string;
+  warehouse_id: string;
+  created_date: string;
+  created_at: string;
+  package_number: number;
+  barcode_id: string;
+  order_no: string;
+  customer_id: string;
+  shop_name: string;
+  province: string;
+  hub: string;
+  trip_number: string;
+  pack_no: string;
+  storage_location: string;
+  total_items: number;
+  is_mapped: boolean;
+  is_loaded: boolean;
+  loading_status: 'loaded' | 'pending_load' | 'pending_map';
+  item_status: 'pending' | 'partial' | 'completed' | 'empty';
+  items: Array<{
+    id: number;
+    product_code: string;
+    product_name: string;
+    quantity: number;
+    quantity_picked: number;
+    status: string;
+    source_location_id: string;
+  }>;
+}
+
 const BonusFaceSheetsPage = () => {
   const router = useRouter();
   const [searchTerm, setSearchTerm] = useState('');
@@ -97,6 +132,11 @@ const BonusFaceSheetsPage = () => {
   const [checkingUnloadedId, setCheckingUnloadedId] = useState<number | null>(null);
   const [showUnloadedModal, setShowUnloadedModal] = useState(false);
   const [unloadedData, setUnloadedData] = useState<any>(null);
+  
+  // ✅ State สำหรับมุมมองแพ็ค (edit23)
+  const [viewMode, setViewMode] = useState<'summary' | 'packages'>('summary');
+  const [packagesData, setPackagesData] = useState<PackageRow[]>([]);
+  const [loadingPackages, setLoadingPackages] = useState(false);
 
   const statuses = [
     { value: 'all', label: 'ทั้งหมด' },
@@ -152,6 +192,39 @@ const BonusFaceSheetsPage = () => {
   useEffect(() => {
     fetchBonusFaceSheets();
   }, [selectedStatus, selectedDate]);
+
+  // ✅ Fetch packages สำหรับมุมมองแพ็ค (edit23)
+  const fetchPackages = async () => {
+    setLoadingPackages(true);
+    try {
+      const params = new URLSearchParams();
+      if (selectedStatus !== 'all') params.append('status', selectedStatus);
+      if (selectedDate) params.append('created_date', selectedDate);
+      if (searchTerm) params.append('search', searchTerm);
+      
+      const response = await fetch(`/api/bonus-face-sheets/packages?${params}`);
+      const result = await response.json();
+      
+      if (result.success) {
+        setPackagesData(result.data || []);
+      } else {
+        console.error('Error fetching packages:', result.error);
+        setPackagesData([]);
+      }
+    } catch (err) {
+      console.error('Error fetching packages:', err);
+      setPackagesData([]);
+    } finally {
+      setLoadingPackages(false);
+    }
+  };
+
+  // ✅ Fetch packages เมื่อเปลี่ยน view หรือ filters (edit23)
+  useEffect(() => {
+    if (viewMode === 'packages') {
+      fetchPackages();
+    }
+  }, [viewMode, selectedStatus, selectedDate, searchTerm]);
 
   const handleStatusChange = async (bonusFaceSheetId: number, newStatus: string) => {
     try {
@@ -760,6 +833,29 @@ const BonusFaceSheetsPage = () => {
           onChange={setSelectedStatus}
           options={statuses}
         />
+        {/* ✅ Toggle View Buttons (edit23) */}
+        <div className="flex rounded-lg border border-gray-200 overflow-hidden">
+          <button
+            onClick={() => setViewMode('summary')}
+            className={`px-3 py-1 text-xs font-medium transition-colors ${
+              viewMode === 'summary'
+                ? 'bg-purple-600 text-white'
+                : 'bg-white text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            มุมมองใบงาน
+          </button>
+          <button
+            onClick={() => setViewMode('packages')}
+            className={`px-3 py-1 text-xs font-medium transition-colors ${
+              viewMode === 'packages'
+                ? 'bg-purple-600 text-white'
+                : 'bg-white text-gray-600 hover:bg-gray-50'
+            }`}
+          >
+            มุมมองแพ็ค
+          </button>
+        </div>
         <Button
           variant="primary"
           className="text-xs py-1 px-2 bg-purple-500 hover:bg-purple-600"
@@ -796,6 +892,9 @@ const BonusFaceSheetsPage = () => {
       {/* Table */}
       <div className="flex-1 min-h-0 bg-white border rounded-lg shadow-sm flex flex-col overflow-hidden">
         <div className="flex-1 overflow-auto">
+          {/* ✅ Conditional rendering based on viewMode (edit23) */}
+          {viewMode === 'summary' ? (
+            // ===== มุมมองใบงาน (เดิม) =====
             <table className="min-w-full border-collapse text-sm">
               <thead className="sticky top-0 z-10 bg-gray-100">
                 <tr>
@@ -973,7 +1072,150 @@ const BonusFaceSheetsPage = () => {
                 )}
               </tbody>
             </table>
+          ) : (
+            // ===== มุมมองแพ็ค (edit23) =====
+            <table className="min-w-full border-collapse text-sm">
+              <thead className="sticky top-0 z-10 bg-gray-100">
+                <tr>
+                  <th className="px-3 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">รหัส BFS</th>
+                  <th className="px-3 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">แพ็ค</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">บาร์โค้ด</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">ร้านค้า</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">Hub</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">สายรถ</th>
+                  <th className="px-3 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">โลเคชั่น</th>
+                  <th className="px-3 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">รายการ</th>
+                  <th className="px-3 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">สถานะหยิบ</th>
+                  <th className="px-3 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">สถานะโหลด</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white divide-y divide-gray-100">
+                {loadingPackages ? (
+                  <tr>
+                    <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-500">
+                      <div className="flex items-center justify-center space-x-2">
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>กำลังโหลดข้อมูลแพ็ค...</span>
+                      </div>
+                    </td>
+                  </tr>
+                ) : packagesData.length === 0 ? (
+                  <tr>
+                    <td colSpan={10} className="px-4 py-12 text-center">
+                      <div className="flex flex-col items-center justify-center">
+                        <div className="w-16 h-16 bg-purple-100 rounded-full flex items-center justify-center mb-4">
+                          <Package className="w-8 h-8 text-purple-600" />
+                        </div>
+                        <p className="text-sm text-gray-600 mb-2">ไม่พบข้อมูลแพ็ค</p>
+                        <p className="text-xs text-gray-500">ลองเปลี่ยนตัวกรองหรือสร้างใบปะหน้าของแถมใหม่</p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  packagesData.map((pkg) => (
+                    <tr key={pkg.id} className="hover:bg-gray-50/80 transition-colors duration-200">
+                      <td className="px-3 py-2 text-xs whitespace-nowrap">
+                        <button
+                          onClick={() => {
+                            setViewMode('summary');
+                            setSearchTerm(pkg.face_sheet_no);
+                          }}
+                          className="font-semibold text-purple-600 font-mono hover:underline"
+                        >
+                          {pkg.face_sheet_no}
+                        </button>
+                      </td>
+                      <td className="px-3 py-2 text-xs text-center whitespace-nowrap">
+                        <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-purple-100 text-purple-700 font-bold text-xs">
+                          {pkg.package_number}
+                        </span>
+                      </td>
+                      <td className="px-3 py-2 text-xs whitespace-nowrap">
+                        <span className="font-mono text-gray-600">{pkg.barcode_id}</span>
+                      </td>
+                      <td className="px-3 py-2 text-xs whitespace-nowrap max-w-[150px] truncate" title={pkg.shop_name}>
+                        {pkg.shop_name || '-'}
+                      </td>
+                      <td className="px-3 py-2 text-xs whitespace-nowrap">
+                        {pkg.hub ? (
+                          <Badge variant="secondary" size="sm">{pkg.hub}</Badge>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-xs whitespace-nowrap">
+                        {pkg.trip_number ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded bg-blue-100 text-blue-700 text-xs font-medium">
+                            {pkg.trip_number}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-xs whitespace-nowrap">
+                        {pkg.storage_location ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded bg-cyan-100 text-cyan-700 text-xs font-medium">
+                            <MapPin className="w-3 h-3 mr-1" />
+                            {pkg.storage_location}
+                          </span>
+                        ) : (
+                          <span className="text-gray-400">-</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-center whitespace-nowrap">
+                        <span className="font-bold text-gray-700">{pkg.total_items}</span>
+                      </td>
+                      <td className="px-3 py-2 text-xs text-center whitespace-nowrap">
+                        {pkg.item_status === 'completed' ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs">
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            หยิบครบ
+                          </span>
+                        ) : pkg.item_status === 'partial' ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-yellow-100 text-yellow-700 text-xs">
+                            บางส่วน
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 text-xs">
+                            รอหยิบ
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2 text-xs text-center whitespace-nowrap">
+                        {pkg.loading_status === 'loaded' ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-green-100 text-green-700 text-xs">
+                            <CheckCircle className="w-3 h-3 mr-1" />
+                            โหลดแล้ว
+                          </span>
+                        ) : pkg.loading_status === 'pending_load' ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 text-xs">
+                            รอโหลด
+                          </span>
+                        ) : (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 text-xs">
+                            <AlertTriangle className="w-3 h-3 mr-1" />
+                            รอแมพ
+                          </span>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          )}
         </div>
+        {/* ✅ Summary footer for packages view (edit23) */}
+        {viewMode === 'packages' && packagesData.length > 0 && (
+          <div className="bg-gray-50 px-4 py-2 border-t flex justify-between text-xs text-gray-600">
+            <span>ทั้งหมด {packagesData.length.toLocaleString()} แพ็ค</span>
+            <span>
+              โหลดแล้ว {packagesData.filter(p => p.loading_status === 'loaded').length} | 
+              รอโหลด {packagesData.filter(p => p.loading_status === 'pending_load').length} | 
+              รอแมพ {packagesData.filter(p => p.loading_status === 'pending_map').length}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Create Modal */}

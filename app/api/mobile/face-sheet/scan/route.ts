@@ -232,6 +232,7 @@ async function handlePost(request: NextRequest, context: any) {
         // บันทึก ledger: OUT จาก source_location (skip sync เพราะ update balance เองแล้ว)
         // ✅ CRITICAL FIX: Include order_id and order_item_id for BRCGS traceability
         // ✅ FIX: Include production_date and expiry_date for proper balance matching
+        // ⚠️ NOTE: lot_no is NOT in wms_inventory_ledger schema - only in wms_inventory_balances
         ledgerEntries.push({
           movement_at: now,
           transaction_type: 'pick',
@@ -243,7 +244,6 @@ async function handlePost(request: NextRequest, context: any) {
           piece_qty: qtyToDeduct,
           production_date: balance.production_date || null,  // ✅ FIX: Include for balance matching
           expiry_date: balance.expiry_date || null,          // ✅ FIX: Include for balance matching
-          lot_no: balance.lot_no || null,                    // ✅ FIX: Include for balance matching
           reference_no: (item.face_sheets as any).face_sheet_no,
           reference_doc_type: 'face_sheet',
           reference_doc_id: face_sheet_id,
@@ -342,6 +342,7 @@ async function handlePost(request: NextRequest, context: any) {
     // บันทึก ledger: IN ไปยัง Dispatch (skip sync เพราะ update balance เองแล้ว)
     // ✅ CRITICAL FIX: Include order_id and order_item_id for BRCGS traceability
     // ✅ FIX: Include production_date and expiry_date for proper balance matching
+    // ⚠️ NOTE: lot_no is NOT in wms_inventory_ledger schema - only in wms_inventory_balances
     ledgerEntries.push({
       movement_at: now,
       transaction_type: 'pick',
@@ -353,7 +354,6 @@ async function handlePost(request: NextRequest, context: any) {
       piece_qty: quantity_picked,
       production_date: sourceProductionDate || null,  // ✅ FIX: Include for balance matching
       expiry_date: sourceExpiryDate || null,          // ✅ FIX: Include for balance matching
-      lot_no: sourceLotNo || null,                    // ✅ FIX: Include for balance matching
       reference_no: (item.face_sheets as any).face_sheet_no,
       reference_doc_type: 'face_sheet',
       reference_doc_id: face_sheet_id,

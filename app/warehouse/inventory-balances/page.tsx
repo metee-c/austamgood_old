@@ -21,6 +21,7 @@ import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
 import { createClient } from '@/lib/supabase/client';
+import * as XLSX from 'xlsx';
 
 interface InventoryBalance {
   balance_id: number;
@@ -322,7 +323,192 @@ const InventoryBalancesPage = () => {
     });
   };
 
+  // Export state
+  const [exporting, setExporting] = useState(false);
 
+  // Export to Excel function - fetch ALL data from database with pagination
+  const handleExportExcel = async () => {
+    try {
+      setExporting(true);
+      const supabase = createClient();
+
+      // Locations to exclude (same as fetchBalanceData)
+      const excludeLocations = [
+        ...preparationAreaCodes,
+        'Dispatch',
+        'Delivery-In-Progress',
+        'RCV',
+        'SHIP',
+      ];
+
+      // If searching, first find matching SKU IDs
+      let matchingSkuIds: string[] = [];
+      if (debouncedSearchTerm) {
+        const { data: matchingSkus } = await supabase
+          .from('master_sku')
+          .select('sku_id, sku_name')
+          .or(`sku_name.ilike.%${debouncedSearchTerm}%,sku_id.ilike.%${debouncedSearchTerm}%`);
+        matchingSkuIds = matchingSkus?.map((s) => s.sku_id) || [];
+      }
+
+      // Fetch ALL data using pagination (Supabase has 1000 row limit per request)
+      const allData: any[] = [];
+      const batchSize = 1000;
+      let from = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        let dataQuery = supabase
+          .from('wms_inventory_balances')
+          .select(`
+            *,
+            master_location!location_id (
+              location_name
+            ),
+            master_warehouse!warehouse_id (
+              warehouse_name
+            ),
+            master_sku!sku_id (
+              sku_name,
+              weight_per_piece_kg
+            )
+          `)
+          .order('updated_at', { ascending: false })
+          .range(from, from + batchSize - 1);
+
+        // Exclude preparation areas
+        if (excludeLocations.length > 0) {
+          dataQuery = dataQuery.not('location_id', 'in', `(${excludeLocations.join(',')})`);
+        }
+
+        // Apply same filters as display
+        dataQuery = applyFiltersToQuery(dataQuery, matchingSkuIds);
+
+        const { data: batchData, error } = await dataQuery;
+
+        if (error) {
+          console.error('Error fetching export data:', error);
+          alert('เกิดข้อผิดพลาดในการดึงข้อมูล');
+          return;
+        }
+
+        if (batchData && batchData.length > 0) {
+          allData.push(...batchData);
+          from += batchSize;
+          // If we got less than batchSize, we've reached the end
+          hasMore = batchData.length === batchSize;
+        } else {
+          hasMore = false;
+        }
+      }
+
+      if (allData.length === 0) {
+        alert('ไม่มีข้อมูลสำหรับส่งออก');
+        return;
+      }
+
+      // Apply client-side filters (same as filteredData logic)
+      const exportFilteredData = allData.filter((item: any) => {
+        const matchesLowStock = !showLowStock || (item.total_piece_qty - item.reserved_piece_qty) <= 10;
+        const matchesExpiring = !showExpiringSoon || isExpiringSoon(item.expiry_date);
+        
+        const searchLower = debouncedSearchTerm.toLowerCase();
+        const isSearchingTemporaryZone = searchLower.includes('receiving') || 
+                                          searchLower.includes('shipping') ||
+                                          searchLower.includes('rcv') ||
+                                          searchLower.includes('ship');
+        
+        const isTemporaryZeroBalance =
+          !isSearchingTemporaryZone &&
+          (item.master_location?.location_name === 'Receiving' ||
+           item.master_location?.location_name === 'Shipping' ||
+           item.location_id?.includes('Receiving') ||
+           item.location_id === 'RCV' ||
+           item.location_id === 'SHIP') &&
+          item.total_piece_qty === 0;
+
+        return matchesLowStock && matchesExpiring && !isTemporaryZeroBalance;
+      });
+
+      // Build export data
+      const exportData: any[] = [];
+      
+      exportFilteredData.forEach((item: any) => {
+        const weightPerPiece = item.master_sku?.weight_per_piece_kg || 0;
+        const totalWeight = (item.total_piece_qty || 0) * weightPerPiece;
+        
+        exportData.push({
+          'ID': item.balance_id,
+          'รหัสสินค้า': item.sku_id,
+          'ชื่อสินค้า': item.master_sku?.sku_name || '-',
+          'รหัสพาเลท (External)': item.pallet_id_external || '-',
+          'รหัสพาเลท (Internal)': item.pallet_id || '-',
+          'คลัง': item.warehouse_id,
+          'Location ID': item.location_id || '-',
+          'ตำแหน่ง': item.master_location?.location_name || '-',
+          'Lot No': item.lot_no || '-',
+          'แพ็ครวม': item.total_pack_qty || 0,
+          'ชิ้นรวม': item.total_piece_qty || 0,
+          'น้ำหนัก (กก.)': totalWeight > 0 ? Number(totalWeight.toFixed(2)) : 0,
+          'แพ็คจอง': item.reserved_pack_qty || 0,
+          'ชิ้นจอง': item.reserved_piece_qty || 0,
+          'แพ็คพร้อมใช้': (item.total_pack_qty || 0) - (item.reserved_pack_qty || 0),
+          'ชิ้นพร้อมใช้': (item.total_piece_qty || 0) - (item.reserved_piece_qty || 0),
+          'วันผลิต': item.production_date ? new Date(item.production_date).toLocaleDateString('th-TH') : '-',
+          'วันหมดอายุ': item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('th-TH') : '-',
+          'Last Move ID': item.last_move_id || '-',
+          'เคลื่อนไหวล่าสุด': item.last_movement_at ? new Date(item.last_movement_at).toLocaleString('th-TH') : '-',
+          'สร้างเมื่อ': item.created_at ? new Date(item.created_at).toLocaleString('th-TH') : '-',
+          'อัปเดตเมื่อ': item.updated_at ? new Date(item.updated_at).toLocaleString('th-TH') : '-',
+        });
+      });
+
+      // Create workbook and worksheet
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(exportData);
+
+      // Set column widths
+      ws['!cols'] = [
+        { wch: 8 },   // ID
+        { wch: 15 },  // รหัสสินค้า
+        { wch: 30 },  // ชื่อสินค้า
+        { wch: 18 },  // รหัสพาเลท (External)
+        { wch: 18 },  // รหัสพาเลท (Internal)
+        { wch: 10 },  // คลัง
+        { wch: 15 },  // Location ID
+        { wch: 15 },  // ตำแหน่ง
+        { wch: 12 },  // Lot No
+        { wch: 10 },  // แพ็ครวม
+        { wch: 10 },  // ชิ้นรวม
+        { wch: 12 },  // น้ำหนัก
+        { wch: 10 },  // แพ็คจอง
+        { wch: 10 },  // ชิ้นจอง
+        { wch: 12 },  // แพ็คพร้อมใช้
+        { wch: 12 },  // ชิ้นพร้อมใช้
+        { wch: 12 },  // วันผลิต
+        { wch: 12 },  // วันหมดอายุ
+        { wch: 12 },  // Last Move ID
+        { wch: 18 },  // เคลื่อนไหวล่าสุด
+        { wch: 18 },  // สร้างเมื่อ
+        { wch: 18 },  // อัปเดตเมื่อ
+      ];
+
+      XLSX.utils.book_append_sheet(wb, ws, 'ยอดสต็อกคงเหลือ');
+
+      // Generate filename with date
+      const now = new Date();
+      const dateStr = now.toISOString().split('T')[0];
+      const filename = `inventory_balances_${dateStr}.xlsx`;
+
+      // Download file
+      XLSX.writeFile(wb, filename);
+    } catch (err) {
+      console.error('Export error:', err);
+      alert('เกิดข้อผิดพลาดในการส่งออก');
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const isExpiringSoon = (expiryDate: string) => {
     if (!expiryDate) return false;
@@ -472,8 +658,8 @@ const InventoryBalancesPage = () => {
               />
               ยอด 0
             </label>
-            <Button variant="outline" size="sm" icon={Download} className="text-xs py-1 px-2">
-              Excel
+            <Button variant="outline" size="sm" icon={exporting ? Loader2 : Download} onClick={handleExportExcel} disabled={loading || exporting} className={`text-xs py-1 px-2 ${exporting ? 'animate-pulse' : ''}`}>
+              {exporting ? 'กำลังส่งออก...' : 'Excel'}
             </Button>
             <Button variant="primary" size="sm" icon={RefreshCw} onClick={() => fetchBalanceData(1)} disabled={loading} className="text-xs py-1 px-2">
               รีเฟรช
