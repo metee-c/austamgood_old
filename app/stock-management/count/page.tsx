@@ -44,11 +44,24 @@ interface PrepAreaCountItem {
   counted_by: string | null;
 }
 
+interface PremiumOcrItem {
+  id: number;
+  barcode_id: string;
+  face_sheet_no: string | null;
+  pack_no: string | null;
+  shop_name: string | null;
+  hub: string | null;
+  lot_no: string | null;
+  storage_location: string | null;
+  created_at: string | null;
+  counted_by: string | null;
+}
+
 interface Session {
   id: number;
   session_code: string;
   warehouse_id: string;
-  count_type?: 'standard' | 'prep_area';
+  count_type?: 'standard' | 'prep_area' | 'premium_ocr';
   status: 'in_progress' | 'completed' | 'cancelled';
   total_locations: number;
   matched_count: number;
@@ -60,6 +73,7 @@ interface Session {
   counted_by: string | null;
   items?: CountItem[];
   prepAreaItems?: PrepAreaCountItem[];
+  premiumOcrItems?: PremiumOcrItem[];
 }
 
 type SessionStatus = 'in_progress' | 'completed' | 'cancelled' | 'all';
@@ -94,6 +108,9 @@ export default function StockCountReportPage() {
       // ถ้าเป็น prep_area ให้ใส่ items ใน prepAreaItems
       if (sessionData.count_type === 'prep_area') {
         sessionData.prepAreaItems = sessionData.items;
+        sessionData.items = [];
+      } else if (sessionData.count_type === 'premium_ocr') {
+        sessionData.premiumOcrItems = sessionData.items;
         sessionData.items = [];
       }
       setViewingSession(sessionData);
@@ -292,6 +309,7 @@ function SessionRow({
 }) {
   const totalItems = (session.matched_count || 0) + (session.mismatched_count || 0) + (session.empty_count || 0) + (session.extra_count || 0);
   const isPrepArea = session.count_type === 'prep_area';
+  const isPremiumOcr = session.count_type === 'premium_ocr';
 
   return (
     <tr className="hover:bg-thai-gray-50 transition-colors">
@@ -303,6 +321,11 @@ function SessionRow({
           {isPrepArea && (
             <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-orange-100 text-orange-700 font-thai">
               บ้านหยิบ
+            </span>
+          )}
+          {isPremiumOcr && (
+            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-purple-100 text-purple-700 font-thai">
+              OCR แพ็คพรีเมียม
             </span>
           )}
         </div>
@@ -340,9 +363,9 @@ function SessionRow({
             onClick={() => onView(session)}
             className="text-thai-primary hover:text-thai-primary-dark p-2 rounded-lg hover:bg-thai-primary/10 transition-colors"
             title="ดูรายละเอียด"
-            disabled={totalItems === 0 && !isPrepArea}
+            disabled={totalItems === 0 && !isPrepArea && !isPremiumOcr}
           >
-            <Eye className={`w-4 h-4 ${totalItems === 0 && !isPrepArea ? 'opacity-30' : ''}`} />
+            <Eye className={`w-4 h-4 ${totalItems === 0 && !isPrepArea && !isPremiumOcr ? 'opacity-30' : ''}`} />
           </button>
         </div>
       </td>
@@ -364,7 +387,9 @@ function SessionDetailModal({
 }) {
   const items = session.items || [];
   const prepAreaItems = session.prepAreaItems || [];
+  const premiumOcrItems = session.premiumOcrItems || [];
   const isPrepArea = session.count_type === 'prep_area';
+  const isPremiumOcr = session.count_type === 'premium_ocr';
   const [viewMode, setViewMode] = useState<'items' | 'compare'>('items');
   const [comparison, setComparison] = useState<any>(null);
   const [loadingCompare, setLoadingCompare] = useState(false);
@@ -461,6 +486,11 @@ function SessionDetailModal({
                   บ้านหยิบ
                 </span>
               )}
+              {isPremiumOcr && (
+                <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-purple-100 text-purple-700 font-thai">
+                  OCR แพ็คพรีเมียม
+                </span>
+              )}
             </div>
             <p className="text-sm text-gray-500">{session.session_code}</p>
           </div>
@@ -539,6 +569,26 @@ function SessionDetailModal({
                   {prepAreaItems.reduce((sum, item) => sum + (item.quantity || 0), 0).toLocaleString()}
                 </p>
                 <p className="text-xs text-orange-600 font-thai">จำนวนรวม (ชิ้น)</p>
+              </div>
+            </div>
+          ) : isPremiumOcr ? (
+            // Summary สำหรับ premium_ocr
+            <div className="grid grid-cols-3 gap-4 text-center">
+              <div>
+                <p className="text-2xl font-bold">{premiumOcrItems.length}</p>
+                <p className="text-xs text-gray-500 font-thai">แพ็คที่สแกน</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-purple-600">
+                  {[...new Set(premiumOcrItems.map(item => item.face_sheet_no))].length}
+                </p>
+                <p className="text-xs text-purple-600 font-thai">Face Sheet</p>
+              </div>
+              <div>
+                <p className="text-2xl font-bold text-blue-600">
+                  {[...new Set(premiumOcrItems.map(item => item.lot_no).filter(Boolean))].length}
+                </p>
+                <p className="text-xs text-blue-600 font-thai">โล MR</p>
               </div>
             </div>
           ) : (
@@ -657,6 +707,48 @@ function SessionDetailModal({
                 ) : (
                   <tr>
                     <td colSpan={5} className="px-4 py-8 text-center text-gray-400 font-thai">
+                      ยังไม่มีรายการที่สแกน
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          ) : isPremiumOcr ? (
+            // ตารางสำหรับ premium_ocr
+            <table className="w-full">
+              <thead className="bg-gray-100 sticky top-0">
+                <tr>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">#</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">Barcode ID</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">Face Sheet</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">Pack No</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">ร้านค้า</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">Hub</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">โล MR</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">ตำแหน่งจัดเก็บ</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600 font-thai">เวลาสแกน</th>
+                </tr>
+              </thead>
+              <tbody>
+                {premiumOcrItems.length > 0 ? (
+                  premiumOcrItems.map((item, idx) => (
+                    <tr key={item.id} className="border-t border-gray-100 hover:bg-gray-50">
+                      <td className="px-3 py-2 text-[10px] text-gray-500">{idx + 1}</td>
+                      <td className="px-3 py-2 text-xs font-mono text-purple-700 font-bold">{item.barcode_id}</td>
+                      <td className="px-3 py-2 text-xs font-mono text-gray-700">{item.face_sheet_no || '-'}</td>
+                      <td className="px-3 py-2 text-xs text-gray-700">{item.pack_no || '-'}</td>
+                      <td className="px-3 py-2 text-xs text-gray-700 font-thai max-w-[120px] truncate">{item.shop_name || '-'}</td>
+                      <td className="px-3 py-2 text-xs text-gray-700">{item.hub || '-'}</td>
+                      <td className="px-3 py-2 text-xs font-mono text-blue-600 font-bold">{item.lot_no || '-'}</td>
+                      <td className="px-3 py-2 text-xs font-mono text-gray-600">{item.storage_location || '-'}</td>
+                      <td className="px-3 py-2 text-[10px] text-gray-500">
+                        {item.created_at ? format(new Date(item.created_at), 'HH:mm:ss') : '-'}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={9} className="px-4 py-8 text-center text-gray-400 font-thai">
                       ยังไม่มีรายการที่สแกน
                     </td>
                   </tr>

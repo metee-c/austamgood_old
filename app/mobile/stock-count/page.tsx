@@ -575,6 +575,12 @@ export default function MobileStockCountPage() {
             >
               นับสต็อกบ้านหยิบพรีเมี่ยม
             </a>
+            <a
+              href="/mobile/stock-count/premium-packages-ocr"
+              className="block w-full py-3 bg-gradient-to-r from-purple-600 to-blue-500 text-white rounded-xl font-thai text-base font-semibold text-center"
+            >
+              📷 นับสต็อกบ้านหยิบพรีเมี่ยม OCR
+            </a>
           </div>
         )}
 

@@ -31,6 +31,16 @@ export async function GET(
 
       if (prepError) throw prepError;
       items = prepItems || [];
+    } else if (session.count_type === 'premium_ocr') {
+      // ดึงจาก premium_package_ocr_scans
+      const { data: ocrItems, error: ocrError } = await supabase
+        .from('premium_package_ocr_scans')
+        .select('*')
+        .eq('session_id', id)
+        .order('created_at', { ascending: false });
+
+      if (ocrError) throw ocrError;
+      items = ocrItems || [];
     } else {
       // ดึงจาก wms_stock_count_items (standard)
       const { data: stdItems, error: itemsError } = await supabase

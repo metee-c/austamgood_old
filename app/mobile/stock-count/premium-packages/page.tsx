@@ -17,6 +17,8 @@ import {
   Gift,
   Camera,
   X,
+  Image as ImageIcon,
+  ScanLine,
 } from 'lucide-react';
 
 interface Location {
@@ -102,6 +104,15 @@ export default function PremiumPackageCountPage() {
   const [showSuccessPopup, setShowSuccessPopup] = useState(false);
   const [lastScannedBarcode, setLastScannedBarcode] = useState('');
   const [cameraScanCount, setCameraScanCount] = useState(0);
+  
+  // OCR states
+  const [showOcrModal, setShowOcrModal] = useState(false);
+  const [ocrProcessing, setOcrProcessing] = useState(false);
+  const [ocrImage, setOcrImage] = useState<string | null>(null);
+  const [ocrResults, setOcrResults] = useState<string[]>([]);
+  const [ocrLotNumbers, setOcrLotNumbers] = useState<string[]>([]);
+  const [ocrError, setOcrError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     loadLocations();
@@ -331,6 +342,253 @@ export default function PremiumPackageCountPage() {
     lastScannedRef.current = '';
   }, []);
 
+  // OCR: Preprocess image for better recognition
+  const preprocessImage = useCallback((file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new window.Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(URL.createObjectURL(file));
+          return;
+        }
+
+        // Scale up small images
+        const scale = Math.max(1, 1500 / Math.max(img.width, img.height));
+        canvas.width = img.width * scale;
+        canvas.height = img.height * scale;
+
+        // Draw image
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+
+        // Get image data for processing
+        const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        const data = imageData.data;
+
+        // Convert to grayscale and increase contrast
+        for (let i = 0; i < data.length; i += 4) {
+          // Grayscale
+          const gray = 0.299 * data[i] + 0.587 * data[i + 1] + 0.114 * data[i + 2];
+          
+          // Increase contrast
+          const contrast = 1.5;
+          const factor = (259 * (contrast * 100 + 255)) / (255 * (259 - contrast * 100));
+          const newGray = Math.min(255, Math.max(0, factor * (gray - 128) + 128));
+          
+          // Threshold for sharper text
+          const threshold = newGray > 140 ? 255 : 0;
+          
+          data[i] = threshold;
+          data[i + 1] = threshold;
+          data[i + 2] = threshold;
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+        resolve(canvas.toDataURL('image/png'));
+      };
+      img.src = URL.createObjectURL(file);
+    });
+  }, []);
+
+  // OCR: Extract barcodes from text with fuzzy matching
+  const extractBarcodes = useCallback((text: string): { barcodes: string[], lotNumbers: string[] } => {
+    const barcodes: string[] = [];
+    const lotNumbers: string[] = [];
+    
+    // Normalize text - replace common OCR mistakes
+    const normalizeBarcode = (str: string): string => {
+      return str
+        .toUpperCase()
+        .replace(/[oO]/g, '0')  // O -> 0 (most common mistake)
+        .replace(/[lI|]/g, '1') // l, I, | -> 1
+        .replace(/\s+/g, '')    // Remove spaces
+        .replace(/['"]/g, '')   // Remove quotes
+        .replace(/[-]+/g, '-'); // Normalize dashes
+    };
+    
+    // Clean text first - remove noise characters but keep structure
+    const cleanedText = text
+      .replace(/['"'`]/g, '')  // Remove quotes
+      .replace(/\s+/g, ' ');   // Normalize spaces
+    
+    // === Extract BFS Barcodes ===
+    
+    // Pattern 1: Look for BFS- followed by numbers, allowing spaces/noise between parts
+    const bfsStartPattern = /BFS-?[0-9O]{8}-?[0-9O]{3}-?/gi;
+    const packPattern = /P[0-9O]{3}/gi;
+    
+    const bfsStarts = cleanedText.match(bfsStartPattern) || [];
+    
+    for (const bfsStart of bfsStarts) {
+      // Find the position of this match
+      const startIdx = cleanedText.toUpperCase().indexOf(bfsStart.toUpperCase());
+      if (startIdx === -1) continue;
+      
+      // Look for P0XX pattern within 50 characters after BFS-XXXXXXXX-XXX-
+      const searchArea = cleanedText.substring(startIdx, startIdx + 50);
+      const packMatch = searchArea.match(/P[0-9O]{3}/i);
+      
+      if (packMatch) {
+        // Combine and normalize
+        const combined = bfsStart + packMatch[0];
+        const normalized = normalizeBarcode(combined);
+        
+        // Format properly
+        const formatted = normalized.replace(/^BFS-?(\d{8})-?(\d{3})-?(P\d{3})$/, 'BFS-$1-$2-$3');
+        
+        if (/^BFS-\d{8}-\d{3}-P\d{3}$/.test(formatted) && !barcodes.includes(formatted)) {
+          barcodes.push(formatted);
+        }
+      }
+    }
+    
+    // Pattern 2: Direct search for complete pattern (with O/0 flexibility)
+    const directPattern = /BFS-?[0-9O]{8}-?[0-9O]{3}-?P[0-9O]{3}/gi;
+    const directMatches = cleanedText.match(directPattern) || [];
+    
+    for (const match of directMatches) {
+      const normalized = normalizeBarcode(match);
+      const formatted = normalized.replace(/^BFS-?(\d{8})-?(\d{3})-?(P\d{3})$/, 'BFS-$1-$2-$3');
+      if (/^BFS-\d{8}-\d{3}-P\d{3}$/.test(formatted) && !barcodes.includes(formatted)) {
+        barcodes.push(formatted);
+      }
+    }
+    
+    // Pattern 3: Look for "Barcode ID" label and extract nearby pattern
+    if (cleanedText.toLowerCase().includes('barcode')) {
+      const barcodeIdx = cleanedText.toLowerCase().indexOf('barcode');
+      const afterBarcode = cleanedText.substring(barcodeIdx, barcodeIdx + 100);
+      
+      // Extract all digit/letter sequences that could be part of barcode
+      const parts = afterBarcode.match(/[A-Z0-9-]+/gi) || [];
+      const combined = parts.join('');
+      const normalized = normalizeBarcode(combined);
+      
+      // Try to find BFS pattern in combined string
+      const bfsMatch = normalized.match(/BFS\d{8}\d{3}P\d{3}/);
+      if (bfsMatch) {
+        const formatted = bfsMatch[0].replace(/^(BFS)(\d{8})(\d{3})(P\d{3})$/, '$1-$2-$3-$4');
+        if (!barcodes.includes(formatted)) {
+          barcodes.push(formatted);
+        }
+      }
+    }
+    
+    // === Extract MR Lot Numbers ===
+    
+    // First, find all long MR codes (8+ digits) - these take priority
+    const mrLongPattern = /MR[0-9O]{8,}/gi;
+    const mrLongMatches = cleanedText.match(mrLongPattern) || [];
+    
+    for (const match of mrLongMatches) {
+      const normalized = match.toUpperCase().replace(/O/g, '0');
+      if (!lotNumbers.includes(normalized)) {
+        lotNumbers.push(normalized);
+      }
+    }
+    
+    // Then find short MR codes (exactly 2 digits) - but exclude if they're part of a longer code
+    const mrShortPattern = /MR[0-9O]{2}(?![0-9O])/gi;
+    const mrShortMatches = cleanedText.match(mrShortPattern) || [];
+    
+    for (const match of mrShortMatches) {
+      const normalized = match.toUpperCase().replace(/O/g, '0');
+      // Check if this short code is NOT a prefix of any long code we found
+      const isPartOfLongCode = lotNumbers.some(long => long.startsWith(normalized));
+      if (/^MR\d{2}$/.test(normalized) && !lotNumbers.includes(normalized) && !isPartOfLongCode) {
+        lotNumbers.push(normalized);
+      }
+    }
+    
+    return { barcodes: [...new Set(barcodes)], lotNumbers: [...new Set(lotNumbers)] };
+  }, []);
+
+  // OCR: Handle image selection
+  const [ocrRawText, setOcrRawText] = useState<string>('');
+  
+  const handleImageSelect = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    // Reset states
+    setOcrError(null);
+    setOcrResults([]);
+    setOcrRawText('');
+    setOcrProcessing(true);
+    setShowOcrModal(true);
+
+    // Create preview URL
+    const imageUrl = URL.createObjectURL(file);
+    setOcrImage(imageUrl);
+
+    try {
+      // Preprocess image for better OCR
+      const processedImage = await preprocessImage(file);
+      
+      // Load Tesseract.js dynamically
+      const Tesseract = await import('tesseract.js');
+      
+      // Perform OCR with optimized settings
+      const result = await Tesseract.recognize(processedImage, 'eng', {
+        logger: (m) => {
+          if (m.status === 'recognizing text') {
+            // Could show progress here if needed
+          }
+        },
+      });
+
+      const extractedText = result.data.text;
+      setOcrRawText(extractedText);
+      
+      // Extract barcodes and lot numbers with fuzzy matching
+      const { barcodes, lotNumbers } = extractBarcodes(extractedText);
+      
+      if (barcodes.length > 0 || lotNumbers.length > 0) {
+        setOcrResults(barcodes);
+        setOcrLotNumbers(lotNumbers);
+        setOcrError(null);
+      } else {
+        setOcrError('ไม่พบ Barcode ID หรือ โล MR ในภาพ');
+      }
+    } catch (error) {
+      console.error('OCR error:', error);
+      setOcrError('เกิดข้อผิดพลาดในการอ่านภาพ');
+    } finally {
+      setOcrProcessing(false);
+      // Reset file input
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  }, [preprocessImage, extractBarcodes]);
+
+  // OCR: Use detected barcode
+  const handleUseOcrBarcode = useCallback(async (barcode: string) => {
+    setShowOcrModal(false);
+    setOcrImage(null);
+    setOcrResults([]);
+    
+    // Process the barcode
+    setScanning(true);
+    await processScan(barcode);
+    setScanning(false);
+    inputRef.current?.focus();
+  }, [processScan]);
+
+  // OCR: Close modal
+  const closeOcrModal = useCallback(() => {
+    setShowOcrModal(false);
+    setOcrImage(null);
+    setOcrResults([]);
+    setOcrLotNumbers([]);
+    setOcrError(null);
+    setOcrRawText('');
+    if (ocrImage) {
+      URL.revokeObjectURL(ocrImage);
+    }
+  }, [ocrImage]);
+
   const handleDeleteItem = async (itemId: number) => {
     try {
       const res = await fetch(`/api/stock-count/premium-packages/items?id=${itemId}`, {
@@ -442,6 +700,178 @@ export default function PremiumPackageCountPage() {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* OCR Image Modal */}
+      {showOcrModal && (
+        <div className="fixed inset-0 bg-black/80 z-50 flex flex-col">
+          {/* Header */}
+          <div className="bg-purple-600 p-4 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <ScanLine className="w-6 h-6 text-white" />
+              <div>
+                <p className="text-white font-thai font-bold">OCR อ่านบาร์โค้ด</p>
+                <p className="text-purple-200 text-xs">จากรูปภาพ</p>
+              </div>
+            </div>
+            <button
+              onClick={closeOcrModal}
+              className="p-2 bg-white/20 rounded-full"
+            >
+              <X className="w-6 h-6 text-white" />
+            </button>
+          </div>
+
+          {/* Content */}
+          <div className="flex-1 overflow-y-auto p-4">
+            {/* Image Preview */}
+            {ocrImage && (
+              <div className="mb-4 rounded-xl overflow-hidden bg-gray-900">
+                <img 
+                  src={ocrImage} 
+                  alt="OCR Preview" 
+                  className="w-full h-auto max-h-[40vh] object-contain"
+                />
+              </div>
+            )}
+
+            {/* Processing */}
+            {ocrProcessing && (
+              <div className="bg-white rounded-xl p-6 text-center">
+                <Loader2 className="w-12 h-12 text-purple-600 animate-spin mx-auto mb-3" />
+                <p className="text-gray-700 font-thai font-semibold">กำลังอ่านข้อความจากภาพ...</p>
+                <p className="text-gray-500 text-sm mt-1">อาจใช้เวลาสักครู่</p>
+              </div>
+            )}
+
+            {/* Error */}
+            {ocrError && !ocrProcessing && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 text-center">
+                <AlertTriangle className="w-10 h-10 text-red-400 mx-auto mb-2" />
+                <p className="text-red-700 font-thai font-semibold">{ocrError}</p>
+                <p className="text-red-500 text-sm mt-1">ลองถ่ายภาพใหม่ให้ชัดขึ้น</p>
+              </div>
+            )}
+
+            {/* Raw OCR Text - for debugging */}
+            {ocrRawText && !ocrProcessing && (
+              <div className="bg-gray-50 border border-gray-200 rounded-xl p-3 mt-3">
+                <p className="text-xs text-gray-500 font-thai mb-2">ข้อความที่อ่านได้:</p>
+                <pre className="text-xs text-gray-700 whitespace-pre-wrap break-all font-mono bg-white p-2 rounded border max-h-32 overflow-y-auto">
+                  {ocrRawText}
+                </pre>
+                <p className="text-[10px] text-gray-400 mt-2 font-thai">
+                  หากเห็น Barcode แต่ระบบไม่พบ ให้พิมพ์เองในช่องด้านล่าง
+                </p>
+              </div>
+            )}
+
+            {/* Manual Input - when OCR fails */}
+            {!ocrProcessing && ocrError && (
+              <div className="bg-white rounded-xl p-3 mt-3 border">
+                <p className="text-xs text-gray-600 font-thai mb-2">พิมพ์ Barcode เอง:</p>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    placeholder="BFS-20260109-001-P001"
+                    className="flex-1 px-3 py-2 border rounded-lg text-sm font-mono focus:ring-2 focus:ring-purple-500"
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        const input = e.currentTarget;
+                        const value = input.value.trim().toUpperCase();
+                        if (/^BFS-\d{8}-\d{3}-P\d{3}$/i.test(value)) {
+                          handleUseOcrBarcode(value);
+                        }
+                      }
+                    }}
+                    id="manual-barcode-input"
+                  />
+                  <button
+                    onClick={() => {
+                      const input = document.getElementById('manual-barcode-input') as HTMLInputElement;
+                      const value = input?.value.trim().toUpperCase();
+                      if (value && /^BFS-\d{8}-\d{3}-P\d{3}$/i.test(value)) {
+                        handleUseOcrBarcode(value);
+                      }
+                    }}
+                    className="px-4 py-2 bg-purple-600 text-white rounded-lg font-thai text-sm"
+                  >
+                    ใช้
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Results */}
+            {(ocrResults.length > 0 || ocrLotNumbers.length > 0) && !ocrProcessing && (
+              <div className="bg-white rounded-xl overflow-hidden">
+                <div className="p-3 bg-green-50 border-b border-green-100">
+                  <p className="text-green-700 font-thai font-semibold flex items-center gap-2">
+                    <Check className="w-5 h-5" />
+                    พบข้อมูล
+                  </p>
+                </div>
+                
+                {/* Barcodes */}
+                {ocrResults.length > 0 && (
+                  <div className="divide-y">
+                    <div className="p-2 bg-purple-50">
+                      <p className="text-xs text-purple-600 font-thai font-semibold">Barcode ID ({ocrResults.length})</p>
+                    </div>
+                    {ocrResults.map((barcode, index) => (
+                      <div key={index} className="p-3 flex items-center justify-between">
+                        <div>
+                          <p className="font-mono font-bold text-gray-800">{barcode}</p>
+                          <p className="text-xs text-gray-500">กดเพื่อใช้งาน</p>
+                        </div>
+                        <button
+                          onClick={() => handleUseOcrBarcode(barcode)}
+                          className="px-4 py-2 bg-purple-600 text-white rounded-lg font-thai text-sm flex items-center gap-2"
+                        >
+                          <Check className="w-4 h-4" />
+                          ใช้
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
+                {/* Lot Numbers */}
+                {ocrLotNumbers.length > 0 && (
+                  <div className="divide-y border-t">
+                    <div className="p-2 bg-blue-50">
+                      <p className="text-xs text-blue-600 font-thai font-semibold">โล MR ({ocrLotNumbers.length})</p>
+                    </div>
+                    {ocrLotNumbers.map((lot, index) => (
+                      <div key={index} className="p-3 flex items-center justify-between">
+                        <div>
+                          <p className="font-mono font-bold text-gray-800">{lot}</p>
+                          <p className="text-xs text-gray-500">เลขโล</p>
+                        </div>
+                        <span className="px-3 py-1 bg-blue-100 text-blue-700 rounded-lg text-sm font-mono">
+                          {lot}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Footer - Try Again */}
+          {!ocrProcessing && (ocrError || (ocrResults.length === 0 && ocrLotNumbers.length === 0)) && (
+            <div className="p-4 bg-gray-900">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="w-full py-3 bg-purple-600 text-white rounded-xl font-thai font-semibold flex items-center justify-center gap-2"
+              >
+                <ImageIcon className="w-5 h-5" />
+                เลือกภาพใหม่
+              </button>
+            </div>
+          )}
         </div>
       )}
 
@@ -588,6 +1018,14 @@ export default function PremiumPackageCountPage() {
               >
                 <Camera className="w-5 h-5" />
               </button>
+              {/* OCR Image Button */}
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className="p-2 bg-blue-100 text-blue-600 rounded-xl hover:bg-blue-200"
+                title="อ่านจากรูปภาพ (OCR)"
+              >
+                <ImageIcon className="w-5 h-5" />
+              </button>
               <button
                 onClick={handleScan}
                 disabled={scanning}
@@ -596,6 +1034,18 @@ export default function PremiumPackageCountPage() {
                 <ChevronRight className="w-5 h-5" />
               </button>
             </div>
+            {/* Hidden file input for OCR */}
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              onChange={handleImageSelect}
+              className="hidden"
+            />
+            <p className="text-[10px] text-gray-400 mt-2 text-center font-thai">
+              📷 กล้องสแกน | 🖼️ อ่านจากรูป (OCR)
+            </p>
           </div>
         )}
 
