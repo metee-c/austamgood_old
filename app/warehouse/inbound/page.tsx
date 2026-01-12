@@ -59,6 +59,11 @@ const InboundPage = () => {
   const [sortField, setSortField] = useState<string>('');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [changingStatus, setChangingStatus] = useState<Record<number, boolean>>({});
+  // Production order linking state
+  const [editingProductionRef, setEditingProductionRef] = useState<Record<number, string>>({});
+  const [savingProductionRef, setSavingProductionRef] = useState<Record<number, boolean>>({});
+  const [showLinkingModal, setShowLinkingModal] = useState(false);
+  const [linkingReceiveId, setLinkingReceiveId] = useState<number | null>(null);
 
   // Debounce search term
   useEffect(() => {
@@ -272,6 +277,66 @@ const InboundPage = () => {
       alert('เกิดข้อผิดพลาดในการเปลี่ยนสถานะ');
     } finally {
       setChangingStatus((prev) => ({ ...prev, [receiveId]: false }));
+    }
+  };
+
+  // Handle production order reference change
+  const handleProductionRefChange = (receiveId: number, value: string) => {
+    setEditingProductionRef((prev) => ({
+      ...prev,
+      [receiveId]: value,
+    }));
+  };
+
+  // Save production order reference and consume materials
+  const saveProductionRef = async (receiveId: number) => {
+    const productionNo = editingProductionRef[receiveId];
+    if (!productionNo || !productionNo.trim()) {
+      alert('กรุณากรอกเลขใบสั่งผลิต');
+      return;
+    }
+
+    setSavingProductionRef((prev) => ({ ...prev, [receiveId]: true }));
+    setShowLinkingModal(true);
+    setLinkingReceiveId(receiveId);
+
+    try {
+      const response = await fetch(`/api/receives/${receiveId}/link-production-order`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          production_no: productionNo.trim(),
+        }),
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || result.error) {
+        alert(`เกิดข้อผิดพลาด: ${result.error}`);
+        return;
+      }
+
+      // Success - show result and refresh data
+      const consumedCount = result.data?.materials_consumed || 0;
+      alert(`บันทึกสำเร็จ!\n\nเชื่อมโยงกับใบสั่งผลิต: ${productionNo}\nตัดวัตถุดิบจาก Repack: ${consumedCount} รายการ`);
+      
+      // Clear editing state
+      setEditingProductionRef((prev) => {
+        const newState = { ...prev };
+        delete newState[receiveId];
+        return newState;
+      });
+      
+      refetch();
+    } catch (error) {
+      console.error('Error saving production reference:', error);
+      alert('เกิดข้อผิดพลาดในการบันทึก');
+    } finally {
+      setSavingProductionRef((prev) => ({ ...prev, [receiveId]: false }));
+      setShowLinkingModal(false);
+      setLinkingReceiveId(null);
     }
   };
 
@@ -554,10 +619,35 @@ const InboundPage = () => {
                             )}
                           </div>
                         </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          <div className="font-mono text-thai-gray-600">
-                            {receive.reference_doc || <span className="text-thai-gray-400">-</span>}
-                          </div>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                          {receive.receive_type === 'การผลิต' && !receive.reference_doc ? (
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="text"
+                                placeholder="PO-..."
+                                className="w-20 px-1 py-0.5 text-[10px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                                value={editingProductionRef[receive.receive_id] || ''}
+                                onChange={(e) => handleProductionRefChange(receive.receive_id, e.target.value)}
+                                disabled={savingProductionRef[receive.receive_id]}
+                              />
+                              <button
+                                onClick={() => saveProductionRef(receive.receive_id)}
+                                disabled={!editingProductionRef[receive.receive_id]?.trim() || savingProductionRef[receive.receive_id]}
+                                className="w-5 h-5 flex items-center justify-center bg-blue-500 text-white rounded-full hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                                title="บันทึก"
+                              >
+                                {savingProductionRef[receive.receive_id] ? (
+                                  <span className="animate-spin text-[8px]">⏳</span>
+                                ) : (
+                                  <Save className="w-3 h-3" />
+                                )}
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="font-mono text-thai-gray-600">
+                              {receive.reference_doc || <span className="text-thai-gray-400">-</span>}
+                            </div>
+                          )}
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                           {getReceiveTypeBadge(receive.receive_type)}
@@ -900,6 +990,19 @@ const InboundPage = () => {
           editData={selectedReceive}
           isEditMode={true}
         />
+      )}
+
+      {/* Production Order Linking Modal - Loading Spinner */}
+      {showLinkingModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl p-6 shadow-xl flex flex-col items-center gap-4">
+            <div className="animate-spin rounded-full h-12 w-12 border-4 border-blue-500 border-t-transparent"></div>
+            <div className="text-center">
+              <p className="text-lg font-semibold text-gray-800 font-thai">กำลังเชื่อมโยงใบสั่งผลิต...</p>
+              <p className="text-sm text-gray-500 font-thai mt-1">กรุณารอสักครู่ ระบบกำลังตัดสต็อกวัตถุดิบจาก Repack</p>
+            </div>
+          </div>
+        </div>
       )}
       
     </>
