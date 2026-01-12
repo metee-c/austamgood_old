@@ -23,7 +23,9 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const warehouseId = searchParams.get('warehouse_id');
 
-    // Query bonus face sheets ที่ status = completed
+    // Query bonus face sheets ที่ status = completed หรือ picking (ยังมี packages เหลือ)
+    // ✅ FIX (edit29): รองรับ BFS ที่ status = 'picking' ด้วย เพราะหลัง stock reconciliation 
+    //    BFS ที่ยังมี packages เหลือจะถูกเปลี่ยนเป็น status = 'picking'
     let query = supabase
       .from('bonus_face_sheets')
       .select(`
@@ -39,8 +41,8 @@ export async function GET(request: NextRequest) {
         updated_at,
         picking_completed_at
       `)
-      .eq('status', 'completed')
-      .order('picking_completed_at', { ascending: false });
+      .in('status', ['completed', 'picking'])
+      .order('picking_completed_at', { ascending: false, nullsFirst: false });
 
     if (warehouseId) {
       query = query.eq('warehouse_id', warehouseId);

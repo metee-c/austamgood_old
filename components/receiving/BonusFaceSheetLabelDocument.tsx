@@ -1,6 +1,7 @@
 'use client';
 
 import React from 'react';
+import Barcode from 'react-barcode';
 
 interface BonusFaceSheetItem {
   product_code: string;
@@ -57,7 +58,7 @@ const BonusFaceSheetLabelDocument: React.FC<BonusFaceSheetLabelDocumentProps> = 
 
   return (
     <>
-      {details.packages.map((pkg, index) => {
+      {details.packages.map((pkg) => {
         // คำนวณลำดับแพ็คของออเดอร์นี้
         if (!packSequenceByOrder[pkg.order_no]) {
           packSequenceByOrder[pkg.order_no] = 0;
@@ -427,6 +428,31 @@ const BonusFaceSheetLabelDocument: React.FC<BonusFaceSheetLabelDocumentProps> = 
                 ) : (
                   <p style={{ fontSize: '13px', margin: 0, fontWeight: 'bold' }}>รวมทั้งหมด {totalItems} รายการ</p>
                 )}
+              </div>
+
+              {/* Barcode Section - ล่างสุดของลาเบล */}
+              <div
+                style={{
+                  marginTop: '8px',
+                  paddingTop: '6px',
+                  borderTop: '1px dashed #999',
+                  textAlign: 'center',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center'
+                }}
+              >
+                <Barcode
+                  value={pkg.barcode_id}
+                  format="CODE128"
+                  width={1.5}
+                  height={40}
+                  displayValue={true}
+                  fontSize={10}
+                  margin={0}
+                  background="#ffffff"
+                  lineColor="#000000"
+                />
               </div>
             </div>
           );

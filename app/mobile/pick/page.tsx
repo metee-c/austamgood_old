@@ -58,6 +58,7 @@ interface BonusFaceSheet {
   id: number;
   face_sheet_no: string;
   status: string;
+  pick_status?: string; // ✅ FIX (edit30): เพิ่ม pick_status สำหรับแสดงสถานะการหยิบ
   created_at: string;
   updated_at: string;
   total_packages: number;
@@ -217,6 +218,23 @@ function MobilePickPage() {
     );
   };
 
+  // ✅ FIX (edit30): Get pick status badge สำหรับ bonus_face_sheet
+  // ใช้ pick_status แทน status เพื่อแสดงสถานะการหยิบที่ถูกต้อง
+  const getPickStatusBadge = (pickStatus: string | undefined) => {
+    const statusMap: Record<string, { label: string; variant: 'default' | 'primary' | 'success' | 'warning' | 'danger' | 'info' }> = {
+      pending: { label: 'รอหยิบ', variant: 'default' },
+      partial: { label: 'กำลังหยิบ', variant: 'warning' },
+      picked: { label: 'เสร็จสิ้น', variant: 'success' }
+    };
+
+    const match = statusMap[pickStatus || 'pending'] || statusMap.pending;
+    return (
+      <Badge variant={match.variant} size="sm">
+        {match.label}
+      </Badge>
+    );
+  };
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'pending':
@@ -229,6 +247,18 @@ function MobilePickPage() {
         return <CheckCircle className="w-3.5 h-3.5 text-green-500" />;
       case 'cancelled':
         return <AlertCircle className="w-3.5 h-3.5 text-red-500" />;
+      default:
+        return <Clock className="w-3.5 h-3.5 text-gray-500" />;
+    }
+  };
+
+  // ✅ FIX (edit30): Get pick status icon สำหรับ bonus_face_sheet
+  const getPickStatusIcon = (pickStatus: string | undefined) => {
+    switch (pickStatus) {
+      case 'picked':
+        return <CheckCircle className="w-3.5 h-3.5 text-green-500" />;
+      case 'partial':
+        return <Package className="w-3.5 h-3.5 text-yellow-500" />;
       default:
         return <Clock className="w-3.5 h-3.5 text-gray-500" />;
     }
@@ -421,7 +451,11 @@ function MobilePickPage() {
                     <td className="px-1.5 py-2">
                       <div className="flex items-center space-x-1">
                         <div className="flex-shrink-0">
-                          {getStatusIcon(task.status)}
+                          {/* ✅ FIX (edit30): ใช้ pick_status icon สำหรับ bonus_face_sheet */}
+                          {task.type === 'bonus_face_sheet' 
+                            ? getPickStatusIcon((task as BonusFaceSheet).pick_status)
+                            : getStatusIcon(task.status)
+                          }
                         </div>
                         <div className="min-w-0">
                           <p className="font-semibold text-gray-900 font-thai text-[10px] whitespace-nowrap">
@@ -444,7 +478,11 @@ function MobilePickPage() {
 
                     {/* สถานะ */}
                     <td className="px-1.5 py-2 text-center">
-                      {getStatusBadge(task.status)}
+                      {/* ✅ FIX (edit30): ใช้ pick_status สำหรับ bonus_face_sheet */}
+                      {task.type === 'bonus_face_sheet' 
+                        ? getPickStatusBadge((task as BonusFaceSheet).pick_status)
+                        : getStatusBadge(task.status)
+                      }
                     </td>
 
                     {/* จำนวน */}

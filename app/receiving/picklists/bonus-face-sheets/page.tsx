@@ -30,6 +30,7 @@ interface BonusFaceSheet {
   id: number;
   face_sheet_no: string;
   status: string;
+  pick_status?: string; // ✅ FIX (edit30): เพิ่ม pick_status สำหรับแสดงสถานะการหยิบ
   created_date: string;
   created_at: string;
   created_by: string;
@@ -900,7 +901,8 @@ const BonusFaceSheetsPage = () => {
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">เลขที่ใบปะหน้า</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">คลังสินค้า</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">สถานะ</th>
+                  <th className="px-4 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">สถานะหยิบ</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">สถานะแพ็ค</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold border-b whitespace-nowrap">วันที่สร้าง</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">แพ็คทั้งหมด</th>
                   <th className="px-4 py-3 text-center text-xs font-semibold border-b whitespace-nowrap">แพ็คคงเหลือ</th>
@@ -913,7 +915,7 @@ const BonusFaceSheetsPage = () => {
               <tbody className="bg-white divide-y divide-gray-100">
                 {loading ? (
                   <tr>
-                    <td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-500">
+                    <td colSpan={11} className="px-4 py-8 text-center text-sm text-gray-500">
                       <div className="flex items-center justify-center space-x-2">
                         <Loader2 className="w-4 h-4 animate-spin" />
                         <span>กำลังโหลดข้อมูล...</span>
@@ -941,6 +943,17 @@ const BonusFaceSheetsPage = () => {
                       <td className="px-4 py-3 text-xs whitespace-nowrap">
                         <Badge variant="secondary" size="sm">{sheet.warehouse_id}</Badge>
                       </td>
+                      {/* ✅ FIX (edit30): คอลัมน์สถานะหยิบ - แสดงก่อนสถานะแพ็ค เพราะเป็นสถานะหลักที่ผู้ใช้ต้องการดู */}
+                      <td className="px-4 py-3 text-xs text-center whitespace-nowrap">
+                        {sheet.pick_status === 'picked' ? (
+                          <Badge variant="success" size="sm">เสร็จสิ้น</Badge>
+                        ) : sheet.pick_status === 'partial' ? (
+                          <Badge variant="warning" size="sm">กำลังหยิบ</Badge>
+                        ) : (
+                          <Badge variant="default" size="sm">รอหยิบ</Badge>
+                        )}
+                      </td>
+                      {/* สถานะแพ็ค - ติดตามว่าแพ็คอยู่ในคลังหรือส่งออกแล้ว */}
                       <td className="px-4 py-3 text-xs whitespace-nowrap">
                         <select
                           className="w-full px-2 py-1 border border-gray-300 rounded text-xs font-thai text-gray-900 focus:outline-none focus:ring-1 focus:ring-purple-500 focus:border-purple-500 cursor-pointer"

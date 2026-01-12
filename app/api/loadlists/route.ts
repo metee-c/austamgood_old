@@ -1,6 +1,217 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/api/with-auth';
+import { SupabaseClient } from '@supabase/supabase-js';
+
+/**
+ * ✅ NEW (edit28): Helper function สำหรับสร้าง loadlist จาก BFS โดยไม่ต้องแมพกับ picklist
+ * - ดึง packages ทั้งหมดของ BFS ที่เลือก (ที่ยังไม่ถูกแมพ)
+ * - สร้าง loadlist 1 ใบ
+ * - บันทึก mapping ใน wms_loadlist_bonus_face_sheets พร้อม matched_package_ids
+ */
+async function handleSkipMappingMode(
+  supabase: SupabaseClient,
+  params: {
+    bfs_ids: number[];
+    checker_employee_id: number;
+    vehicle_type: string;
+    delivery_number: string;
+    vehicle_id?: number | null;
+    driver_employee_id?: number | null;
+    driver_phone?: string | null;
+    helper_employee_id?: number | null;
+    loading_queue_number?: string | null;
+    loading_door_number?: string | null;
+  }
+) {
+  const {
+    bfs_ids,
+    checker_employee_id,
+    vehicle_type,
+    delivery_number,
+    vehicle_id,
+    driver_employee_id,
+    driver_phone,
+    helper_employee_id,
+    loading_queue_number,
+    loading_door_number
+  } = params;
+
+  try {
+    // Validate required fields
+    if (!checker_employee_id) {
+      return NextResponse.json({ error: 'checker_employee_id is required' }, { status: 400 });
+    }
+    if (!vehicle_type) {
+      return NextResponse.json({ error: 'vehicle_type is required' }, { status: 400 });
+    }
+    if (!delivery_number) {
+      return NextResponse.json({ error: 'delivery_number is required' }, { status: 400 });
+    }
+
+    // 1. ดึง matched_package_ids ที่ถูกใช้แล้วจากทุก loadlist
+    const { data: usedMappings } = await supabase
+      .from('wms_loadlist_bonus_face_sheets')
+      .select('bonus_face_sheet_id, matched_package_ids')
+      .in('bonus_face_sheet_id', bfs_ids)
+      .not('matched_package_ids', 'is', null);
+
+    const usedPackagesByBFS = new Map<number, Set<number>>();
+    usedMappings?.forEach(m => {
+      const bfsId = m.bonus_face_sheet_id;
+      if (!usedPackagesByBFS.has(bfsId)) {
+        usedPackagesByBFS.set(bfsId, new Set());
+      }
+      (m.matched_package_ids || []).forEach((id: number) => usedPackagesByBFS.get(bfsId)!.add(id));
+    });
+
+    // 2. ดึง packages ทั้งหมดของ BFS ที่เลือก (ที่ยังไม่ถูกแมพ)
+    const { data: allPackages, error: pkgError } = await supabase
+      .from('bonus_face_sheet_packages')
+      .select('id, face_sheet_id')
+      .in('face_sheet_id', bfs_ids)
+      .not('storage_location', 'is', null);
+
+    if (pkgError) {
+      return NextResponse.json(
+        { error: 'Failed to fetch packages', details: pkgError.message },
+        { status: 500 }
+      );
+    }
+
+    // กรองเฉพาะ packages ที่ยังไม่ถูกใช้
+    const availablePackages = (allPackages || []).filter(pkg => {
+      const usedPackages = usedPackagesByBFS.get(pkg.face_sheet_id);
+      return !usedPackages || !usedPackages.has(pkg.id);
+    });
+
+    if (availablePackages.length === 0) {
+      return NextResponse.json(
+        { error: 'ไม่มี packages ที่พร้อมใช้งาน', details: 'BFS ที่เลือกไม่มี packages ที่ยังไม่ถูกแมพ' },
+        { status: 400 }
+      );
+    }
+
+    // จัดกลุ่ม packages ตาม BFS
+    const packagesByBFS = new Map<number, number[]>();
+    availablePackages.forEach(pkg => {
+      const existing = packagesByBFS.get(pkg.face_sheet_id) || [];
+      existing.push(pkg.id);
+      packagesByBFS.set(pkg.face_sheet_id, existing);
+    });
+
+    // 3. ดึง delivery_date จาก BFS แรก
+    const { data: firstBfs } = await supabase
+      .from('bonus_face_sheets')
+      .select('delivery_date')
+      .eq('id', bfs_ids[0])
+      .single();
+
+    // 4. Generate loadlist code
+    let datePrefix: string;
+    if (firstBfs?.delivery_date) {
+      datePrefix = firstBfs.delivery_date.replace(/-/g, '');
+    } else {
+      const today = new Date();
+      datePrefix = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+    }
+
+    const { data: latestLoadlist } = await supabase
+      .from('loadlists')
+      .select('loadlist_code')
+      .like('loadlist_code', `LD-${datePrefix}-%`)
+      .order('loadlist_code', { ascending: false })
+      .limit(1)
+      .single();
+
+    let sequenceNumber = 1;
+    if (latestLoadlist?.loadlist_code) {
+      const lastSequence = latestLoadlist.loadlist_code.split('-')[2];
+      if (lastSequence) {
+        sequenceNumber = parseInt(lastSequence, 10) + 1;
+      }
+    }
+
+    const loadlistCode = `LD-${datePrefix}-${String(sequenceNumber).padStart(4, '0')}`;
+
+    // 5. สร้าง loadlist
+    const { data: loadlist, error: loadlistError } = await supabase
+      .from('loadlists')
+      .insert({
+        loadlist_code: loadlistCode,
+        plan_id: null,
+        trip_id: null,
+        status: 'pending',
+        checker_employee_id,
+        vehicle_type,
+        delivery_number,
+        vehicle_id: vehicle_id || null,
+        driver_employee_id: driver_employee_id || null,
+        driver_phone: driver_phone || null,
+        helper_employee_id: helper_employee_id || null,
+        loading_queue_number: loading_queue_number || null,
+        loading_door_number: loading_door_number || null,
+        created_by: null
+      })
+      .select()
+      .single();
+
+    if (loadlistError) {
+      return NextResponse.json(
+        { error: 'Failed to create loadlist', details: loadlistError.message },
+        { status: 500 }
+      );
+    }
+
+    // 6. สร้าง mapping records สำหรับแต่ละ BFS
+    let totalPackagesCount = 0;
+    for (const bfsId of bfs_ids) {
+      const packageIds = packagesByBFS.get(bfsId) || [];
+      
+      if (packageIds.length === 0) continue;
+      
+      totalPackagesCount += packageIds.length;
+
+      const { error: linkError } = await supabase
+        .from('wms_loadlist_bonus_face_sheets')
+        .insert({
+          loadlist_id: loadlist.id,
+          bonus_face_sheet_id: bfsId,
+          mapping_type: 'direct', // ✅ NEW: บอกว่าเป็นการสร้างโดยตรง ไม่ได้แมพกับ picklist
+          mapped_picklist_id: null,
+          mapped_face_sheet_id: null,
+          matched_package_ids: packageIds
+        });
+
+      if (linkError) {
+        // Cleanup
+        await supabase.from('loadlists').delete().eq('id', loadlist.id);
+        return NextResponse.json(
+          { error: 'Failed to link bonus face sheet to loadlist', details: linkError.message },
+          { status: 500 }
+        );
+      }
+    }
+
+    console.log(`[skip_mapping] Created loadlist ${loadlistCode} with ${totalPackagesCount} packages from ${bfs_ids.length} BFS`);
+
+    return NextResponse.json({
+      success: true,
+      loadlist_id: loadlist.id,
+      loadlist_code: loadlist.loadlist_code,
+      packages_count: totalPackagesCount,
+      bfs_count: bfs_ids.length,
+      mode: 'skip_mapping'
+    });
+
+  } catch (error: any) {
+    console.error('[skip_mapping] Error:', error);
+    return NextResponse.json(
+      { error: 'Internal server error', details: error.message },
+      { status: 500 }
+    );
+  }
+}
 
 async function handleGet(request: NextRequest, context: any) {
   try {
@@ -474,6 +685,8 @@ async function handlePost(request: NextRequest, context: any) {
       face_sheet_ids,
       bonus_face_sheet_ids,
       bonus_face_sheet_mappings, // ✅ NEW: รับ mapping ของ bonus face sheet กับ picklist และ face sheet
+      skip_mapping, // ✅ NEW (edit28): สร้าง loadlist จาก BFS โดยไม่ต้องแมพกับ picklist
+      bfs_ids, // ✅ NEW (edit28): รายการ BFS IDs เมื่อ skip_mapping = true
       checker_employee_id,
       vehicle_type,
       delivery_number,
@@ -484,6 +697,22 @@ async function handlePost(request: NextRequest, context: any) {
       loading_queue_number,
       loading_door_number
     } = body;
+
+    // ✅ NEW (edit28): โหมดไม่แมพ - สร้าง loadlist จาก BFS โดยตรง
+    if (skip_mapping && bfs_ids && Array.isArray(bfs_ids) && bfs_ids.length > 0) {
+      return await handleSkipMappingMode(supabase, {
+        bfs_ids,
+        checker_employee_id,
+        vehicle_type,
+        delivery_number,
+        vehicle_id,
+        driver_employee_id,
+        driver_phone,
+        helper_employee_id,
+        loading_queue_number,
+        loading_door_number
+      });
+    }
 
     // Validation - ต้องมีอย่างน้อย picklist_ids, face_sheet_ids หรือ bonus_face_sheet_ids
     const hasPicklists = picklist_ids && Array.isArray(picklist_ids) && picklist_ids.length > 0;

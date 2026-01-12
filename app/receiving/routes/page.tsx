@@ -50,7 +50,7 @@ import type {
     SplitFormPayload,
     BadgeVariant
 } from './types';
-import { MetricCard, SplitStopModal, MultiPlanContractModal, MultiPlanTransportContractModal, CrossPlanTransferModal } from './components';
+import { MetricCard, SplitStopModal, MultiPlanContractModal, MultiPlanTransportContractModal, CrossPlanTransferModal, ConfirmDialog } from './components';
 import { 
     STATUSES, 
     STATUS_BADGE_MAP, 
@@ -250,6 +250,16 @@ const RoutesPage = () => {
     const [planTripsData, setPlanTripsData] = useState<Map<number, any[]>>(new Map());
     const [loadingTrips, setLoadingTrips] = useState<Set<number>>(new Set());
     const [editorDraftOrdersLoading, setEditorDraftOrdersLoading] = useState(false);
+
+    // State สำหรับลบแผนจัดเส้นทาง
+    const [deleteConfirmDialog, setDeleteConfirmDialog] = useState<{
+        isOpen: boolean;
+        planId: number;
+        planCode: string;
+        picklistsCount: number;
+        warning: string | null;
+    } | null>(null);
+    const [isDeleting, setIsDeleting] = useState(false);
 
     const fetchDraftOrders = useCallback(async (warehouseId: string, planDate: string) => {
         try {
@@ -531,6 +541,63 @@ const RoutesPage = () => {
         setEditorPlanId(planId);
         setIsEditorOpen(true);
         await fetchEditorData(planId);
+    };
+
+    // Handler ตรวจสอบว่าลบแผนได้หรือไม่
+    const handleCheckDeletePlan = async (planId: number) => {
+        try {
+            const response = await fetch(`/api/route-plans/${planId}/can-delete`);
+            const result = await response.json();
+
+            if (!result.can_delete) {
+                // แสดง error
+                alert(`ไม่สามารถลบได้: ${result.reason}${result.active_orders ? '\n\nOrders ที่ยังไม่ได้ Rollback:\n' + result.active_orders.join(', ') : ''}`);
+                return;
+            }
+
+            // แสดง confirmation dialog
+            setDeleteConfirmDialog({
+                isOpen: true,
+                planId: planId,
+                planCode: result.plan_code,
+                picklistsCount: result.picklists_count || 0,
+                warning: result.warning
+            });
+        } catch (error) {
+            console.error('Error checking delete:', error);
+            alert('เกิดข้อผิดพลาดในการตรวจสอบ');
+        }
+    };
+
+    // Handler ลบแผนจริง
+    const handleDeletePlan = async () => {
+        if (!deleteConfirmDialog?.planId) return;
+
+        setIsDeleting(true);
+        try {
+            const response = await fetch(`/api/route-plans/${deleteConfirmDialog.planId}/delete`, {
+                method: 'DELETE'
+            });
+            const result = await response.json();
+
+            if (!response.ok) {
+                throw new Error(result.error || 'เกิดข้อผิดพลาด');
+            }
+
+            // แสดง success
+            alert(`✅ ลบแผน ${deleteConfirmDialog.planCode} สำเร็จ`);
+
+            // Refresh list
+            await fetchRoutePlans();
+
+            // ปิด dialog
+            setDeleteConfirmDialog(null);
+        } catch (error: any) {
+            console.error('Error deleting:', error);
+            alert(`❌ เกิดข้อผิดพลาด: ${error.message}`);
+        } finally {
+            setIsDeleting(false);
+        }
     };
 
     // Toggle expand/collapse แผนเส้นทาง
@@ -2219,6 +2286,25 @@ const RoutesPage = () => {
                                                                             <CheckCircle className="w-3 h-3" />
                                                                         </button>
                                                                     )}
+
+                                                                    {/* ปุ่มลบแผน - แสดงทุกแถว แต่ disabled ถ้าลบไม่ได้ */}
+                                                                    <button
+                                                                        className={`p-1 rounded transition-colors ${
+                                                                            ['in_transit', 'loading', 'completed'].includes(plan.status)
+                                                                                ? 'text-gray-300 cursor-not-allowed'
+                                                                                : 'hover:bg-red-50 hover:text-red-600 text-red-500'
+                                                                        }`}
+                                                                        title={
+                                                                            plan.status === 'in_transit' ? 'ไม่สามารถลบได้ - กำลังจัดส่ง'
+                                                                            : plan.status === 'loading' ? 'ไม่สามารถลบได้ - กำลังโหลดสินค้า'
+                                                                            : plan.status === 'completed' ? 'ไม่สามารถลบได้ - เสร็จสิ้นแล้ว'
+                                                                            : 'ลบแผนจัดเส้นทาง'
+                                                                        }
+                                                                        disabled={['in_transit', 'loading', 'completed'].includes(plan.status)}
+                                                                        onClick={() => handleCheckDeletePlan(plan.plan_id)}
+                                                                    >
+                                                                        <Trash2 className="w-3 h-3" />
+                                                                    </button>
                                                                 </div>
                                                             </td>
                                                         </tr>
@@ -3155,6 +3241,29 @@ const RoutesPage = () => {
                 sourceTripId={crossPlanTransferTripId}
                 onTransfer={handleCrossPlanTransfer}
             />
+
+            {/* Delete Confirmation Dialog */}
+            {deleteConfirmDialog && (
+                <ConfirmDialog
+                    isOpen={deleteConfirmDialog.isOpen}
+                    title="ยืนยันการลบแผนจัดเส้นทาง"
+                    message={`คุณต้องการลบแผน "${deleteConfirmDialog.planCode}" หรือไม่?${
+                        deleteConfirmDialog.picklistsCount > 0
+                            ? `\n\n⚠️ จะลบ ${deleteConfirmDialog.picklistsCount} ใบหยิบ (Picklist) ที่สร้างจากแผนนี้ด้วย`
+                            : ''
+                    }${
+                        deleteConfirmDialog.warning
+                            ? `\n${deleteConfirmDialog.warning}`
+                            : ''
+                    }\n\n🚨 การลบไม่สามารถยกเลิกได้!`}
+                    variant="danger"
+                    confirmText="ลบแผน"
+                    cancelText="ยกเลิก"
+                    onConfirm={handleDeletePlan}
+                    onCancel={() => setDeleteConfirmDialog(null)}
+                    loading={isDeleting}
+                />
+            )}
         </PageContainer>
     );
 };

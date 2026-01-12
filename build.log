@@ -3,14 +3,14 @@
 
    Creating an optimized production build ...
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
- ✓ Compiled successfully in 19.7s
+ ✓ Compiled successfully in 16.0s
    Running TypeScript ...
    Collecting page data using 13 workers ...
-   Generating static pages using 13 workers (0/232) ...
-   Generating static pages using 13 workers (58/232) 
-   Generating static pages using 13 workers (116/232) 
-   Generating static pages using 13 workers (174/232) 
- ✓ Generating static pages using 13 workers (232/232) in 2.3s
+   Generating static pages using 13 workers (0/233) ...
+   Generating static pages using 13 workers (58/233) 
+   Generating static pages using 13 workers (116/233) 
+   Generating static pages using 13 workers (174/233) 
+ ✓ Generating static pages using 13 workers (233/233) in 3.7s
    Finalizing page optimization ...
 
 Route (app)
@@ -85,6 +85,7 @@ Route (app)
 ├ ƒ /api/inventory-balances/reset-reservations
 ├ ƒ /api/inventory/reservations
 ├ ƒ /api/loadlists
+├ ƒ /api/loadlists/available-bfs
 ├ ƒ /api/loadlists/available-bonus-face-sheets
 ├ ƒ /api/loadlists/available-face-sheets
 ├ ƒ /api/loadlists/available-picklists
@@ -204,6 +205,8 @@ Route (app)
 ├ ƒ /api/route-plans/[id]/add-order
 ├ ƒ /api/route-plans/[id]/batch-update
 ├ ƒ /api/route-plans/[id]/bonus-orders
+├ ƒ /api/route-plans/[id]/can-delete
+├ ƒ /api/route-plans/[id]/delete
 ├ ƒ /api/route-plans/[id]/editor
 ├ ƒ /api/route-plans/[id]/metrics
 ├ ƒ /api/route-plans/[id]/move-order

@@ -268,6 +268,11 @@ const LoadlistsPage = () => {
     vehicle_plate?: string;
   }>>([]);
 
+  // ✅ NEW (edit28): โหมดไม่แมพ - สร้าง loadlist จาก BFS โดยตรง
+  const [skipMapping, setSkipMapping] = useState(false);
+  const [unmappedBonusFaceSheets, setUnmappedBonusFaceSheets] = useState<AvailableBonusFaceSheet[]>([]);
+  const [loadingUnmappedBfs, setLoadingUnmappedBfs] = useState(false);
+
   // Form fields (ใช้สำหรับ face sheets และ bonus face sheets)
   const [checkerEmployeeId, setCheckerEmployeeId] = useState<number | ''>('');
   const [vehicleType, setVehicleType] = useState('');
@@ -420,6 +425,26 @@ const LoadlistsPage = () => {
       }
     } catch (err: any) {
       setCreateError('Unable to load bonus face sheets: ' + (err.message ?? 'unknown error'));
+    }
+  };
+
+  // ✅ NEW (edit28): ฟังก์ชันดึง BFS ที่ยังไม่ได้สร้าง loadlist (โหมดไม่แมพ)
+  const fetchUnmappedBonusFaceSheets = async () => {
+    setLoadingUnmappedBfs(true);
+    try {
+      const response = await fetch('/api/loadlists/available-bfs?mode=unmapped');
+      if (!response.ok) {
+        throw new Error('Unable to load unmapped bonus face sheets');
+      }
+      const result = await response.json();
+      if (result.success) {
+        setUnmappedBonusFaceSheets(result.data || []);
+      }
+    } catch (err: any) {
+      console.error('Error fetching unmapped BFS:', err);
+      setCreateError('Unable to load unmapped bonus face sheets: ' + (err.message ?? 'unknown error'));
+    } finally {
+      setLoadingUnmappedBfs(false);
     }
   };
 
@@ -633,6 +658,8 @@ const LoadlistsPage = () => {
     setBonusFaceSheetCheckers({}); // ✅ Reset bonus face sheet checkers
     setBonusFaceSheetMappings({}); // ✅ Reset bonus face sheet mappings
     setMatchingPreviews({}); // ✅ Reset matching previews
+    setSkipMapping(false); // ✅ Reset skip mapping mode (edit28)
+    setUnmappedBonusFaceSheets([]); // ✅ Reset unmapped BFS (edit28)
     await Promise.all([
       fetchAvailablePicklists(),
       fetchAvailableFaceSheets(),
@@ -642,6 +669,13 @@ const LoadlistsPage = () => {
       fetchVehicles()
     ]);
   };
+
+  // ✅ NEW (edit28): Fetch unmapped BFS เมื่อเปิดโหมดไม่แมพ
+  useEffect(() => {
+    if (skipMapping && activeTab === 'bonus-face-sheets') {
+      fetchUnmappedBonusFaceSheets();
+    }
+  }, [skipMapping, activeTab]);
 
   // ✅ Helper function สำหรับอัปเดตค่าแต่ละ picklist
   const updatePicklistFormData = (picklistId: number, field: keyof PicklistFormData, value: any) => {
@@ -689,10 +723,93 @@ const LoadlistsPage = () => {
     }
   };
 
+  // ✅ NEW (edit28): Handler สำหรับสร้าง loadlist โหมดไม่แมพ
+  const handleCreateLoadlistSkipMapping = async () => {
+    if (selectedBonusFaceSheets.length === 0) {
+      setCreateError('กรุณาเลือกอย่างน้อย 1 ใบปะหน้าของแถม');
+      return;
+    }
+
+    // Validate: ต้องมี checker
+    const firstBfsId = selectedBonusFaceSheets[0];
+    const checkerId = bonusFaceSheetCheckers[firstBfsId] || checkerEmployeeId;
+    
+    if (!checkerId) {
+      setCreateError('กรุณาเลือกผู้เช็คโหลดสินค้า');
+      return;
+    }
+
+    if (!vehicleType) {
+      setCreateError('กรุณาเลือกประเภทรถ');
+      return;
+    }
+
+    if (!deliveryNumber) {
+      setCreateError('กรุณาระบุเลขงานจัดส่ง');
+      return;
+    }
+
+    setIsCreating(true);
+    setCreateError(null);
+
+    try {
+      // สร้าง delivery_number จากเลข BFS ที่เลือก
+      const selectedBfsNos = selectedBonusFaceSheets
+        .map(bfsId => unmappedBonusFaceSheets.find(b => b.id === bfsId)?.face_sheet_no)
+        .filter(Boolean);
+      const bfsDeliveryNumber = selectedBfsNos.length > 0 
+        ? selectedBfsNos.join(', ')
+        : `BFS-${Date.now()}`;
+
+      const requestBody = {
+        skip_mapping: true,
+        bfs_ids: selectedBonusFaceSheets,
+        checker_employee_id: checkerId,
+        vehicle_type: vehicleType || 'N/A',
+        delivery_number: deliveryNumber || bfsDeliveryNumber,
+        vehicle_id: vehicleId || null,
+        driver_employee_id: driverEmployeeId || null,
+        loading_queue_number: loadingQueueNumber || null,
+        loading_door_number: loadingDoorNumber || null
+      };
+
+      const response = await fetch('/api/loadlists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'ไม่สามารถสร้างใบโหลดได้');
+      }
+
+      // Success
+      setIsCreateModalOpen(false);
+      setSelectedBonusFaceSheets([]);
+      setBonusFaceSheetCheckers({});
+      setSkipMapping(false);
+      setUnmappedBonusFaceSheets([]);
+      await fetchLoadlists();
+
+    } catch (err: any) {
+      console.error('Error creating loadlist (skip_mapping):', err);
+      setCreateError(err.message || 'เกิดข้อผิดพลาดในการสร้างใบโหลด');
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
   const handleCreateLoadlist = async () => {
     const hasPicklists = selectedPicklists.length > 0;
     const hasFaceSheets = selectedFaceSheets.length > 0;
     const hasBonusFaceSheets = selectedBonusFaceSheets.length > 0;
+    
+    // ✅ NEW (edit28): โหมดไม่แมพ - สร้าง loadlist จาก BFS โดยตรง
+    if (skipMapping && hasBonusFaceSheets) {
+      return await handleCreateLoadlistSkipMapping();
+    }
     
     if (!hasPicklists && !hasFaceSheets && !hasBonusFaceSheets) {
       setCreateError('กรุณาเลือกใบจัดสินค้า, ใบปะหน้า หรือใบปะหน้าของแถมอย่างน้อย 1 รายการ');
@@ -2083,14 +2200,170 @@ const LoadlistsPage = () => {
           {/* Bonus Face Sheets Tab - ให้ผู้ใช้เลือกแมพสายรถและใบปะหน้าเอง */}
           {activeTab === 'bonus-face-sheets' && (
             <div className="space-y-2">
-              <div className="flex items-center justify-between bg-gray-50 px-4 py-2 rounded">
-                <span className="text-sm font-medium text-gray-700">
-                  เลือกใบปะหน้าของแถมและแมพกับสายรถ/ใบปะหน้า ({selectedBonusFaceSheets.length}/{availableBonusFaceSheets.length})
-                </span>
+              {/* ✅ NEW (edit28): Checkbox สำหรับโหมดไม่แมพ */}
+              <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={skipMapping}
+                    onChange={(e) => {
+                      setSkipMapping(e.target.checked);
+                      setSelectedBonusFaceSheets([]); // Clear selection เมื่อสลับโหมด
+                      setBonusFaceSheetMappings({});
+                      setMatchingPreviews({});
+                    }}
+                    className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm font-medium text-blue-800">
+                    ไม่ต้องแมพกับใบหยิบ (สร้างจาก BFS ทั้งใบ)
+                  </span>
+                </label>
+                
+                {skipMapping && (
+                  <p className="mt-2 text-xs text-blue-600 ml-6">
+                    💡 เลือก BFS ที่ต้องการสร้าง Loadlist โดยตรง โดยไม่ต้องเลือกใบหยิบก่อน
+                  </p>
+                )}
               </div>
 
-              <div className="max-h-80 overflow-y-auto border rounded-lg">
-                <table className="w-full border-collapse text-sm">
+              {/* แสดงรายการ BFS ตามโหมด */}
+              {skipMapping ? (
+                /* ✅ โหมดไม่แมพ: แสดง BFS ที่ยังไม่ได้สร้าง loadlist */
+                <>
+                  <div className="flex items-center justify-between bg-gray-50 px-4 py-2 rounded">
+                    <span className="text-sm font-medium text-gray-700">
+                      เลือก BFS ที่ยังไม่ได้สร้าง Loadlist ({selectedBonusFaceSheets.length}/{unmappedBonusFaceSheets.length})
+                    </span>
+                    {loadingUnmappedBfs && (
+                      <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                    )}
+                  </div>
+
+                  <div className="max-h-80 overflow-y-auto border rounded-lg">
+                    <table className="w-full border-collapse text-sm">
+                      <thead className="sticky top-0 z-10 bg-gray-100">
+                        <tr>
+                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap w-12">
+                            <input
+                              type="checkbox"
+                              checked={unmappedBonusFaceSheets.length > 0 && selectedBonusFaceSheets.length === unmappedBonusFaceSheets.length}
+                              onChange={(e) => {
+                                if (e.target.checked) {
+                                  setSelectedBonusFaceSheets(unmappedBonusFaceSheets.map(bfs => bfs.id));
+                                } else {
+                                  setSelectedBonusFaceSheets([]);
+                                }
+                              }}
+                              className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                              title="เลือกทั้งหมด"
+                            />
+                          </th>
+                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัส BFS</th>
+                          <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">แพ็คที่เหลือ</th>
+                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันส่ง</th>
+                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap min-w-[140px]">ผู้เช็ค</th>
+                          <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap">สถานะ</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
+                        {unmappedBonusFaceSheets.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                              {loadingUnmappedBfs 
+                                ? 'กำลังโหลด...' 
+                                : 'ไม่มี BFS ที่ยังไม่ได้สร้าง Loadlist'
+                              }
+                            </td>
+                          </tr>
+                        ) : (
+                          unmappedBonusFaceSheets.map((bfs) => {
+                            const isSelected = selectedBonusFaceSheets.includes(bfs.id);
+                            return (
+                              <tr
+                                key={bfs.id}
+                                className={`hover:bg-blue-50/30 transition-colors duration-150 cursor-pointer ${
+                                  isSelected ? 'bg-green-50' : ''
+                                }`}
+                                onClick={() => {
+                                  if (isSelected) {
+                                    setSelectedBonusFaceSheets(selectedBonusFaceSheets.filter(id => id !== bfs.id));
+                                  } else {
+                                    setSelectedBonusFaceSheets([...selectedBonusFaceSheets, bfs.id]);
+                                  }
+                                }}
+                              >
+                                <td className="px-2 py-1 border-r border-gray-100 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => {
+                                      if (isSelected) {
+                                        setSelectedBonusFaceSheets(selectedBonusFaceSheets.filter(id => id !== bfs.id));
+                                      } else {
+                                        setSelectedBonusFaceSheets([...selectedBonusFaceSheets, bfs.id]);
+                                      }
+                                    }}
+                                    className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                                  />
+                                </td>
+                                <td className="px-2 py-1 border-r border-gray-100 whitespace-nowrap">
+                                  <span className="font-mono text-purple-600 font-semibold">{bfs.face_sheet_no}</span>
+                                </td>
+                                <td className="px-2 py-1 text-center border-r border-gray-100 whitespace-nowrap">
+                                  <span className="font-semibold text-blue-600">
+                                    {bfs.unmapped_packages ?? bfs.total_packages}
+                                  </span>
+                                  {bfs.original_total_packages && bfs.unmapped_packages !== bfs.original_total_packages && (
+                                    <span className="text-[10px] text-gray-500 ml-1">
+                                      (จาก {bfs.original_total_packages})
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-2 py-1 border-r border-gray-100 whitespace-nowrap text-gray-600">
+                                  {bfs.delivery_date || '-'}
+                                </td>
+                                <td className="px-2 py-1 border-r border-gray-100 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                  <select
+                                    value={bonusFaceSheetCheckers[bfs.id] || ''}
+                                    onChange={(e) => {
+                                      const value = e.target.value ? Number(e.target.value) : '';
+                                      setBonusFaceSheetCheckers(prev => ({
+                                        ...prev,
+                                        [bfs.id]: value
+                                      }));
+                                    }}
+                                    className="w-full px-1 py-0.5 text-[10px] border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                  >
+                                    <option value="">-- เลือกผู้เช็ค --</option>
+                                    {employees.map((emp) => (
+                                      <option key={emp.employee_id} value={emp.employee_id}>
+                                        {emp.first_name} {emp.last_name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </td>
+                                <td className="px-2 py-1 text-center whitespace-nowrap">
+                                  <Badge variant="success" size="sm">เสร็จสิ้น</Badge>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : (
+                /* ✅ โหมดแมพ (เดิม): แสดง BFS พร้อม dropdown เลือก picklist/face sheet */
+                <>
+                  <div className="flex items-center justify-between bg-gray-50 px-4 py-2 rounded">
+                    <span className="text-sm font-medium text-gray-700">
+                      เลือกใบปะหน้าของแถมและแมพกับสายรถ/ใบปะหน้า ({selectedBonusFaceSheets.length}/{availableBonusFaceSheets.length})
+                    </span>
+                  </div>
+
+                  <div className="max-h-80 overflow-y-auto border rounded-lg">
+                    <table className="w-full border-collapse text-sm">
                   <thead className="sticky top-0 z-10 bg-gray-100">
                     <tr>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap w-12">
@@ -2335,9 +2608,11 @@ const LoadlistsPage = () => {
                   </tbody>
                 </table>
               </div>
+              </>
+              )}
               
               {/* แสดงสรุปการเลือก */}
-              {selectedBonusFaceSheets.length > 0 && (
+              {selectedBonusFaceSheets.length > 0 && !skipMapping && (
                 <div className="bg-blue-50 p-3 rounded-lg text-xs">
                   <div className="font-semibold text-blue-700 mb-2">สรุปการเลือก:</div>
                   <div className="space-y-1">
@@ -2359,6 +2634,25 @@ const LoadlistsPage = () => {
                             {selectedFs ? selectedFs.face_sheet_no : 'ยังไม่เลือกใบปะหน้า'}
                           </span>
                         </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* ✅ NEW (edit28): แสดงสรุปการเลือกสำหรับโหมดไม่แมพ */}
+              {selectedBonusFaceSheets.length > 0 && skipMapping && (
+                <div className="bg-green-50 p-3 rounded-lg text-xs">
+                  <div className="font-semibold text-green-700 mb-2">
+                    เลือก {selectedBonusFaceSheets.length} BFS (โหมดไม่แมพ):
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {selectedBonusFaceSheets.map(bfsId => {
+                      const bfs = unmappedBonusFaceSheets.find(b => b.id === bfsId);
+                      return (
+                        <span key={bfsId} className="px-2 py-1 bg-white rounded border border-green-200 font-mono text-purple-600">
+                          {bfs?.face_sheet_no}
+                        </span>
                       );
                     })}
                   </div>
