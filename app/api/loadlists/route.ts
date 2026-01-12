@@ -42,12 +42,10 @@ async function handleSkipMappingMode(
     if (!checker_employee_id) {
       return NextResponse.json({ error: 'checker_employee_id is required' }, { status: 400 });
     }
-    if (!vehicle_type) {
-      return NextResponse.json({ error: 'vehicle_type is required' }, { status: 400 });
-    }
-    if (!delivery_number) {
-      return NextResponse.json({ error: 'delivery_number is required' }, { status: 400 });
-    }
+    // ✅ FIX (edit33): ไม่บังคับ vehicle_type และ delivery_number สำหรับโหมด skip_mapping
+    // ใช้ค่า default แทน
+    const effectiveVehicleType = vehicle_type || 'N/A';
+    const effectiveDeliveryNumber = delivery_number || `BFS-${Date.now()}`;
 
     // 1. ดึง matched_package_ids ที่ถูกใช้แล้วจากทุก loadlist
     const { data: usedMappings } = await supabase
@@ -143,8 +141,8 @@ async function handleSkipMappingMode(
         trip_id: null,
         status: 'pending',
         checker_employee_id,
-        vehicle_type,
-        delivery_number,
+        vehicle_type: effectiveVehicleType,
+        delivery_number: effectiveDeliveryNumber,
         vehicle_id: vehicle_id || null,
         driver_employee_id: driver_employee_id || null,
         driver_phone: driver_phone || null,

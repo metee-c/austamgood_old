@@ -3,14 +3,14 @@
 
    Creating an optimized production build ...
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
- ✓ Compiled successfully in 16.0s
+ ✓ Compiled successfully in 12.8s
    Running TypeScript ...
    Collecting page data using 13 workers ...
-   Generating static pages using 13 workers (0/233) ...
-   Generating static pages using 13 workers (58/233) 
-   Generating static pages using 13 workers (116/233) 
-   Generating static pages using 13 workers (174/233) 
- ✓ Generating static pages using 13 workers (233/233) in 3.7s
+   Generating static pages using 13 workers (0/234) ...
+   Generating static pages using 13 workers (58/234) 
+   Generating static pages using 13 workers (116/234) 
+   Generating static pages using 13 workers (175/234) 
+ ✓ Generating static pages using 13 workers (234/234) in 2.2s
    Finalizing page optimization ...
 
 Route (app)
@@ -140,6 +140,7 @@ Route (app)
 ├ ƒ /api/moves/quick-move
 ├ ƒ /api/ocr/barcode
 ├ ƒ /api/orders
+├ ƒ /api/orders/batch-delete
 ├ ƒ /api/orders/batch-update
 ├ ƒ /api/orders/dashboard
 ├ ƒ /api/orders/[id]

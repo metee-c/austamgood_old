@@ -724,6 +724,7 @@ const LoadlistsPage = () => {
   };
 
   // ✅ NEW (edit28): Handler สำหรับสร้าง loadlist โหมดไม่แมพ
+  // ✅ FIX (edit33): ไม่บังคับ vehicleType และ deliveryNumber สำหรับโหมด skip_mapping
   const handleCreateLoadlistSkipMapping = async () => {
     if (selectedBonusFaceSheets.length === 0) {
       setCreateError('กรุณาเลือกอย่างน้อย 1 ใบปะหน้าของแถม');
@@ -739,15 +740,7 @@ const LoadlistsPage = () => {
       return;
     }
 
-    if (!vehicleType) {
-      setCreateError('กรุณาเลือกประเภทรถ');
-      return;
-    }
-
-    if (!deliveryNumber) {
-      setCreateError('กรุณาระบุเลขงานจัดส่ง');
-      return;
-    }
+    // ✅ FIX: ไม่บังคับ vehicleType และ deliveryNumber - ใช้ค่า default แทน
 
     setIsCreating(true);
     setCreateError(null);

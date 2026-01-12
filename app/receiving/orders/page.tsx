@@ -36,7 +36,11 @@ import OrderLocationModal from '@/components/orders/OrderLocationModal';
 import AddCoordinatesModal from '@/components/orders/AddCoordinatesModal';
 import RollbackPreviewModal from '@/components/orders/RollbackPreviewModal';
 import { OrderType, OrderStatus, OrderPriority } from '@/hooks/useOrders';
+import { useAuth } from '@/hooks/useAuth';
 import useSWR from 'swr';
+
+// User ID ที่อนุญาตให้ลบ batch ได้ (metee)
+const ALLOWED_DELETE_USER_ID = 2;
 
 // Re-export types for local use
 type Order = {
@@ -89,6 +93,11 @@ const OrdersPage = () => {
   const [bulkOrderType, setBulkOrderType] = useState<OrderType | ''>('');
   const [bulkDeliveryDate, setBulkDeliveryDate] = useState('');
   const [isBulkUpdating, setIsBulkUpdating] = useState(false);
+  const [isBulkDeleting, setIsBulkDeleting] = useState(false);
+
+  // Auth hook for checking user permissions
+  const { user } = useAuth();
+  const canBulkDelete = user?.user_id === ALLOWED_DELETE_USER_ID;
 
   // Advanced filter panel state
   const [showFilters, setShowFilters] = useState(false);
@@ -730,6 +739,39 @@ const OrdersPage = () => {
     }
   };
 
+  // Bulk delete handler - only for user_id = 2 (metee)
+  const handleBulkDelete = async () => {
+    if (!canBulkDelete) {
+      alert('คุณไม่มีสิทธิ์ลบออเดอร์');
+      return;
+    }
+    if (selectedOrderIds.size === 0) {
+      alert('กรุณาเลือกออเดอร์ก่อน');
+      return;
+    }
+    const confirmed = window.confirm(
+      `ยืนยันการลบ ${selectedOrderIds.size} ออเดอร์?\n\nการลบจะไม่สามารถกู้คืนได้`
+    );
+    if (!confirmed) return;
+    setIsBulkDeleting(true);
+    try {
+      const response = await fetch('/api/orders/batch-delete', {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ order_ids: Array.from(selectedOrderIds).map(id => parseInt(id)) }),
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Failed to delete orders');
+      alert(result.message || `ลบ ${result.deleted_count} ออเดอร์สำเร็จ`);
+      clearSelection();
+      refetch();
+    } catch (error: any) {
+      alert(`เกิดข้อผิดพลาด: ${error.message}`);
+    } finally {
+      setIsBulkDeleting(false);
+    }
+  };
+
   // Export to Excel function
   const handleExportExcel = () => {
     if (!sortedOrders || sortedOrders.length === 0) {
@@ -826,6 +868,29 @@ const OrdersPage = () => {
     const currentPageOrders = sortedOrders.slice((currentPage - 1) * pageSize, currentPage * pageSize);
     return currentPageOrders.length > 0 && currentPageOrders.every((order: any) => selectedOrderIds.has(order.order_id.toString()));
   }, [sortedOrders, currentPage, pageSize, selectedOrderIds]);
+
+  // Calculate totals for selected orders (จำนวน และ น้ำหนัก)
+  const selectedOrdersTotals = useMemo(() => {
+    if (!sortedOrders || selectedOrderIds.size === 0) {
+      return { totalQty: 0, totalWeight: 0 };
+    }
+    
+    let totalQty = 0;
+    let totalWeight = 0;
+    
+    sortedOrders.forEach((order: any) => {
+      if (selectedOrderIds.has(order.order_id.toString())) {
+        if (order.items && Array.isArray(order.items)) {
+          order.items.forEach((item: any) => {
+            totalQty += Number(item.order_qty) || 0;
+            totalWeight += Number(item.order_weight) || 0;
+          });
+        }
+      }
+    });
+    
+    return { totalQty, totalWeight };
+  }, [sortedOrders, selectedOrderIds]);
 
   // Handle import - ถูกเรียกเฉพาะเมื่อไม่มี conflicts เท่านั้น
   const handleImport = async (type: string, file: File, warehouse: string, orderDate: string): Promise<void> => {
@@ -1093,18 +1158,29 @@ const OrdersPage = () => {
       {/* Bulk Action Toolbar - แสดงเมื่อมีการเลือกออเดอร์ */}
       {selectedOrderIds.size > 0 && (
         <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-3 flex items-center justify-between flex-wrap gap-2">
-          <div className="flex items-center gap-2">
-            <CheckSquare className="w-5 h-5 text-blue-600" />
-            <span className="text-sm font-thai font-semibold text-blue-800">
-              เลือก {selectedOrderIds.size} ออเดอร์
-            </span>
-            <button
-              onClick={clearSelection}
-              className="p-1 text-blue-600 hover:bg-blue-100 rounded"
-              title="ยกเลิกการเลือก"
-            >
-              <X className="w-4 h-4" />
-            </button>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <CheckSquare className="w-5 h-5 text-blue-600" />
+              <span className="text-sm font-thai font-semibold text-blue-800">
+                เลือก {selectedOrderIds.size} ออเดอร์
+              </span>
+              <button
+                onClick={clearSelection}
+                className="p-1 text-blue-600 hover:bg-blue-100 rounded"
+                title="ยกเลิกการเลือก"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            {/* แสดงผลรวมจำนวนและน้ำหนัก */}
+            <div className="flex items-center gap-3 text-xs font-thai border-l border-blue-300 pl-3">
+              <span className="text-blue-700">
+                รวมจำนวน: <span className="font-semibold">{selectedOrdersTotals.totalQty.toLocaleString()}</span>
+              </span>
+              <span className="text-blue-700">
+                รวมน้ำหนัก: <span className="font-semibold">{selectedOrdersTotals.totalWeight.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span> กก.
+              </span>
+            </div>
           </div>
           
           <div className="flex items-center gap-3 flex-wrap">
@@ -1153,6 +1229,20 @@ const OrdersPage = () => {
             >
               {isBulkUpdating ? 'กำลังอัพเดท...' : 'อัพเดททั้งหมด'}
             </Button>
+
+            {/* Delete Button - only for metee (user_id = 2) */}
+            {canBulkDelete && (
+              <Button
+                variant="danger"
+                size="sm"
+                onClick={handleBulkDelete}
+                disabled={isBulkDeleting}
+                className="text-xs py-1 px-3"
+              >
+                <Trash2 className="w-3 h-3 mr-1" />
+                {isBulkDeleting ? 'กำลังลบ...' : 'ลบทั้งหมด'}
+              </Button>
+            )}
           </div>
         </div>
       )}
