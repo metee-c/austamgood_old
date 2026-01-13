@@ -7,46 +7,91 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
     const warehouseId = searchParams.get('warehouse_id') || 'WH001';
-    console.log(`🔵 [DISPATCH-INVENTORY] Warehouse: ${warehouseId}`);
+    const exportAll = searchParams.get('export') === 'true';
+    console.log(`🔵 [DISPATCH-INVENTORY] Warehouse: ${warehouseId}, Export: ${exportAll}`);
 
     // ดึงข้อมูล inventory ที่ Dispatch location พร้อมข้อมูลใบหยิบและออเดอร์
-    const { data: dispatchInventory, error } = await supabase
-      .from('wms_inventory_balances')
-      .select(`
-        balance_id,
-        warehouse_id,
-        location_id,
-        sku_id,
-        pallet_id,
-        pallet_id_external,
-        lot_no,
-        production_date,
-        expiry_date,
-        total_pack_qty,
-        total_piece_qty,
-        reserved_pack_qty,
-        reserved_piece_qty,
-        last_move_id,
-        last_movement_at,
-        created_at,
-        updated_at,
-        master_location!location_id (
-          location_name
-        ),
-        master_sku!sku_id (
-          sku_name,
-          weight_per_piece_kg
-        )
-      `)
-      .eq('location_id', 'Dispatch')
-      .eq('warehouse_id', warehouseId)
-      .order('updated_at', { ascending: false });
+    let dispatchInventory: any[] = [];
+    
+    if (exportAll) {
+      // For export, fetch ALL data with pagination loop
+      const batchSize = 1000;
+      let offset = 0;
+      let hasMore = true;
+      
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('wms_inventory_balances')
+          .select(`
+            balance_id,
+            warehouse_id,
+            location_id,
+            sku_id,
+            pallet_id,
+            pallet_id_external,
+            lot_no,
+            production_date,
+            expiry_date,
+            total_pack_qty,
+            total_piece_qty,
+            reserved_pack_qty,
+            reserved_piece_qty,
+            last_move_id,
+            last_movement_at,
+            created_at,
+            updated_at,
+            master_location!location_id (location_name),
+            master_sku!sku_id (sku_name, weight_per_piece_kg)
+          `)
+          .eq('location_id', 'Dispatch')
+          .eq('warehouse_id', warehouseId)
+          .order('updated_at', { ascending: false })
+          .range(offset, offset + batchSize - 1);
+        
+        if (error) throw error;
+        if (data && data.length > 0) {
+          dispatchInventory.push(...data);
+          offset += batchSize;
+          if (data.length < batchSize) hasMore = false;
+        } else {
+          hasMore = false;
+        }
+      }
+    } else {
+      const { data, error } = await supabase
+        .from('wms_inventory_balances')
+        .select(`
+          balance_id,
+          warehouse_id,
+          location_id,
+          sku_id,
+          pallet_id,
+          pallet_id_external,
+          lot_no,
+          production_date,
+          expiry_date,
+          total_pack_qty,
+          total_piece_qty,
+          reserved_pack_qty,
+          reserved_piece_qty,
+          last_move_id,
+          last_movement_at,
+          created_at,
+          updated_at,
+          master_location!location_id (location_name),
+          master_sku!sku_id (sku_name, weight_per_piece_kg)
+        `)
+        .eq('location_id', 'Dispatch')
+        .eq('warehouse_id', warehouseId)
+        .order('updated_at', { ascending: false });
 
-    if (error) throw error;
+      if (error) throw error;
+      dispatchInventory = data || [];
+    }
 
     // ✅ ดึงข้อมูล bonus face sheet items ที่มี SKU ตรงกับ inventory ที่ Dispatch
     // Query จาก bonus_face_sheet_items โดยไม่กรอง status เพื่อดูทุก item ที่เคยถูก pick
-    const skuIds = (dispatchInventory || []).map(item => item.sku_id);
+    const skuIds = dispatchInventory.map(item => item.sku_id);
     console.log(`[DISPATCH-INVENTORY] Looking for bonus face sheets with SKUs:`, skuIds);
 
     const { data: bonusFaceSheetData, error: bfsError } = await supabase

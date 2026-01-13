@@ -30,6 +30,7 @@ import { createClient } from '@/lib/supabase/client';
 import ReservationDetailsModal from '@/components/warehouse/ReservationDetailsModal';
 import ReservationPopover from '@/components/warehouse/ReservationPopover';
 import PreparedDocumentsTable from '@/components/warehouse/PreparedDocumentsTable';
+import * as XLSX from 'xlsx';
 
 interface RelatedDocument {
   document_type?: string;
@@ -139,6 +140,9 @@ const InventoryBalancesPage = () => {
   // Sorting state
   const [sortColumn, setSortColumn] = useState<'picklist_code' | 'location_id'>('picklist_code');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+
+  // Export state
+  const [exporting, setExporting] = useState(false);
 
   // Warehouses for filter
   const [warehouses, setWarehouses] = useState<any[]>([]);
@@ -400,6 +404,185 @@ const InventoryBalancesPage = () => {
       // Set new column with default descending order
       setSortColumn(column);
       setSortDirection('desc');
+    }
+  };
+
+  // Export to Excel - fetch ALL data from database
+  const handleExportExcel = async () => {
+    try {
+      setExporting(true);
+      const supabase = createClient();
+      
+      let allData: any[] = [];
+      const batchSize = 1000;
+      
+      if (activeTab === 'preparation') {
+        // Fetch all preparation area data with pagination
+        let offset = 0;
+        let hasMore = true;
+        
+        while (hasMore) {
+          const { data, error } = await supabase
+            .from('wms_inventory_balances')
+            .select(`
+              *,
+              master_location!location_id (location_name),
+              master_warehouse!warehouse_id (warehouse_name),
+              master_sku!sku_id (sku_name, weight_per_piece_kg)
+            `)
+            .in('location_id', preparationAreaCodes.filter(code => !premiumZoneLocations.includes(code)))
+            .order('updated_at', { ascending: false })
+            .range(offset, offset + batchSize - 1);
+          
+          if (error) throw error;
+          if (data && data.length > 0) {
+            allData.push(...data);
+            offset += batchSize;
+            if (data.length < batchSize) hasMore = false;
+          } else {
+            hasMore = false;
+          }
+        }
+      } else if (activeTab === 'premium') {
+        // Fetch all premium zone data with pagination
+        let offset = 0;
+        let hasMore = true;
+        
+        while (hasMore) {
+          const { data, error } = await supabase
+            .from('wms_inventory_balances')
+            .select(`
+              *,
+              master_location!location_id (location_name),
+              master_warehouse!warehouse_id (warehouse_name),
+              master_sku!sku_id (sku_name, weight_per_piece_kg)
+            `)
+            .in('location_id', premiumZoneLocations)
+            .order('updated_at', { ascending: false })
+            .range(offset, offset + batchSize - 1);
+          
+          if (error) throw error;
+          if (data && data.length > 0) {
+            allData.push(...data);
+            offset += batchSize;
+            if (data.length < batchSize) hasMore = false;
+          } else {
+            hasMore = false;
+          }
+        }
+      } else if (activeTab === 'dispatch') {
+        // Fetch from dispatch API with export flag for ALL data
+        const response = await fetch('/api/warehouse/dispatch-inventory?export=true');
+        if (!response.ok) throw new Error('Failed to fetch dispatch data');
+        const result = await response.json();
+        allData = result.data || [];
+      } else if (activeTab === 'delivery') {
+        // Fetch from delivery API with export flag for ALL data
+        const response = await fetch('/api/warehouse/delivery-inventory?export=true');
+        if (!response.ok) throw new Error('Failed to fetch delivery data');
+        const result = await response.json();
+        allData = result.data || [];
+      }
+
+      if (allData.length === 0) {
+        alert('ไม่มีข้อมูลสำหรับส่งออก');
+        return;
+      }
+
+      // For dispatch/delivery tabs: expand related_documents into separate rows (like the table display)
+      let expandedData: any[] = [];
+      if (activeTab === 'dispatch' || activeTab === 'delivery') {
+        for (const item of allData) {
+          if (item.related_documents && item.related_documents.length > 0) {
+            // Create a row for each related document
+            for (const doc of item.related_documents) {
+              expandedData.push({
+                ...item,
+                _document: doc
+              });
+            }
+          } else {
+            // No documents, add single row
+            expandedData.push(item);
+          }
+        }
+      } else {
+        expandedData = allData;
+      }
+
+      // Transform data for Excel based on tab
+      const tabNames: Record<string, string> = {
+        preparation: 'บ้านหยิบ',
+        premium: 'บ้านหยิบพรีเมี่ยม',
+        dispatch: 'จัดสินค้าเสร็จ',
+        delivery: 'โหลดสินค้าเสร็จ'
+      };
+
+      const excelData = expandedData.map((item: any) => {
+        const baseData: Record<string, any> = {
+          'Balance ID': item.balance_id,
+          'คลัง': item.warehouse_id,
+          'ตำแหน่ง': item.location_id,
+          'รหัสสินค้า': item.sku_id,
+          'ชื่อสินค้า': item.master_sku?.sku_name || item.sku_name || '-',
+          'รหัสพาเลท': item.pallet_id || '-',
+          'Lot No': item.lot_no || '-',
+          'วันผลิต': item.production_date ? new Date(item.production_date).toLocaleDateString('th-TH') : '-',
+          'วันหมดอายุ': item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('th-TH') : '-',
+          'จำนวนแพ็ค': item.total_pack_qty || 0,
+          'จำนวนชิ้น': item.total_piece_qty || 0,
+          'จองแพ็ค': item.reserved_pack_qty || 0,
+          'จองชิ้น': item.reserved_piece_qty || 0,
+          'คงเหลือแพ็ค': (item.total_pack_qty || 0) - (item.reserved_pack_qty || 0),
+          'คงเหลือชิ้น': (item.total_piece_qty || 0) - (item.reserved_piece_qty || 0),
+          'อัพเดทล่าสุด': item.updated_at ? new Date(item.updated_at).toLocaleString('th-TH') : '-'
+        };
+
+        // Add document info for dispatch/delivery tabs (from expanded _document)
+        if ((activeTab === 'dispatch' || activeTab === 'delivery') && item._document) {
+          const doc = item._document;
+          baseData['ประเภทเอกสาร'] = doc.document_type === 'picklist' ? 'ใบหยิบ' : 
+                                      doc.document_type === 'face_sheet' ? 'ใบปะหน้า' : 
+                                      doc.document_type === 'bonus_face_sheet' ? 'ใบปะหน้าโบนัส' : '-';
+          baseData['รหัสใบหยิบ'] = doc.picklist_code || doc.face_sheet_code || doc.bonus_face_sheet_code || '-';
+          baseData['Loadlist'] = doc.loadlist_code || '-';
+          baseData['เลขออเดอร์'] = doc.order_no || '-';
+          baseData['ร้านค้า'] = doc.shop_name || '-';
+          baseData['จังหวัด'] = doc.province || '-';
+          baseData['จำนวนหยิบ'] = doc.quantity_picked || 0;
+          baseData['วันส่ง'] = doc.delivery_date ? new Date(doc.delivery_date).toLocaleDateString('th-TH') : '-';
+        }
+
+        return baseData;
+      });
+
+      // Create workbook and worksheet
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(excelData);
+
+      // Set column widths
+      ws['!cols'] = [
+        { wch: 12 }, { wch: 10 }, { wch: 15 }, { wch: 20 }, { wch: 30 },
+        { wch: 20 }, { wch: 15 }, { wch: 12 }, { wch: 12 }, { wch: 10 },
+        { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 }, { wch: 10 },
+        { wch: 20 }, { wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 20 }, { wch: 12 }
+      ];
+
+      XLSX.utils.book_append_sheet(wb, ws, tabNames[activeTab] || 'Data');
+
+      // Generate filename with date
+      const now = new Date();
+      const dateStr = now.toISOString().split('T')[0];
+      const filename = `prep_area_inventory_${activeTab}_${dateStr}.xlsx`;
+
+      // Download file
+      XLSX.writeFile(wb, filename);
+
+    } catch (err) {
+      console.error('Export error:', err);
+      alert('เกิดข้อผิดพลาดในการส่งออกข้อมูล');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -671,8 +854,15 @@ const InventoryBalancesPage = () => {
                 </span>
               )}
             </Button>
-            <Button variant="outline" size="sm" icon={Download} className="text-xs py-1 px-2">
-              Excel
+            <Button 
+              variant="outline" 
+              size="sm" 
+              icon={exporting ? Loader2 : Download} 
+              onClick={handleExportExcel}
+              disabled={exporting || loading}
+              className={`text-xs py-1 px-2 ${exporting ? 'animate-pulse' : ''}`}
+            >
+              {exporting ? 'กำลังส่งออก...' : 'Excel'}
             </Button>
             <Button 
               variant="primary" 

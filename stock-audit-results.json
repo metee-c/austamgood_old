@@ -1,0 +1,3871 @@
+{
+  "summary": {
+    "riskLevel": "CRITICAL",
+    "criticalIssues": 187,
+    "highIssues": 2,
+    "mediumIssues": 132,
+    "dataVolume": {
+      "ledger": 13128,
+      "balance": 3350,
+      "pickHouse": 339,
+      "pickHousePremium": 75,
+      "dispatch": 80,
+      "loaded": 2900,
+      "orders": 3204
+    }
+  },
+  "negativeStock": [
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 25285,
+      "sku": "B-BAP-C|IND|010",
+      "name": "Buzz Balanced+ แมวโต Indoor | 1 กก.",
+      "pallet": "ATG2500015538",
+      "location": "B02-04-001",
+      "packTotal": 0,
+      "pieceTotal": 0,
+      "packAvailable": -1.84,
+      "pieceAvailable": 0
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32669,
+      "sku": "B-NET-C|FNC|040",
+      "name": "Buzz Netura แมวโตและลูก ปลาและไก่ | 4 กก.",
+      "pallet": "-",
+      "location": "AA-BLK-29",
+      "packTotal": -30.25,
+      "pieceTotal": -121,
+      "packAvailable": -30.25,
+      "pieceAvailable": -121
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32563,
+      "sku": "B-BEY-C|SAL|010",
+      "name": "Buzz Beyond แมวโต รสแซลมอน | 1 กก.",
+      "pallet": "-",
+      "location": "A02-03-021",
+      "packTotal": -51,
+      "pieceTotal": -612,
+      "packAvailable": -51,
+      "pieceAvailable": -612
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32634,
+      "sku": "B-BEY-C|MNB|010",
+      "name": "Buzz Beyond แม่และลูกแมว รสแซลมอน ทูน่า และนม | 1 กก.",
+      "pallet": "-",
+      "location": "A01-05-016",
+      "packTotal": -51.92,
+      "pieceTotal": -623,
+      "packAvailable": -51.92,
+      "pieceAvailable": -623
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32659,
+      "sku": "B-BEY-C|SAL|070",
+      "name": "Buzz Beyond แมวโต รสแซลมอน | 7 กก.",
+      "pallet": "-",
+      "location": "B10-05-009",
+      "packTotal": -63,
+      "pieceTotal": -63,
+      "packAvailable": -63,
+      "pieceAvailable": -63
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32632,
+      "sku": "B-BEY-C|TUN|070",
+      "name": "Buzz Beyond แมวโต รสทูน่า | 7 กก.",
+      "pallet": "-",
+      "location": "A04-05-009",
+      "packTotal": -48,
+      "pieceTotal": -48,
+      "packAvailable": -48,
+      "pieceAvailable": -48
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32629,
+      "sku": "B-BEY-C|MNB|070",
+      "name": "Buzz Beyond แม่และลูกแมว รสแซลมอน ทูน่า และนม | 7 กก.",
+      "pallet": "-",
+      "location": "B08-02-013",
+      "packTotal": -80,
+      "pieceTotal": -80,
+      "packAvailable": -80,
+      "pieceAvailable": -80
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32565,
+      "sku": "B-BAP-C|HNS|010",
+      "name": "Buzz Balanced+ แมวโต Hair&Skin | 1 กก.",
+      "pallet": "-",
+      "location": "A08-01-003",
+      "packTotal": -12,
+      "pieceTotal": -144,
+      "packAvailable": -12,
+      "pieceAvailable": -144
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32561,
+      "sku": "PRE-BOW|TILT|CAT",
+      "name": "ชามแมวยกสูงสีน้ำเงิน",
+      "pallet": "-",
+      "location": "จุดพักรอโหลด PQ",
+      "packTotal": -10,
+      "pieceTotal": -10,
+      "packAvailable": -10,
+      "pieceAvailable": -10
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32566,
+      "sku": "B-NET-C|SAL|040",
+      "name": "Buzz Netura แมวโตและลูก แซลมอน | 4 กก.",
+      "pallet": "-",
+      "location": "Receiving",
+      "packTotal": -126,
+      "pieceTotal": -504,
+      "packAvailable": -126,
+      "pieceAvailable": -504
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32619,
+      "sku": "B-BAP-C|HNS|010",
+      "name": "Buzz Balanced+ แมวโต Hair&Skin | 1 กก.",
+      "pallet": "-",
+      "location": "B04-05-004",
+      "packTotal": -1,
+      "pieceTotal": -12,
+      "packAvailable": -1,
+      "pieceAvailable": -12
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32586,
+      "sku": "B-BEY-D|LAM|100",
+      "name": "Buzz Beyond สุนัขโต รสแกะ | 10 กก.",
+      "pallet": "-",
+      "location": "Repair - พื้นที่ซ่อมแซม",
+      "packTotal": 0,
+      "pieceTotal": -1,
+      "packAvailable": 0,
+      "pieceAvailable": -1
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32641,
+      "sku": "B-BEY-C|MNB|NS|010",
+      "name": "Buzz Beyond แม่และลูกแมว รสแซลมอน ทูน่า และนม | 1 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A10-03-018",
+      "packTotal": -15,
+      "pieceTotal": -180,
+      "packAvailable": -15,
+      "pieceAvailable": -180
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 27827,
+      "sku": "02-STICKER-C|SAL|279",
+      "name": "สติ๊กเกอร์ราคาแมวสูตรปลาแซลมอน 1 กก. 279 บาท เส้นผ่าศูนย์กลาง 4.5cm.",
+      "pallet": "-",
+      "location": "พื้นที่แพ็คสินค้า",
+      "packTotal": -12,
+      "pieceTotal": 4013,
+      "packAvailable": -48,
+      "pieceAvailable": 4013
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32665,
+      "sku": "B-BAP-C|IND|010",
+      "name": "Buzz Balanced+ แมวโต Indoor | 1 กก.",
+      "pallet": "-",
+      "location": "B02-04-001",
+      "packTotal": -5.92,
+      "pieceTotal": -71,
+      "packAvailable": -5.92,
+      "pieceAvailable": -71
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32631,
+      "sku": "B-NET-C|FNC|010",
+      "name": "Buzz Netura แมวโตและลูก ปลาและไก่ | 1 กก.",
+      "pallet": "-",
+      "location": "Expired",
+      "packTotal": -10.83,
+      "pieceTotal": -130,
+      "packAvailable": -10.83,
+      "pieceAvailable": -130
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32593,
+      "sku": "B-BEY-D|MNB|NS|010",
+      "name": "Buzz Beyond แม่และลูกสุนัข | 1 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A08-01-013",
+      "packTotal": -1,
+      "pieceTotal": -12,
+      "packAvailable": -1,
+      "pieceAvailable": -12
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32557,
+      "sku": "B-BEY-D|BEF|100",
+      "name": "Buzz Beyond สุนัขโต รสเนื้ออบ | 10 กก.",
+      "pallet": "-",
+      "location": "B04-02-023",
+      "packTotal": -28,
+      "pieceTotal": -28,
+      "packAvailable": -28,
+      "pieceAvailable": -28
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32583,
+      "sku": "00-NET-C|CNT|200",
+      "name": "อาหาร | Buzz Netura แมวโตและแมวสูงวัย 7 ปีขึ้นไป ปลาค็อด และ ปลาเทราต์ | 20 กก.",
+      "pallet": "ATG20260105000000003",
+      "location": "Receiving",
+      "packTotal": -26,
+      "pieceTotal": -26,
+      "packAvailable": -26,
+      "pieceAvailable": -26
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32655,
+      "sku": "B-BEY-C|MNB|010",
+      "name": "Buzz Beyond แม่และลูกแมว รสแซลมอน ทูน่า และนม | 1 กก.",
+      "pallet": "-",
+      "location": "Repair - พื้นที่ซ่อมแซม",
+      "packTotal": -0.08,
+      "pieceTotal": -2,
+      "packAvailable": -0.08,
+      "pieceAvailable": -2
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 27826,
+      "sku": "02-STICKER-C|FNC|890",
+      "name": "สติ๊กเกอร์ราคาแมวสูตรปลาและไก่ 4กก. 890 บาท เส้นผ่าศูนย์กลาง 4.5cm.",
+      "pallet": "-",
+      "location": "พื้นที่แพ็คสินค้า",
+      "packTotal": -4,
+      "pieceTotal": 1413,
+      "packAvailable": -4,
+      "pieceAvailable": 1413
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32581,
+      "sku": "TT-NET-C|FHC|0005",
+      "name": "Tester | Buzz Netura แมวโตและลูก ปลาเนื้อขาว แฮร์ริ่ง และไก่ | 50 กรัม",
+      "pallet": "-",
+      "location": "A08-01-024",
+      "packTotal": -2.64,
+      "pieceTotal": 0,
+      "packAvailable": -2.64,
+      "pieceAvailable": 0
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32638,
+      "sku": "00-NET-C|CNT|200",
+      "name": "อาหาร | Buzz Netura แมวโตและแมวสูงวัย 7 ปีขึ้นไป ปลาค็อด และ ปลาเทราต์ | 20 กก.",
+      "pallet": "ATG20260105000000002",
+      "location": "Receiving",
+      "packTotal": -84,
+      "pieceTotal": -84,
+      "packAvailable": -84,
+      "pieceAvailable": -84
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32574,
+      "sku": "B-BEY-C|MCK|070",
+      "name": "Buzz Beyond แมวโต รสปลาทู | 7 กก.",
+      "pallet": "-",
+      "location": "A05-03-013",
+      "packTotal": -36,
+      "pieceTotal": -36,
+      "packAvailable": -36,
+      "pieceAvailable": -36
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 27823,
+      "sku": "02-STICKER-C|FHC|279",
+      "name": "สติ๊กเกอร์ราคาแมวสูตรโปรตีน เอ็กซ์ 1 กก. 279 บาท เส้นผ่าศูนย์กลาง 4.5cm.",
+      "pallet": "-",
+      "location": "พื้นที่แพ็คสินค้า",
+      "packTotal": -12,
+      "pieceTotal": 2299,
+      "packAvailable": -12,
+      "pieceAvailable": 2299
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32652,
+      "sku": "TT-BAP-C|IND|0005",
+      "name": "Tester | Buzz Balanced+ แมวโต Indoor | 50 กรัม",
+      "pallet": "-",
+      "location": "โลพักของแถม MR01",
+      "packTotal": -0.2,
+      "pieceTotal": -10,
+      "packAvailable": -0.2,
+      "pieceAvailable": -10
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32605,
+      "sku": "B-BEY-C|LAM|NS|010",
+      "name": "Buzz Beyond แมวโต รสแกะ | 1 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A09-05-007",
+      "packTotal": -3,
+      "pieceTotal": -36,
+      "packAvailable": -3,
+      "pieceAvailable": -36
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32643,
+      "sku": "B-BAP-C|WEP|030",
+      "name": "Buzz Balanced+ แมวโต Weight+ | 3 กก.",
+      "pallet": "-",
+      "location": "B03-03-009",
+      "packTotal": -8.83,
+      "pieceTotal": -53,
+      "packAvailable": -8.83,
+      "pieceAvailable": -53
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32590,
+      "sku": "B-BAP-C|KNP|010",
+      "name": "Buzz Balanced+ ลูกและแม่แมว K&P | 1 กก.",
+      "pallet": "-",
+      "location": "Expired",
+      "packTotal": -0.17,
+      "pieceTotal": -2,
+      "packAvailable": -0.17,
+      "pieceAvailable": -2
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32592,
+      "sku": "B-BEY-D|MNB|070",
+      "name": "Buzz Beyond แม่และลูกสุนัข | 7 กก.",
+      "pallet": "-",
+      "location": "B02-01-017",
+      "packTotal": -36,
+      "pieceTotal": -36,
+      "packAvailable": -36,
+      "pieceAvailable": -36
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32576,
+      "sku": "B-BEY-C|LAM|010",
+      "name": "Buzz Beyond แมวโต รสแกะ | 1 กก.",
+      "pallet": "-",
+      "location": "B05-05-019",
+      "packTotal": -21.92,
+      "pieceTotal": -263,
+      "packAvailable": -21.92,
+      "pieceAvailable": -263
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32599,
+      "sku": "B-BAP-C|IND|030",
+      "name": "Buzz Balanced+ แมวโต Indoor | 3 กก.",
+      "pallet": "-",
+      "location": "B02-02-005",
+      "packTotal": -1.5,
+      "pieceTotal": -9,
+      "packAvailable": -1.5,
+      "pieceAvailable": -9
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32622,
+      "sku": "B-NET-C|CNT|010",
+      "name": "Buzz Netura แมวเลี้ยงในบ้าน และแมวทำหมัน ปลาค็อด & ปลาเทราต์ | 1 กก.",
+      "pallet": "ATG20260108000000001",
+      "location": "Receiving",
+      "packTotal": 0,
+      "pieceTotal": -521,
+      "packAvailable": 0,
+      "pieceAvailable": -521
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32647,
+      "sku": "TT-NET-C|FNC|0005",
+      "name": "Tester | Buzz Netura แมวโตและลูก ปลาและไก่ | 50 กรัม",
+      "pallet": "-",
+      "location": "A10-02-013",
+      "packTotal": -1.2,
+      "pieceTotal": 0,
+      "packAvailable": -1.2,
+      "pieceAvailable": 0
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32621,
+      "sku": "B-NET-C|FNC|010",
+      "name": "Buzz Netura แมวโตและลูก ปลาและไก่ | 1 กก.",
+      "pallet": "-",
+      "location": "Receiving",
+      "packTotal": -19.08,
+      "pieceTotal": -229,
+      "packAvailable": -19.08,
+      "pieceAvailable": -229
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32597,
+      "sku": "B-NET-D|SAL-L|008",
+      "name": "Buzz Netura สุนัขโต แซลมอน เม็ดใหญ่ | 800 กรัม",
+      "pallet": "-",
+      "location": "Expired",
+      "packTotal": -0.42,
+      "pieceTotal": -5,
+      "packAvailable": -0.42,
+      "pieceAvailable": -5
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32556,
+      "sku": "B-BEY-D|LAM|100",
+      "name": "Buzz Beyond สุนัขโต รสแกะ | 10 กก.",
+      "pallet": "-",
+      "location": "B05-01-025",
+      "packTotal": -1,
+      "pieceTotal": -1,
+      "packAvailable": -1,
+      "pieceAvailable": -1
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32562,
+      "sku": "B-BEY-D|LAM|012",
+      "name": "Buzz Beyond สุนัขโต รสแกะ | 1.2 กก.",
+      "pallet": "-",
+      "location": "B05-02-012",
+      "packTotal": -10,
+      "pieceTotal": -120,
+      "packAvailable": -10,
+      "pieceAvailable": -120
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32584,
+      "sku": "B-BEY-D|SAL|NS|012",
+      "name": "Buzz Beyond สุนัขโต รสแซลมอน | 1.2 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A08-01-015",
+      "packTotal": -1,
+      "pieceTotal": -12,
+      "packAvailable": -1,
+      "pieceAvailable": -12
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32664,
+      "sku": "B-NET-C|SAL|040",
+      "name": "Buzz Netura แมวโตและลูก แซลมอน | 4 กก.",
+      "pallet": "-",
+      "location": "Expired",
+      "packTotal": -0.5,
+      "pieceTotal": -2,
+      "packAvailable": -0.5,
+      "pieceAvailable": -2
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32653,
+      "sku": "B-NET-D|CHI-L|008",
+      "name": "Buzz Netura สุนัขโต ไก่ เม็ดใหญ่ | 800 กรัม",
+      "pallet": "-",
+      "location": "A09-02-011",
+      "packTotal": -0.83,
+      "pieceTotal": -10,
+      "packAvailable": -0.83,
+      "pieceAvailable": -10
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32661,
+      "sku": "B-NET-C|FHC|010",
+      "name": "Buzz Netura แมวโตและลูก ปลาเนื้อขาว แฮร์ริ่ง และไก่ | 1 กก.",
+      "pallet": "-",
+      "location": "Receiving",
+      "packTotal": -3,
+      "pieceTotal": -36,
+      "packAvailable": -3,
+      "pieceAvailable": -36
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32618,
+      "sku": "TT-NET-C|SAL|0005",
+      "name": "Tester | Buzz Netura แมวโตและลูก แซลมอน | 50 กรัม",
+      "pallet": "-",
+      "location": "จุดพักรอโหลด MR",
+      "packTotal": -1.8,
+      "pieceTotal": -90,
+      "packAvailable": -1.8,
+      "pieceAvailable": -90
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 29543,
+      "sku": "PRE-BAG|SPB|MARKET",
+      "name": "ถุงผ้าสปันบอนด์การ์ตูนสกรีนเต็มใบ Size XL (50*40*9 cm)",
+      "pallet": "-",
+      "location": "จุดพักรอโหลด PQ",
+      "packTotal": -0.15,
+      "pieceTotal": -30,
+      "packAvailable": -0.15,
+      "pieceAvailable": -30
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 29547,
+      "sku": "TT-NET-C|SAL|0005",
+      "name": "Tester | Buzz Netura แมวโตและลูก แซลมอน | 50 กรัม",
+      "pallet": "-",
+      "location": "จุดพักรอโหลด PQ",
+      "packTotal": -2.4,
+      "pieceTotal": -120,
+      "packAvailable": -2.4,
+      "pieceAvailable": -120
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 29545,
+      "sku": "TT-NET-C|FHC|0005",
+      "name": "Tester | Buzz Netura แมวโตและลูก ปลาเนื้อขาว แฮร์ริ่ง และไก่ | 50 กรัม",
+      "pallet": "-",
+      "location": "จุดพักรอโหลด PQ",
+      "packTotal": -3,
+      "pieceTotal": -150,
+      "packAvailable": -3,
+      "pieceAvailable": -150
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32662,
+      "sku": "B-BEY-C|SAL|070",
+      "name": "Buzz Beyond แมวโต รสแซลมอน | 7 กก.",
+      "pallet": "-",
+      "location": "Repair - พื้นที่ซ่อมแซม",
+      "packTotal": -2,
+      "pieceTotal": -3,
+      "packAvailable": -2,
+      "pieceAvailable": -3
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32644,
+      "sku": "B-BEY-D|LAM|100",
+      "name": "Buzz Beyond สุนัขโต รสแกะ | 10 กก.",
+      "pallet": "-",
+      "location": "B05-02-014",
+      "packTotal": -14,
+      "pieceTotal": -14,
+      "packAvailable": -14,
+      "pieceAvailable": -14
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32615,
+      "sku": "B-BEY-C|MNB|010",
+      "name": "Buzz Beyond แม่และลูกแมว รสแซลมอน ทูน่า และนม | 1 กก.",
+      "pallet": "-",
+      "location": "A01-03-005",
+      "packTotal": -20,
+      "pieceTotal": -240,
+      "packAvailable": -20,
+      "pieceAvailable": -240
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32578,
+      "sku": "B-NET-C|SAL|010",
+      "name": "Buzz Netura แมวโตและลูก แซลมอน | 1 กก.",
+      "pallet": "-",
+      "location": "Expired",
+      "packTotal": -0.08,
+      "pieceTotal": -2,
+      "packAvailable": -0.08,
+      "pieceAvailable": -2
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32564,
+      "sku": "B-BEY-D|CNL|100",
+      "name": "Buzz Beyond สุนัขโต รสไก่อบและตับ | 10 กก.",
+      "pallet": "-",
+      "location": "B06-01-018",
+      "packTotal": -16,
+      "pieceTotal": -16,
+      "packAvailable": -16,
+      "pieceAvailable": -16
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32567,
+      "sku": "B-BEY-C|SAL|NS|010",
+      "name": "Buzz Beyond แมวโต รสแซลมอน | 1 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A08-04-012",
+      "packTotal": -4,
+      "pieceTotal": -48,
+      "packAvailable": -4,
+      "pieceAvailable": -48
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32575,
+      "sku": "B-BEY-C|MCK|NS|010",
+      "name": "Buzz Beyond แมวโต รสปลาทู | 1 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A09-04-024",
+      "packTotal": -3,
+      "pieceTotal": -36,
+      "packAvailable": -3,
+      "pieceAvailable": -36
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32606,
+      "sku": "B-NET-C|FHC|040",
+      "name": "Buzz Netura แมวโตและลูก ปลาเนื้อขาว แฮร์ริ่ง และไก่ | 4 กก.",
+      "pallet": "-",
+      "location": "Expired",
+      "packTotal": -1,
+      "pieceTotal": -4,
+      "packAvailable": -1,
+      "pieceAvailable": -4
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32624,
+      "sku": "B-NET-C|CNT|010",
+      "name": "Buzz Netura แมวเลี้ยงในบ้าน และแมวทำหมัน ปลาค็อด & ปลาเทราต์ | 1 กก.",
+      "pallet": "-",
+      "location": "AB-BLK-26",
+      "packTotal": -2,
+      "pieceTotal": -24,
+      "packAvailable": -2,
+      "pieceAvailable": -24
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32649,
+      "sku": "PRE-CHO|BLU",
+      "name": "บ้านแมว สีฟ้า",
+      "pallet": "-",
+      "location": "โลพักของแถม MR03",
+      "packTotal": -7.2,
+      "pieceTotal": 0,
+      "packAvailable": -7.2,
+      "pieceAvailable": 0
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32617,
+      "sku": "TT-NET-C|FHC|0005",
+      "name": "Tester | Buzz Netura แมวโตและลูก ปลาเนื้อขาว แฮร์ริ่ง และไก่ | 50 กรัม",
+      "pallet": "-",
+      "location": "โลพักของแถม MR01",
+      "packTotal": -0.3,
+      "pieceTotal": -15,
+      "packAvailable": -0.3,
+      "pieceAvailable": -15
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32660,
+      "sku": "B-NET-C|SAL|010",
+      "name": "Buzz Netura แมวโตและลูก แซลมอน | 1 กก.",
+      "pallet": "-",
+      "location": "Receiving",
+      "packTotal": -31,
+      "pieceTotal": -372,
+      "packAvailable": -31,
+      "pieceAvailable": -372
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32670,
+      "sku": "B-BEY-D|CNL|NS|012",
+      "name": "Buzz Beyond สุนัขโต รสไก่อบและตับ | 1.2 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A08-01-018",
+      "packTotal": -1,
+      "pieceTotal": -12,
+      "packAvailable": -1,
+      "pieceAvailable": -12
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32657,
+      "sku": "B-BEY-C|MNB|070",
+      "name": "Buzz Beyond แม่และลูกแมว รสแซลมอน ทูน่า และนม | 7 กก.",
+      "pallet": "-",
+      "location": "Repair - พื้นที่ซ่อมแซม",
+      "packTotal": -1,
+      "pieceTotal": -1,
+      "packAvailable": -1,
+      "pieceAvailable": -1
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32636,
+      "sku": "B-BEY-C|TUN|010",
+      "name": "Buzz Beyond แมวโต รสทูน่า | 1 กก.",
+      "pallet": "-",
+      "location": "B06-04-021",
+      "packTotal": -25.67,
+      "pieceTotal": -308,
+      "packAvailable": -25.67,
+      "pieceAvailable": -308
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32658,
+      "sku": "B-BEY-C|LAM|070",
+      "name": "Buzz Beyond แมวโต รสแกะ | 7 กก.",
+      "pallet": "-",
+      "location": "A03-01-009",
+      "packTotal": -28,
+      "pieceTotal": -28,
+      "packAvailable": -28,
+      "pieceAvailable": -28
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32614,
+      "sku": "TT-BAP-C|HNS|0005",
+      "name": "Tester | Buzz Balanced+ แมวโต Hair&Skin | 50 กรัม",
+      "pallet": "-",
+      "location": "โลพักของแถม MR01",
+      "packTotal": -0.2,
+      "pieceTotal": -10,
+      "packAvailable": -0.2,
+      "pieceAvailable": -10
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32628,
+      "sku": "B-BEY-C|SAL|010",
+      "name": "Buzz Beyond แมวโต รสแซลมอน | 1 กก.",
+      "pallet": "-",
+      "location": "A02-04-018",
+      "packTotal": -12.17,
+      "pieceTotal": -146,
+      "packAvailable": -12.17,
+      "pieceAvailable": -146
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32611,
+      "sku": "B-NET-C|FNC|040",
+      "name": "Buzz Netura แมวโตและลูก ปลาและไก่ | 4 กก.",
+      "pallet": "-",
+      "location": "Repair - พื้นที่ซ่อมแซม",
+      "packTotal": -0.25,
+      "pieceTotal": -1,
+      "packAvailable": -0.25,
+      "pieceAvailable": -1
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32582,
+      "sku": "B-BAP-C|KNP|030",
+      "name": "Buzz Balanced+ ลูกและแม่แมว K&P | 3 กก.",
+      "pallet": "-",
+      "location": "A08-01-001",
+      "packTotal": -1,
+      "pieceTotal": -6,
+      "packAvailable": -1,
+      "pieceAvailable": -6
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32579,
+      "sku": "B-BEY-D|BEF|012",
+      "name": "Buzz Beyond สุนัขโต รสเนื้ออบ | 1.2 กก.",
+      "pallet": "-",
+      "location": "Repair - พื้นที่ซ่อมแซม",
+      "packTotal": -0.08,
+      "pieceTotal": -1,
+      "packAvailable": -0.08,
+      "pieceAvailable": -1
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32589,
+      "sku": "PRE-CHO|GRE",
+      "name": "บ้านแมว สีเขียว",
+      "pallet": "-",
+      "location": "จุดพักรอโหลด PQ",
+      "packTotal": -1,
+      "pieceTotal": -10,
+      "packAvailable": -1,
+      "pieceAvailable": -10
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32612,
+      "sku": "B-NET-D|SAL-L|025",
+      "name": "Buzz Netura สุนัขโต แซลมอน เม็ดใหญ่ | 2.5 กก.",
+      "pallet": "-",
+      "location": "A10-02-024",
+      "packTotal": -1,
+      "pieceTotal": -6,
+      "packAvailable": -1,
+      "pieceAvailable": -6
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32568,
+      "sku": "B-NET-C|SAL|040",
+      "name": "Buzz Netura แมวโตและลูก แซลมอน | 4 กก.",
+      "pallet": "-",
+      "location": "Repair - พื้นที่ซ่อมแซม",
+      "packTotal": -0.25,
+      "pieceTotal": -1,
+      "packAvailable": -0.25,
+      "pieceAvailable": -1
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32560,
+      "sku": "B-BEY-D|CNL|012",
+      "name": "Buzz Beyond สุนัขโต รสไก่อบและตับ | 1.2 กก.",
+      "pallet": "-",
+      "location": "B06-01-001",
+      "packTotal": -11,
+      "pieceTotal": -132,
+      "packAvailable": -11,
+      "pieceAvailable": -132
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32569,
+      "sku": "PRE-CHO|BLU",
+      "name": "บ้านแมว สีฟ้า",
+      "pallet": "-",
+      "location": "จุดพักรอโหลด PQ",
+      "packTotal": -1,
+      "pieceTotal": -10,
+      "packAvailable": -1,
+      "pieceAvailable": -10
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32587,
+      "sku": "B-NET-C|FNC|040",
+      "name": "Buzz Netura แมวโตและลูก ปลาและไก่ | 4 กก.",
+      "pallet": "-",
+      "location": "Expired",
+      "packTotal": -0.5,
+      "pieceTotal": -4,
+      "packAvailable": -0.5,
+      "pieceAvailable": -4
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32598,
+      "sku": "TT-NET-C|SAL|0005",
+      "name": "Tester | Buzz Netura แมวโตและลูก แซลมอน | 50 กรัม",
+      "pallet": "-",
+      "location": "โลพักของแถม MR01",
+      "packTotal": -0.6,
+      "pieceTotal": -30,
+      "packAvailable": -0.6,
+      "pieceAvailable": -30
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32608,
+      "sku": "TT-NET-C|FNC|0005",
+      "name": "Tester | Buzz Netura แมวโตและลูก ปลาและไก่ | 50 กรัม",
+      "pallet": "-",
+      "location": "โลพักของแถม MR01",
+      "packTotal": -0.1,
+      "pieceTotal": -5,
+      "packAvailable": -0.1,
+      "pieceAvailable": -5
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32620,
+      "sku": "B-BEY-D|SAL|100",
+      "name": "Buzz Beyond สุนัขโต รสแซลมอน | 10 กก.",
+      "pallet": "-",
+      "location": "A01-02-038",
+      "packTotal": -16,
+      "pieceTotal": -16,
+      "packAvailable": -16,
+      "pieceAvailable": -16
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32633,
+      "sku": "B-NET-C|FHC|040",
+      "name": "Buzz Netura แมวโตและลูก ปลาเนื้อขาว แฮร์ริ่ง และไก่ | 4 กก.",
+      "pallet": "ATG20260106000000002",
+      "location": "Receiving",
+      "packTotal": -120,
+      "pieceTotal": -480,
+      "packAvailable": -120,
+      "pieceAvailable": -480
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32645,
+      "sku": "B-BEY-D|BEF|NS|012",
+      "name": "Buzz Beyond สุนัขโต รสเนื้ออบ | 1.2 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A08-01-010",
+      "packTotal": -1,
+      "pieceTotal": -12,
+      "packAvailable": -1,
+      "pieceAvailable": -12
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32656,
+      "sku": "B-NET-C|SAL|040",
+      "name": "Buzz Netura แมวโตและลูก แซลมอน | 4 กก.",
+      "pallet": "-",
+      "location": "AB-BLK-25",
+      "packTotal": -2,
+      "pieceTotal": -8,
+      "packAvailable": -2,
+      "pieceAvailable": -8
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32668,
+      "sku": "B-BEY-C|MCK|010",
+      "name": "Buzz Beyond แมวโต รสปลาทู | 1 กก.",
+      "pallet": "-",
+      "location": "A06-05-008",
+      "packTotal": -21.83,
+      "pieceTotal": -262,
+      "packAvailable": -21.83,
+      "pieceAvailable": -262
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 29859,
+      "sku": "TT-NET-C|CNT|0005",
+      "name": "Tester | Buzz Netura แมวโตและสูงวัยอายุ 7 ปีขึ้นไป ปลาค็อด และ ปลาเทราต์ | 50 กรัม",
+      "pallet": "-",
+      "location": "จุดพักรอโหลด PQ",
+      "packTotal": -4,
+      "pieceTotal": -200,
+      "packAvailable": -4,
+      "pieceAvailable": -200
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 29546,
+      "sku": "TT-NET-C|FNC|0005",
+      "name": "Tester | Buzz Netura แมวโตและลูก ปลาและไก่ | 50 กรัม",
+      "pallet": "-",
+      "location": "จุดพักรอโหลด PQ",
+      "packTotal": -2.6,
+      "pieceTotal": -130,
+      "packAvailable": -2.6,
+      "pieceAvailable": -130
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 29932,
+      "sku": "PRE-BOW|TILT|CAT",
+      "name": "ชามแมวยกสูงสีน้ำเงิน",
+      "pallet": "-",
+      "location": "โลพักของแถม MR01",
+      "packTotal": -15,
+      "pieceTotal": -15,
+      "packAvailable": -15,
+      "pieceAvailable": -15
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32570,
+      "sku": "B-BEY-D|MNB|010",
+      "name": "Buzz Beyond แม่และลูกสุนัข | 1 กก.",
+      "pallet": "-",
+      "location": "B03-01-008",
+      "packTotal": -15,
+      "pieceTotal": -180,
+      "packAvailable": -15,
+      "pieceAvailable": -180
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32613,
+      "sku": "B-BAP-C|KNP|010",
+      "name": "Buzz Balanced+ ลูกและแม่แมว K&P | 1 กก.",
+      "pallet": "-",
+      "location": "A08-01-005",
+      "packTotal": -1.83,
+      "pieceTotal": -22,
+      "packAvailable": -1.83,
+      "pieceAvailable": -22
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 27825,
+      "sku": "02-STICKER-C|FNC|249",
+      "name": "สติ๊กเกอร์ราคาแมวสูตรปลาและไก่ 1 กก. 249 บาท เส้นผ่าศูนย์กลาง 4.5cm.",
+      "pallet": "-",
+      "location": "พื้นที่แพ็คสินค้า",
+      "packTotal": -24,
+      "pieceTotal": 6999,
+      "packAvailable": -60,
+      "pieceAvailable": 6999
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32585,
+      "sku": "B-BAP-C|HNS|030",
+      "name": "Buzz Balanced+ แมวโต Hair&Skin | 3 กก.",
+      "pallet": "-",
+      "location": "B04-04-001",
+      "packTotal": -2.17,
+      "pieceTotal": -13,
+      "packAvailable": -2.17,
+      "pieceAvailable": -13
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32600,
+      "sku": "B-BAP-C|WEP|010",
+      "name": "Buzz Balanced+ แมวโต Weight+ | 1 กก.",
+      "pallet": "-",
+      "location": "B03-05-003",
+      "packTotal": -16,
+      "pieceTotal": -192,
+      "packAvailable": -16,
+      "pieceAvailable": -192
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32648,
+      "sku": "B-BAP-C|WEP|030",
+      "name": "Buzz Balanced+ แมวโต Weight+ | 3 กก.",
+      "pallet": "-",
+      "location": "Repair - พื้นที่ซ่อมแซม",
+      "packTotal": -0.17,
+      "pieceTotal": -1,
+      "packAvailable": -0.17,
+      "pieceAvailable": -1
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32640,
+      "sku": "B-BEY-C|TUN|NS|010",
+      "name": "Buzz Beyond แมวโต รสทูน่า | 1 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A09-03-009",
+      "packTotal": -3,
+      "pieceTotal": -36,
+      "packAvailable": -3,
+      "pieceAvailable": -36
+    },
+    {
+      "sheet": "ยอดสต็อกคงเหลือ",
+      "id": 32625,
+      "sku": "B-NET-C|SAL|040",
+      "name": "Buzz Netura แมวโตและลูก แซลมอน | 4 กก.",
+      "pallet": "ATG20260106000000013",
+      "location": "Receiving",
+      "packTotal": -26,
+      "pieceTotal": -104,
+      "packAvailable": -26,
+      "pieceAvailable": -104
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29086,
+      "sku": "B-BEY-C|MNB|NS|010",
+      "name": "Buzz Beyond แม่และลูกแมว รสแซลมอน ทูน่า และนม | 1 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A10-01-001",
+      "packTotal": -4,
+      "pieceTotal": -48,
+      "packAvailable": -4,
+      "pieceAvailable": -48
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29043,
+      "sku": "B-BEY-C|MCK|070",
+      "name": "Buzz Beyond แมวโต รสปลาทู | 7 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -248,
+      "pieceTotal": -248,
+      "packAvailable": -248,
+      "pieceAvailable": -248
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29137,
+      "sku": "B-BEY-C|MCK|010",
+      "name": "Buzz Beyond แมวโต รสปลาทู | 1 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -38.58,
+      "pieceTotal": 66,
+      "packAvailable": -38.58,
+      "pieceAvailable": 66
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 32671,
+      "sku": "B-BEY-C|TUN|NS|010",
+      "name": "Buzz Beyond แมวโต รสทูน่า | 1 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A10-01-006",
+      "packTotal": -3,
+      "pieceTotal": -36,
+      "packAvailable": -3,
+      "pieceAvailable": -36
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 30986,
+      "sku": "B-BEY-C|MCK|070",
+      "name": "Buzz Beyond แมวโต รสปลาทู | 7 กก.",
+      "pallet": "MS2026010500001",
+      "location": "PK001",
+      "packTotal": -52,
+      "pieceTotal": 359,
+      "packAvailable": -82,
+      "pieceAvailable": 329
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29075,
+      "sku": "B-BEY-D|CNL|012",
+      "name": "Buzz Beyond สุนัขโต รสไก่อบและตับ | 1.2 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -11.5,
+      "pieceTotal": -138,
+      "packAvailable": -11.5,
+      "pieceAvailable": -138
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29037,
+      "sku": "B-BEY-D|BEF|012",
+      "name": "Buzz Beyond สุนัขโต รสเนื้ออบ | 1.2 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -30.25,
+      "pieceTotal": -363,
+      "packAvailable": -30.25,
+      "pieceAvailable": -363
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29066,
+      "sku": "B-BEY-C|LAM|070",
+      "name": "Buzz Beyond แมวโต รสแกะ | 7 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -254,
+      "pieceTotal": -254,
+      "packAvailable": -254,
+      "pieceAvailable": -254
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 30758,
+      "sku": "B-BEY-C|LAM|070",
+      "name": "Buzz Beyond แมวโต รสแกะ | 7 กก.",
+      "pallet": "MS2026010500001",
+      "location": "PK001",
+      "packTotal": -58,
+      "pieceTotal": 44,
+      "packAvailable": -68,
+      "pieceAvailable": 34
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29061,
+      "sku": "B-BEY-D|SAL|012",
+      "name": "Buzz Beyond สุนัขโต รสแซลมอน | 1.2 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -21.92,
+      "pieceTotal": -317,
+      "packAvailable": -21.92,
+      "pieceAvailable": -317
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29052,
+      "sku": "B-BAP-C|WEP|010",
+      "name": "Buzz Balanced+ แมวโต Weight+ | 1 กก.",
+      "pallet": "-",
+      "location": "A10-01-016",
+      "packTotal": -7,
+      "pieceTotal": -84,
+      "packAvailable": -7,
+      "pieceAvailable": -84
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 30710,
+      "sku": "B-BEY-D|SAL|012",
+      "name": "Buzz Beyond สุนัขโต รสแซลมอน | 1.2 กก.",
+      "pallet": "MS2026010500001",
+      "location": "PK001",
+      "packTotal": -1,
+      "pieceTotal": 329,
+      "packAvailable": -1,
+      "pieceAvailable": 329
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29062,
+      "sku": "B-NET-C|FNC|010",
+      "name": "Buzz Netura แมวโตและลูก ปลาและไก่ | 1 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -301.76,
+      "pieceTotal": -3422,
+      "packAvailable": -301.76,
+      "pieceAvailable": -3422
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29106,
+      "sku": "B-NET-D|SAL-L|008",
+      "name": "Buzz Netura สุนัขโต แซลมอน เม็ดใหญ่ | 800 กรัม",
+      "pallet": "-",
+      "location": "A09-01-026",
+      "packTotal": -0.58,
+      "pieceTotal": -7,
+      "packAvailable": -0.58,
+      "pieceAvailable": -7
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29102,
+      "sku": "B-BEY-C|LAM|NS|010",
+      "name": "Buzz Beyond แมวโต รสแกะ | 1 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A10-01-003",
+      "packTotal": -2,
+      "pieceTotal": -24,
+      "packAvailable": -2,
+      "pieceAvailable": -24
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29144,
+      "sku": "B-BAP-C|HNS|010",
+      "name": "Buzz Balanced+ แมวโต Hair&Skin | 1 กก.",
+      "pallet": "-",
+      "location": "A10-01-014",
+      "packTotal": -1,
+      "pieceTotal": -12,
+      "packAvailable": -1,
+      "pieceAvailable": -12
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29105,
+      "sku": "B-BEY-C|SAL|NS|010",
+      "name": "Buzz Beyond แมวโต รสแซลมอน | 1 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A10-01-004",
+      "packTotal": -5,
+      "pieceTotal": -60,
+      "packAvailable": -5,
+      "pieceAvailable": -60
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29134,
+      "sku": "B-BAP-C|KNP|010",
+      "name": "Buzz Balanced+ ลูกและแม่แมว K&P | 1 กก.",
+      "pallet": "-",
+      "location": "A10-01-013",
+      "packTotal": -0.83,
+      "pieceTotal": -10,
+      "packAvailable": -0.83,
+      "pieceAvailable": -10
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29070,
+      "sku": "B-BEY-C|MCK|NS|010",
+      "name": "Buzz Beyond แมวโต รสปลาทู | 1 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A10-01-007",
+      "packTotal": -1,
+      "pieceTotal": -12,
+      "packAvailable": -1,
+      "pieceAvailable": -12
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29031,
+      "sku": "B-BEY-D|BEF|NS|012",
+      "name": "Buzz Beyond สุนัขโต รสเนื้ออบ | 1.2 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A10-01-012",
+      "packTotal": -2,
+      "pieceTotal": -24,
+      "packAvailable": -2,
+      "pieceAvailable": -24
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29109,
+      "sku": "B-BEY-D|MNB|NS|010",
+      "name": "Buzz Beyond แม่และลูกสุนัข | 1 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A10-01-008",
+      "packTotal": -1,
+      "pieceTotal": -12,
+      "packAvailable": -1,
+      "pieceAvailable": -12
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29072,
+      "sku": "B-BEY-D|LAM|NS|012",
+      "name": "Buzz Beyond สุนัขโต รสแกะ | 1.2 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A10-01-009",
+      "packTotal": -1,
+      "pieceTotal": -12,
+      "packAvailable": -1,
+      "pieceAvailable": -12
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29045,
+      "sku": "B-BEY-D|SAL|NS|012",
+      "name": "Buzz Beyond สุนัขโต รสแซลมอน | 1.2 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A10-01-010",
+      "packTotal": -2,
+      "pieceTotal": -24,
+      "packAvailable": -2,
+      "pieceAvailable": -24
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29038,
+      "sku": "B-BEY-D|CNL|NS|012",
+      "name": "Buzz Beyond สุนัขโต รสไก่อบและตับ | 1.2 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A10-01-011",
+      "packTotal": -1,
+      "pieceTotal": -12,
+      "packAvailable": -1,
+      "pieceAvailable": -12
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29084,
+      "sku": "B-BEY-D|LAM|012",
+      "name": "Buzz Beyond สุนัขโต รสแกะ | 1.2 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -11.5,
+      "pieceTotal": -138,
+      "packAvailable": -11.5,
+      "pieceAvailable": -138
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29123,
+      "sku": "B-BEY-D|MNB|070",
+      "name": "Buzz Beyond แม่และลูกสุนัข | 7 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -27,
+      "pieceTotal": -27,
+      "packAvailable": -27,
+      "pieceAvailable": -27
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 32580,
+      "sku": "B-BEY-C|SAL|NS|010",
+      "name": "Buzz Beyond แมวโต รสแซลมอน | 1 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A09-01-004",
+      "packTotal": -1,
+      "pieceTotal": -12,
+      "packAvailable": -1,
+      "pieceAvailable": -12
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 32654,
+      "sku": "B-NET-D|SAL-L|025",
+      "name": "Buzz Netura สุนัขโต แซลมอน เม็ดใหญ่ | 2.5 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -2,
+      "pieceTotal": -12,
+      "packAvailable": -2,
+      "pieceAvailable": -12
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 32623,
+      "sku": "B-NET-D|CHI-S|025",
+      "name": "Buzz Netura สุนัขโต ไก่ เม็ดเล็ก | 2.5 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -2,
+      "pieceTotal": -12,
+      "packAvailable": -2,
+      "pieceAvailable": -12
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 32594,
+      "sku": "02-STICKER-C|FNC|249",
+      "name": "สติ๊กเกอร์ราคาแมวสูตรปลาและไก่ 1 กก. 249 บาท เส้นผ่าศูนย์กลาง 4.5cm.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -24,
+      "pieceTotal": -24,
+      "packAvailable": -24,
+      "pieceAvailable": -24
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 32559,
+      "sku": "B-NET-D|SAL-L|008",
+      "name": "Buzz Netura สุนัขโต แซลมอน เม็ดใหญ่ | 800 กรัม",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -1,
+      "pieceTotal": -12,
+      "packAvailable": -1,
+      "pieceAvailable": -12
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29093,
+      "sku": "B-NET-C|SAL|010",
+      "name": "Buzz Netura แมวโตและลูก แซลมอน | 1 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -292.08,
+      "pieceTotal": -3483,
+      "packAvailable": -292.08,
+      "pieceAvailable": -3483
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29050,
+      "sku": "B-BEY-D|CNL|100",
+      "name": "Buzz Beyond สุนัขโต รสไก่อบและตับ | 10 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -85,
+      "pieceTotal": -18,
+      "packAvailable": -85,
+      "pieceAvailable": -18
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 30730,
+      "sku": "B-BEY-D|CNL|100",
+      "name": "Buzz Beyond สุนัขโต รสไก่อบและตับ | 10 กก.",
+      "pallet": "MS2026010500001",
+      "location": "PK001",
+      "packTotal": -12,
+      "pieceTotal": 20,
+      "packAvailable": -18,
+      "pieceAvailable": 14
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 30076,
+      "sku": "B-NET-C|SAL|040",
+      "name": "Buzz Netura แมวโตและลูก แซลมอน | 4 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -126.75,
+      "pieceTotal": -507,
+      "packAvailable": -126.75,
+      "pieceAvailable": -507
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29089,
+      "sku": "B-NET-D|SAL-S|008",
+      "name": "Buzz Netura สุนัขโต แซลมอน เม็ดเล็ก | 800 กรัม",
+      "pallet": "-",
+      "location": "A10-01-026",
+      "packTotal": -1,
+      "pieceTotal": -1,
+      "packAvailable": -1,
+      "pieceAvailable": -1
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29033,
+      "sku": "B-BAP-C|KNP|030",
+      "name": "Buzz Balanced+ ลูกและแม่แมว K&P | 3 กก.",
+      "pallet": "-",
+      "location": "A10-01-017",
+      "packTotal": -1,
+      "pieceTotal": -6,
+      "packAvailable": -1,
+      "pieceAvailable": -6
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29073,
+      "sku": "B-NET-D|CHI-L|008",
+      "name": "Buzz Netura สุนัขโต ไก่ เม็ดใหญ่ | 800 กรัม",
+      "pallet": "-",
+      "location": "A09-01-024",
+      "packTotal": -0.17,
+      "pieceTotal": -2,
+      "packAvailable": -0.17,
+      "pieceAvailable": -2
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 31375,
+      "sku": "B-BEY-D|BEF|100",
+      "name": "Buzz Beyond สุนัขโต รสเนื้ออบ | 10 กก.",
+      "pallet": "MS2026010500001",
+      "location": "PK001",
+      "packTotal": -5,
+      "pieceTotal": 0,
+      "packAvailable": -5,
+      "pieceAvailable": 0
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29286,
+      "sku": "B-BAP-C|IND|010",
+      "name": "Buzz Balanced+ แมวโต Indoor | 1 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -23.17,
+      "pieceTotal": -278,
+      "packAvailable": -23.17,
+      "pieceAvailable": -278
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29080,
+      "sku": "B-BEY-D|SAL|100",
+      "name": "Buzz Beyond สุนัขโต รสแซลมอน | 10 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -45,
+      "pieceTotal": -45,
+      "packAvailable": -45,
+      "pieceAvailable": -45
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29081,
+      "sku": "B-NET-D|SAL-L|100",
+      "name": "Buzz Netura สุนัขโต แซลมอน เม็ดใหญ่ | 10 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -43,
+      "pieceTotal": -43,
+      "packAvailable": -43,
+      "pieceAvailable": -43
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29096,
+      "sku": "B-BEY-C|SAL|070",
+      "name": "Buzz Beyond แมวโต รสแซลมอน | 7 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -27,
+      "pieceTotal": -27,
+      "packAvailable": -27,
+      "pieceAvailable": -27
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 31121,
+      "sku": "B-NET-C|FHC|010",
+      "name": "Buzz Netura แมวโตและลูก ปลาเนื้อขาว แฮร์ริ่ง และไก่ | 1 กก.",
+      "pallet": "MS2026010500001",
+      "location": "PK001",
+      "packTotal": -3.17,
+      "pieceTotal": 0,
+      "packAvailable": -3.17,
+      "pieceAvailable": 0
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29139,
+      "sku": "B-NET-D|CHI-L|100",
+      "name": "Buzz Netura สุนัขโต ไก่ เม็ดใหญ่ | 10 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -2,
+      "pieceTotal": -2,
+      "packAvailable": -2,
+      "pieceAvailable": -2
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 30072,
+      "sku": "B-NET-C|FHC|040",
+      "name": "Buzz Netura แมวโตและลูก ปลาเนื้อขาว แฮร์ริ่ง และไก่ | 4 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -34,
+      "pieceTotal": -136,
+      "packAvailable": -34,
+      "pieceAvailable": -136
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 30086,
+      "sku": "02-STICKER-C|SAL|990",
+      "name": "สติ๊กเกอร์ราคาแมวสูตรปลาแซลมอน 4 กก. 990 บาท เส้นผ่าศูนย์กลาง 4.5cm.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -17,
+      "pieceTotal": -17,
+      "packAvailable": -17,
+      "pieceAvailable": -17
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 30078,
+      "sku": "B-BAP-C|KNP|030",
+      "name": "Buzz Balanced+ ลูกและแม่แมว K&P | 3 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -13,
+      "pieceTotal": -78,
+      "packAvailable": -13,
+      "pieceAvailable": -78
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 30085,
+      "sku": "02-STICKER-C|FNC|890",
+      "name": "สติ๊กเกอร์ราคาแมวสูตรปลาและไก่ 4กก. 890 บาท เส้นผ่าศูนย์กลาง 4.5cm.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -13,
+      "pieceTotal": -13,
+      "packAvailable": -13,
+      "pieceAvailable": -13
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 30079,
+      "sku": "B-NET-D|CHI-S|008",
+      "name": "Buzz Netura สุนัขโต ไก่ เม็ดเล็ก | 800 กรัม",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -1,
+      "pieceTotal": -12,
+      "packAvailable": -1,
+      "pieceAvailable": -12
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 32070,
+      "sku": "B-BAP-C|KNP|010",
+      "name": "Buzz Balanced+ ลูกและแม่แมว K&P | 1 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -18.5,
+      "pieceTotal": -222,
+      "packAvailable": -18.5,
+      "pieceAvailable": -222
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 32069,
+      "sku": "B-BAP-C|IND|030",
+      "name": "Buzz Balanced+ แมวโต Indoor | 3 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -26,
+      "pieceTotal": -156,
+      "packAvailable": -26,
+      "pieceAvailable": -156
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 30075,
+      "sku": "B-BAP-C|WEP|030",
+      "name": "Buzz Balanced+ แมวโต Weight+ | 3 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -22,
+      "pieceTotal": -132,
+      "packAvailable": -22,
+      "pieceAvailable": -132
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 30077,
+      "sku": "B-BAP-C|HNS|030",
+      "name": "Buzz Balanced+ แมวโต Hair&Skin | 3 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -20,
+      "pieceTotal": -120,
+      "packAvailable": -20,
+      "pieceAvailable": -120
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 30081,
+      "sku": "B-NET-D|SAL-S|008",
+      "name": "Buzz Netura สุนัขโต แซลมอน เม็ดเล็ก | 800 กรัม",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -3,
+      "pieceTotal": -36,
+      "packAvailable": -3,
+      "pieceAvailable": -36
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29201,
+      "sku": "B-BAP-C|WEP|010",
+      "name": "Buzz Balanced+ แมวโต Weight+ | 1 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -114.5,
+      "pieceTotal": -408,
+      "packAvailable": -114.5,
+      "pieceAvailable": -408
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29090,
+      "sku": "B-BEY-D|MNB|010",
+      "name": "Buzz Beyond แม่และลูกสุนัข | 1 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -50,
+      "pieceTotal": -336,
+      "packAvailable": -50,
+      "pieceAvailable": -336
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29129,
+      "sku": "B-BEY-C|SAL|010",
+      "name": "Buzz Beyond แมวโต รสแซลมอน | 1 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -30.5,
+      "pieceTotal": 162,
+      "packAvailable": -30.5,
+      "pieceAvailable": 162
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29112,
+      "sku": "B-BEY-C|TUN|070",
+      "name": "Buzz Beyond แมวโต รสทูน่า | 7 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -223,
+      "pieceTotal": -223,
+      "packAvailable": -223,
+      "pieceAvailable": -223
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29135,
+      "sku": "B-NET-C|FHC|010",
+      "name": "Buzz Netura แมวโตและลูก ปลาเนื้อขาว แฮร์ริ่ง และไก่ | 1 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -116.49,
+      "pieceTotal": -1398,
+      "packAvailable": -116.49,
+      "pieceAvailable": -1398
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29133,
+      "sku": "B-BEY-C|MNB|070",
+      "name": "Buzz Beyond แม่และลูกแมว รสแซลมอน ทูน่า และนม | 7 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -113,
+      "pieceTotal": -113,
+      "packAvailable": -113,
+      "pieceAvailable": -113
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29069,
+      "sku": "B-NET-C|CNT|040",
+      "name": "Buzz Netura แมวเลี้ยงในบ้าน และแมวทำหมัน ปลาค็อด & ปลาเทราต์ | 4 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -75,
+      "pieceTotal": -28,
+      "packAvailable": -75,
+      "pieceAvailable": -28
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 32061,
+      "sku": "B-BEY-C|MNB|070",
+      "name": "Buzz Beyond แม่และลูกแมว รสแซลมอน ทูน่า และนม | 7 กก.",
+      "pallet": "MS2026010500001",
+      "location": "PK001",
+      "packTotal": -99,
+      "pieceTotal": 0,
+      "packAvailable": -99,
+      "pieceAvailable": 0
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29053,
+      "sku": "B-NET-C|CNT|010",
+      "name": "Buzz Netura แมวเลี้ยงในบ้าน และแมวทำหมัน ปลาค็อด & ปลาเทราต์ | 1 กก.",
+      "pallet": "-",
+      "location": "PK001",
+      "packTotal": -265.59,
+      "pieceTotal": -2285,
+      "packAvailable": -265.59,
+      "pieceAvailable": -2285
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29114,
+      "sku": "TT-BEY-C|LAM|0005",
+      "name": "Tester | Buzz Beyond แมวโต รสแกะ | 50 กรัม",
+      "pallet": "-",
+      "location": "A09-01-022",
+      "packTotal": -10.4,
+      "pieceTotal": -10,
+      "packAvailable": -10.4,
+      "pieceAvailable": -10
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29094,
+      "sku": "TT-BEY-C|TUN|0005",
+      "name": "Tester | Buzz Beyond แมวโต รสทูน่า | 50 กรัม",
+      "pallet": "-",
+      "location": "A09-01-020",
+      "packTotal": -20.2,
+      "pieceTotal": -20,
+      "packAvailable": -20.2,
+      "pieceAvailable": -20
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29095,
+      "sku": "TT-BEY-C|MCK|0005",
+      "name": "Tester | Buzz Beyond แมวโต รสปลาทู | 50 กรัม",
+      "pallet": "-",
+      "location": "A09-01-019",
+      "packTotal": -0.4,
+      "pieceTotal": 0,
+      "packAvailable": -0.4,
+      "pieceAvailable": 0
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29048,
+      "sku": "TT-BEY-D|MNB|0005",
+      "name": "Tester | Buzz Beyond แม่และลูกสุนัข | 50 กรัม",
+      "pallet": "-",
+      "location": "A09-01-018",
+      "packTotal": -0.2,
+      "pieceTotal": 0,
+      "packAvailable": -0.2,
+      "pieceAvailable": 0
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29049,
+      "sku": "TT-BEY-D|LAM|0005",
+      "name": "Tester | Buzz Beyond สุนัขโต รสแกะ | 50 กรัม",
+      "pallet": "-",
+      "location": "A09-01-017",
+      "packTotal": -10,
+      "pieceTotal": -40,
+      "packAvailable": -10,
+      "pieceAvailable": -40
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29143,
+      "sku": "TT-NET-D|SAL-L|0005",
+      "name": "Tester | Buzz Netura สุนัขโต แซลมอน เม็ดใหญ่ | 50 กรัม",
+      "pallet": "-",
+      "location": "A09-01-001",
+      "packTotal": -3.2,
+      "pieceTotal": 290,
+      "packAvailable": -3.2,
+      "pieceAvailable": 290
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 32074,
+      "sku": "B-BEY-C|MCK|NS|010",
+      "name": "Buzz Beyond แมวโต รสปลาทู | 1 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A09-01-002",
+      "packTotal": -16,
+      "pieceTotal": -192,
+      "packAvailable": -16,
+      "pieceAvailable": -192
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 32071,
+      "sku": "B-BEY-D|LAM|NS|012",
+      "name": "Buzz Beyond สุนัขโต รสแกะ | 1.2 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A09-01-008",
+      "packTotal": -3,
+      "pieceTotal": -36,
+      "packAvailable": -3,
+      "pieceAvailable": -36
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29125,
+      "sku": "TT-BAP-C|WEP|0005",
+      "name": "Tester | Buzz Balanced+ แมวโต Weight+ | 50 กรัม",
+      "pallet": "-",
+      "location": "A09-01-010",
+      "packTotal": -40.4,
+      "pieceTotal": -60,
+      "packAvailable": -40.4,
+      "pieceAvailable": -60
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29040,
+      "sku": "TT-NET-C|FHC|0005",
+      "name": "Tester | Buzz Netura แมวโตและลูก ปลาเนื้อขาว แฮร์ริ่ง และไก่ | 50 กรัม",
+      "pallet": "-",
+      "location": "A09-01-006",
+      "packTotal": -40,
+      "pieceTotal": 300,
+      "packAvailable": -40,
+      "pieceAvailable": 300
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29118,
+      "sku": "TT-BAP-C|HNS|0005",
+      "name": "Tester | Buzz Balanced+ แมวโต Hair&Skin | 50 กรัม",
+      "pallet": "-",
+      "location": "A09-01-012",
+      "packTotal": -40.6,
+      "pieceTotal": -50,
+      "packAvailable": -40.6,
+      "pieceAvailable": -50
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29087,
+      "sku": "TT-BAP-C|IND|0005",
+      "name": "Tester | Buzz Balanced+ แมวโต Indoor | 50 กรัม",
+      "pallet": "-",
+      "location": "A09-01-011",
+      "packTotal": -60.4,
+      "pieceTotal": -80,
+      "packAvailable": -60.4,
+      "pieceAvailable": -80
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 30080,
+      "sku": "B-BEY-D|BEF|NS|012",
+      "name": "Buzz Beyond สุนัขโต รสเนื้ออบ | 1.2 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A09-01-006",
+      "packTotal": -8,
+      "pieceTotal": -96,
+      "packAvailable": -8,
+      "pieceAvailable": -96
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 32076,
+      "sku": "B-BEY-C|TUN|NS|010",
+      "name": "Buzz Beyond แมวโต รสทูน่า | 1 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A09-01-005",
+      "packTotal": -21,
+      "pieceTotal": -252,
+      "packAvailable": -21,
+      "pieceAvailable": -252
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29036,
+      "sku": "TT-BEY-D|SAL|0005",
+      "name": "Tester | Buzz Beyond สุนัขโต รสแซลมอน | 50 กรัม",
+      "pallet": "-",
+      "location": "A09-01-016",
+      "packTotal": -0.2,
+      "pieceTotal": 0,
+      "packAvailable": -0.2,
+      "pieceAvailable": 0
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29046,
+      "sku": "TT-BEY-D|CNL|0005",
+      "name": "Tester | Buzz Beyond สุนัขโต รสไก่อบและตับ | 50 กรัม",
+      "pallet": "-",
+      "location": "A09-01-015",
+      "packTotal": -0.2,
+      "pieceTotal": 0,
+      "packAvailable": -0.2,
+      "pieceAvailable": 0
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29121,
+      "sku": "TT-BEY-D|BEF|0005",
+      "name": "Tester | Buzz Beyond สุนัขโต รสเนื้ออบ | 50 กรัม",
+      "pallet": "-",
+      "location": "A09-01-014",
+      "packTotal": -0.2,
+      "pieceTotal": 0,
+      "packAvailable": -0.2,
+      "pieceAvailable": 0
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 32068,
+      "sku": "B-BEY-D|SAL|NS|012",
+      "name": "Buzz Beyond สุนัขโต รสแซลมอน | 1.2 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A09-01-010",
+      "packTotal": -7,
+      "pieceTotal": -84,
+      "packAvailable": -7,
+      "pieceAvailable": -84
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29110,
+      "sku": "TT-NET-C|FNC|0005",
+      "name": "Tester | Buzz Netura แมวโตและลูก ปลาและไก่ | 50 กรัม",
+      "pallet": "-",
+      "location": "A09-01-009",
+      "packTotal": -50,
+      "pieceTotal": 280,
+      "packAvailable": -50,
+      "pieceAvailable": 280
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29059,
+      "sku": "TT-NET-D|CHI-S|0005",
+      "name": "Tester | Buzz Netura สุนัขโต ไก่ เม็ดเล็ก | 50 กรัม",
+      "pallet": "-",
+      "location": "A09-01-004",
+      "packTotal": -9.4,
+      "pieceTotal": -20,
+      "packAvailable": -9.4,
+      "pieceAvailable": -20
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 32072,
+      "sku": "B-BEY-D|CNL|NS|012",
+      "name": "Buzz Beyond สุนัขโต รสไก่อบและตับ | 1.2 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A09-01-007",
+      "packTotal": -4,
+      "pieceTotal": -48,
+      "packAvailable": -4,
+      "pieceAvailable": -48
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 32075,
+      "sku": "B-BEY-C|LAM|NS|010",
+      "name": "Buzz Beyond แมวโต รสแกะ | 1 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A09-01-001",
+      "packTotal": -12,
+      "pieceTotal": -144,
+      "packAvailable": -12,
+      "pieceAvailable": -144
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29127,
+      "sku": "TT-NET-D|SAL-S|0005",
+      "name": "Tester | Buzz Netura สุนัขโต แซลมอน เม็ดเล็ก | 50 กรัม",
+      "pallet": "-",
+      "location": "A09-01-002",
+      "packTotal": -3.2,
+      "pieceTotal": 290,
+      "packAvailable": -3.2,
+      "pieceAvailable": 290
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29115,
+      "sku": "TT-NET-D|CHI-L|0005",
+      "name": "Tester | Buzz Netura สุนัขโต ไก่ เม็ดใหญ่ | 50 กรัม",
+      "pallet": "-",
+      "location": "A09-01-003",
+      "packTotal": -3.2,
+      "pieceTotal": 290,
+      "packAvailable": -3.2,
+      "pieceAvailable": 290
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 29079,
+      "sku": "TT-BAP-C|KNP|0005",
+      "name": "Tester | Buzz Balanced+ ลูกและแม่แมว K&P | 50 กรัม",
+      "pallet": "-",
+      "location": "A09-01-013",
+      "packTotal": -30.4,
+      "pieceTotal": -50,
+      "packAvailable": -30.4,
+      "pieceAvailable": -50
+    },
+    {
+      "sheet": "บ้านหยิบ",
+      "id": 32067,
+      "sku": "B-BEY-C|MNB|NS|010",
+      "name": "Buzz Beyond แม่และลูกแมว รสแซลมอน ทูน่า และนม | 1 กก. [No Sticker]",
+      "pallet": "-",
+      "location": "A09-01-003",
+      "packTotal": -105,
+      "pieceTotal": -1260,
+      "packAvailable": -105,
+      "pieceAvailable": -1260
+    },
+    {
+      "sheet": "บ้านหยิบพรีเมี่ยม",
+      "id": 32646,
+      "sku": "02-STICKER-C|FHC|990",
+      "name": "สติ๊กเกอร์ราคาแมวสูตรโปรตีน เอ็กซ์ 4 กก. 990 บาท เส้นผ่าศูนย์กลาง 4.5cm.",
+      "pallet": "-",
+      "location": "PK002",
+      "packTotal": -8,
+      "pieceTotal": -8,
+      "packAvailable": -8,
+      "pieceAvailable": -8
+    },
+    {
+      "sheet": "บ้านหยิบพรีเมี่ยม",
+      "id": 29138,
+      "sku": "PRE-CHO|PROTEINX",
+      "name": "บ้านแมว Proteinx",
+      "pallet": "-",
+      "location": "PK002",
+      "packTotal": -0.1,
+      "pieceTotal": 8,
+      "packAvailable": -0.1,
+      "pieceAvailable": 8
+    },
+    {
+      "sheet": "บ้านหยิบพรีเมี่ยม",
+      "id": 29054,
+      "sku": "PRE-BAG|SPB|MARKET",
+      "name": "ถุงผ้าสปันบอนด์การ์ตูนสกรีนเต็มใบ Size XL (50*40*9 cm)",
+      "pallet": "-",
+      "location": "PK002",
+      "packTotal": -337.62,
+      "pieceTotal": -64,
+      "packAvailable": -337.62,
+      "pieceAvailable": -64
+    },
+    {
+      "sheet": "บ้านหยิบพรีเมี่ยม",
+      "id": 29035,
+      "sku": "PRE-BOW|TILT|CAT",
+      "name": "ชามแมวยกสูงสีน้ำเงิน",
+      "pallet": "-",
+      "location": "PK002",
+      "packTotal": -92,
+      "pieceTotal": -4,
+      "packAvailable": -92,
+      "pieceAvailable": -4
+    },
+    {
+      "sheet": "บ้านหยิบพรีเมี่ยม",
+      "id": 29141,
+      "sku": "PRE-CHO|GRE",
+      "name": "บ้านแมว สีเขียว",
+      "pallet": "-",
+      "location": "PK002",
+      "packTotal": -0.1,
+      "pieceTotal": 33,
+      "packAvailable": -0.1,
+      "pieceAvailable": 33
+    },
+    {
+      "sheet": "บ้านหยิบพรีเมี่ยม",
+      "id": 32601,
+      "sku": "02-STICKER-C|SAL|279",
+      "name": "สติ๊กเกอร์ราคาแมวสูตรปลาแซลมอน 1 กก. 279 บาท เส้นผ่าศูนย์กลาง 4.5cm.",
+      "pallet": "-",
+      "location": "PK002",
+      "packTotal": -24,
+      "pieceTotal": -24,
+      "packAvailable": -24,
+      "pieceAvailable": -24
+    }
+  ],
+  "zeroWithReservation": [
+    {
+      "ID": 25285,
+      "รหัสสินค้า": "B-BAP-C|IND|010",
+      "ชื่อสินค้า": "Buzz Balanced+ แมวโต Indoor | 1 กก.",
+      "รหัสพาเลท (External)": "-",
+      "รหัสพาเลท (Internal)": "ATG2500015538",
+      "คลัง": "WH001",
+      "Location ID": "B02-04-001",
+      "ตำแหน่ง": "B02-04-001",
+      "Lot No": "-",
+      "แพ็ครวม": 0,
+      "ชิ้นรวม": 0,
+      "น้ำหนัก (กก.)": 0,
+      "แพ็คจอง": 1.84,
+      "ชิ้นจอง": 0,
+      "แพ็คพร้อมใช้": -1.84,
+      "ชิ้นพร้อมใช้": 0,
+      "วันผลิต": "21/9/2568",
+      "วันหมดอายุ": "30/3/2570",
+      "Last Move ID": "-",
+      "เคลื่อนไหวล่าสุด": "13/1/2569 10:08:56",
+      "สร้างเมื่อ": "5/1/2569 09:47:10",
+      "อัปเดตเมื่อ": "13/1/2569 10:08:56"
+    },
+    {
+      "ID": 28359,
+      "รหัสสินค้า": "B-BEY-C|LAM|010",
+      "ชื่อสินค้า": "Buzz Beyond แมวโต รสแกะ | 1 กก.",
+      "รหัสพาเลท (External)": "-",
+      "รหัสพาเลท (Internal)": "-",
+      "คลัง": "WH001",
+      "Location ID": "Repair",
+      "ตำแหน่ง": "Repair - พื้นที่ซ่อมแซม",
+      "Lot No": "-",
+      "แพ็ครวม": 0.92,
+      "ชิ้นรวม": 0,
+      "น้ำหนัก (กก.)": 0,
+      "แพ็คจอง": 0.16,
+      "ชิ้นจอง": 0,
+      "แพ็คพร้อมใช้": 0.76,
+      "ชิ้นพร้อมใช้": 0,
+      "วันผลิต": "-",
+      "วันหมดอายุ": "6/11/2569",
+      "Last Move ID": "-",
+      "เคลื่อนไหวล่าสุด": "6/1/2569 07:00:00",
+      "สร้างเมื่อ": "6/1/2569 15:20:02",
+      "อัปเดตเมื่อ": "9/1/2569 10:04:53"
+    }
+  ],
+  "multiLocationPallets": [
+    {
+      "pallet": "ATG2500014777",
+      "locations": [
+        {
+          "location": "Repack",
+          "sku": "00-NET-C|FHC|200",
+          "pieces": 19,
+          "packs": 19
+        },
+        {
+          "location": "AA-BLK-22",
+          "sku": "00-NET-C|FHC|200",
+          "pieces": 23,
+          "packs": 23
+        },
+        {
+          "location": "AA-BLK-22",
+          "sku": "00-NET-C|FHC|200",
+          "pieces": 23,
+          "packs": 23
+        }
+      ]
+    },
+    {
+      "pallet": "PK202601050001",
+      "locations": [
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-NET-C|FHC|010",
+          "pieces": 200543,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "OTHERS00069",
+          "pieces": 11969,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-NET-D|SAL-S|025",
+          "pieces": 10635,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-BEY-C|SAL|0005",
+          "pieces": 700,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-NET-C|CNT|0005",
+          "pieces": 20000,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-STICKER-C|FNC040",
+          "pieces": 20484,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-STK-KITTEN",
+          "pieces": 10,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-NET-D|SAL-S|008",
+          "pieces": 3079,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-ALL-S|FOI|0005",
+          "pieces": 25300,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BAP-C|HNS|0005",
+          "pieces": 6900,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BAP-C|WEP|030",
+          "pieces": 288,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BAP-C|HNS|010",
+          "pieces": 976,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-NET-D|CHI-S|008",
+          "pieces": 3582,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-D|CNL|012",
+          "pieces": 486,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-NET-D|SAL-L|025",
+          "pieces": 2087,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-NET-D|SAL-L|008",
+          "pieces": 2915,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-NET-C|SAL|0005",
+          "pieces": 32100,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-NET-D|SAL-L|0005",
+          "pieces": 200,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-D|LAM|0005",
+          "pieces": 17500,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-D|LAM|100",
+          "pieces": 399,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-D|MNB|0005",
+          "pieces": 14900,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-D|MNB|010",
+          "pieces": 664,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-D|MNB|070",
+          "pieces": 597,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-D|SAL|0005",
+          "pieces": 11800,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-D|SAL|012",
+          "pieces": 458,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-D|SAL|100",
+          "pieces": 288,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-NET-C|CNT|010",
+          "pieces": 24798,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-STK-7kg|Beyond",
+          "pieces": 336,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-STK-HAIRSKIN",
+          "pieces": 598,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-NET-C|CNT|040",
+          "pieces": 7709,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-NET-C|FNC|010",
+          "pieces": 77730,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BAP-C|HNS|030",
+          "pieces": 293,
+          "packs": 0
+        },
+        {
+          "location": "Repack",
+          "sku": "01-NET-C|FHC|010",
+          "pieces": 4575,
+          "packs": 4575
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-NET-C|FHC|040",
+          "pieces": 47142,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-NET-C|FHC|0005",
+          "pieces": 300,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-D|BEF|100",
+          "pieces": 290,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-D|BEF|012",
+          "pieces": 759,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-NET-C|SAL|010",
+          "pieces": 142647,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-NET-D|CHI-L|008",
+          "pieces": 635,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BAP-C|WEP|010",
+          "pieces": 665,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-NET-D|CHI-S|025",
+          "pieces": 185,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-D|BEF|0005",
+          "pieces": 14600,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-C|TUN|070",
+          "pieces": 586,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-C|TUN|010",
+          "pieces": 1323,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "OTHERS00067",
+          "pieces": 41835,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "OTHERS00068",
+          "pieces": 50183,
+          "packs": 0
+        },
+        {
+          "location": "Repack",
+          "sku": "OTHERS00069",
+          "pieces": 4575,
+          "packs": 4575
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-C|TUN|0005",
+          "pieces": 15000,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-C|SAL|070",
+          "pieces": 460,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-C|SAL|010",
+          "pieces": 1293,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-C|SAL|0005",
+          "pieces": 5100,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-C|MNB|070",
+          "pieces": 361,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-C|MNB|010",
+          "pieces": 385,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-C|MNB|0005",
+          "pieces": 2700,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-C|MCK|070",
+          "pieces": 527,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-C|MCK|010",
+          "pieces": 681,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-C|MCK|0005",
+          "pieces": 800,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-C|LAM|070",
+          "pieces": 583,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-C|LAM|010",
+          "pieces": 722,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-C|LAM|0005",
+          "pieces": 10200,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BAP-C|WEP|0005",
+          "pieces": 15000,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BAP-C|KNP|030",
+          "pieces": 398,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BAP-C|KNP|010",
+          "pieces": 500,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BAP-C|IND|030",
+          "pieces": 1004,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BAP-C|IND|010",
+          "pieces": 1025,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BAP-C|IND|0005",
+          "pieces": 16300,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-D|LAM|012",
+          "pieces": 767,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-NET-C|FNC|040",
+          "pieces": 24244,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-NET-D|CHI-L|100",
+          "pieces": 1031,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-BEY-D|LAM|0005",
+          "pieces": 1900,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-NET-D|CHI-S|025",
+          "pieces": 2108,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-STICKER-100K-QR",
+          "pieces": 20,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-STICKER-PRICE1250",
+          "pieces": 24243,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BEY-D|CNL|100",
+          "pieces": 373,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-NET-D|CHI-L|0005",
+          "pieces": 27360,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-NET-C|FNC|0005",
+          "pieces": 18800,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-NET-C|SAL|040",
+          "pieces": 32201,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-NET-D|CHI-L|025",
+          "pieces": 6240,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-NET-D|SAL-L|100",
+          "pieces": 627,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-NET-D|SAL-L|025",
+          "pieces": 1869,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "01-BAP-C|KNP|0005",
+          "pieces": 22598,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-STICKER-PRICE189",
+          "pieces": 6295,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-BEY-C|TUN|0005",
+          "pieces": 700,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-BEY-D|CNL|0005",
+          "pieces": 3200,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-BEY-D|SAL|0005",
+          "pieces": 2000,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-BEYOND-ALL|119",
+          "pieces": 2565,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-NET-D|CHI-L|025",
+          "pieces": 3488,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-NET-D|CHI|239",
+          "pieces": 266,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-NET-D|SAL-S|025",
+          "pieces": 2138,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-STICKER-C|FHC040",
+          "pieces": 21655,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-STICKER-C|SAL040",
+          "pieces": 4404,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-STICKER-PRICE279",
+          "pieces": 60000,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-STICKER-PRICE489",
+          "pieces": 2200,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-STK-10kg|Beyond",
+          "pieces": 296,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-STK-INDOOR",
+          "pieces": 606,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-BEY-C|MCK|0005",
+          "pieces": 12200,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-BAL-C|229",
+          "pieces": 266,
+          "packs": 0
+        },
+        {
+          "location": "พื้นที่แพ็คสินค้า",
+          "sku": "02-STK-WEIGHT",
+          "pieces": 708,
+          "packs": 0
+        }
+      ]
+    }
+  ],
+  "unbalancedMoves": [],
+  "reconciliationIssues": [
+    {
+      "sku": "B-NET-C|FNC|010",
+      "ledgerIn": 45649,
+      "ledgerOut": 26634,
+      "ledgerNet": 19015,
+      "balanceTotal": 5229,
+      "diff": 13786
+    },
+    {
+      "sku": "B-BEY-C|MNB|010",
+      "ledgerIn": 63230,
+      "ledgerOut": 16057,
+      "ledgerNet": 47173,
+      "balanceTotal": 36865,
+      "diff": 10308
+    },
+    {
+      "sku": "TT-NET-C|SAL|0005",
+      "ledgerIn": 23397.5,
+      "ledgerOut": 14820,
+      "ledgerNet": 8577.5,
+      "balanceTotal": 625,
+      "diff": 7952.5
+    },
+    {
+      "sku": "B-BEY-C|SAL|010",
+      "ledgerIn": 32744,
+      "ledgerOut": 10786,
+      "ledgerNet": 21958,
+      "balanceTotal": 14506,
+      "diff": 7452
+    },
+    {
+      "sku": "B-NET-C|CNT|010",
+      "ledgerIn": 24308,
+      "ledgerOut": 11618,
+      "ledgerNet": 12690,
+      "balanceTotal": 5889,
+      "diff": 6801
+    },
+    {
+      "sku": "MKT-CARTON-TESTER",
+      "ledgerIn": 6548,
+      "ledgerOut": 0,
+      "ledgerNet": 6548,
+      "balanceTotal": 0,
+      "diff": 6548
+    },
+    {
+      "sku": "B-NET-C|SAL|010",
+      "ledgerIn": 29345,
+      "ledgerOut": 18597,
+      "ledgerNet": 10748,
+      "balanceTotal": 4237,
+      "diff": 6511
+    },
+    {
+      "sku": "B-BEY-C|MCK|010",
+      "ledgerIn": 15815,
+      "ledgerOut": 6451,
+      "ledgerNet": 9364,
+      "balanceTotal": 3771,
+      "diff": 5593
+    },
+    {
+      "sku": "TT-BEY-C|MNB|0005",
+      "ledgerIn": 5842.9,
+      "ledgerOut": 185,
+      "ledgerNet": 5657.9,
+      "balanceTotal": 120,
+      "diff": 5537.9
+    },
+    {
+      "sku": "B-BEY-C|TUN|010",
+      "ledgerIn": 20914,
+      "ledgerOut": 7765,
+      "ledgerNet": 13149,
+      "balanceTotal": 7759,
+      "diff": 5390
+    },
+    {
+      "sku": "TT-NET-D|CHI-L|0005",
+      "ledgerIn": 21158.9,
+      "ledgerOut": 13155,
+      "ledgerNet": 8003.9000000000015,
+      "balanceTotal": 2717,
+      "diff": 5286.9000000000015
+    },
+    {
+      "sku": "TT-BAP-C|IND|0005",
+      "ledgerIn": 5964.8,
+      "ledgerOut": 505,
+      "ledgerNet": 5459.8,
+      "balanceTotal": 190,
+      "diff": 5269.8
+    },
+    {
+      "sku": "B-BEY-C|LAM|010",
+      "ledgerIn": 14505,
+      "ledgerOut": 5803,
+      "ledgerNet": 8702,
+      "balanceTotal": 3769,
+      "diff": 4933
+    },
+    {
+      "sku": "TT-NET-D|CHI-S|0005",
+      "ledgerIn": 8975.9,
+      "ledgerOut": 1140,
+      "ledgerNet": 7835.9,
+      "balanceTotal": 3067,
+      "diff": 4768.9
+    },
+    {
+      "sku": "B-BEY-C|MNB|NS|010",
+      "ledgerIn": 53580,
+      "ledgerOut": 19068,
+      "ledgerNet": 34512,
+      "balanceTotal": 29772,
+      "diff": 4740
+    },
+    {
+      "sku": "TT-BEY-C|SAL|0005",
+      "ledgerIn": 4109.85,
+      "ledgerOut": 165,
+      "ledgerNet": 3944.8500000000004,
+      "balanceTotal": 100,
+      "diff": 3844.8500000000004
+    },
+    {
+      "sku": "TT-BEY-D|SAL|0005",
+      "ledgerIn": 3782.95,
+      "ledgerOut": 60,
+      "ledgerNet": 3722.95,
+      "balanceTotal": 30,
+      "diff": 3692.95
+    },
+    {
+      "sku": "B-BAP-C|WEP|010",
+      "ledgerIn": 41698,
+      "ledgerOut": 14052,
+      "ledgerNet": 27646,
+      "balanceTotal": 24000,
+      "diff": 3646
+    },
+    {
+      "sku": "B-NET-C|FHC|010",
+      "ledgerIn": 15917,
+      "ledgerOut": 9643,
+      "ledgerNet": 6274,
+      "balanceTotal": 2742,
+      "diff": 3532
+    },
+    {
+      "sku": "B-BAP-C|HNS|010",
+      "ledgerIn": 28822,
+      "ledgerOut": 13800,
+      "ledgerNet": 15022,
+      "balanceTotal": 11520,
+      "diff": 3502
+    },
+    {
+      "sku": "TT-NET-C|FNC|0005",
+      "ledgerIn": 15271.5,
+      "ledgerOut": 4395,
+      "ledgerNet": 10876.5,
+      "balanceTotal": 7445,
+      "diff": 3431.5
+    },
+    {
+      "sku": "B-BEY-C|SAL|NS|010",
+      "ledgerIn": 58610,
+      "ledgerOut": 34632,
+      "ledgerNet": 23978,
+      "balanceTotal": 20688,
+      "diff": 3290
+    },
+    {
+      "sku": "B-BAP-C|IND|010",
+      "ledgerIn": 10339,
+      "ledgerOut": 2811,
+      "ledgerNet": 7528,
+      "balanceTotal": 4540,
+      "diff": 2988
+    },
+    {
+      "sku": "B-BEY-C|SAL|070",
+      "ledgerIn": 17551,
+      "ledgerOut": 5913,
+      "ledgerNet": 11638,
+      "balanceTotal": 8924,
+      "diff": 2714
+    },
+    {
+      "sku": "TT-BEY-D|CNL|0005",
+      "ledgerIn": 2948.95,
+      "ledgerOut": 150,
+      "ledgerNet": 2798.95,
+      "balanceTotal": 90,
+      "diff": 2708.95
+    },
+    {
+      "sku": "TT-NET-C|FHC|0005",
+      "ledgerIn": 12997.45,
+      "ledgerOut": 5385,
+      "ledgerNet": 7612.450000000001,
+      "balanceTotal": 5003,
+      "diff": 2609.4500000000007
+    },
+    {
+      "sku": "TT-BEY-C|LAM|0005",
+      "ledgerIn": 2726.8,
+      "ledgerOut": 140,
+      "ledgerNet": 2586.8,
+      "balanceTotal": 40,
+      "diff": 2546.8
+    },
+    {
+      "sku": "B-BAP-C|KNP|010",
+      "ledgerIn": 10321,
+      "ledgerOut": 4852,
+      "ledgerNet": 5469,
+      "balanceTotal": 3002,
+      "diff": 2467
+    },
+    {
+      "sku": "B-BEY-C|MNB|070",
+      "ledgerIn": 28886,
+      "ledgerOut": 6943,
+      "ledgerNet": 21943,
+      "balanceTotal": 19633,
+      "diff": 2310
+    },
+    {
+      "sku": "TT-NET-D|SAL-L|0005",
+      "ledgerIn": 5175.9,
+      "ledgerOut": 1100,
+      "ledgerNet": 4075.8999999999996,
+      "balanceTotal": 1890,
+      "diff": 2185.8999999999996
+    },
+    {
+      "sku": "TT-BEY-D|MNB|0005",
+      "ledgerIn": 2335.95,
+      "ledgerOut": 110,
+      "ledgerNet": 2225.95,
+      "balanceTotal": 80,
+      "diff": 2145.95
+    },
+    {
+      "sku": "TT-BAP-C|HNS|0005",
+      "ledgerIn": 2694.8,
+      "ledgerOut": 515,
+      "ledgerNet": 2179.8,
+      "balanceTotal": 200,
+      "diff": 1979.8000000000002
+    },
+    {
+      "sku": "B-BEY-C|LAM|NS|010",
+      "ledgerIn": 26152,
+      "ledgerOut": 9816,
+      "ledgerNet": 16336,
+      "balanceTotal": 14364,
+      "diff": 1972
+    },
+    {
+      "sku": "B-BEY-C|MCK|NS|010",
+      "ledgerIn": 25875,
+      "ledgerOut": 9540,
+      "ledgerNet": 16335,
+      "balanceTotal": 14364,
+      "diff": 1971
+    },
+    {
+      "sku": "B-BEY-D|CNL|012",
+      "ledgerIn": 4630,
+      "ledgerOut": 2190,
+      "ledgerNet": 2440,
+      "balanceTotal": 552,
+      "diff": 1888
+    },
+    {
+      "sku": "PRE-BAG|SPB|MARKET",
+      "ledgerIn": 63656,
+      "ledgerOut": 5290,
+      "ledgerNet": 58366,
+      "balanceTotal": 56612,
+      "diff": 1754
+    },
+    {
+      "sku": "TT-BAP-C|WEP|0005",
+      "ledgerIn": 2460.75,
+      "ledgerOut": 465,
+      "ledgerNet": 1995.75,
+      "balanceTotal": 250,
+      "diff": 1745.75
+    },
+    {
+      "sku": "B-BEY-D|LAM|012",
+      "ledgerIn": 4843,
+      "ledgerOut": 2532,
+      "ledgerNet": 2311,
+      "balanceTotal": 588,
+      "diff": 1723
+    },
+    {
+      "sku": "B-NET-C|FNC|040",
+      "ledgerIn": 6206,
+      "ledgerOut": 4153,
+      "ledgerNet": 2053,
+      "balanceTotal": 359,
+      "diff": 1694
+    },
+    {
+      "sku": "B-BEY-D|SAL|NS|012",
+      "ledgerIn": 17097,
+      "ledgerOut": 8580,
+      "ledgerNet": 8517,
+      "balanceTotal": 6900,
+      "diff": 1617
+    },
+    {
+      "sku": "B-BAP-C|WEP|030",
+      "ledgerIn": 12892,
+      "ledgerOut": 5012,
+      "ledgerNet": 7880,
+      "balanceTotal": 6331,
+      "diff": 1549
+    },
+    {
+      "sku": "B-BEY-D|BEF|NS|012",
+      "ledgerIn": 10455,
+      "ledgerOut": 4944,
+      "ledgerNet": 5511,
+      "balanceTotal": 4020,
+      "diff": 1491
+    },
+    {
+      "sku": "B-BEY-D|MNB|010",
+      "ledgerIn": 8544,
+      "ledgerOut": 2364,
+      "ledgerNet": 6180,
+      "balanceTotal": 4716,
+      "diff": 1464
+    },
+    {
+      "sku": "B-BEY-C|MCK|070",
+      "ledgerIn": 7259,
+      "ledgerOut": 2966,
+      "ledgerNet": 4293,
+      "balanceTotal": 2832,
+      "diff": 1461
+    },
+    {
+      "sku": "B-BEY-C|TUN|070",
+      "ledgerIn": 8275,
+      "ledgerOut": 3310,
+      "ledgerNet": 4965,
+      "balanceTotal": 3631,
+      "diff": 1334
+    },
+    {
+      "sku": "TT-BEY-C|TUN|0005",
+      "ledgerIn": 1460.95,
+      "ledgerOut": 140,
+      "ledgerNet": 1320.95,
+      "balanceTotal": 60,
+      "diff": 1260.95
+    },
+    {
+      "sku": "B-BEY-C|LAM|070",
+      "ledgerIn": 7697,
+      "ledgerOut": 2610,
+      "ledgerNet": 5087,
+      "balanceTotal": 3833,
+      "diff": 1254
+    },
+    {
+      "sku": "B-BEY-D|BEF|012",
+      "ledgerIn": 5145,
+      "ledgerOut": 3917,
+      "ledgerNet": 1228,
+      "balanceTotal": 0,
+      "diff": 1228
+    },
+    {
+      "sku": "TT-BEY-D|BEF|0005",
+      "ledgerIn": 1303.95,
+      "ledgerOut": 90,
+      "ledgerNet": 1213.95,
+      "balanceTotal": 40,
+      "diff": 1173.95
+    },
+    {
+      "sku": "B-BEY-D|SAL|012",
+      "ledgerIn": 2957,
+      "ledgerOut": 1943,
+      "ledgerNet": 1014,
+      "balanceTotal": 0,
+      "diff": 1014
+    }
+  ],
+  "expiredInPickHouse": [
+    {
+      "sku": "B-BEY-C|TUN|010",
+      "name": "Buzz Beyond แมวโต รสทูน่า | 1 กก.",
+      "expiry": "4/1/2569",
+      "pieces": 829,
+      "location": "PK001"
+    },
+    {
+      "sku": "B-BEY-C|MNB|NS|010",
+      "name": "Buzz Beyond แม่และลูกแมว รสแซลมอน ทูน่า และนม | 1 กก. [No Sticker]",
+      "expiry": "4/1/2569",
+      "pieces": 472,
+      "location": "A10-01-001"
+    },
+    {
+      "sku": "B-BEY-D|LAM|100",
+      "name": "Buzz Beyond สุนัขโต รสแกะ | 10 กก.",
+      "expiry": "4/1/2569",
+      "pieces": 30,
+      "location": "PK001"
+    },
+    {
+      "sku": "B-BEY-C|MCK|010",
+      "name": "Buzz Beyond แมวโต รสปลาทู | 1 กก.",
+      "expiry": "4/1/2569",
+      "pieces": 1199,
+      "location": "PK001"
+    },
+    {
+      "sku": "B-BEY-C|LAM|010",
+      "name": "Buzz Beyond แมวโต รสแกะ | 1 กก.",
+      "expiry": "4/1/2569",
+      "pieces": 1176,
+      "location": "PK001"
+    },
+    {
+      "sku": "B-BAP-C|WEP|030",
+      "name": "Buzz Balanced+ แมวโต Weight+ | 3 กก.",
+      "expiry": "4/1/2569",
+      "pieces": 435,
+      "location": "A10-01-020"
+    },
+    {
+      "sku": "B-BEY-D|MNB|070",
+      "name": "Buzz Beyond แม่และลูกสุนัข | 7 กก.",
+      "expiry": "4/1/2569",
+      "pieces": 116,
+      "location": "PK001"
+    },
+    {
+      "sku": "B-BEY-C|TUN|NS|010",
+      "name": "Buzz Beyond แมวโต รสทูน่า | 1 กก. [No Sticker]",
+      "expiry": "4/1/2569",
+      "pieces": 58,
+      "location": "A10-01-006"
+    },
+    {
+      "sku": "B-BEY-C|MCK|070",
+      "name": "Buzz Beyond แมวโต รสปลาทู | 7 กก.",
+      "expiry": "4/1/2569",
+      "pieces": 359,
+      "location": "PK001"
+    },
+    {
+      "sku": "B-BEY-D|CNL|012",
+      "name": "Buzz Beyond สุนัขโต รสไก่อบและตับ | 1.2 กก.",
+      "expiry": "4/1/2569",
+      "pieces": 592,
+      "location": "PK001"
+    },
+    {
+      "sku": "B-BEY-C|LAM|070",
+      "name": "Buzz Beyond แมวโต รสแกะ | 7 กก.",
+      "expiry": "4/1/2569",
+      "pieces": 44,
+      "location": "PK001"
+    },
+    {
+      "sku": "B-NET-C|FNC|010",
+      "name": "Buzz Netura แมวโตและลูก ปลาและไก่ | 1 กก.",
+      "expiry": "4/1/2569",
+      "pieces": 1496,
+      "location": "PK001"
+    },
+    {
+      "sku": "B-BEY-D|SAL|012",
+      "name": "Buzz Beyond สุนัขโต รสแซลมอน | 1.2 กก.",
+      "expiry": "4/1/2569",
+      "pieces": 329,
+      "location": "PK001"
+    },
+    {
+      "sku": "B-BAP-C|WEP|010",
+      "name": "Buzz Balanced+ แมวโต Weight+ | 1 กก.",
+      "expiry": "4/1/2569",
+      "pieces": 1150,
+      "location": "A10-01-016"
+    },
+    {
+      "sku": "B-NET-D|CHI-L|008",
+      "name": "Buzz Netura สุนัขโต ไก่ เม็ดใหญ่ | 800 กรัม",
+      "expiry": "4/1/2569",
+      "pieces": 2,
+      "location": "A09-01-024"
+    },
+    {
+      "sku": "B-NET-D|SAL-L|008",
+      "name": "Buzz Netura สุนัขโต แซลมอน เม็ดใหญ่ | 800 กรัม",
+      "expiry": "4/1/2569",
+      "pieces": 445,
+      "location": "A09-01-026"
+    },
+    {
+      "sku": "B-BAP-C|IND|010",
+      "name": "Buzz Balanced+ แมวโต Indoor | 1 กก.",
+      "expiry": "4/1/2569",
+      "pieces": 998,
+      "location": "A10-01-015"
+    },
+    {
+      "sku": "B-BAP-C|HNS|010",
+      "name": "Buzz Balanced+ แมวโต Hair&Skin | 1 กก.",
+      "expiry": "4/1/2569",
+      "pieces": 1378,
+      "location": "A10-01-014"
+    },
+    {
+      "sku": "B-BEY-C|LAM|NS|010",
+      "name": "Buzz Beyond แมวโต รสแกะ | 1 กก. [No Sticker]",
+      "expiry": "4/1/2569",
+      "pieces": 464,
+      "location": "A10-01-003"
+    },
+    {
+      "sku": "B-BEY-C|SAL|NS|010",
+      "name": "Buzz Beyond แมวโต รสแซลมอน | 1 กก. [No Sticker]",
+      "expiry": "4/1/2569",
+      "pieces": 830,
+      "location": "A10-01-004"
+    },
+    {
+      "sku": "B-BAP-C|KNP|010",
+      "name": "Buzz Balanced+ ลูกและแม่แมว K&P | 1 กก.",
+      "expiry": "4/1/2569",
+      "pieces": 791,
+      "location": "A10-01-013"
+    },
+    {
+      "sku": "B-BEY-D|BEF|NS|012",
+      "name": "Buzz Beyond สุนัขโต รสเนื้ออบ | 1.2 กก. [No Sticker]",
+      "expiry": "4/1/2569",
+      "pieces": 525,
+      "location": "A10-01-012"
+    },
+    {
+      "sku": "B-BEY-C|MCK|NS|010",
+      "name": "Buzz Beyond แมวโต รสปลาทู | 1 กก. [No Sticker]",
+      "expiry": "4/1/2569",
+      "pieces": 543,
+      "location": "A10-01-007"
+    },
+    {
+      "sku": "B-BEY-D|MNB|NS|010",
+      "name": "Buzz Beyond แม่และลูกสุนัข | 1 กก. [No Sticker]",
+      "expiry": "4/1/2569",
+      "pieces": 323,
+      "location": "A10-01-008"
+    },
+    {
+      "sku": "B-BEY-D|LAM|NS|012",
+      "name": "Buzz Beyond สุนัขโต รสแกะ | 1.2 กก. [No Sticker]",
+      "expiry": "4/1/2569",
+      "pieces": 483,
+      "location": "A10-01-009"
+    },
+    {
+      "sku": "B-BEY-D|SAL|NS|012",
+      "name": "Buzz Beyond สุนัขโต รสแซลมอน | 1.2 กก. [No Sticker]",
+      "expiry": "4/1/2569",
+      "pieces": 837,
+      "location": "A10-01-010"
+    },
+    {
+      "sku": "B-BEY-D|CNL|NS|012",
+      "name": "Buzz Beyond สุนัขโต รสไก่อบและตับ | 1.2 กก. [No Sticker]",
+      "expiry": "4/1/2569",
+      "pieces": 387,
+      "location": "A10-01-011"
+    },
+    {
+      "sku": "B-BEY-D|CNL|100",
+      "name": "Buzz Beyond สุนัขโต รสไก่อบและตับ | 10 กก.",
+      "expiry": "4/1/2569",
+      "pieces": 20,
+      "location": "PK001"
+    },
+    {
+      "sku": "B-BEY-D|LAM|012",
+      "name": "Buzz Beyond สุนัขโต รสแกะ | 1.2 กก.",
+      "expiry": "4/1/2569",
+      "pieces": 199,
+      "location": "PK001"
+    },
+    {
+      "sku": "B-NET-D|SAL-S|008",
+      "name": "Buzz Netura สุนัขโต แซลมอน เม็ดเล็ก | 800 กรัม",
+      "expiry": "4/1/2569",
+      "pieces": 163.2,
+      "location": "A10-01-026"
+    },
+    {
+      "sku": "B-BAP-C|IND|030",
+      "name": "Buzz Balanced+ แมวโต Indoor | 3 กก.",
+      "expiry": "4/1/2569",
+      "pieces": 172,
+      "location": "A10-01-019"
+    },
+    {
+      "sku": "B-BAP-C|HNS|030",
+      "name": "Buzz Balanced+ แมวโต Hair&Skin | 3 กก.",
+      "expiry": "4/1/2569",
+      "pieces": 3,
+      "location": "A10-01-018"
+    },
+    {
+      "sku": "B-BAP-C|KNP|030",
+      "name": "Buzz Balanced+ ลูกและแม่แมว K&P | 3 กก.",
+      "expiry": "4/1/2569",
+      "pieces": 401,
+      "location": "A10-01-017"
+    },
+    {
+      "sku": "B-NET-D|SAL-L|100",
+      "name": "Buzz Netura สุนัขโต แซลมอน เม็ดใหญ่ | 10 กก.",
+      "expiry": "4/1/2569",
+      "pieces": 103,
+      "location": "PK001"
+    },
+    {
+      "sku": "B-NET-D|CHI-L|100",
+      "name": "Buzz Netura สุนัขโต ไก่ เม็ดใหญ่ | 10 กก.",
+      "expiry": "4/1/2569",
+      "pieces": 46,
+      "location": "PK001"
+    },
+    {
+      "sku": "B-NET-D|CHI-S|008",
+      "name": "Buzz Netura สุนัขโต ไก่ เม็ดเล็ก | 800 กรัม",
+      "expiry": "4/1/2569",
+      "pieces": 142.2,
+      "location": "A09-01-025"
+    },
+    {
+      "sku": "TT-BEY-C|MNB|0005",
+      "name": "Tester | Buzz Beyond แม่และลูกแมว รสแซลมอน ทูน่า และนม | 50 กรัม",
+      "expiry": "4/1/2569",
+      "pieces": 5637.9,
+      "location": "A09-01-023"
+    },
+    {
+      "sku": "TT-BEY-C|LAM|0005",
+      "name": "Tester | Buzz Beyond แมวโต รสแกะ | 50 กรัม",
+      "expiry": "4/1/2569",
+      "pieces": 2526.8,
+      "location": "A09-01-022"
+    },
+    {
+      "sku": "TT-BEY-C|SAL|0005",
+      "name": "Tester | Buzz Beyond แมวโต รสแซลมอน | 50 กรัม",
+      "expiry": "4/1/2569",
+      "pieces": 3919.85,
+      "location": "A09-01-021"
+    },
+    {
+      "sku": "TT-BEY-C|TUN|0005",
+      "name": "Tester | Buzz Beyond แมวโต รสทูน่า | 50 กรัม",
+      "expiry": "4/1/2569",
+      "pieces": 1290.95,
+      "location": "A09-01-020"
+    },
+    {
+      "sku": "TT-BEY-C|MCK|0005",
+      "name": "Tester | Buzz Beyond แมวโต รสปลาทู | 50 กรัม",
+      "expiry": "4/1/2569",
+      "pieces": 784.9,
+      "location": "A09-01-019"
+    },
+    {
+      "sku": "TT-BEY-D|MNB|0005",
+      "name": "Tester | Buzz Beyond แม่และลูกสุนัข | 50 กรัม",
+      "expiry": "4/1/2569",
+      "pieces": 2205.95,
+      "location": "A09-01-018"
+    },
+    {
+      "sku": "B-NET-D|CHI-S|025",
+      "name": "Buzz Netura สุนัขโต ไก่ เม็ดเล็ก | 2.5 กก.",
+      "expiry": "4/1/2569",
+      "pieces": 163.5,
+      "location": "A10-01-022"
+    },
+    {
+      "sku": "B-NET-D|CHI-L|025",
+      "name": "Buzz Netura สุนัขโต ไก่ เม็ดใหญ่ | 2.5 กก.",
+      "expiry": "4/1/2569",
+      "pieces": 136,
+      "location": "A10-01-023"
+    },
+    {
+      "sku": "B-NET-D|SAL-S|025",
+      "name": "Buzz Netura สุนัขโต แซลมอน เม็ดเล็ก | 2.5 กก.",
+      "expiry": "4/1/2569",
+      "pieces": 26,
+      "location": "A10-01-024"
+    },
+    {
+      "sku": "B-NET-D|SAL-L|025",
+      "name": "Buzz Netura สุนัขโต แซลมอน เม็ดใหญ่ | 2.5 กก.",
+      "expiry": "4/1/2569",
+      "pieces": 224.5,
+      "location": "A10-01-025"
+    },
+    {
+      "sku": "TT-BEY-D|LAM|0005",
+      "name": "Tester | Buzz Beyond สุนัขโต รสแกะ | 50 กรัม",
+      "expiry": "4/1/2569",
+      "pieces": 859.95,
+      "location": "A09-01-017"
+    },
+    {
+      "sku": "TT-NET-D|SAL-S|0005",
+      "name": "Tester | Buzz Netura สุนัขโต แซลมอน เม็ดเล็ก | 50 กรัม",
+      "expiry": "4/1/2569",
+      "pieces": 499.9,
+      "location": "A09-01-002"
+    },
+    {
+      "sku": "TT-BAP-C|KNP|0005",
+      "name": "Tester | Buzz Balanced+ ลูกและแม่แมว K&P | 50 กรัม",
+      "expiry": "4/1/2569",
+      "pieces": 102.9,
+      "location": "A09-01-013"
+    },
+    {
+      "sku": "TT-BEY-D|SAL|0005",
+      "name": "Tester | Buzz Beyond สุนัขโต รสแซลมอน | 50 กรัม",
+      "expiry": "4/1/2569",
+      "pieces": 3697.95,
+      "location": "A09-01-016"
+    },
+    {
+      "sku": "TT-BAP-C|HNS|0005",
+      "name": "Tester | Buzz Balanced+ แมวโต Hair&Skin | 50 กรัม",
+      "expiry": "4/1/2569",
+      "pieces": 2099.8,
+      "location": "A09-01-012"
+    },
+    {
+      "sku": "TT-NET-D|CHI-S|0005",
+      "name": "Tester | Buzz Netura สุนัขโต ไก่ เม็ดเล็ก | 50 กรัม",
+      "expiry": "4/1/2569",
+      "pieces": 5483.9,
+      "location": "A09-01-004"
+    },
+    {
+      "sku": "TT-BAP-C|IND|0005",
+      "name": "Tester | Buzz Balanced+ แมวโต Indoor | 50 กรัม",
+      "expiry": "4/1/2569",
+      "pieces": 5424.8,
+      "location": "A09-01-011"
+    },
+    {
+      "sku": "TT-BEY-D|CNL|0005",
+      "name": "Tester | Buzz Beyond สุนัขโต รสไก่อบและตับ | 50 กรัม",
+      "expiry": "4/1/2569",
+      "pieces": 2743.95,
+      "location": "A09-01-015"
+    },
+    {
+      "sku": "TT-BAP-C|WEP|0005",
+      "name": "Tester | Buzz Balanced+ แมวโต Weight+ | 50 กรัม",
+      "expiry": "4/1/2569",
+      "pieces": 1960.75,
+      "location": "A09-01-010"
+    },
+    {
+      "sku": "TT-NET-C|FNC|0005",
+      "name": "Tester | Buzz Netura แมวโตและลูก ปลาและไก่ | 50 กรัม",
+      "expiry": "4/1/2569",
+      "pieces": 2841.5,
+      "location": "A09-01-009"
+    },
+    {
+      "sku": "TT-BEY-D|BEF|0005",
+      "name": "Tester | Buzz Beyond สุนัขโต รสเนื้ออบ | 50 กรัม",
+      "expiry": "4/1/2569",
+      "pieces": 1168.95,
+      "location": "A09-01-014"
+    },
+    {
+      "sku": "TT-NET-C|SAL|0005",
+      "name": "Tester | Buzz Netura แมวโตและลูก แซลมอน | 50 กรัม",
+      "expiry": "4/1/2569",
+      "pieces": 1332.5,
+      "location": "A09-01-007"
+    },
+    {
+      "sku": "TT-NET-D|CHI-L|0005",
+      "name": "Tester | Buzz Netura สุนัขโต ไก่ เม็ดใหญ่ | 50 กรัม",
+      "expiry": "4/1/2569",
+      "pieces": 676.9,
+      "location": "A09-01-003"
+    },
+    {
+      "sku": "TT-NET-D|SAL-L|0005",
+      "name": "Tester | Buzz Netura สุนัขโต แซลมอน เม็ดใหญ่ | 50 กรัม",
+      "expiry": "4/1/2569",
+      "pieces": 1680.9,
+      "location": "A09-01-001"
+    },
+    {
+      "sku": "TT-NET-C|FHC|0005",
+      "name": "Tester | Buzz Netura แมวโตและลูก ปลาเนื้อขาว แฮร์ริ่ง และไก่ | 50 กรัม",
+      "expiry": "4/1/2569",
+      "pieces": 2279.45,
+      "location": "A09-01-006"
+    }
+  ],
+  "movementTypes": {
+    "รับเข้า (เข้า)": {
+      "count": 213,
+      "pieces": 84059,
+      "packs": 8876
+    },
+    "transfer (เข้า)": {
+      "count": 543,
+      "pieces": 191258,
+      "packs": 25694.65
+    },
+    "transfer (ออก)": {
+      "count": 543,
+      "pieces": 191258,
+      "packs": 25694.65
+    },
+    "เบิก (เข้า)": {
+      "count": 2697,
+      "pieces": 77981,
+      "packs": 13737.46000000004
+    },
+    "เบิก (ออก)": {
+      "count": 2756,
+      "pieces": 72552,
+      "packs": 13347.400000000038
+    },
+    "ship (เข้า)": {
+      "count": 1282,
+      "pieces": 68206,
+      "packs": 12854.429999999998
+    },
+    "ship (ออก)": {
+      "count": 1282,
+      "pieces": 68206,
+      "packs": 12854.429999999998
+    },
+    "ยกเลิกออเดอร์ (เข้า)": {
+      "count": 54,
+      "pieces": 1488,
+      "packs": 216.17
+    },
+    "ยกเลิกออเดอร์ (ออก)": {
+      "count": 54,
+      "pieces": 1488,
+      "packs": 216.17
+    },
+    "adjustment (เข้า)": {
+      "count": 145,
+      "pieces": 29527,
+      "packs": 10994.08
+    },
+    "sync_adjustment (เข้า)": {
+      "count": 117,
+      "pieces": 10619,
+      "packs": 2056.179999999999
+    },
+    "sync_adjustment (ออก)": {
+      "count": 103,
+      "pieces": 23600,
+      "packs": 4631.67
+    },
+    "adjustment (ออก)": {
+      "count": 17,
+      "pieces": 494,
+      "packs": 2.4
+    },
+    "ปรับปรุง (ออก)": {
+      "count": 9,
+      "pieces": 14868,
+      "packs": 1316
+    },
+    "ปรับปรุง (เข้า)": {
+      "count": 53,
+      "pieces": 44054,
+      "packs": 7769.34
+    },
+    "transfer_in (เข้า)": {
+      "count": 10,
+      "pieces": 9379,
+      "packs": 9379
+    },
+    "transfer_out (ออก)": {
+      "count": 10,
+      "pieces": 9379,
+      "packs": 9379
+    },
+    "stock_import (เข้า)": {
+      "count": 6,
+      "pieces": 15611,
+      "packs": 0
+    },
+    "นำเข้าข้อมูล (เข้า)": {
+      "count": 3197,
+      "pieces": 1672740.8499999992,
+      "packs": 98261.58
+    },
+    "STOCK_IMPORT (เข้า)": {
+      "count": 37,
+      "pieces": 545,
+      "packs": 33
+    }
+  },
+  "orderStatusCount": {
+    "ขึ้นรถแล้ว": 2440,
+    "หยิบเสร็จแล้ว": 689,
+    "ร่าง": 71,
+    "ยืนยันแล้ว": 4
+  }
+}

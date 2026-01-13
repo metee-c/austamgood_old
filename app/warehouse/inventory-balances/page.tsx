@@ -444,8 +444,7 @@ const InventoryBalancesPage = () => {
           'รหัสพาเลท (External)': item.pallet_id_external || '-',
           'รหัสพาเลท (Internal)': item.pallet_id || '-',
           'คลัง': item.warehouse_id,
-          'Location ID': item.location_id || '-',
-          'ตำแหน่ง': item.master_location?.location_name || '-',
+          'ตำแหน่ง': item.master_location?.location_name || item.location_id || '-',
           'Lot No': item.lot_no || '-',
           'แพ็ครวม': item.total_pack_qty || 0,
           'ชิ้นรวม': item.total_piece_qty || 0,
@@ -475,8 +474,7 @@ const InventoryBalancesPage = () => {
         { wch: 18 },  // รหัสพาเลท (External)
         { wch: 18 },  // รหัสพาเลท (Internal)
         { wch: 10 },  // คลัง
-        { wch: 15 },  // Location ID
-        { wch: 15 },  // ตำแหน่ง
+        { wch: 18 },  // ตำแหน่ง
         { wch: 12 },  // Lot No
         { wch: 10 },  // แพ็ครวม
         { wch: 10 },  // ชิ้นรวม
@@ -750,7 +748,6 @@ const InventoryBalancesPage = () => {
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชื่อสินค้า</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสพาเลท</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">คลัง</th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">Location ID</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ตำแหน่ง</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">Lot No</th>
                       <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">แพ็ครวม</th>
@@ -812,11 +809,8 @@ const InventoryBalancesPage = () => {
                                 <span className="font-medium text-thai-gray-700 font-thai">{balance.warehouse_id}</span>
                               </td>
                               <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                                <span className="font-mono text-thai-gray-600 text-[10px]">{balance.location_id || '-'}</span>
-                              </td>
-                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                                 <span className="font-mono text-thai-gray-700">
-                                  {(balance as any).master_location?.location_name || '-'}
+                                  {(balance as any).master_location?.location_name || balance.location_id || '-'}
                                 </span>
                               </td>
                               <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
@@ -922,11 +916,8 @@ const InventoryBalancesPage = () => {
                                   <span className="text-thai-gray-600 font-thai text-[10px]">{item.warehouse_id}</span>
                                 </td>
                                 <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                                  <span className="font-mono text-thai-gray-600 text-[10px]">{item.location_id || '-'}</span>
-                                </td>
-                                <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                                   <span className="font-mono text-thai-gray-600 text-[10px]">
-                                    {(item as any).master_location?.location_name || '-'}
+                                    {(item as any).master_location?.location_name || item.location_id || '-'}
                                   </span>
                                 </td>
                                 <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
@@ -1047,11 +1038,8 @@ const InventoryBalancesPage = () => {
                             <span className="font-medium text-thai-gray-700 font-thai">{balance.warehouse_id}</span>
                           </td>
                           <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                            <span className="font-mono text-thai-gray-700">{balance.location_id || '-'}</span>
-                          </td>
-                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                             <span className="font-mono text-thai-gray-700">
-                              {(balance as any).master_location?.location_name || '-'}
+                              {(balance as any).master_location?.location_name || balance.location_id || '-'}
                             </span>
                           </td>
                           <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">

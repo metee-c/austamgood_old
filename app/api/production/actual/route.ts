@@ -37,6 +37,7 @@ export async function GET(request: NextRequest) {
           produced_qty,
           status,
           sku_id,
+          start_date,
           production_date,
           expiry_date,
           sku:master_sku!production_orders_sku_id_fkey(sku_id, sku_name)

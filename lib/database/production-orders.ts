@@ -16,14 +16,17 @@ import {
 
 /**
  * Generate production order number: PO-YYYYMMDD-XXX
+ * ใช้ start_date (วันที่สั่งผลิต) แทน created_at เพื่อให้ตรงกับใบวางแผน
  */
-async function generateProductionNo(): Promise<string> {
+async function generateProductionNo(startDate?: string): Promise<string> {
   const supabase = await createClient();
-  const today = new Date();
-  const dateStr = today.toISOString().split('T')[0].replace(/-/g, '');
+  
+  // ใช้ start_date ถ้ามี ไม่งั้นใช้วันที่ปัจจุบัน
+  const dateToUse = startDate ? new Date(startDate) : new Date();
+  const dateStr = dateToUse.toISOString().split('T')[0].replace(/-/g, '');
   const prefix = `PO-${dateStr}`;
 
-  // Get count of orders created today
+  // Get count of orders with same date prefix
   const { count } = await supabase
     .from('production_orders')
     .select('*', { count: 'exact', head: true })
@@ -209,9 +212,9 @@ export async function createProductionOrder(
   console.log('🏭 [createProductionOrder] Starting with input:', JSON.stringify(input, null, 2));
 
   try {
-    // 1. Generate production order number
-    const productionNo = await generateProductionNo();
-    console.log('🏭 [createProductionOrder] Generated production_no:', productionNo);
+    // 1. Generate production order number (ใช้ start_date เพื่อให้ตรงกับใบวางแผน)
+    const productionNo = await generateProductionNo(input.start_date);
+    console.log('🏭 [createProductionOrder] Generated production_no:', productionNo, 'from start_date:', input.start_date);
 
     // 2. Get SKU info for UOM
     const { data: skuData } = await supabase

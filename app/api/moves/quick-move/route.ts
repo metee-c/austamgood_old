@@ -52,6 +52,16 @@ async function handlePost(request: NextRequest, context: any) {
       );
     }
 
+    // 1.5 ตรวจสอบว่าไม่ได้ย้ายไปตำแหน่งเดิม (same-location validation)
+    const currentLocationIds = [...new Set(balances.map(b => b.location_id))];
+    if (currentLocationIds.length === 1 && currentLocationIds[0] === to_location_id) {
+      const currentLocationCode = balances[0].master_location?.location_code || to_location_id;
+      return NextResponse.json(
+        { data: null, error: `ไม่สามารถย้ายไปตำแหน่งเดิมได้ (${currentLocationCode})` },
+        { status: 400 }
+      );
+    }
+
     // 2. ตรวจสอบว่า to_location_id มีอยู่จริง
     const { data: toLocation, error: locationError } = await supabase
       .from('master_location')

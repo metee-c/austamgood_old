@@ -222,7 +222,8 @@ const ActualProductionPage = () => {
       // Transform API data to match ActualProduction interface
       const transformedData: ActualProduction[] = (result.data || []).map((receipt: any) => ({
         record_id: receipt.id,
-        production_date: receipt.received_at,
+        // ใช้ start_date จาก production_order (วันที่สั่งผลิต) แทน received_at (วันที่บันทึก)
+        production_date: receipt.production_order?.start_date || receipt.received_at,
         order_code: receipt.production_order?.production_no || '-',
         sku_id: receipt.product_sku?.sku_id || receipt.product_sku_id,
         sku_name: receipt.product_sku?.sku_name || '-',
@@ -473,7 +474,7 @@ const ActualProductionPage = () => {
             <!-- Receipt Info -->
             <div style="border: 1px solid #000; padding: 10px;">
               <div style="font-size: 9pt; font-weight: bold; color: #000; text-transform: uppercase; margin-bottom: 6px; padding-bottom: 4px; border-bottom: 1px solid #000;">ข้อมูลการรับผลิต</div>
-              <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px dotted #999;"><span style="color: #333; font-size: 9pt;">วันที่รับผลิต:</span><span style="font-weight: 600; color: #000;">${formatDateTime(receipt.received_at)}</span></div>
+              <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px dotted #999;"><span style="color: #333; font-size: 9pt;">วันที่สั่งผลิต:</span><span style="font-weight: 600; color: #000;">${formatDate(receipt.production_order?.start_date)}</span></div>
               <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px dotted #999;"><span style="color: #333; font-size: 9pt;">Lot No.:</span><span style="font-weight: 600; color: #000;">${receipt.lot_no || '-'}</span></div>
               <div style="display: flex; justify-content: space-between; padding: 3px 0; border-bottom: 1px dotted #999;"><span style="color: #333; font-size: 9pt;">Batch No.:</span><span style="font-weight: 600; color: #000;">${receipt.batch_no || '-'}</span></div>
               <div style="display: flex; justify-content: space-between; padding: 3px 0;"><span style="color: #333; font-size: 9pt;">ผู้บันทึก:</span><span style="font-weight: 600; color: #000;">${producerName}</span></div>

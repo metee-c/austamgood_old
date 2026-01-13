@@ -603,7 +603,10 @@ export default function MobileStockCountPage() {
               <input
                 ref={inputRef}
                 type="text"
-                inputMode="none"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
                 value={scanInput}
                 onChange={(e) => setScanInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleScan()}

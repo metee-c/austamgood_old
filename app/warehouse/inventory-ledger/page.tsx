@@ -11,12 +11,15 @@ import {
   ChevronLeft,
   ChevronRight,
   ChevronsLeft,
-  ChevronsRight
+  ChevronsRight,
+  Filter,
+  X
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import { createClient } from '@/lib/supabase/client';
+import * as XLSX from 'xlsx';
 
 // Interface ตามโครงสร้างจริงจาก Supabase Cloud
 interface InventoryLedger {
@@ -40,6 +43,22 @@ interface InventoryLedger {
   created_by: number | null;
 }
 
+// Advanced filters interface
+interface AdvancedFilters {
+  sku_id?: string;
+  sku_name?: string;
+  pallet_id?: string;
+  location_id?: string;
+  reference_no?: string;
+  production_date_from?: string;
+  production_date_to?: string;
+  expiry_date_from?: string;
+  expiry_date_to?: string;
+  created_by?: string;
+  movement_at_from?: string;
+  movement_at_to?: string;
+}
+
 const InventoryLedgerPage = () => {
   const [ledgerData, setLedgerData] = useState<InventoryLedger[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,8 +73,16 @@ const InventoryLedgerPage = () => {
   const [dateFrom, setDateFrom] = useState('');
   const [dateTo, setDateTo] = useState('');
 
+  // Advanced filter panel state
+  const [showFilters, setShowFilters] = useState(false);
+  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>({});
+  const [tempAdvancedFilters, setTempAdvancedFilters] = useState<AdvancedFilters>({});
+
   // Warehouses for filter
   const [warehouses, setWarehouses] = useState<any[]>([]);
+  
+  // Locations for filter dropdown
+  const [locations, setLocations] = useState<any[]>([]);
 
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
@@ -70,14 +97,63 @@ const InventoryLedgerPage = () => {
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [debouncedSearchTerm, selectedWarehouse, selectedTransactionType, selectedDirection, dateFrom, dateTo, advancedFilters]);
+
   // Fetch data when debounced search or filters change
   useEffect(() => {
     fetchLedgerData(1);
-  }, [debouncedSearchTerm, selectedWarehouse, selectedTransactionType, selectedDirection, dateFrom, dateTo]);
+  }, [debouncedSearchTerm, selectedWarehouse, selectedTransactionType, selectedDirection, dateFrom, dateTo, advancedFilters]);
 
   useEffect(() => {
     fetchWarehouses();
+    fetchLocations();
   }, []);
+
+  // Apply advanced filters
+  const applyFilters = () => {
+    setAdvancedFilters(tempAdvancedFilters);
+    setShowFilters(false);
+  };
+
+  // Reset all filters
+  const resetAllFilters = () => {
+    setTempAdvancedFilters({});
+    setAdvancedFilters({});
+    setSearchTerm('');
+    setSelectedWarehouse('all');
+    setSelectedTransactionType('all');
+    setSelectedDirection('all');
+    setDateFrom('');
+    setDateTo('');
+  };
+
+  // Check if any advanced filter is active
+  const hasActiveAdvancedFilters = Object.values(advancedFilters).some(v => v);
+
+  // Create location lookup map for displaying location names
+  const locationNameMap = new Map(locations.map((loc: any) => [loc.location_id, loc.location_name]));
+  const getLocationName = (locationId: string | null) => {
+    if (!locationId) return '-';
+    return locationNameMap.get(locationId) || locationId;
+  };
+
+  const fetchLocations = async () => {
+    try {
+      const supabase = createClient();
+      const { data, error } = await supabase
+        .from('master_location')
+        .select('location_id, location_name')
+        .order('location_name');
+
+      if (error) throw error;
+      setLocations(data || []);
+    } catch (err) {
+      console.error('Error fetching locations:', err);
+    }
+  };
 
   const fetchWarehouses = async () => {
     try {
@@ -166,6 +242,54 @@ const InventoryLedgerPage = () => {
       query = query.lte('movement_at', dateTo + 'T23:59:59');
     }
 
+    // Apply advanced filters
+    if (advancedFilters.sku_id) {
+      query = query.ilike('sku_id', `%${advancedFilters.sku_id}%`);
+    }
+
+    if (advancedFilters.pallet_id) {
+      query = query.ilike('pallet_id', `%${advancedFilters.pallet_id}%`);
+    }
+
+    if (advancedFilters.location_id) {
+      query = query.ilike('location_id', `%${advancedFilters.location_id}%`);
+    }
+
+    if (advancedFilters.reference_no) {
+      query = query.ilike('reference_no', `%${advancedFilters.reference_no}%`);
+    }
+
+    if (advancedFilters.production_date_from) {
+      query = query.gte('production_date', advancedFilters.production_date_from);
+    }
+
+    if (advancedFilters.production_date_to) {
+      query = query.lte('production_date', advancedFilters.production_date_to);
+    }
+
+    if (advancedFilters.expiry_date_from) {
+      query = query.gte('expiry_date', advancedFilters.expiry_date_from);
+    }
+
+    if (advancedFilters.expiry_date_to) {
+      query = query.lte('expiry_date', advancedFilters.expiry_date_to);
+    }
+
+    if (advancedFilters.created_by) {
+      const createdByNum = Number(advancedFilters.created_by);
+      if (!isNaN(createdByNum)) {
+        query = query.eq('created_by', createdByNum);
+      }
+    }
+
+    if (advancedFilters.movement_at_from) {
+      query = query.gte('movement_at', advancedFilters.movement_at_from);
+    }
+
+    if (advancedFilters.movement_at_to) {
+      query = query.lte('movement_at', advancedFilters.movement_at_to + 'T23:59:59');
+    }
+
     return query;
   };
 
@@ -246,6 +370,165 @@ const InventoryLedgerPage = () => {
       console.error('Error:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Export state
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportExcel = async () => {
+    try {
+      setExporting(true);
+      const supabase = createClient();
+
+      // If searching, first find matching SKU IDs from master_sku by name or sku_id
+      let matchingSkuIds: string[] = [];
+      if (debouncedSearchTerm) {
+        const { data: matchingSkus } = await supabase
+          .from('master_sku')
+          .select('sku_id, sku_name')
+          .or(`sku_name.ilike.%${debouncedSearchTerm}%,sku_id.ilike.%${debouncedSearchTerm}%`);
+        
+        matchingSkuIds = matchingSkus?.map((s) => s.sku_id) || [];
+      }
+
+      // Fetch ALL data with pagination loop (Supabase default limit is 1000)
+      const allData: any[] = [];
+      const batchSize = 1000;
+      let offset = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        let dataQuery = supabase
+          .from('wms_inventory_ledger')
+          .select(`
+            *,
+            master_location!location_id (
+              location_name
+            ),
+            master_sku!sku_id (
+              sku_name,
+              weight_per_piece_kg
+            ),
+            master_system_user!created_by (
+              username,
+              full_name
+            )
+          `)
+          .order('ledger_id', { ascending: false })
+          .range(offset, offset + batchSize - 1);
+
+        dataQuery = applyFiltersToQuery(dataQuery, matchingSkuIds);
+
+        const { data, error } = await dataQuery;
+
+        if (error) {
+          console.error('Error fetching data for export:', error);
+          alert('เกิดข้อผิดพลาดในการส่งออกข้อมูล');
+          return;
+        }
+
+        if (data && data.length > 0) {
+          allData.push(...data);
+          offset += batchSize;
+          // If we got less than batchSize, we've reached the end
+          if (data.length < batchSize) {
+            hasMore = false;
+          }
+        } else {
+          hasMore = false;
+        }
+      }
+
+      if (allData.length === 0) {
+        alert('ไม่มีข้อมูลสำหรับส่งออก');
+        return;
+      }
+
+      const data = allData;
+
+      // Transform data for Excel
+      const excelData = data.map((item: any) => ({
+        'ID': item.ledger_id,
+        'วันที่/เวลา': new Date(item.movement_at).toLocaleString('th-TH'),
+        'ประเภท': getTransactionTypeText(item.transaction_type),
+        'ทิศทาง': item.direction === 'in' ? 'เข้า' : 'ออก',
+        'คลัง': item.warehouse_id,
+        'ตำแหน่ง': item.master_location?.location_name || item.location_id || '-',
+        'Move ID': item.move_item_id || '-',
+        'Receive ID': item.receive_item_id || '-',
+        'รหัสสินค้า': item.sku_id,
+        'ชื่อสินค้า': item.master_sku?.sku_name || '-',
+        'รหัสพาเลท': item.pallet_id || '-',
+        'แพ็ค': item.pack_qty || 0,
+        'ชิ้น': item.piece_qty || 0,
+        'น้ำหนัก (กก.)': ((item.piece_qty || 0) * (item.master_sku?.weight_per_piece_kg || 0)).toFixed(2),
+        'วันผลิต': item.production_date ? new Date(item.production_date).toLocaleDateString('th-TH') : '-',
+        'วันหมดอายุ': item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('th-TH') : '-',
+        'เลขที่อ้างอิง': item.reference_no || '-',
+        'หมายเหตุ': item.remarks || '-',
+        'เหตุผลยกเลิก': item.rollback_reason || '-',
+        'สร้างโดย': item.master_system_user?.full_name || item.master_system_user?.username || '-'
+      }));
+
+      // Create workbook and worksheet
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(excelData);
+
+      // Set column widths
+      ws['!cols'] = [
+        { wch: 10 },  // ID
+        { wch: 20 },  // วันที่/เวลา
+        { wch: 15 },  // ประเภท
+        { wch: 8 },   // ทิศทาง
+        { wch: 10 },  // คลัง
+        { wch: 15 },  // ตำแหน่ง
+        { wch: 10 },  // Move ID
+        { wch: 12 },  // Receive ID
+        { wch: 20 },  // รหัสสินค้า
+        { wch: 30 },  // ชื่อสินค้า
+        { wch: 20 },  // รหัสพาเลท
+        { wch: 10 },  // แพ็ค
+        { wch: 10 },  // ชิ้น
+        { wch: 12 },  // น้ำหนัก
+        { wch: 12 },  // วันผลิต
+        { wch: 12 },  // วันหมดอายุ
+        { wch: 20 },  // เลขที่อ้างอิง
+        { wch: 40 },  // หมายเหตุ
+        { wch: 30 },  // เหตุผลยกเลิก
+        { wch: 20 },  // สร้างโดย
+      ];
+
+      XLSX.utils.book_append_sheet(wb, ws, 'Inventory Ledger');
+
+      // Generate filename with date
+      const now = new Date();
+      const dateStr = now.toISOString().split('T')[0];
+      const filename = `inventory_ledger_${dateStr}.xlsx`;
+
+      // Download file
+      XLSX.writeFile(wb, filename);
+
+    } catch (err) {
+      console.error('Export error:', err);
+      alert('เกิดข้อผิดพลาดในการส่งออกข้อมูล');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const getTransactionTypeText = (type: string): string => {
+    switch (type) {
+      case 'receive': return 'รับเข้า';
+      case 'import': return 'นำเข้าข้อมูล';
+      case 'issue': return 'เบิกออก';
+      case 'putaway': return 'เก็บเข้า';
+      case 'move': return 'ย้าย';
+      case 'adjust': return 'ปรับปรุง';
+      case 'return': return 'คืน';
+      case 'pick': return 'เบิก';
+      case 'rollback': return 'ยกเลิกออเดอร์';
+      default: return type;
     }
   };
 
@@ -429,14 +712,200 @@ const InventoryLedgerPage = () => {
               <option value="in">เข้า</option>
               <option value="out">ออก</option>
             </select>
-            <Button variant="outline" size="sm" icon={Download} className="text-xs py-1 px-2">
-              Excel
+            <Button 
+              variant="outline" 
+              size="sm" 
+              icon={exporting ? Loader2 : Download} 
+              onClick={handleExportExcel}
+              disabled={exporting || loading}
+              className={`text-xs py-1 px-2 ${exporting ? 'animate-pulse' : ''}`}
+            >
+              {exporting ? 'กำลังส่งออก...' : 'Excel'}
+            </Button>
+            <Button 
+              variant={hasActiveAdvancedFilters ? 'primary' : 'outline'} 
+              size="sm" 
+              icon={Filter} 
+              onClick={() => {
+                setTempAdvancedFilters(advancedFilters);
+                setShowFilters(!showFilters);
+              }}
+              className={`text-xs py-1 px-2 ${hasActiveAdvancedFilters ? 'ring-2 ring-primary-300' : ''}`}
+            >
+              ตัวกรอง
+              {hasActiveAdvancedFilters && (
+                <span className="ml-1 bg-white text-primary-600 rounded-full px-1.5 text-[10px] font-bold">
+                  {Object.values(advancedFilters).filter(v => v).length}
+                </span>
+              )}
             </Button>
             <Button variant="primary" size="sm" icon={RefreshCw} onClick={() => fetchLedgerData(1)} disabled={loading} className="text-xs py-1 px-2">
               รีเฟรช
             </Button>
           </div>
         </div>
+
+        {/* Advanced Filter Panel */}
+        {showFilters && (
+          <div className="bg-white/90 backdrop-blur-sm border border-gray-200 rounded-lg px-3 py-2 shadow-sm flex-shrink-0">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-semibold text-gray-700 font-thai">ตัวกรองขั้นสูง</h3>
+              <button
+                onClick={() => setShowFilters(false)}
+                className="p-1 hover:bg-gray-100 rounded"
+              >
+                <X className="w-4 h-4 text-gray-500" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
+              {/* วันที่/เวลา (จาก) */}
+              <div>
+                <label className="block text-[10px] font-medium text-gray-600 mb-0.5 font-thai">วันที่/เวลา (จาก)</label>
+                <input
+                  type="date"
+                  value={tempAdvancedFilters.movement_at_from || ''}
+                  onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, movement_at_from: e.target.value }))}
+                  className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+              </div>
+
+              {/* วันที่/เวลา (ถึง) */}
+              <div>
+                <label className="block text-[10px] font-medium text-gray-600 mb-0.5 font-thai">วันที่/เวลา (ถึง)</label>
+                <input
+                  type="date"
+                  value={tempAdvancedFilters.movement_at_to || ''}
+                  onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, movement_at_to: e.target.value }))}
+                  className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+              </div>
+
+              {/* รหัสสินค้า */}
+              <div>
+                <label className="block text-[10px] font-medium text-gray-600 mb-0.5 font-thai">รหัสสินค้า</label>
+                <input
+                  type="text"
+                  value={tempAdvancedFilters.sku_id || ''}
+                  onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, sku_id: e.target.value }))}
+                  placeholder="SKU..."
+                  className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+              </div>
+
+              {/* รหัสพาเลท */}
+              <div>
+                <label className="block text-[10px] font-medium text-gray-600 mb-0.5 font-thai">รหัสพาเลท</label>
+                <input
+                  type="text"
+                  value={tempAdvancedFilters.pallet_id || ''}
+                  onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, pallet_id: e.target.value }))}
+                  placeholder="Pallet ID..."
+                  className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+              </div>
+
+              {/* ตำแหน่ง */}
+              <div>
+                <label className="block text-[10px] font-medium text-gray-600 mb-0.5 font-thai">ตำแหน่ง</label>
+                <input
+                  type="text"
+                  value={tempAdvancedFilters.location_id || ''}
+                  onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, location_id: e.target.value }))}
+                  placeholder="Location..."
+                  className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+              </div>
+
+              {/* เลขที่อ้างอิง */}
+              <div>
+                <label className="block text-[10px] font-medium text-gray-600 mb-0.5 font-thai">เลขที่อ้างอิง</label>
+                <input
+                  type="text"
+                  value={tempAdvancedFilters.reference_no || ''}
+                  onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, reference_no: e.target.value }))}
+                  placeholder="Reference..."
+                  className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+              </div>
+
+              {/* วันผลิต (จาก) */}
+              <div>
+                <label className="block text-[10px] font-medium text-gray-600 mb-0.5 font-thai">วันผลิต (จาก)</label>
+                <input
+                  type="date"
+                  value={tempAdvancedFilters.production_date_from || ''}
+                  onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, production_date_from: e.target.value }))}
+                  className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+              </div>
+
+              {/* วันผลิต (ถึง) */}
+              <div>
+                <label className="block text-[10px] font-medium text-gray-600 mb-0.5 font-thai">วันผลิต (ถึง)</label>
+                <input
+                  type="date"
+                  value={tempAdvancedFilters.production_date_to || ''}
+                  onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, production_date_to: e.target.value }))}
+                  className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+              </div>
+
+              {/* วันหมดอายุ (จาก) */}
+              <div>
+                <label className="block text-[10px] font-medium text-gray-600 mb-0.5 font-thai">วันหมดอายุ (จาก)</label>
+                <input
+                  type="date"
+                  value={tempAdvancedFilters.expiry_date_from || ''}
+                  onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, expiry_date_from: e.target.value }))}
+                  className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+              </div>
+
+              {/* วันหมดอายุ (ถึง) */}
+              <div>
+                <label className="block text-[10px] font-medium text-gray-600 mb-0.5 font-thai">วันหมดอายุ (ถึง)</label>
+                <input
+                  type="date"
+                  value={tempAdvancedFilters.expiry_date_to || ''}
+                  onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, expiry_date_to: e.target.value }))}
+                  className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+              </div>
+
+              {/* สร้างโดย */}
+              <div>
+                <label className="block text-[10px] font-medium text-gray-600 mb-0.5 font-thai">สร้างโดย (User ID)</label>
+                <input
+                  type="text"
+                  value={tempAdvancedFilters.created_by || ''}
+                  onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, created_by: e.target.value }))}
+                  placeholder="User ID..."
+                  className="w-full px-2 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-primary-500"
+                />
+              </div>
+            </div>
+
+            {/* Filter Action Buttons */}
+            <div className="flex items-center justify-end gap-2 mt-3 pt-2 border-t border-gray-100">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={resetAllFilters}
+                className="text-xs py-1 px-3"
+              >
+                ล้างตัวกรองทั้งหมด
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={applyFilters}
+                className="text-xs py-1 px-3"
+              >
+                ใช้ตัวกรอง
+              </Button>
+            </div>
+          </div>
+        )}
 
         {/* Data Table */}
         <div className="flex-1 min-h-0 flex flex-col">
@@ -540,11 +1009,11 @@ const InventoryLedgerPage = () => {
                         <td className="px-2 py-0.5 text-center border-r border-gray-100 min-w-[120px] align-top">
                           {ledger._isConsolidated ? (
                             <span className="font-mono text-thai-gray-700 text-xs">
-                              {ledger._outEntry.location_id || '-'}
+                              {getLocationName(ledger._outEntry.location_id)}
                             </span>
                           ) : ledger.direction === 'out' ? (
                             <span className="font-mono text-thai-gray-700 text-xs">
-                              {ledger.location_id || '-'}
+                              {getLocationName(ledger.location_id)}
                             </span>
                           ) : (
                             <span className="text-gray-400">-</span>
@@ -553,11 +1022,11 @@ const InventoryLedgerPage = () => {
                         <td className="px-2 py-0.5 text-center border-r border-gray-100 min-w-[120px] align-top">
                           {ledger._isConsolidated ? (
                             <span className="font-mono text-thai-gray-700 text-xs">
-                              {ledger._inEntry.location_id || '-'}
+                              {getLocationName(ledger._inEntry.location_id)}
                             </span>
                           ) : ledger.direction === 'in' ? (
                             <span className="font-mono text-thai-gray-700 text-xs">
-                              {ledger.location_id || '-'}
+                              {getLocationName(ledger.location_id)}
                             </span>
                           ) : (
                             <span className="text-gray-400">-</span>

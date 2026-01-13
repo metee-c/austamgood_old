@@ -1,35 +1,60 @@
 import { createClient } from '@/lib/supabase/server';
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 
-export async function GET() {
+export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
+    const searchParams = request.nextUrl.searchParams;
+    const exportAll = searchParams.get('export') === 'true';
 
-    // Query inventory at Delivery-In-Progress location with related document context
-    const { data: inventoryData, error: inventoryError } = await supabase
-      .from('wms_inventory_balances')
-      .select(`
-        *,
-        master_location!location_id (
-          location_name
-        ),
-        master_warehouse!warehouse_id (
-          warehouse_name
-        ),
-        master_sku!sku_id (
-          sku_name,
-          weight_per_piece_kg
-        )
-      `)
-      .eq('location_id', 'Delivery-In-Progress')
-      .order('updated_at', { ascending: false });
-
-    if (inventoryError) {
-      console.error('Error fetching delivery inventory:', inventoryError);
-      return NextResponse.json(
-        { error: inventoryError.message },
-        { status: 500 }
-      );
+    // For export, fetch ALL data with pagination loop
+    let inventoryData: any[] = [];
+    
+    if (exportAll) {
+      const batchSize = 1000;
+      let offset = 0;
+      let hasMore = true;
+      
+      while (hasMore) {
+        const { data, error } = await supabase
+          .from('wms_inventory_balances')
+          .select(`
+            *,
+            master_location!location_id (location_name),
+            master_warehouse!warehouse_id (warehouse_name),
+            master_sku!sku_id (sku_name, weight_per_piece_kg)
+          `)
+          .eq('location_id', 'Delivery-In-Progress')
+          .order('updated_at', { ascending: false })
+          .range(offset, offset + batchSize - 1);
+        
+        if (error) throw error;
+        if (data && data.length > 0) {
+          inventoryData.push(...data);
+          offset += batchSize;
+          if (data.length < batchSize) hasMore = false;
+        } else {
+          hasMore = false;
+        }
+      }
+    } else {
+      // Normal fetch with default limit
+      const { data, error } = await supabase
+        .from('wms_inventory_balances')
+        .select(`
+          *,
+          master_location!location_id (location_name),
+          master_warehouse!warehouse_id (warehouse_name),
+          master_sku!sku_id (sku_name, weight_per_piece_kg)
+        `)
+        .eq('location_id', 'Delivery-In-Progress')
+        .order('updated_at', { ascending: false });
+      
+      if (error) {
+        console.error('Error fetching delivery inventory:', error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+      inventoryData = data || [];
     }
 
     console.log(`[DELIVERY-INVENTORY] Found ${inventoryData?.length || 0} items at DELIVERY-IN-PROGRESS location`);

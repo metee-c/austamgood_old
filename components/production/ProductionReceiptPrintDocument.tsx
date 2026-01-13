@@ -49,6 +49,7 @@ export interface ProductionReceiptForPrint {
     produced_qty: number;
     status: string;
     sku_id: string;
+    start_date?: string;
     production_date?: string;
     expiry_date?: string;
   };
