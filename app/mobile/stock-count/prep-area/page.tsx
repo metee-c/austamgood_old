@@ -463,7 +463,10 @@ export default function PrepAreaStockCountPage() {
               <input
                 ref={skuInputRef}
                 type="text"
-                inputMode="none"
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="off"
+                spellCheck={false}
                 value={skuInput}
                 onChange={(e) => setSkuInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleSkuScan()}

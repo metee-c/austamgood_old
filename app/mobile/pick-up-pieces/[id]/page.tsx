@@ -509,12 +509,14 @@ export default function MobilePickUpPiecesDetailPage() {
             <input
               ref={scanInputRef}
               type="text"
-              inputMode="none"
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="off"
+              spellCheck={false}
               onKeyDown={handleScanInput}
               placeholder="รอสแกนบาร์โค้ด..."
               className="w-full px-4 py-3 bg-gray-700 border-2 border-gray-600 rounded-lg text-white text-lg font-mono focus:outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/50 placeholder-gray-500 caret-orange-500"
               autoFocus
-              autoComplete="off"
             />
           </div>
 
