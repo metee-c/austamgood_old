@@ -3,14 +3,14 @@
 
    Creating an optimized production build ...
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
- ✓ Compiled successfully in 14.4s
+ ✓ Compiled successfully in 12.7s
    Running TypeScript ...
    Collecting page data using 13 workers ...
-   Generating static pages using 13 workers (0/235) ...
-   Generating static pages using 13 workers (58/235) 
-   Generating static pages using 13 workers (117/235) 
-   Generating static pages using 13 workers (176/235) 
- ✓ Generating static pages using 13 workers (235/235) in 1714.3ms
+   Generating static pages using 13 workers (0/237) ...
+   Generating static pages using 13 workers (59/237) 
+   Generating static pages using 13 workers (118/237) 
+   Generating static pages using 13 workers (177/237) 
+ ✓ Generating static pages using 13 workers (237/237) in 2.6s
    Finalizing page optimization ...
 
 Route (app)
@@ -274,6 +274,7 @@ Route (app)
 ├ ƒ /api/users
 ├ ƒ /api/users/[id]
 ├ ƒ /api/users/list
+├ ƒ /api/warehouse/bfs-staging-inventory
 ├ ƒ /api/warehouse/delivery-inventory
 ├ ƒ /api/warehouse/dispatch-inventory
 ├ ƒ /api/warehouse/layout-inventory
@@ -355,6 +356,7 @@ Route (app)
 ├ ○ /reports/production
 ├ ○ /shipping
 ├ ○ /stock-management/adjustment
+├ ○ /stock-management/count
 ├ ○ /stock-management/import
 ├ ○ /stock-management/stock-count
 ├ ○ /warehouse/inbound
