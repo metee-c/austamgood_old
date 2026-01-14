@@ -513,10 +513,11 @@ export async function POST(request: NextRequest) {
 
     // ============================================================
     // ✅ FIX #3: Reserve stock using picklist_item_reservations table
-    // ✅ UPDATED: Allow negative stock - skip reservation if no balance available
+    // ✅ UPDATED: Support Virtual Pallet when stock is insufficient
     // ============================================================
     const reservationsToInsert: any[] = [];
     const skippedReservations: any[] = [];
+    const virtualPalletReservations: any[] = [];
 
     for (let i = 0; i < finalItemsToInsert.length; i++) {
       const item = finalItemsToInsert[i];
@@ -525,11 +526,12 @@ export async function POST(request: NextRequest) {
       // ✅ Map area_code → zone name → location_ids (same logic as validation)
       const { data: prepArea } = await supabase
         .from('preparation_area')
-        .select('zone')
+        .select('zone, area_code')
         .eq('area_code', item.source_location_id)
         .maybeSingle();
 
       let locationIdsToReserve: string[] = [];
+      const prepAreaCode = prepArea?.area_code || item.source_location_id;
 
       if (prepArea && prepArea.zone) {
         const { data: locationsInZone } = await supabase
@@ -545,13 +547,14 @@ export async function POST(request: NextRequest) {
       }
 
       // Query balances with FEFO + FIFO across all locations in zone
-      // ✅ UPDATED: Remove .gt('total_piece_qty', 0) to allow checking all balances
+      // ✅ Exclude Virtual Pallets from initial query
       const { data: balances } = await supabase
         .from('wms_inventory_balances')
         .select('balance_id, pallet_id, location_id, total_piece_qty, total_pack_qty, reserved_piece_qty, reserved_pack_qty, expiry_date, production_date')
         .eq('warehouse_id', warehouseId)
         .in('location_id', locationIdsToReserve)
         .eq('sku_id', item.sku_id)
+        .not('pallet_id', 'like', 'VIRTUAL-%')  // ✅ ไม่รวม Virtual Pallet
         .order('expiry_date', { ascending: true, nullsFirst: false })
         .order('production_date', { ascending: true, nullsFirst: false })
         .order('created_at', { ascending: true });
@@ -559,15 +562,17 @@ export async function POST(request: NextRequest) {
       let remainingQty = item.quantity_to_pick;
       const qtyPerPack = item.qty_per_pack;
 
+      // ========================================
+      // STEP 1: จองจากพาเลทจริงก่อน (FEFO/FIFO)
+      // ========================================
       for (const balance of balances || []) {
         if (remainingQty <= 0) break;
 
         const availableQty = (balance.total_piece_qty || 0) - (balance.reserved_piece_qty || 0);
         
-        // ✅ UPDATED: Allow reserving even if availableQty is negative or zero
-        // Reserve what we can (even if it goes negative)
+        // Reserve what we can (only positive available)
         const qtyToReserve = Math.min(Math.max(availableQty, 0), remainingQty);
-        if (qtyToReserve <= 0) continue; // Skip if nothing to reserve from this balance
+        if (qtyToReserve <= 0) continue;
         
         const packToReserve = qtyToReserve / qtyPerPack;
 
@@ -581,7 +586,7 @@ export async function POST(request: NextRequest) {
           })
           .eq('balance_id', balance.balance_id);
 
-        // ✅ Record reservation in picklist_item_reservations
+        // Record reservation
         reservationsToInsert.push({
           picklist_item_id: picklistItem.id,
           balance_id: balance.balance_id,
@@ -594,18 +599,82 @@ export async function POST(request: NextRequest) {
         remainingQty -= qtyToReserve;
       }
 
-      // ✅ UPDATED: Log but don't fail - allow negative stock scenario
+      // ========================================
+      // STEP 2: ถ้ายังไม่พอ → สร้าง reservation บน Virtual Pallet
+      // ========================================
       if (remainingQty > 0) {
-        console.log(`⚠️ SKU ${item.sku_id} has ${remainingQty} pieces without reservation (stock shortage)`);
-        skippedReservations.push({
-          sku_id: item.sku_id,
-          sku_name: item.sku_name,
-          unreserved_qty: remainingQty
-        });
+        const qtyShort = remainingQty;
+        const packShort = qtyShort / qtyPerPack;
+
+        // ✅ Call database function to create/update Virtual Pallet
+        const { data: virtualResult, error: virtualError } = await supabase
+          .rpc('create_or_update_virtual_balance', {
+            p_location_id: prepAreaCode,
+            p_sku_id: item.sku_id,
+            p_warehouse_id: warehouseId,
+            p_piece_qty: -qtyShort,  // ติดลบ
+            p_pack_qty: -packShort,
+            p_reserved_piece_qty: qtyShort,  // reserved = จำนวนที่จอง
+            p_reserved_pack_qty: packShort
+          });
+
+        if (virtualError) {
+          console.error('❌ Error creating Virtual Pallet:', virtualError);
+          skippedReservations.push({
+            sku_id: item.sku_id,
+            sku_name: item.sku_name,
+            unreserved_qty: qtyShort,
+            error: virtualError.message
+          });
+        } else {
+          const virtualBalanceId = virtualResult;
+          const virtualPalletId = `VIRTUAL-${prepAreaCode}-${item.sku_id}`;
+
+          // Record reservation for Virtual Pallet
+          reservationsToInsert.push({
+            picklist_item_id: picklistItem.id,
+            balance_id: virtualBalanceId,
+            reserved_piece_qty: qtyShort,
+            reserved_pack_qty: packShort,
+            reserved_by: user?.id,
+            status: 'reserved'
+          });
+
+          // บันทึก Ledger สำหรับ Virtual Pallet
+          await supabase
+            .from('wms_inventory_ledger')
+            .insert({
+              movement_at: new Date().toISOString(),
+              transaction_type: 'VIRTUAL_RESERVE',
+              direction: 'out',
+              warehouse_id: warehouseId,
+              location_id: prepAreaCode,
+              sku_id: item.sku_id,
+              pallet_id: virtualPalletId,
+              pack_qty: packShort,
+              piece_qty: qtyShort,
+              reference_no: `PL-${picklist.id}`,
+              remarks: `Virtual Reservation: Picklist ${picklistCode}, SKU ${item.sku_id}, จำนวน ${qtyShort} ชิ้น (สต็อกไม่พอ)`,
+              skip_balance_sync: true,
+              created_at: new Date().toISOString()
+            });
+
+          virtualPalletReservations.push({
+            sku_id: item.sku_id,
+            sku_name: item.sku_name,
+            location: prepAreaCode,
+            qty: qtyShort,
+            virtual_pallet_id: virtualPalletId
+          });
+
+          console.log(`✅ Created Virtual Reservation for Picklist: SKU=${item.sku_id}, Location=${prepAreaCode}, Qty=${qtyShort}`);
+          
+          remainingQty = 0;  // Virtual Pallet รองรับแล้ว
+        }
       }
     }
 
-    // Insert all reservations (may be empty if no stock available)
+    // Insert all reservations
     if (reservationsToInsert.length > 0) {
       const { error: reservationError } = await supabase
         .from('picklist_item_reservations')
@@ -613,7 +682,6 @@ export async function POST(request: NextRequest) {
 
       if (reservationError) {
         console.error('❌ Error creating reservations:', reservationError);
-        // Don't throw - allow picklist creation without reservations
         console.warn('⚠️ Continuing without stock reservations');
       }
     } else {
@@ -669,17 +737,20 @@ export async function POST(request: NextRequest) {
       total_quantity: totalQuantity,
       reservations_created: reservationsToInsert.length,
       skipped_reservations: skippedReservations,
+      virtual_pallet_reservations: virtualPalletReservations,
       replenishments: createdReplenishments,
       replenishment_count: createdReplenishments.length,
       has_stock_shortage: insufficientStockItems.length > 0 || skippedReservations.length > 0,
       shortage_items: insufficientStockItems,
-      message: skippedReservations.length > 0
-        ? `สร้างใบหยิบสำเร็จ (มี ${skippedReservations.length} รายการที่สต็อกไม่พอ - ยอมให้หยิบติดลบได้)`
-        : insufficientStockItems.length > 0
-          ? `สร้างใบหยิบสำเร็จ แต่มี ${insufficientStockItems.length} รายการที่สต็อกไม่พอและหาแหล่งเติมไม่ได้`
-          : createdReplenishments.length > 0 
-            ? `สร้างใบหยิบสำเร็จ พร้อมงานเติม ${createdReplenishments.length} รายการ`
-            : 'สร้างใบหยิบสำเร็จ จองสต็อกเรียบร้อย'
+      message: virtualPalletReservations.length > 0
+        ? `สร้างใบหยิบสำเร็จ (มี ${virtualPalletReservations.length} รายการจอง Virtual Pallet - รอเติมสินค้า)`
+        : skippedReservations.length > 0
+          ? `สร้างใบหยิบสำเร็จ (มี ${skippedReservations.length} รายการที่สต็อกไม่พอ)`
+          : insufficientStockItems.length > 0
+            ? `สร้างใบหยิบสำเร็จ แต่มี ${insufficientStockItems.length} รายการที่สต็อกไม่พอและหาแหล่งเติมไม่ได้`
+            : createdReplenishments.length > 0 
+              ? `สร้างใบหยิบสำเร็จ พร้อมงานเติม ${createdReplenishments.length} รายการ`
+              : 'สร้างใบหยิบสำเร็จ จองสต็อกเรียบร้อย'
     });
 
   } catch (error: any) {

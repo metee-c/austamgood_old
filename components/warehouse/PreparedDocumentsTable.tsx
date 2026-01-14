@@ -50,6 +50,7 @@ interface PreparedDocument {
 
 interface PreparedDocumentsTableProps {
   warehouseId?: string;
+  isBfsStaging?: boolean;
 }
 
 interface AdvancedFilters {
@@ -61,7 +62,7 @@ interface AdvancedFilters {
   date_to?: string;
 }
 
-const PreparedDocumentsTable: React.FC<PreparedDocumentsTableProps> = ({ warehouseId = 'WH01' }) => {
+const PreparedDocumentsTable: React.FC<PreparedDocumentsTableProps> = ({ warehouseId = 'WH01', isBfsStaging = false }) => {
   const [documents, setDocuments] = useState<PreparedDocument[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -75,23 +76,97 @@ const PreparedDocumentsTable: React.FC<PreparedDocumentsTableProps> = ({ warehou
 
   useEffect(() => {
     fetchDocuments();
-  }, [warehouseId]);
+  }, [warehouseId, isBfsStaging]);
+
+  // Transform BFS staging inventory data to PreparedDocument format
+  const transformBfsStagingData = (bfsStagingData: any[]): PreparedDocument[] => {
+    // Group by bonus face sheet
+    const bfsMap = new Map<string, PreparedDocument>();
+    
+    for (const item of bfsStagingData) {
+      if (!item.related_documents || item.related_documents.length === 0) {
+        continue;
+      }
+      
+      for (const doc of item.related_documents) {
+        const bfsCode = doc.bonus_face_sheet_code;
+        
+        if (!bfsCode) {
+          continue;
+        }
+        
+        if (!bfsMap.has(bfsCode)) {
+          bfsMap.set(bfsCode, {
+            document_type: 'bonus_face_sheet',
+            document_id: doc.package_id || 0,
+            document_no: bfsCode,
+            status: doc.face_sheet_status || 'picked',
+            total_items: 0,
+            total_quantity: 0,
+            created_at: item.created_at || new Date().toISOString(),
+            items: []
+          });
+        }
+        
+        const bfsDoc = bfsMap.get(bfsCode)!;
+        bfsDoc.total_items += 1;
+        bfsDoc.total_quantity += doc.quantity_picked || 0;
+        bfsDoc.items.push({
+          balance_id: item.balance_id,
+          sku_id: item.sku_id,
+          sku_name: item.master_sku?.sku_name || item.sku_name || '',
+          quantity: doc.quantity_picked || 0,
+          package_count: 1,
+          location_id: item.location_id,
+          pallet_id: item.pallet_id,
+          pallet_id_external: item.pallet_id_external,
+          lot_no: item.lot_no,
+          production_date: item.production_date,
+          expiry_date: item.expiry_date,
+          total_pack_qty: item.total_pack_qty,
+          total_piece_qty: item.total_piece_qty,
+          reserved_pack_qty: item.reserved_pack_qty,
+          reserved_piece_qty: item.reserved_piece_qty,
+          warehouse_id: item.warehouse_id,
+          last_movement_at: item.last_movement_at,
+          updated_at: item.updated_at,
+          order_id: doc.order_id,
+          order_no: doc.order_no,
+          shop_name: doc.shop_name
+        });
+      }
+    }
+    
+    const result = Array.from(bfsMap.values());
+    return result;
+  };
 
   const fetchDocuments = async () => {
     try {
       setLoading(true);
       setError(null);
       
-      const response = await fetch(`/api/warehouse/prepared-documents?warehouse_id=${warehouseId}`);
+      // Use different API endpoint for BFS staging
+      const apiEndpoint = isBfsStaging 
+        ? '/api/warehouse/bfs-staging-inventory'
+        : `/api/warehouse/prepared-documents?warehouse_id=${warehouseId}`;
+      
+      const response = await fetch(apiEndpoint);
       const result = await response.json();
 
       if (!response.ok) {
         throw new Error(result.error || 'Failed to fetch documents');
       }
 
-      setDocuments(result.data || []);
+      // For BFS staging, transform the data to match PreparedDocument structure
+      if (isBfsStaging) {
+        const transformedData = transformBfsStagingData(result.data || []);
+        setDocuments(transformedData);
+      } else {
+        setDocuments(result.data || []);
+      }
     } catch (err: any) {
-      console.error('Error fetching prepared documents:', err);
+      console.error('❌ Error fetching prepared documents:', err);
       setError(err.message || 'เกิดข้อผิดพลาดในการโหลดข้อมูล');
     } finally {
       setLoading(false);

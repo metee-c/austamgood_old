@@ -367,14 +367,14 @@ async function handlePost(request: NextRequest, context: any) {
 
         console.log(`📦 SKU: ${item.sku_id}, qty: ${qty}, qtyPerPack: ${qtyPerPack}, qtyPack: ${qtyPack}`);
 
-        // Check Dispatch balance (include production_date and expiry_date)
-        const { data: dispatchBalance, error: balanceError } = await supabase
+        // Check Dispatch balance - SUM all rows (may have multiple pallet_ids)
+        const { data: dispatchBalances, error: balanceError } = await supabase
           .from('wms_inventory_balances')
           .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
           .eq('warehouse_id', 'WH001')
           .eq('location_id', dispatchLocation.location_id)
           .eq('sku_id', item.sku_id)
-          .maybeSingle();
+          .gt('total_piece_qty', 0);
 
         if (balanceError) {
           console.error('Error checking dispatch balance:', balanceError);
@@ -384,8 +384,10 @@ async function handlePost(request: NextRequest, context: any) {
           );
         }
 
-        // ✅ FIX: Convert to Number for proper comparison (Supabase returns string for numeric)
-        const availableQty = Number(dispatchBalance?.total_piece_qty) || 0;
+        // ✅ FIX: SUM all rows (may have multiple pallet_ids)
+        const availableQty = (dispatchBalances || []).reduce((sum, b) => sum + Number(b.total_piece_qty || 0), 0);
+        // Use first balance for metadata (production_date, expiry_date, lot_no)
+        const dispatchBalance = dispatchBalances?.[0] || null;
 
         // ✅ ตรวจสอบว่ามีสต็อคเพียงพอหรือไม่
         if (availableQty < qty) {
@@ -450,15 +452,15 @@ async function handlePost(request: NextRequest, context: any) {
         const qtyPack = qty / qtyPerPack;
         console.log(`✅ SKU info: qty_per_pack=${qtyPerPack}, qtyPack=${qtyPack}`);
 
-        // Check Dispatch balance for face sheets (same as picklists)
+        // Check Dispatch balance for face sheets - SUM all rows (may have multiple pallet_ids)
         console.log(`🔍 Checking Dispatch balance for ${item.sku_id}`);
-        const { data: dispatchBalance, error: balanceError } = await supabase
+        const { data: dispatchBalances, error: balanceError } = await supabase
           .from('wms_inventory_balances')
           .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
           .eq('warehouse_id', 'WH001')
           .eq('location_id', dispatchLocation.location_id)
           .eq('sku_id', item.sku_id)
-          .maybeSingle();
+          .gt('total_piece_qty', 0);
 
         if (balanceError) {
           console.error('❌ Error checking dispatch balance:', balanceError);
@@ -468,10 +470,12 @@ async function handlePost(request: NextRequest, context: any) {
           );
         }
 
-        console.log(`📊 Dispatch balance: ${dispatchBalance ? `${dispatchBalance.total_piece_qty} pieces` : 'not found'}`);
+        // ✅ FIX: SUM all rows (may have multiple pallet_ids)
+        const availableQty = (dispatchBalances || []).reduce((sum, b) => sum + Number(b.total_piece_qty || 0), 0);
+        // Use first balance for metadata
+        const dispatchBalance = dispatchBalances?.[0] || null;
 
-        // ✅ FIX: Convert to Number for proper comparison (Supabase returns string for numeric)
-        const availableQty = Number(dispatchBalance?.total_piece_qty) || 0;
+        console.log(`📊 Dispatch balance: ${availableQty} pieces (from ${dispatchBalances?.length || 0} rows)`);
 
         // ✅ ตรวจสอบว่ามีสต็อคเพียงพอหรือไม่
         if (availableQty < qty) {
@@ -613,69 +617,78 @@ async function handlePost(request: NextRequest, context: any) {
           const prepAreaLocationId = prepAreaLocationMap.get(packageStorageLocation)!;
           console.log(`🔍 Checking prep area ${packageStorageLocation} balance for ${item.sku_id}`);
           
-          const { data: prepAreaBalance, error: prepAreaError } = await supabase
+          const { data: prepAreaBalances, error: prepAreaError } = await supabase
             .from('wms_inventory_balances')
             .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
             .eq('warehouse_id', 'WH001')
             .eq('location_id', prepAreaLocationId)
             .eq('sku_id', item.sku_id)
-            .gt('total_piece_qty', 0)
-            .maybeSingle();
+            .gt('total_piece_qty', 0);
 
-          if (!prepAreaError && prepAreaBalance && Number(prepAreaBalance.total_piece_qty) >= qty) {
+          // ✅ FIX: SUM all rows (may have multiple pallet_ids)
+          const prepAreaAvailableQty = (prepAreaBalances || []).reduce((sum, b) => sum + Number(b.total_piece_qty || 0), 0);
+          const prepAreaBalance = prepAreaBalances?.[0] || null;
+
+          if (!prepAreaError && prepAreaAvailableQty >= qty) {
             sourceBalance = prepAreaBalance;
             sourceLocationId = prepAreaLocationId;
             sourceLocationName = packageStorageLocation;
-            console.log(`✅ Found stock at prep area ${packageStorageLocation}: ${prepAreaBalance.total_piece_qty} pieces`);
+            console.log(`✅ Found stock at prep area ${packageStorageLocation}: ${prepAreaAvailableQty} pieces`);
           }
         }
 
         // 2. ตรวจสอบ staging location (PQTD/MRTD) - ถ้าไม่พบที่ prep area
         if (!sourceBalance && stagingLocationId) {
           console.log(`🔍 Checking ${stagingLocationName} balance for ${item.sku_id} (hub: ${packageHub})`);
-          const { data: stagingBalance, error: stagingError } = await supabase
+          const { data: stagingBalances, error: stagingError } = await supabase
             .from('wms_inventory_balances')
             .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
             .eq('warehouse_id', 'WH001')
             .eq('location_id', stagingLocationId)
             .eq('sku_id', item.sku_id)
-            .gt('total_piece_qty', 0)
-            .maybeSingle();
+            .gt('total_piece_qty', 0);
 
-          if (!stagingError && stagingBalance && Number(stagingBalance.total_piece_qty) >= qty) {
+          // ✅ FIX: SUM all rows (may have multiple pallet_ids)
+          const stagingAvailableQty = (stagingBalances || []).reduce((sum, b) => sum + Number(b.total_piece_qty || 0), 0);
+          const stagingBalance = stagingBalances?.[0] || null;
+
+          if (!stagingError && stagingAvailableQty >= qty) {
             sourceBalance = stagingBalance;
             sourceLocationId = stagingLocationId;
             sourceLocationName = stagingLocationName;
-            console.log(`✅ Found stock at ${stagingLocationName}: ${stagingBalance.total_piece_qty} pieces`);
+            console.log(`✅ Found stock at ${stagingLocationName}: ${stagingAvailableQty} pieces`);
           }
         }
 
         // 3. ถ้าไม่มีที่ staging → fallback ไป Dispatch (legacy data)
         if (!sourceBalance) {
           console.log(`🔍 Fallback: Checking Dispatch balance for ${item.sku_id} (legacy data)`);
-          const { data: dispatchBonusBalance, error: dispatchError } = await supabase
+          const { data: dispatchBonusBalances, error: dispatchError } = await supabase
             .from('wms_inventory_balances')
             .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
             .eq('warehouse_id', 'WH001')
             .eq('location_id', dispatchLocation.location_id)
             .eq('sku_id', item.sku_id)
-            .gt('total_piece_qty', 0)
-            .maybeSingle();
+            .gt('total_piece_qty', 0);
+
+          // ✅ FIX: SUM all rows (may have multiple pallet_ids)
+          const dispatchAvailableQty = (dispatchBonusBalances || []).reduce((sum, b) => sum + Number(b.total_piece_qty || 0), 0);
+          const dispatchBonusBalance = dispatchBonusBalances?.[0] || null;
 
           console.log(`📊 Dispatch query result:`, { 
-            data: dispatchBonusBalance, 
+            rows: dispatchBonusBalances?.length || 0,
             error: dispatchError,
-            availableQty: dispatchBonusBalance ? Number(dispatchBonusBalance.total_piece_qty) : 0,
+            availableQty: dispatchAvailableQty,
             requiredQty: qty,
-            isEnough: dispatchBonusBalance ? Number(dispatchBonusBalance.total_piece_qty) >= qty : false
+            isEnough: dispatchAvailableQty >= qty
           });
 
-          // ✅ FIX: Convert to Number for proper comparison (Supabase returns string for numeric)
-          if (!dispatchError && dispatchBonusBalance && Number(dispatchBonusBalance.total_piece_qty) >= qty) {
+          // ✅ FIX: Use SUM for comparison
+          if (!dispatchError && dispatchAvailableQty >= qty) {
             sourceBalance = dispatchBonusBalance;
             sourceLocationId = dispatchLocation.location_id;
             sourceLocationName = 'Dispatch';
-            console.log(`✅ Found stock at Dispatch (legacy): ${dispatchBonusBalance.total_piece_qty} pieces`);
+            console.log(`✅ Found stock at Dispatch (legacy): ${dispatchAvailableQty} pieces`);
           }
         }
 

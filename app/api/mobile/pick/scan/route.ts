@@ -69,7 +69,7 @@ async function handlePost(request: NextRequest, context: any) {
             )
           )
         ),
-        master_sku(qty_per_pack)
+        master_sku(qty_per_pack, sku_name)
       `)
       .eq('id', item_id)
       .eq('picklist_id', picklist_id)
@@ -80,6 +80,19 @@ async function handlePost(request: NextRequest, context: any) {
         { error: 'ไม่พบรายการสินค้า', details: itemError?.message },
         { status: 404 }
       );
+    }
+
+    // ✅ CHECK: ถ้า item ถูก picked ไปแล้ว ให้ return already_processed
+    if (item.status === 'picked') {
+      console.log(`⚠️ Item ${item_id} already picked, skipping`);
+      return NextResponse.json({
+        success: true,
+        message: 'รายการนี้ถูกบันทึกไปแล้ว',
+        already_processed: true,
+        picklist_status: item.picklists.status,
+        picklist_completed: false,
+        quantity_picked: item.quantity_picked
+      });
     }
 
     // 2. ตรวจสอบ QR Code (ถ้ามี)
@@ -106,7 +119,89 @@ async function handlePost(request: NextRequest, context: any) {
       );
     }
 
-    // 5. ดึง warehouse_id
+    // ✅ CHECK: ถ้าเป็น SKU สติ๊กเกอร์ ให้ข้ามการย้ายสต็อก แค่อัพเดทสถานะเป็น picked
+    const skuName = item.master_sku?.sku_name || item.sku_name || '';
+    const isSticker = skuName.toLowerCase().includes('สติ๊กเกอร์') || 
+                      skuName.toLowerCase().includes('sticker') ||
+                      item.sku_id.toLowerCase().includes('sticker');
+    
+    if (isSticker) {
+      console.log(`🏷️ SKU สติ๊กเกอร์ detected: ${item.sku_id} - ข้ามการย้ายสต็อก`);
+      
+      const now = new Date().toISOString();
+      
+      // อัปเดต picklist_item เป็น picked โดยไม่ย้ายสต็อก
+      const { error: itemUpdateError } = await supabase
+        .from('picklist_items')
+        .update({
+          quantity_picked: quantity_picked,
+          status: 'picked',
+          picked_at: now
+        })
+        .eq('id', item_id);
+
+      if (itemUpdateError) {
+        console.error('Error updating sticker item:', itemUpdateError);
+        return NextResponse.json(
+          { error: 'ไม่สามารถอัปเดตรายการสินค้าได้', details: itemUpdateError.message },
+          { status: 500 }
+        );
+      }
+
+      // เช็คว่าหยิบครบทุก item หรือยัง
+      const { data: allItems } = await supabase
+        .from('picklist_items')
+        .select('status')
+        .eq('picklist_id', picklist_id);
+
+      const allPicked = allItems?.every(i => i.status === 'picked');
+      const currentStatus = item.picklists.status;
+      let newStatus: string;
+      
+      if (allPicked) {
+        if (currentStatus === 'assigned') {
+          await supabase
+            .from('picklists')
+            .update({ status: 'picking', picking_started_at: now, updated_at: now })
+            .eq('id', picklist_id);
+        }
+        newStatus = 'completed';
+      } else {
+        newStatus = 'picking';
+      }
+      
+      const picklistUpdate: any = {
+        status: newStatus,
+        ...(allPicked && { picking_completed_at: now }),
+        updated_at: now
+      };
+
+      if (allPicked && (checker_ids || picker_ids)) {
+        if (checker_ids && Array.isArray(checker_ids) && checker_ids.length > 0) {
+          picklistUpdate.checker_employee_ids = checker_ids;
+        }
+        if (picker_ids && Array.isArray(picker_ids) && picker_ids.length > 0) {
+          picklistUpdate.picker_employee_ids = picker_ids;
+        }
+      }
+
+      await supabase
+        .from('picklists')
+        .update(picklistUpdate)
+        .eq('id', picklist_id);
+
+      return NextResponse.json({
+        success: true,
+        message: 'บันทึกการหยิบสติ๊กเกอร์สำเร็จ (ไม่ย้ายสต็อก)',
+        picklist_status: newStatus,
+        picklist_completed: allPicked,
+        quantity_picked: quantity_picked,
+        skipped_stock_movement: true,
+        reason: 'SKU สติ๊กเกอร์ไม่ต้องย้ายสต็อก'
+      });
+    }
+
+    // 5. ดึง warehouse_id (สำหรับ SKU ปกติที่ต้องย้ายสต็อก)
     const warehouseId = (item.picklists.receiving_route_trips as any)
       ?.receiving_route_plans?.warehouse_id;
 
@@ -152,6 +247,148 @@ async function handlePost(request: NextRequest, context: any) {
       );
     }
 
+    // ✅ AUTO-CREATE RESERVATION: ถ้าไม่มี reservation ให้สร้างอัตโนมัติ
+    let autoCreatedReservations: any[] = [];
+    if (!reservations || reservations.length === 0) {
+      console.log(`⚠️ No reservations found for picklist_item ${item_id} - creating automatically`);
+      
+      // ดึง preparation_area เพื่อหา zone
+      const { data: prepArea } = await supabase
+        .from('preparation_area')
+        .select('zone, area_code')
+        .eq('area_code', item.source_location_id)
+        .maybeSingle();
+
+      let locationIdsToReserve: string[] = [];
+      const prepAreaCode = prepArea?.area_code || item.source_location_id;
+
+      if (prepArea && prepArea.zone) {
+        const { data: locationsInZone } = await supabase
+          .from('master_location')
+          .select('location_id')
+          .eq('zone', prepArea.zone);
+
+        if (locationsInZone && locationsInZone.length > 0) {
+          locationIdsToReserve = locationsInZone.map(loc => loc.location_id);
+        }
+      }
+      
+      // Fallback: ใช้ source_location_id โดยตรง
+      if (locationIdsToReserve.length === 0) {
+        locationIdsToReserve = [item.source_location_id];
+      }
+
+      // Query balances with FEFO + FIFO
+      const { data: balances } = await supabase
+        .from('wms_inventory_balances')
+        .select('balance_id, pallet_id, location_id, total_piece_qty, total_pack_qty, reserved_piece_qty, reserved_pack_qty, expiry_date, production_date')
+        .eq('warehouse_id', warehouseId)
+        .in('location_id', locationIdsToReserve)
+        .eq('sku_id', item.sku_id)
+        .not('pallet_id', 'like', 'VIRTUAL-%')
+        .order('expiry_date', { ascending: true, nullsFirst: false })
+        .order('production_date', { ascending: true, nullsFirst: false })
+        .order('created_at', { ascending: true });
+
+      let remainingToReserve = quantity_picked;
+      const reservationsToCreate: any[] = [];
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+
+      // จองจากพาเลทจริงก่อน
+      for (const balance of balances || []) {
+        if (remainingToReserve <= 0) break;
+
+        const availableQty = (balance.total_piece_qty || 0) - (balance.reserved_piece_qty || 0);
+        const qtyToReserve = Math.min(Math.max(availableQty, 0), remainingToReserve);
+        if (qtyToReserve <= 0) continue;
+
+        const packToReserve = qtyToReserve / qtyPerPack;
+
+        // Update inventory balance - เพิ่ม reserved
+        await supabase
+          .from('wms_inventory_balances')
+          .update({
+            reserved_pack_qty: (balance.reserved_pack_qty || 0) + packToReserve,
+            reserved_piece_qty: (balance.reserved_piece_qty || 0) + qtyToReserve,
+            updated_at: now
+          })
+          .eq('balance_id', balance.balance_id);
+
+        reservationsToCreate.push({
+          picklist_item_id: item_id,
+          balance_id: balance.balance_id,
+          reserved_piece_qty: qtyToReserve,
+          reserved_pack_qty: packToReserve,
+          reserved_by: authUser?.id,
+          status: 'reserved'
+        });
+
+        remainingToReserve -= qtyToReserve;
+      }
+
+      // ถ้ายังไม่พอ → สร้าง Virtual Pallet
+      if (remainingToReserve > 0) {
+        const qtyShort = remainingToReserve;
+        const packShort = qtyShort / qtyPerPack;
+
+        const { data: virtualResult, error: virtualError } = await supabase
+          .rpc('create_or_update_virtual_balance', {
+            p_location_id: prepAreaCode,
+            p_sku_id: item.sku_id,
+            p_warehouse_id: warehouseId,
+            p_piece_qty: -qtyShort,
+            p_pack_qty: -packShort,
+            p_reserved_piece_qty: qtyShort,
+            p_reserved_pack_qty: packShort
+          });
+
+        if (!virtualError && virtualResult) {
+          reservationsToCreate.push({
+            picklist_item_id: item_id,
+            balance_id: virtualResult,
+            reserved_piece_qty: qtyShort,
+            reserved_pack_qty: packShort,
+            reserved_by: authUser?.id,
+            status: 'reserved'
+          });
+
+          console.log(`✅ Auto-created Virtual Reservation: SKU=${item.sku_id}, Qty=${qtyShort}`);
+        } else {
+          console.error('❌ Failed to create Virtual Pallet:', virtualError);
+        }
+      }
+
+      // Insert reservations
+      if (reservationsToCreate.length > 0) {
+        const { data: createdRes, error: resError } = await supabase
+          .from('picklist_item_reservations')
+          .insert(reservationsToCreate)
+          .select();
+
+        if (resError) {
+          console.error('❌ Error creating auto-reservations:', resError);
+        } else {
+          autoCreatedReservations = createdRes || [];
+          console.log(`✅ Auto-created ${autoCreatedReservations.length} reservations for picklist_item ${item_id}`);
+        }
+      }
+
+      // Re-fetch reservations หลังสร้างใหม่
+      const { data: newReservations } = await supabase
+        .from('picklist_item_reservations')
+        .select('reservation_id, balance_id, reserved_piece_qty, reserved_pack_qty')
+        .eq('picklist_item_id', item_id)
+        .eq('status', 'reserved')
+        .order('reservation_id', { ascending: true });
+
+      // ใช้ reservations ที่สร้างใหม่
+      if (newReservations && newReservations.length > 0) {
+        // Replace reservations array with new ones
+        reservations.length = 0;
+        reservations.push(...newReservations);
+      }
+    }
+
     let remainingQty = quantity_picked;
     const ledgerEntries = [];
     const processedReservations: number[] = [];
@@ -159,9 +396,14 @@ async function handlePost(request: NextRequest, context: any) {
     let sourceExpiryDate: string | null = null;
     let sourcePalletId: string | null = null;  // ✅ FIX: Track pallet_id for Dispatch
 
-    // ✅ กรณีที่ 1: มี reservations (picklist ใหม่)
+    // ✅ ดำเนินการหยิบตาม reservations (รวมที่สร้างอัตโนมัติ)
     if (reservations && reservations.length > 0) {
-      console.log(`✅ Using reservations: ${reservations.length} found`);
+      const wasAutoCreated = autoCreatedReservations.length > 0;
+      if (wasAutoCreated) {
+        console.log(`✅ Using auto-created reservations: ${reservations.length} found`);
+      } else {
+        console.log(`✅ Using existing reservations: ${reservations.length} found`);
+      }
 
       for (const reservation of reservations) {
       if (remainingQty <= 0) break;
@@ -280,191 +522,6 @@ async function handlePost(request: NextRequest, context: any) {
           })
           .in('reservation_id', processedReservations);
       }
-    }
-    // ✅ กรณีที่ 2: ไม่มี reservations (picklist เก่า) - Query FEFO/FIFO ใหม่
-    else {
-      console.log(`⚠️ No reservations found, using FEFO/FIFO fallback`);
-
-      // Map area_code → zone → locations
-      const { data: prepArea } = await supabase
-        .from('preparation_area')
-        .select('zone')
-        .eq('area_code', item.source_location_id)
-        .maybeSingle();
-
-      let locationIds: string[] = [];
-      if (prepArea?.zone) {
-        const { data: locs } = await supabase
-          .from('master_location')
-          .select('location_id')
-          .eq('zone', prepArea.zone);
-        locationIds = locs?.map(l => l.location_id) || [];
-      }
-      
-      if (locationIds.length === 0) {
-        locationIds = [item.source_location_id];
-      }
-
-      // Query FEFO/FIFO (รวมวันที่ และ pallet_id)
-      const { data: balances } = await supabase
-        .from('wms_inventory_balances')
-        .select('balance_id, location_id, total_piece_qty, total_pack_qty, reserved_piece_qty, reserved_pack_qty, production_date, expiry_date, pallet_id')
-        .eq('warehouse_id', warehouseId)
-        .in('location_id', locationIds)
-        .eq('sku_id', item.sku_id)
-        .gt('total_piece_qty', 0)
-        .order('expiry_date', { ascending: true, nullsFirst: false })
-        .order('production_date', { ascending: true, nullsFirst: false })
-        .order('created_at', { ascending: true });
-
-      if (!balances || balances.length === 0) {
-        console.warn('⚠️ ไม่พบสต็อคในพื้นที่หยิบ - จะสร้าง/อัปเดต balance ติดลบ');
-        
-        // ✅ FIX: ตรวจสอบว่ามี balance อยู่แล้วหรือไม่ (อาจมียอด 0 หรือติดลบ)
-        const { data: existingBalance } = await supabase
-          .from('wms_inventory_balances')
-          .select('balance_id, total_piece_qty, total_pack_qty')
-          .eq('warehouse_id', warehouseId)
-          .eq('location_id', item.source_location_id)
-          .eq('sku_id', item.sku_id)
-          .is('pallet_id', null)
-          .is('lot_no', null)
-          .is('production_date', null)
-          .is('expiry_date', null)
-          .maybeSingle();
-
-        if (existingBalance) {
-          // อัปเดต balance ที่มีอยู่ (หักติดลบ)
-          const { error: updateError } = await supabase
-            .from('wms_inventory_balances')
-            .update({
-              total_pack_qty: existingBalance.total_pack_qty - packQty,
-              total_piece_qty: existingBalance.total_piece_qty - quantity_picked,
-              last_movement_at: now,
-              updated_at: now
-            })
-            .eq('balance_id', existingBalance.balance_id);
-
-          if (updateError) {
-            console.error('Error updating negative balance:', updateError);
-          }
-        } else {
-          // สร้าง balance ใหม่ที่ติดลบ
-          const { error: createError } = await supabase
-            .from('wms_inventory_balances')
-            .insert({
-              warehouse_id: warehouseId,
-              location_id: item.source_location_id,
-              sku_id: item.sku_id,
-              total_pack_qty: -packQty,
-              total_piece_qty: -quantity_picked,
-              reserved_pack_qty: 0,
-              reserved_piece_qty: 0,
-              last_movement_at: now
-            });
-
-          if (createError) {
-            console.error('Error creating negative balance:', createError);
-          }
-        }
-
-        // บันทึก ledger: OUT จาก source_location (ติดลบ)
-        ledgerEntries.push({
-          movement_at: now,
-          transaction_type: 'pick',
-          direction: 'out',
-          warehouse_id: warehouseId,
-          location_id: item.source_location_id,
-          sku_id: item.sku_id,
-          pack_qty: packQty,
-          piece_qty: quantity_picked,
-          reference_no: item.picklists.picklist_code,
-          reference_doc_type: 'picklist',
-          reference_doc_id: picklist_id,
-          order_id: item.order_id,
-          order_item_id: item.order_item_id,
-          remarks: `หยิบจาก ${item.source_location_id} (สต็อกติดลบ) - ${item.picklists.picklist_code}`,
-          created_by: userId,
-          skip_balance_sync: true
-        });
-
-        remainingQty = 0; // ถือว่าหยิบครบแล้ว
-      } else {
-        for (const balance of balances) {
-        if (remainingQty <= 0) break;
-
-        const availableQty = (balance.total_piece_qty || 0) - (balance.reserved_piece_qty || 0);
-        if (availableQty <= 0) continue;
-
-        // เก็บวันที่และ pallet_id จาก balance แรก
-        if (!sourceProductionDate && balance.production_date) {
-          sourceProductionDate = balance.production_date;
-        }
-        if (!sourceExpiryDate && balance.expiry_date) {
-          sourceExpiryDate = balance.expiry_date;
-        }
-        if (!sourcePalletId && balance.pallet_id) {
-          sourcePalletId = balance.pallet_id;
-        }
-
-        const qtyToDeduct = Math.min(availableQty, remainingQty);
-        const packToDeduct = qtyToDeduct / qtyPerPack;
-
-        await supabase
-          .from('wms_inventory_balances')
-          .update({
-            total_piece_qty: Math.max(0, balance.total_piece_qty - qtyToDeduct),
-            total_pack_qty: Math.max(0, balance.total_pack_qty - packToDeduct),
-            updated_at: now
-          })
-          .eq('balance_id', balance.balance_id);
-
-        // ✅ CRITICAL FIX: Include order_id and order_item_id for BRCGS traceability
-        // ✅ FIX: Include production_date, expiry_date, AND pallet_id for proper balance matching
-        ledgerEntries.push({
-          movement_at: now,
-          transaction_type: 'pick',
-          direction: 'out',
-          warehouse_id: warehouseId,
-          location_id: balance.location_id,
-          sku_id: item.sku_id,
-          pack_qty: packToDeduct,
-          piece_qty: qtyToDeduct,
-          pallet_id: balance.pallet_id || null,              // ✅ FIX: Include pallet_id from balance
-          production_date: balance.production_date || null,  // ✅ FIX: Include for balance matching
-          expiry_date: balance.expiry_date || null,          // ✅ FIX: Include for balance matching
-          reference_no: item.picklists.picklist_code,
-          reference_doc_type: 'picklist',
-          reference_doc_id: picklist_id,
-          order_id: item.order_id,           // ✅ BRCGS: Link to order
-          order_item_id: item.order_item_id, // ✅ BRCGS: Link to order line
-          remarks: `หยิบจาก ${balance.location_id} (FEFO, pallet: ${balance.pallet_id || 'N/A'}) - ${item.picklists.picklist_code}`,
-          created_by: userId,
-          skip_balance_sync: true
-        });
-
-        remainingQty -= qtyToDeduct;
-      }
-
-      // ✅ Protection: Block negative outside Preparation Area
-        if (remainingQty > 0) {
-          const isPrepArea = await isPreparationArea(supabase, item.source_location_id);
-          
-          if (!isPrepArea) {
-            // 🔴 ไม่ใช่ Preparation Area - ไม่อนุญาตติดลบ
-            console.error(`🔴 Block negative: ${item.source_location_id} is not a Prep Area, short ${remainingQty} pieces`);
-            return NextResponse.json({
-              success: false,
-              error: `สต็อคไม่พอ: ขาดอีก ${remainingQty} ชิ้น`,
-              error_code: 'INSUFFICIENT_STOCK',
-              location_id: item.source_location_id,
-              shortage: remainingQty
-            }, { status: 400 });
-          }
-          
-          console.log(`⚠️ Prep Area (${item.source_location_id}): อนุญาตหักติดลบ ${remainingQty} ชิ้น`);
-        }
-      } // ปิด else block
     }
 
     // 7. เพิ่มสต็อคที่ Dispatch
@@ -657,7 +714,8 @@ async function handlePost(request: NextRequest, context: any) {
       picklist_status: newStatus,
       picklist_completed: allPicked,
       quantity_picked: quantity_picked,
-      reservations_processed: processedReservations.length
+      reservations_processed: processedReservations.length,
+      auto_created_reservations: autoCreatedReservations.length
     });
 
   } catch (error) {

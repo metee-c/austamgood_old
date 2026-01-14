@@ -53,7 +53,7 @@ export async function GET(request: Request) {
 
     const documents: PreparedDocument[] = [];
 
-    // 1. ดึงข้อมูล Picklists ที่กำลังจัดหรือจัดเสร็จแล้ว แต่ยังไม่ได้เพิ่มเข้า loadlist
+    // 1. ดึงข้อมูล Picklists ที่จัดเสร็จแล้ว แต่ยังไม่ได้เพิ่มเข้า loadlist หรือยังไม่ loaded
     const { data: picklists, error: picklistError } = await supabase
       .from('picklists')
       .select(`
@@ -84,8 +84,7 @@ export async function GET(request: Request) {
           )
         )
       `)
-      .in('status', ['assigned', 'picking', 'completed'])  // ✅ รวมที่กำลังจัดและจัดเสร็จ
-      .neq('status', 'voided')  // ✅ ไม่รวม picklist ที่ถูก voided
+      .eq('status', 'completed')  // ✅ เฉพาะที่จัดเสร็จแล้ว
       .order('created_at', { ascending: false });
 
     console.log('[prepared-documents] Picklists query result:', { 
@@ -245,7 +244,7 @@ export async function GET(request: Request) {
       }
     }
 
-    // 2. ดึงข้อมูล Face Sheets ที่กำลังจัดหรือจัดเสร็จแล้ว แต่ยังไม่ได้เพิ่มเข้า loadlist
+    // 2. ดึงข้อมูล Face Sheets ที่จัดเสร็จแล้ว แต่ยังไม่ได้เพิ่มเข้า loadlist หรือยังไม่ loaded
     const { data: faceSheets, error: faceSheetError } = await supabase
       .from('face_sheets')
       .select(`
@@ -274,8 +273,7 @@ export async function GET(request: Request) {
           )
         )
       `)
-      .in('status', ['generated', 'picking', 'completed'])  // ✅ รวมที่กำลังจัดและจัดเสร็จ
-      .neq('status', 'voided')  // ✅ ไม่รวม face sheet ที่ถูก voided
+      .eq('status', 'completed')  // ✅ เฉพาะที่จัดเสร็จแล้ว
       .eq('warehouse_id', warehouseId)
       .order('created_at', { ascending: false });
 
@@ -408,7 +406,7 @@ export async function GET(request: Request) {
       }
     }
 
-    // 3. ดึงข้อมูล Bonus Face Sheets ที่กำลังจัดหรือจัดเสร็จแล้ว แต่ยังไม่ได้เพิ่มเข้า loadlist
+    // 3. ดึงข้อมูล Bonus Face Sheets ที่จัดเสร็จแล้ว แต่ยังไม่ได้เพิ่มเข้า loadlist หรือยังไม่ loaded
     const { data: bonusFaceSheets, error: bonusFaceSheetError } = await supabase
       .from('bonus_face_sheets')
       .select(`
@@ -437,8 +435,7 @@ export async function GET(request: Request) {
           )
         )
       `)
-      .in('status', ['generated', 'picking', 'completed'])  // ✅ รวมที่กำลังจัดและจัดเสร็จ
-      .neq('status', 'voided')  // ✅ ไม่รวม bonus face sheet ที่ถูก voided
+      .eq('status', 'completed')  // ✅ เฉพาะที่จัดเสร็จแล้ว
       .eq('warehouse_id', warehouseId)
       .order('created_at', { ascending: false });
 

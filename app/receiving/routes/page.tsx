@@ -2391,7 +2391,7 @@ const RoutesPage = () => {
                                                                                                     </td>
                                                                                                     <td className="px-2 py-2 text-xs text-gray-600">{trip.notes || '-'}</td>
                                                                                                     <td className="px-2 py-2 text-xs text-center">
-                                                                                                        <span className="font-medium text-gray-700">#{trip.trip_sequence || '-'}</span>
+                                                                                                        <span className="font-medium text-gray-700">คันที่ {trip.daily_trip_number || trip.trip_sequence || '-'}</span>
                                                                                                     </td>
                                                                                                     <td className="px-2 py-2 text-xs text-center text-gray-600">{trip.warehouse_id || '-'}</td>
                                                                                                     <td className="px-2 py-2 text-xs text-center">

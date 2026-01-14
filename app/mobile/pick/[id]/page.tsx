@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter, useParams } from 'next/navigation';
 import {
   ArrowLeft,
@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import Badge from '@/components/ui/Badge';
 import EmployeeSelectionModal from '@/components/mobile/EmployeeSelectionModal';
+import PickProgressModal, { PickItemProgress } from '@/components/mobile/PickProgressModal';
 
 interface PicklistItem {
   id: number;
@@ -42,16 +43,8 @@ interface Picklist {
   total_lines: number;
   total_quantity: number;
   loading_door_number?: string;
-  trip?: {
-    trip_code: string;
-    vehicle?: {
-      plate_number: string;
-    };
-  };
-  plan?: {
-    plan_code: string;
-    plan_name: string;
-  };
+  trip?: { trip_code: string; vehicle?: { plate_number: string } };
+  plan?: { plan_code: string; plan_name: string };
   picklist_items: PicklistItem[];
 }
 
@@ -62,14 +55,23 @@ export default function MobilePickDetailPage() {
 
   const [loading, setLoading] = useState(true);
   const [picklist, setPicklist] = useState<Picklist | null>(null);
-  const [scanning, setScanning] = useState(false);
   const [showEmployeeModal, setShowEmployeeModal] = useState(false);
   const [pendingShopItems, setPendingShopItems] = useState<PicklistItem[]>([]);
+  const [pendingShopName, setPendingShopName] = useState('');
+  
+  // Progress Modal State
+  const [showProgressModal, setShowProgressModal] = useState(false);
+  const [progressItems, setProgressItems] = useState<PickItemProgress[]>([]);
+  const [currentProgressItem, setCurrentProgressItem] = useState<PickItemProgress | undefined>();
+  const [totalProgressItems, setTotalProgressItems] = useState(0);
+  const [completedProgressItems, setCompletedProgressItems] = useState(0);
+  const [hasProgressError, setHasProgressError] = useState(false);
+  const [errorProgressItem, setErrorProgressItem] = useState<PickItemProgress | undefined>();
+  const [pendingCheckerIds, setPendingCheckerIds] = useState<string[]>([]);
+  const [pendingPickerIds, setPendingPickerIds] = useState<string[]>([]);
 
   useEffect(() => {
-    if (id) {
-      fetchPicklist();
-    }
+    if (id) fetchPicklist();
   }, [id]);
 
   const fetchPicklist = async () => {
@@ -77,12 +79,9 @@ export default function MobilePickDetailPage() {
       setLoading(true);
       const response = await fetch(`/api/mobile/pick/tasks/${id}`);
       const data = await response.json();
-
-      if (response.ok) {
-        setPicklist(data);
-      }
+      if (response.ok) setPicklist(data);
     } catch (error) {
-      // Silently handle error
+      console.error('Error fetching picklist:', error);
     } finally {
       setLoading(false);
     }
@@ -90,74 +89,99 @@ export default function MobilePickDetailPage() {
 
   const handleConfirmShop = async (shopItems: PicklistItem[], shopName: string) => {
     const unpickedItems = shopItems.filter(item => item.status !== 'picked');
-    
     if (unpickedItems.length === 0) {
       alert('รายการทั้งหมดหยิบแล้ว');
       return;
     }
 
-    // ตรวจสอบว่าหลังจากหยิบร้านนี้แล้ว จะเหลือร้านที่ยังไม่หยิบหรือไม่
     const allItems = picklist?.picklist_items || [];
     const itemsAfterPicking = allItems.map(item => {
-      // ถ้าเป็น item ในร้านนี้ ให้ถือว่าหยิบแล้ว
       const itemShopName = item.shop_name || item.order_no || 'ไม่ระบุร้าน';
-      if (itemShopName === shopName) {
-        return { ...item, status: 'picked' as const };
-      }
+      if (itemShopName === shopName) return { ...item, status: 'picked' as const };
       return item;
     });
 
-    // นับว่ายังมีร้านที่ยังไม่หยิบครบหรือไม่
     const shopsAfter = itemsAfterPicking.reduce((acc, item) => {
       const itemShopName = item.shop_name || item.order_no || 'ไม่ระบุร้าน';
-      if (!acc[itemShopName]) {
-        acc[itemShopName] = { total: 0, picked: 0 };
-      }
+      if (!acc[itemShopName]) acc[itemShopName] = { total: 0, picked: 0 };
       acc[itemShopName].total++;
-      if (item.status === 'picked') {
-        acc[itemShopName].picked++;
-      }
+      if (item.status === 'picked') acc[itemShopName].picked++;
       return acc;
     }, {} as Record<string, { total: number; picked: number }>);
 
-    const hasUnpickedShops = Object.values(shopsAfter).some(
-      shop => shop.picked < shop.total
-    );
-
-    // ถ้าไม่มีร้านที่ยังไม่หยิบแล้ว = ร้านนี้เป็นร้านสุดท้าย
+    const hasUnpickedShops = Object.values(shopsAfter).some(shop => shop.picked < shop.total);
     const isLastShop = !hasUnpickedShops;
 
-    console.log('🔍 Shop check:', { shopName, isLastShop, hasUnpickedShops, shopsAfter });
-
-    // ถ้าเป็นร้านสุดท้าย แสดง modal เลือกพนักงาน
     if (isLastShop) {
       setPendingShopItems(unpickedItems);
+      setPendingShopName(shopName);
       setShowEmployeeModal(true);
     } else {
-      // ร้านอื่นๆ ยืนยันตามปกติ
-      if (!confirm(`ยืนยันการหยิบสินค้าทั้งหมด ${unpickedItems.length} รายการ?`)) {
-        return;
-      }
-      await processPickItems(unpickedItems, [], []);
+      setPendingShopItems(unpickedItems);
+      setPendingShopName(shopName);
+      setPendingCheckerIds([]);
+      setPendingPickerIds([]);
+      await processPickItemsSequential(unpickedItems, shopName, [], []);
     }
   };
 
   const handleEmployeeConfirm = async (checkerIds: string[], pickerIds: string[]) => {
     setShowEmployeeModal(false);
-    await processPickItems(pendingShopItems, checkerIds, pickerIds);
+    setPendingCheckerIds(checkerIds);
+    setPendingPickerIds(pickerIds);
+    await processPickItemsSequential(pendingShopItems, pendingShopName, checkerIds, pickerIds);
   };
 
-  const processPickItems = async (
-    items: PicklistItem[], 
-    checkerIds: string[], 
+  const processPickItemsSequential = useCallback(async (
+    items: PicklistItem[],
+    shopName: string,
+    checkerIds: string[],
     pickerIds: string[]
   ) => {
-    try {
-      setScanning(true);
+    // Reset progress state
+    setProgressItems([]);
+    setCurrentProgressItem(undefined);
+    setTotalProgressItems(items.length);
+    setCompletedProgressItems(0);
+    setHasProgressError(false);
+    setErrorProgressItem(undefined);
+    setShowProgressModal(true);
 
-      // ✅ เรียก API แบบ parallel เพื่อความเร็ว
-      const promises = items.map(item => 
-        fetch('/api/mobile/pick/scan', {
+    let successCount = 0;
+    const processedItems: PickItemProgress[] = [];
+
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      const skuName = item.master_sku?.sku_name || item.sku_name || item.sku_id;
+      const itemShopName = item.shop_name || item.order_no || shopName;
+
+      // Create progress item
+      const progressItem: PickItemProgress = {
+        id: item.id,
+        sku_id: item.sku_id,
+        sku_name: skuName,
+        shop_name: itemShopName,
+        quantity: item.quantity_to_pick,
+        status: 'checking',
+        source_location: item.source_location_id || item.master_location?.location_code,
+        dest_location: 'Dispatch'
+      };
+
+      setCurrentProgressItem(progressItem);
+
+      try {
+        // Step 1: Checking reservation
+        progressItem.status = 'checking';
+        progressItem.message = `กำลังตรวจสอบยอดจอง ${item.quantity_to_pick} ชิ้น...`;
+        setCurrentProgressItem({ ...progressItem });
+        await new Promise(r => setTimeout(r, 200)); // Small delay for UI
+
+        // Step 2: Moving stock - Call API
+        progressItem.status = 'moving';
+        progressItem.message = 'กำลังย้ายสต็อก...';
+        setCurrentProgressItem({ ...progressItem });
+
+        const response = await fetch('/api/mobile/pick/scan', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -168,26 +192,100 @@ export default function MobilePickDetailPage() {
             checker_ids: checkerIds.length > 0 ? checkerIds : undefined,
             picker_ids: pickerIds.length > 0 ? pickerIds : undefined
           })
-        }).then(async (response) => {
-          const result = await response.json();
-          if (!response.ok) {
-            throw new Error(result.error || 'เกิดข้อผิดพลาด');
-          }
-          return result;
-        })
-      );
+        });
 
-      // รอให้ทุก request เสร็จ
-      await Promise.all(promises);
+        const result = await response.json();
+
+        if (!response.ok) {
+          // Check if already processed (skip, not error)
+          if (result.already_processed) {
+            progressItem.status = 'skipped';
+            progressItem.message = 'รายการนี้หยิบไปแล้ว';
+            successCount++;
+          } else {
+            // Real error - stop processing
+            progressItem.status = 'error';
+            progressItem.message = result.error || 'เกิดข้อผิดพลาด';
+            progressItem.error_details = result.details || {
+              message: result.error,
+              order_no: item.order_no,
+              shop_name: itemShopName,
+              sku_id: item.sku_id,
+              sku_name: skuName,
+              quantity: item.quantity_to_pick
+            };
+
+            processedItems.push({ ...progressItem });
+            setProgressItems([...processedItems]);
+            setCompletedProgressItems(successCount);
+            setHasProgressError(true);
+            setErrorProgressItem(progressItem);
+            setCurrentProgressItem(undefined);
+            return; // Stop processing on error
+          }
+        } else {
+          // Success
+          progressItem.status = 'success';
+          progressItem.reservation_found = item.quantity_to_pick;
+          progressItem.message = `ย้ายสำเร็จ: ลดสต็อก ${item.source_location_id || 'บ้านหยิบ'} → เพิ่ม Dispatch`;
+          successCount++;
+        }
+
+        processedItems.push({ ...progressItem });
+        setProgressItems([...processedItems]);
+        setCompletedProgressItems(successCount);
+        setCurrentProgressItem(undefined);
+
+      } catch (error: any) {
+        progressItem.status = 'error';
+        progressItem.message = error.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อ';
+        progressItem.error_details = { message: error.message };
+
+        processedItems.push({ ...progressItem });
+        setProgressItems([...processedItems]);
+        setCompletedProgressItems(successCount);
+        setHasProgressError(true);
+        setErrorProgressItem(progressItem);
+        setCurrentProgressItem(undefined);
+        return; // Stop on error
+      }
+    }
+
+    // All done successfully
+    setCurrentProgressItem(undefined);
+  }, [picklist]);
+
+  const handleProgressClose = () => {
+    setShowProgressModal(false);
+    setProgressItems([]);
+    setCurrentProgressItem(undefined);
+    setHasProgressError(false);
+    setErrorProgressItem(undefined);
+    fetchPicklist(); // Refresh data
+  };
+
+  const handleProgressRetry = async () => {
+    // Close modal and re-trigger the same shop
+    setShowProgressModal(false);
+    setHasProgressError(false);
+    setErrorProgressItem(undefined);
+    
+    // Re-fetch to get latest status
+    await fetchPicklist();
+    
+    // Find remaining unpicked items for the same shop
+    if (picklist && pendingShopName) {
+      const shopItems = picklist.picklist_items.filter(item => {
+        const itemShopName = item.shop_name || item.order_no || 'ไม่ระบุร้าน';
+        return itemShopName === pendingShopName;
+      });
+      const unpickedItems = shopItems.filter(item => item.status !== 'picked');
       
-      alert('บันทึกการหยิบสำเร็จ');
-      fetchPicklist();
-    } catch (error: any) {
-      console.error('Error picking items:', error);
-      alert(`เกิดข้อผิดพลาด: ${error.message || 'ไม่สามารถบันทึกได้'}`);
-    } finally {
-      setScanning(false);
-      setPendingShopItems([]);
+      if (unpickedItems.length > 0) {
+        await processPickItemsSequential(unpickedItems, pendingShopName, pendingCheckerIds, pendingPickerIds);
+      } else {
+        alert('ไม่มีรายการที่ต้องหยิบเพิ่มเติม');
+      }
     }
   };
 
@@ -218,19 +316,16 @@ export default function MobilePickDetailPage() {
   const totalCount = picklist.picklist_items.length;
   const progress = totalCount > 0 ? (pickedCount / totalCount) * 100 : 0;
 
-  // Group items by shop
   const itemsByShop = picklist.picklist_items.reduce((acc, item) => {
     const shopKey = item.shop_name || item.order_no || 'ไม่ระบุร้าน';
-    if (!acc[shopKey]) {
-      acc[shopKey] = [];
-    }
+    if (!acc[shopKey]) acc[shopKey] = [];
     acc[shopKey].push(item);
     return acc;
   }, {} as Record<string, PicklistItem[]>);
 
   return (
     <div className="min-h-screen bg-gray-50 pb-16">
-      {/* Compact Header */}
+      {/* Header */}
       <div className="bg-gradient-to-br from-sky-400 to-sky-500 text-white p-2.5 sticky top-0 z-10 shadow-lg">
         <div className="flex items-center gap-2 mb-2">
           <button
@@ -246,8 +341,6 @@ export default function MobilePickDetailPage() {
             )}
           </div>
         </div>
-
-        {/* Progress */}
         <div className="bg-white/20 rounded-full h-1.5 mb-1">
           <div
             className="bg-white rounded-full h-1.5 transition-all duration-300"
@@ -259,7 +352,7 @@ export default function MobilePickDetailPage() {
         </p>
       </div>
 
-      {/* Items by Shop - Compact */}
+      {/* Items by Shop */}
       <div className="p-2 space-y-2 overflow-y-auto max-h-[calc(100vh-120px)]">
         {Object.entries(itemsByShop).map(([shopName, items]) => {
           const shopPicked = items.filter(i => i.status === 'picked').length;
@@ -268,7 +361,6 @@ export default function MobilePickDetailPage() {
 
           return (
             <div key={shopName} className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
-              {/* Shop Header - Compact */}
               <div className={`p-2 ${allPicked ? 'bg-green-50' : 'bg-gray-50'} border-b border-gray-200`}>
                 <div className="flex items-center justify-between mb-1.5">
                   <h3 className="font-bold text-gray-900 font-thai text-xs truncate flex-1 mr-2">{shopName}</h3>
@@ -278,15 +370,13 @@ export default function MobilePickDetailPage() {
                       เสร็จ
                     </Badge>
                   ) : (
-                    <Badge variant="default" size="sm">
-                      {shopPicked}/{shopTotal}
-                    </Badge>
+                    <Badge variant="default" size="sm">{shopPicked}/{shopTotal}</Badge>
                   )}
                 </div>
                 {!allPicked && (
                   <button
                     onClick={() => handleConfirmShop(items, shopName)}
-                    disabled={scanning}
+                    disabled={showProgressModal}
                     className="w-full py-1.5 bg-sky-500 text-white rounded font-thai text-xs font-medium hover:bg-sky-600 active:scale-98 transition-all disabled:opacity-50"
                   >
                     ยืนยันหยิบทั้งหมด
@@ -294,7 +384,6 @@ export default function MobilePickDetailPage() {
                 )}
               </div>
 
-              {/* Items Table - Compact */}
               <div className="overflow-x-auto max-h-48 overflow-y-auto">
                 <table className="w-full text-[10px]">
                   <thead className="bg-gray-100 border-b border-gray-200 sticky top-0">
@@ -308,21 +397,15 @@ export default function MobilePickDetailPage() {
                     {items.map((item) => (
                       <tr
                         key={item.id}
-                        className={`border-b border-gray-100 ${
-                          item.status === 'picked' ? 'bg-green-50/50' : ''
-                        }`}
+                        className={`border-b border-gray-100 ${item.status === 'picked' ? 'bg-green-50/50' : ''}`}
                       >
                         <td className="px-1.5 py-1">
                           <div className="font-thai text-gray-900 font-medium truncate max-w-[140px]">
                             {item.master_sku?.sku_name || item.sku_name}
                           </div>
-                          <div className="text-gray-500 text-[9px]">
-                            {item.sku_id}
-                          </div>
+                          <div className="text-gray-500 text-[9px]">{item.sku_id}</div>
                         </td>
-                        <td className="px-1.5 py-1 text-center font-thai text-gray-700">
-                          {item.quantity_to_pick}
-                        </td>
+                        <td className="px-1.5 py-1 text-center font-thai text-gray-700">{item.quantity_to_pick}</td>
                         <td className="px-1.5 py-1 text-center">
                           {item.status === 'picked' ? (
                             <CheckCircle className="w-3.5 h-3.5 text-green-500 mx-auto" />
@@ -340,26 +423,25 @@ export default function MobilePickDetailPage() {
         })}
       </div>
 
-      {/* Employee Selection Modal */}
+      {/* Modals */}
       <EmployeeSelectionModal
         isOpen={showEmployeeModal}
-        onClose={() => {
-          setShowEmployeeModal(false);
-          setPendingShopItems([]);
-        }}
+        onClose={() => { setShowEmployeeModal(false); setPendingShopItems([]); }}
         onConfirm={handleEmployeeConfirm}
         title="เลือกพนักงาน"
       />
 
-      {/* Scanning Overlay - Compact */}
-      {scanning && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-4 text-center">
-            <Loader2 className="w-8 h-8 animate-spin text-sky-500 mx-auto mb-2" />
-            <p className="text-gray-700 font-thai text-sm">กำลังบันทึก...</p>
-          </div>
-        </div>
-      )}
+      <PickProgressModal
+        isOpen={showProgressModal}
+        items={progressItems}
+        totalItems={totalProgressItems}
+        completedItems={completedProgressItems}
+        currentItem={currentProgressItem}
+        hasError={hasProgressError}
+        errorItem={errorProgressItem}
+        onClose={handleProgressClose}
+        onRetry={handleProgressRetry}
+      />
     </div>
   );
 }
