@@ -11,15 +11,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-AustamGood WMS is a Warehouse Management System built with Next.js 15, TypeScript, Tailwind CSS, and Supabase. The application is designed for mid-to-large-sized businesses to manage warehouse operations including inventory tracking, receiving, shipping, order processing, route planning (VRP), online packing, and reporting. The UI is in Thai language.
+AustamGood WMS is a comprehensive Warehouse Management System built with Next.js 16, TypeScript, Tailwind CSS, and Supabase. The application is designed for mid-to-large-sized businesses to manage warehouse operations including inventory tracking, receiving, shipping, order processing, route planning (VRP), online packing, production management, and reporting. The UI is in Thai language.
+
+**Scale:** 265+ API routes, 128+ components, 25+ custom hooks, 115+ database migrations, 85+ database tables
 
 ## Key Technologies
 
-- **Framework**: Next.js 15 (App Router)
+- **Framework**: Next.js 16 (App Router) with Turbopack
 - **Language**: TypeScript (with `strict: false`)
 - **Database**: Supabase (PostgreSQL with real-time capabilities)
 - **Auth**: Supabase Auth with `@supabase/auth-helpers-nextjs` and `@supabase/ssr`
-- **Styling**: Tailwind CSS
+- **Styling**: Tailwind CSS 3.4 with custom Thai color palette
 - **State Management**: React hooks (Redux Toolkit available but not widely used)
 - **Forms**: React Hook Form with Zod validation
 - **UI Components**: Custom components in `components/ui/`
@@ -144,8 +146,53 @@ NEXT_PUBLIC_MAPBOX_TOKEN=your_mapbox_token
 
 ## Architecture & Project Structure
 
+### Core Architectural Pattern
+
+The system follows a **layered architecture** with clear separation of concerns:
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Presentation Layer                                  │
+│  - React Components (Client & Server)               │
+│  - Next.js Pages (App Router)                       │
+│  - Custom Hooks (useOrders, useSkus, etc.)         │
+└────────────────────┬────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────┐
+│  API Layer                                          │
+│  - 265+ REST endpoints in app/api/                  │
+│  - Request validation (Zod schemas)                 │
+│  - Response formatting (NextResponse.json)          │
+└────────────────────┬────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────┐
+│  Service Layer                                       │
+│  - 20+ database services in lib/database/           │
+│  - Business logic abstraction                       │
+│  - Type-safe operations                             │
+└────────────────────┬────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────┐
+│  Data Access Layer                                   │
+│  - Supabase clients (client/server/service)        │
+│  - Direct PostgreSQL queries                        │
+│  - Row Level Security (RLS)                         │
+└────────────────────┬────────────────────────────────┘
+                     │
+                     ▼
+┌─────────────────────────────────────────────────────┐
+│  Database Layer                                      │
+│  - Supabase/PostgreSQL                              │
+│  - 85+ tables, 115+ migrations                      │
+│  - Triggers, functions, RLS policies                │
+└─────────────────────────────────────────────────────┘
+```
+
 ### App Router Structure
-The application uses Next.js 15 App Router with the following main sections:
+The application uses Next.js 16 App Router with the following main sections:
 
 - `/dashboard` - Main dashboard with statistics and overview
 - `/master-data` - Master data management (products, customers, suppliers, locations, etc.)
@@ -262,10 +309,47 @@ The application uses two distinct layout systems:
 
 ### Data Layer
 
-#### Supabase Clients
-- `lib/supabase/client.ts` - Client-side Supabase client for client components (uses `createClientComponentClient`)
-- `lib/supabase/server.ts` - Server-side Supabase client for server components/API routes (async, uses cookies)
-- `lib/supabase/route-handler.ts` - Specialized handler for API route patterns
+#### Supabase Clients (Three-Client Pattern)
+The system uses three distinct Supabase client types, each for specific contexts:
+
+**1. Client-Side Client** (`lib/supabase/client.ts`)
+- For client components only
+- Uses `createClientComponentClient` from `@supabase/auth-helpers-nextjs`
+- Respects Row Level Security (RLS)
+- Has user context from browser session
+
+**2. Server-Side Client** (`lib/supabase/server.ts`)
+- For server components and API routes
+- Async function: `await createClient()`
+- Uses cookies for session management
+- Respects RLS policies
+- Has user context from server-side session
+
+**3. Service Role Client** (`lib/supabase/server.ts`)
+- For admin operations only: `createServiceRoleClient()`
+- Uses `SUPABASE_SERVICE_ROLE_KEY`
+- **Bypasses all RLS policies** - use with extreme caution
+- No user context - runs as admin
+- Only use when you need to perform operations regardless of user permissions
+
+```typescript
+// Example: When to use each client
+
+// Client Component - Browser-based operations
+'use client'
+import { createClient } from '@/lib/supabase/client'
+const supabase = createClient()
+
+// Server Component/API Route - User-scoped operations
+import { createClient } from '@/lib/supabase/server'
+const supabase = await createClient()
+
+// API Route - Admin operations (bypasses RLS)
+import { createServiceRoleClient } from '@/lib/supabase/server'
+const supabase = createServiceRoleClient()
+```
+
+**Route Handler**: `lib/supabase/route-handler.ts` - Specialized handler for API route patterns
 
 #### Custom Hooks
 Custom hooks in `hooks/` use SWR for data fetching with caching:
@@ -282,18 +366,26 @@ Custom hooks in `hooks/` use SWR for data fetching with caching:
 - `useEmployees.ts` - Employee data
 - `useFormOptions.ts` - Form dropdown options
 
+**Total: 25+ custom hooks** for data management across the application
+
 #### Database Services
 Services in `lib/database/` provide abstraction for database operations:
 - `master-sku.ts` - Product/SKU management
 - `bom-sku.ts` - Bill of Materials
 - `warehouse.ts` - Warehouse and location management
-- `receive.ts` - Receiving operations
-- `move.ts` - Inventory movements/transfers
+- `receive.ts` - Receiving operations (24 KB)
+- `move.ts` - Inventory movements/transfers (39 KB)
+- `stock-adjustment.ts` - Stock adjustments (29 KB)
+- `stock-import.ts` - Bulk stock import (43 KB)
+- `production-orders.ts` - Production order management (19 KB)
+- `production-planning.ts` - Production planning (24 KB)
+- `forecast.ts` - Demand forecasting
 - `user-management.ts` - User and role management
 - `wms-receive-new.ts` - New receiving workflow
 - `orders.service.ts` - Order management
 - `file-management.ts` - File upload/management
-- `stock-import.ts` - **NEW**: Stock import batch processing
+
+**Total: 20+ database services** providing business logic abstraction
 
 #### Type Definitions
 - `types/database/supabase.ts` - Auto-generated from Supabase schema
@@ -332,6 +424,8 @@ API routes in `app/api/` follow REST patterns with standard HTTP methods:
 - `/api/storage-strategies/*` - Storage strategy configuration
 - `/api/system-users/*` - System user management endpoints
 - `/api/stock-import/*` - Stock import batch processing (upload, validate, process)
+
+**Total: 265+ API endpoints** across all modules
 
 ### Route Planning & VRP (Vehicle Routing Problem)
 The system includes advanced route optimization capabilities. See `README_VRP.md` for detailed documentation.
@@ -388,6 +482,17 @@ Key files:
   }
   ```
 
+- **Admin Operations**: Use `createServiceRoleClient()` - bypasses RLS
+  ```tsx
+  import { createServiceRoleClient } from '@/lib/supabase/server'
+
+  export async function POST() {
+    const supabase = createServiceRoleClient()
+    // This bypasses all Row Level Security policies
+    // Use with caution!
+  }
+  ```
+
 ### Data Fetching
 - **Client components**: Use SWR for data fetching with automatic revalidation
 - **Server components**: Use direct Supabase queries with `await createClient()`
@@ -415,6 +520,34 @@ Key files:
 - Location codes follow specific format
 - Weight and capacity tracking per location
 - Storage strategies determine putaway logic
+
+### Dual-Entry Ledger Pattern
+**Critical for inventory integrity:** All stock movements use dual-entry accounting:
+- **OUT entry**: Deduct from source location
+- **IN entry**: Add to destination location
+- Creates complete audit trail in `wms_inventory_ledger`
+- Maintains `wms_inventory_balances` accuracy
+
+Used throughout:
+- Receiving operations
+- Stock transfers
+- Picking and loading
+- Face sheet picking
+- Production material consumption
+
+### FEFO + FIFO Stock Allocation
+**First Expiry First Out + First In First Out** pattern for stock reservation:
+1. Query available balances
+2. Filter by location (if specified)
+3. Sort by `expiry_date ASC NULLS LAST` (FEFO)
+4. Then by `created_at ASC` (FIFO)
+5. Reserve exact `balance_id` for traceability
+6. Copy `production_date`, `expiry_date`, `lot_no` through workflow
+
+Used in:
+- Picklist stock reservation
+- Face sheet auto-reservation
+- Bonus face sheet reservation
 
 ### Receiving Workflow
 1. Create receive order with items
@@ -789,20 +922,20 @@ const { count, error } = await supabase
 
 ## Database Schema Overview
 
-The system has **85+ tables** across 8 main modules:
+The system has **85+ tables** across 9 main modules:
 1. **Master Data** (11 tables) - Products, customers, suppliers, locations, vehicles, employees, etc.
 2. **Warehouse Operations** (14 tables) - Receiving, inventory, movements, locations
-3. **Order & Logistics** (10 tables) - Orders, picklists, loadlists, route plans, face sheets, reservations
-4. **Production** (4 tables) - Production orders, BOM, material issues
+3. **Order & Logistics** (10+ tables) - Orders, picklists, loadlists, route plans, face sheets, reservations
+4. **Production** (4 tables) - Production orders, BOM, material issues, production receipts
 5. **File & User Management** (10 tables) - Files, import/export jobs, users, roles, permissions
 6. **Online Packing** (15 tables) - E-commerce packing system with `packing_*` prefix
 7. **Inventory Ledger** (15 tables) - Complete inventory tracking with ledger system
 8. **Stock Import** (2 tables) - Legacy system data import with `wms_stock_import_*` prefix
-9. **Stock Reservations** (3 tables) - `picklist_item_reservations`, `face_sheet_item_reservations`, enhanced items tables
+9. **Stock Reservations** (6+ tables) - `picklist_item_reservations`, `face_sheet_item_reservations`, `bonus_face_sheet_item_reservations`, enhanced items tables
 
 **Important**: If `supabase/DATABASE_DOCUMENTATION.md` exists, always refer to it for complete schema details including all tables, relationships, and constraints.
 
-### Recent Schema Additions
+### Recent Schema Additions (115+ Migrations Total)
 The system includes recent migrations that add:
 - Inventory ledger system with triggers (migrations 007-013)
 - `receive_to_ledger` trigger that auto-creates ledger entries
@@ -829,6 +962,10 @@ The system includes recent migrations that add:
   - `trigger_reserve_stock_after_face_sheet_created` for auto-reservation
   - Balance update fixes and upsert functions (070-077)
   - Face sheet workflow triggers and status management
+- Bonus face sheet system (migrations 100-107):
+  - Complete parallel system with `bonus_` prefix tables
+  - Support for NULL source_location_id (warehouse-wide allocation)
+  - Integration with loadlist via junction table
 - Production receipt materials system (migrations 168-172):
   - Created `production_receipt_materials` table for material consumption tracking
   - Auto-consume materials on production receipt with pallet info
@@ -837,6 +974,14 @@ The system includes recent migrations that add:
 - Inventory cleanup triggers (migrations 173-174):
   - Auto-update receive status when transferring stock
   - Clean up inventory balances and ledger when receive is deleted
+- Recent workflow enhancements (migrations 192-205):
+  - Actual stops count to trips
+  - Stock integrity audit fixes
+  - Face sheet hub validation
+  - Dispatch balance calculations
+  - Atomic pick scan operations
+  - Multi-plan transport contracts
+  - Void and restore loadlist functionality
 
 ## Common Gotchas & Troubleshooting
 
@@ -850,6 +995,7 @@ The system includes recent migrations that add:
 **Solution**: Ensure you're using the correct client:
 - Client components → `@/lib/supabase/client`
 - Server components/API routes → `@/lib/supabase/server` (with await)
+- Admin operations → `createServiceRoleClient()` (bypasses RLS)
 
 ### 3. Thai Font Not Displaying
 **Problem**: Thai text shows boxes or incorrect characters
@@ -871,7 +1017,7 @@ const { mutate: localMutate } = useSWR('/api/receives')
 await localMutate()
 ```
 
-### 5. Next.js 15 App Router Caching
+### 5. Next.js 16 App Router Caching
 **Problem**: Data appears stale or cached incorrectly
 **Solution**: Use revalidation strategies:
 ```tsx
@@ -943,7 +1089,7 @@ npm run db:generate-types
 3. Verify the action that should trigger status change is actually happening:
    - Route publish must update `receiving_route_plans.status = 'published'`
    - Picklist completion must update `wms_picklists.status = 'completed'`
-   - Loadlist scan must INSERT into `loadlist_items`
+   - Loadlist scan must INSERT into `wms_loadlist_picklists`
 4. Check for error messages in Supabase logs
 5. Manually test triggers with SQL if needed
 
@@ -966,6 +1112,15 @@ npm run db:generate-types
 - Error in trigger execution (check Supabase logs)
 - Deleted receives not cleaning up inventory (should be handled by migration 174)
 - Production receipts not consuming materials (should be handled by migrations 169-172)
+
+### 14. Stock Reservation Conflicts
+**Problem**: Stock reserved but not available for picking, or over-reservation
+**Solution**:
+1. Check reservation tables: `picklist_item_reservations`, `face_sheet_item_reservations`, `bonus_face_sheet_item_reservations`
+2. Verify `reserved_piece_qty` in `wms_inventory_balances` matches reservation records
+3. Ensure FEFO/FIFO logic is being followed (check `expiry_date` and `created_at` ordering)
+4. Check if unreserve operations are properly executed on pick completion
+5. Look for orphaned reservations (reservation exists but parent document deleted)
 
 ## Performance Considerations
 
@@ -992,6 +1147,7 @@ npm run db:generate-types
 - Implement Row Level Security (RLS) in Supabase
 - Never expose service role key in client-side code
 - Use Supabase Auth helpers for session management
+- Only use `createServiceRoleClient()` for operations that must bypass RLS
 
 ### 2. Input Validation
 - Use Zod schemas for all form inputs

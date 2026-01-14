@@ -9,7 +9,7 @@ const nextConfig = {
     ],
     qualities: [50, 75, 90, 100],
   },
-  // Enable Turbopack (Next.js 16 default)
+  // Empty turbopack config to silence warning
   turbopack: {},
   // Strict mode for better error detection
   reactStrictMode: true,

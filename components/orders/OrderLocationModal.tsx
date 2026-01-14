@@ -1,14 +1,19 @@
 'use client';
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import Modal from '@/components/ui/Modal';
 import RouteMap from '@/components/maps/RouteMap';
+import Button from '@/components/ui/Button';
+import { MapPin, Save, Loader2, Edit3, X } from 'lucide-react';
 
 interface OrderLocationModalProps {
   isOpen: boolean;
   onClose: () => void;
   order: {
+    order_id: string | number;
     order_no: string;
+    customer_id?: string;
     shop_name?: string;
+    text_field_long_1?: string; // ที่อยู่จัดส่ง
     customer?: {
       latitude: number;
       longitude: number;
@@ -19,14 +24,65 @@ interface OrderLocationModalProps {
     latitude: number;
     longitude: number;
   };
+  onAddressUpdate?: () => void; // callback เมื่ออัปเดตที่อยู่สำเร็จ
+  onEditCoordinates?: () => void; // callback เมื่อต้องการแก้ไขพิกัด
 }
 
 const OrderLocationModal: React.FC<OrderLocationModalProps> = ({
   isOpen,
   onClose,
   order,
-  warehouse
+  warehouse,
+  onAddressUpdate,
+  onEditCoordinates
 }) => {
+  const [isEditing, setIsEditing] = useState(false);
+  const [address, setAddress] = useState(order.text_field_long_1 || '');
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  // Reset state when order changes
+  useEffect(() => {
+    setAddress(order.text_field_long_1 || '');
+    setIsEditing(false);
+    setError(null);
+  }, [order.order_id, order.text_field_long_1]);
+
+  const handleSave = async () => {
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const response = await fetch(`/api/orders/${order.order_id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ text_field_long_1: address }),
+      });
+
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.error || 'ไม่สามารถบันทึกที่อยู่ได้');
+      }
+
+      setIsEditing(false);
+      if (onAddressUpdate) {
+        onAddressUpdate();
+      }
+    } catch (err: any) {
+      setError(err.message || 'เกิดข้อผิดพลาดในการบันทึก');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleCancel = () => {
+    setAddress(order.text_field_long_1 || '');
+    setIsEditing(false);
+    setError(null);
+  };
+
   if (!order.customer?.latitude || !order.customer?.longitude) {
     return null;
   }
@@ -74,8 +130,85 @@ const OrderLocationModal: React.FC<OrderLocationModalProps> = ({
               <span className="ml-2 font-mono text-xs">
                 {order.customer.latitude.toFixed(6)}, {order.customer.longitude.toFixed(6)}
               </span>
+              {onEditCoordinates && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  icon={Edit3}
+                  onClick={() => {
+                    onClose();
+                    onEditCoordinates();
+                  }}
+                  className="ml-2 text-xs"
+                >
+                  แก้ไขพิกัด
+                </Button>
+              )}
             </div>
           </div>
+        </div>
+
+        {/* Editable Address Section */}
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center space-x-2">
+              <MapPin className="w-4 h-4 text-yellow-600" />
+              <span className="text-sm font-semibold text-gray-700 font-thai">ที่อยู่จัดส่ง</span>
+            </div>
+            {!isEditing && (
+              <Button
+                variant="outline"
+                size="sm"
+                icon={Edit3}
+                onClick={() => setIsEditing(true)}
+                className="text-xs"
+              >
+                แก้ไข
+              </Button>
+            )}
+          </div>
+
+          {isEditing ? (
+            <div className="space-y-3">
+              <textarea
+                value={address}
+                onChange={(e) => setAddress(e.target.value)}
+                rows={3}
+                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm font-thai
+                         focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                placeholder="กรอกที่อยู่จัดส่ง..."
+              />
+              {error && (
+                <div className="text-red-600 text-xs font-thai">{error}</div>
+              )}
+              <div className="flex items-center space-x-2">
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={isSaving ? Loader2 : Save}
+                  onClick={handleSave}
+                  disabled={isSaving}
+                  className="text-xs"
+                >
+                  {isSaving ? 'กำลังบันทึก...' : 'บันทึก'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  icon={X}
+                  onClick={handleCancel}
+                  disabled={isSaving}
+                  className="text-xs"
+                >
+                  ยกเลิก
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="text-sm text-gray-700 font-thai whitespace-pre-wrap">
+              {address || <span className="text-gray-400 italic">ไม่มีที่อยู่</span>}
+            </div>
+          )}
         </div>
 
         {/* Map */}
@@ -83,7 +216,7 @@ const OrderLocationModal: React.FC<OrderLocationModalProps> = ({
           <RouteMap
             trips={trips}
             warehouse={warehouse}
-            height="600px"
+            height="500px"
             onTripSelectMulti={() => {}}
             selectedTripIndices={[0]}
           />

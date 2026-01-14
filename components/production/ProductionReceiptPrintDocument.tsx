@@ -16,6 +16,9 @@ interface MaterialData {
   variance_qty: number;
   variance_type: string;
   uom: string;
+  material_production_date?: string | null;
+  material_expiry_date?: string | null;
+  pallet_id?: string | null;
 }
 
 // Interface สำหรับข้อมูลที่คำนวณ
@@ -73,22 +76,22 @@ const ProductionReceiptPrintDocument = forwardRef<HTMLDivElement, ProductionRece
   ({ receipt }, ref) => {
     const formatDate = (dateStr: string | null | undefined) => {
       if (!dateStr) return '-';
-      return new Date(dateStr).toLocaleDateString('th-TH', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
+      const date = new Date(dateStr);
+      const day = date.getDate().toString().padStart(2, '0');
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      const year = date.getFullYear(); // ค.ศ.
+      return `${day}/${month}/${year}`;
     };
 
     const formatDateTime = (dateStr: string | null | undefined) => {
       if (!dateStr) return '-';
-      return new Date(dateStr).toLocaleString('th-TH', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
+      const date = new Date(dateStr);
+      const day = date.getDate().toString().padStart(2, '0');
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      const year = date.getFullYear(); // ค.ศ.
+      const hours = date.getHours().toString().padStart(2, '0');
+      const minutes = date.getMinutes().toString().padStart(2, '0');
+      return `${day}/${month}/${year} ${hours}:${minutes}`;
     };
 
     const getVarianceTypeText = (type: string) => {
@@ -619,12 +622,14 @@ const ProductionReceiptPrintDocument = forwardRef<HTMLDivElement, ProductionRece
             <table className="materials-table">
               <thead>
                 <tr>
-                  <th style={{ width: '5%' }}>#</th>
-                  <th style={{ width: '25%' }}>รหัสวัตถุดิบ</th>
-                  <th style={{ width: '30%' }}>ชื่อวัตถุดิบ</th>
-                  <th className="right" style={{ width: '12%' }}>เบิก</th>
-                  <th className="right" style={{ width: '12%' }}>ใช้จริง</th>
-                  <th className="center" style={{ width: '16%' }}>ส่วนต่าง</th>
+                  <th style={{ width: '4%' }}>#</th>
+                  <th style={{ width: '18%' }}>รหัสวัตถุดิบ</th>
+                  <th style={{ width: '22%' }}>ชื่อวัตถุดิบ</th>
+                  <th className="right" style={{ width: '9%' }}>เบิก</th>
+                  <th className="right" style={{ width: '9%' }}>ใช้จริง</th>
+                  <th className="center" style={{ width: '10%' }}>วันผลิต</th>
+                  <th className="center" style={{ width: '10%' }}>วันหมดอายุ</th>
+                  <th className="center" style={{ width: '18%' }}>ส่วนต่าง</th>
                 </tr>
               </thead>
               <tbody>
@@ -635,6 +640,8 @@ const ProductionReceiptPrintDocument = forwardRef<HTMLDivElement, ProductionRece
                     <td>{item.sku_name}</td>
                     <td className="right">{item.issued_qty.toLocaleString()} {item.uom}</td>
                     <td className="right" style={{ fontWeight: 'bold' }}>{item.actual_qty.toLocaleString()} {item.uom}</td>
+                    <td className="center" style={{ fontSize: '8pt' }}>{formatDate(item.material_production_date)}</td>
+                    <td className="center" style={{ fontSize: '8pt' }}>{formatDate(item.material_expiry_date)}</td>
                     <td className="center">
                       <span className={`variance-badge ${getVarianceClass(item.variance_type)}`}>
                         {item.variance_qty > 0 ? '+' : ''}{item.variance_qty.toLocaleString()} ({getVarianceTypeText(item.variance_type)})
@@ -648,7 +655,7 @@ const ProductionReceiptPrintDocument = forwardRef<HTMLDivElement, ProductionRece
                   <td colSpan={3} style={{ textAlign: 'right' }}>รวม:</td>
                   <td className="right">{calc.food_materials.reduce((sum, m) => sum + m.issued_qty, 0).toLocaleString()}</td>
                   <td className="right" style={{ fontWeight: 'bold' }}>{calc.food_materials.reduce((sum, m) => sum + m.actual_qty, 0).toLocaleString()}</td>
-                  <td></td>
+                  <td colSpan={3}></td>
                 </tr>
               </tfoot>
             </table>
@@ -727,7 +734,15 @@ const ProductionReceiptPrintDocument = forwardRef<HTMLDivElement, ProductionRece
 
         {/* Footer */}
         <div className="footer">
-          <div>พิมพ์เมื่อ: {new Date().toLocaleString('th-TH')}</div>
+          <div>พิมพ์เมื่อ: {(() => {
+            const now = new Date();
+            const day = now.getDate().toString().padStart(2, '0');
+            const month = (now.getMonth() + 1).toString().padStart(2, '0');
+            const year = now.getFullYear();
+            const hours = now.getHours().toString().padStart(2, '0');
+            const minutes = now.getMinutes().toString().padStart(2, '0');
+            return `${day}/${month}/${year} ${hours}:${minutes}`;
+          })()}</div>
           <div>เอกสารนี้สร้างโดยระบบ WMS อัตโนมัติ</div>
           <div>หน้า 1/1</div>
         </div>

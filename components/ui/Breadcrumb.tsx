@@ -170,10 +170,10 @@ const pathConfig: { [key: string]: BreadcrumbItem[] } = {
     { name: 'จัดการสต็อก', path: '/stock-management', clickable: false },
     { name: 'ปรับปรุงสต็อก', path: '/stock-management/adjustment', clickable: false }
   ],
-  '/stock-management/count': [
+  '/stock-management/stock-count': [
     { name: 'หน้าหลัก', path: '/dashboard', clickable: true },
     { name: 'จัดการสต็อก', path: '/stock-management', clickable: false },
-    { name: 'นับสต็อก', path: '/stock-management/count', clickable: false }
+    { name: 'นับสต็อก', path: '/stock-management/stock-count', clickable: false }
   ],
   '/master-data/storage-strategy': [
     { name: 'หน้าหลัก', path: '/dashboard', clickable: true },

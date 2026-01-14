@@ -655,81 +655,29 @@ function calculateAdvancedProductionRecommendation(
 }
 
 /**
- * รายการ SKU ที่ต้องการแสดงในหน้า Forecast
- */
-const FORECAST_SKU_IDS = [
-  // Buzz Netura แมว
-  'B-NET-C|FHC|010',
-  'B-NET-C|FHC|040',
-  'B-NET-C|FNC|010',
-  'B-NET-C|FNC|040',
-  'B-NET-C|SAL|010',
-  'B-NET-C|SAL|040',
-  // Buzz Netura สุนัข
-  'B-NET-D|CHI-L|008',
-  'B-NET-D|CHI-L|025',
-  'B-NET-D|CHI-L|100',
-  'B-NET-D|CHI-S|008',
-  'B-NET-D|CHI-S|025',
-  'B-NET-D|SAL-L|008',
-  'B-NET-D|SAL-L|025',
-  'B-NET-D|SAL-L|100',
-  'B-NET-D|SAL-S|008',
-  'B-NET-D|SAL-S|025',
-  // Tester Buzz Balanced+
-  'TT-BAP-C|HNS|0005',
-  'TT-BAP-C|IND|0005',
-  'TT-BAP-C|KNP|0005',
-  'TT-BAP-C|WEP|0005',
-  // Tester Buzz Beyond แมว
-  'TT-BEY-C|LAM|0005',
-  'TT-BEY-C|MCK|0005',
-  'TT-BEY-C|MNB|0005',
-  'TT-BEY-C|SAL|0005',
-  'TT-BEY-C|TUN|0005',
-  // Tester Buzz Beyond สุนัข
-  'TT-BEY-D|BEF|0005',
-  'TT-BEY-D|CNL|0005',
-  'TT-BEY-D|LAM|0005',
-  'TT-BEY-D|MNB|0005',
-  'TT-BEY-D|SAL|0005',
-  // Tester Buzz Netura แมว
-  'TT-NET-C|FHC|0005',
-  'TT-NET-C|FNC|0005',
-  'TT-NET-C|SAL|0005',
-  'TT-NET-C|CNT|0005',
-  // Tester Buzz Netura สุนัข
-  'TT-NET-D|CHI-L|0005',
-  'TT-NET-D|CHI-S|0005',
-  'TT-NET-D|SAL-L|0005',
-  'TT-NET-D|SAL-S|0005',
-];
-
-/**
- * ดึงข้อมูล Forecast สำหรับ SKU ที่กำหนดไว้
+ * ดึงข้อมูล Forecast สำหรับ SKU สินค้าสำเร็จรูปทั้งหมด
  */
 export async function getForecastData(filters: ForecastFilters = {}): Promise<ForecastResult> {
   const supabase = await createClient();
   const { search, priority, subCategory, page = 1, pageSize = 100 } = filters;
   
-  // 1. ดึง SKU จากรายการที่กำหนดไว้
+  // 1. ดึง SKU ทั้งหมดที่เป็นสินค้าสำเร็จรูป (category = 'สินค้าสำเร็จรูป')
   let skuQuery = supabase
     .from('master_sku')
     .select('sku_id, sku_name, category, sub_category, brand, qty_per_pack, safety_stock, reorder_point')
-    .in('sku_id', FORECAST_SKU_IDS);
+    .eq('category', 'สินค้าสำเร็จรูป')
+    .eq('status', 'active');
   
   if (search) {
     skuQuery = skuQuery.or(`sku_id.ilike.%${search}%,sku_name.ilike.%${search}%`);
   }
   
   if (subCategory && subCategory !== 'all') {
-    // กรองตาม sub_category หรือ ประเภทสินค้า (แมว/สุนัข/Tester)
+    // กรองตาม sub_category หรือ product_type
     if (subCategory === 'แมว') {
-      skuQuery = skuQuery.or('sub_category.eq.อาหารแมว,sku_id.like.%-C|%');
+      skuQuery = skuQuery.or('sub_category.eq.อาหารแมว,product_type.eq.อาหารแมว');
     } else if (subCategory === 'สุนัข') {
-      skuQuery = skuQuery.or('sub_category.eq.อาหารสุนัข,sku_id.like.%-D|%');
-    } else if (subCategory === 'tester') {
-      skuQuery = skuQuery.like('sku_id', 'TT-%');
+      skuQuery = skuQuery.or('sub_category.eq.อาหารสุนัข,product_type.eq.อาหารสุนัข');
     }
   }
   

@@ -1088,9 +1088,8 @@ const ForecastPage = () => {
               className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50"
             >
               <option value="all">ทุกประเภท</option>
-              <option value="แมว">แมว</option>
-              <option value="สุนัข">สุนัข</option>
-              <option value="tester">Tester</option>
+              <option value="แมว">อาหารแมว</option>
+              <option value="สุนัข">อาหารสุนัข</option>
             </select>
             <select
               value={selectedPriority}

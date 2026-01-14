@@ -266,22 +266,22 @@ const ActualProductionPage = () => {
     
     const formatDate = (dateStr: string | null | undefined) => {
       if (!dateStr) return '-';
-      return new Date(dateStr).toLocaleDateString('th-TH', {
-        year: 'numeric',
-        month: 'long',
-        day: 'numeric',
-      });
+      const date = new Date(dateStr);
+      const day = date.getDate().toString().padStart(2, '0');
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      const year = date.getFullYear(); // ค.ศ.
+      return `${day}/${month}/${year}`;
     };
 
     const formatDateTime = (dateStr: string | null | undefined) => {
       if (!dateStr) return '-';
-      return new Date(dateStr).toLocaleString('th-TH', {
-        year: 'numeric',
-        month: 'short',
-        day: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
+      const date = new Date(dateStr);
+      const day = date.getDate().toString().padStart(2, '0');
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      const year = date.getFullYear(); // ค.ศ.
+      const hours = date.getHours().toString().padStart(2, '0');
+      const minutes = date.getMinutes().toString().padStart(2, '0');
+      return `${day}/${month}/${year} ${hours}:${minutes}`;
     };
 
     const producerName = receipt.producer
@@ -295,14 +295,14 @@ const ActualProductionPage = () => {
     // สร้าง HTML สำหรับตารางรวม (สินค้าสำเร็จรูป + วัตถุดิบอาหาร + วัสดุบรรจุภัณฑ์)
     let combinedTableHtml = '';
     
-    // Helper function สำหรับ format วันที่แบบสั้น
+    // Helper function สำหรับ format วันที่แบบสั้น (ปี ค.ศ. 4 หลัก)
     const formatDateShort = (dateStr: string | null | undefined) => {
       if (!dateStr) return '-';
-      return new Date(dateStr).toLocaleDateString('th-TH', {
-        day: '2-digit',
-        month: '2-digit',
-        year: '2-digit',
-      });
+      const date = new Date(dateStr);
+      const day = date.getDate().toString().padStart(2, '0');
+      const month = (date.getMonth() + 1).toString().padStart(2, '0');
+      const year = date.getFullYear(); // ค.ศ. 4 หลัก
+      return `${day}/${month}/${year}`;
     };
     
     // สร้าง rows สำหรับวัตถุดิบอาหาร (พร้อมแถวย่อยรายพาเลท)
@@ -310,14 +310,30 @@ const ActualProductionPage = () => {
     let foodTotal = 0;
     if (calc?.food_materials && calc.food_materials.length > 0) {
       foodRows = calc.food_materials.map((item: any, index: number) => {
-        // แถวหลักของวัตถุดิบ
+        // แถวหลักของวัตถุดิบ พร้อมวันผลิต/วันหมดอายุ
+        // ถ้า material_production_date/material_expiry_date เป็น null ให้ดึงจาก pallet_details แทน
+        let mfgDate = '-';
+        let expDate = '-';
+        
+        if (item.material_production_date) {
+          mfgDate = formatDateShort(item.material_production_date);
+        } else if (item.pallet_details && item.pallet_details.length > 0 && item.pallet_details[0].production_date) {
+          mfgDate = formatDateShort(item.pallet_details[0].production_date);
+        }
+        
+        if (item.material_expiry_date) {
+          expDate = formatDateShort(item.material_expiry_date);
+        } else if (item.pallet_details && item.pallet_details.length > 0 && item.pallet_details[0].expiry_date) {
+          expDate = formatDateShort(item.pallet_details[0].expiry_date);
+        }
+        
         let mainRow = `
           <tr>
             <td style="padding: 6px; border: 1px solid #000; text-align: center;">${index + 1}</td>
             <td style="padding: 6px; border: 1px solid #000; font-family: monospace; font-size: 9pt;">${item.sku_id}</td>
             <td style="padding: 6px; border: 1px solid #000;">${item.sku_name || '-'}</td>
             <td style="padding: 6px; border: 1px solid #000; text-align: right; font-weight: bold;">${item.actual_qty.toLocaleString()} ${item.uom}</td>
-            <td style="padding: 6px; border: 1px solid #000;"></td>
+            <td style="padding: 6px; border: 1px solid #000; font-size: 8pt;">EXP: ${expDate}</td>
           </tr>
         `;
         
@@ -329,8 +345,7 @@ const ActualProductionPage = () => {
               <td style="padding: 4px 6px; border: 1px solid #ddd; text-align: center; font-size: 8pt; color: #666;">${index + 1}.${pIdx + 1}</td>
               <td style="padding: 4px 6px; border: 1px solid #ddd; font-family: monospace; font-size: 8pt; color: #333;">${pallet.pallet_id || '-'}</td>
               <td style="padding: 4px 6px; border: 1px solid #ddd; font-size: 8pt;">
-                <span style="color: #666;">MFG:</span> ${formatDateShort(pallet.production_date)} 
-                <span style="color: #666; margin-left: 8px;">EXP:</span> ${formatDateShort(pallet.expiry_date)}
+                <span style="color: #666;">EXP:</span> ${formatDateShort(pallet.expiry_date)}
               </td>
               <td style="padding: 4px 6px; border: 1px solid #ddd; text-align: right; font-size: 8pt;">${pallet.qty?.toLocaleString() || '-'} ${item.uom}</td>
               <td style="padding: 4px 6px; border: 1px solid #ddd; font-size: 8pt; color: #666;">${pallet.from_location_id || ''}</td>

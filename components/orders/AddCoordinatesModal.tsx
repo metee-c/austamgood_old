@@ -14,6 +14,8 @@ interface AddCoordinatesModalProps {
     customer_id: string;
     shop_name?: string;
     address?: string;
+    latitude?: number;  // พิกัดเดิม (ถ้ามี)
+    longitude?: number; // พิกัดเดิม (ถ้ามี)
   };
   warehouse: {
     name: string;
@@ -66,7 +68,16 @@ const AddCoordinatesModal: React.FC<AddCoordinatesModalProps> = ({
     if (order.address) {
       setGeocodeAddress(order.address);
     }
-  }, [order.address]);
+    // Pre-fill existing coordinates if available
+    if (order.latitude && order.longitude) {
+      setManualLat(order.latitude.toString());
+      setManualLng(order.longitude.toString());
+      setPreviewCoords({
+        latitude: order.latitude,
+        longitude: order.longitude
+      });
+    }
+  }, [order.address, order.latitude, order.longitude]);
 
   // Initialize map for click-to-place
   useEffect(() => {
@@ -322,11 +333,14 @@ const AddCoordinatesModal: React.FC<AddCoordinatesModalProps> = ({
     }]
   }] : [];
 
+  // Determine if editing existing coordinates
+  const isEditing = !!(order.latitude && order.longitude);
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={`เพิ่มพิกัดสำหรับ ${order.order_no}`}
+      title={isEditing ? `แก้ไขพิกัดสำหรับ ${order.order_no}` : `เพิ่มพิกัดสำหรับ ${order.order_no}`}
       size="4xl"
     >
       <div className="space-y-4">

@@ -16,7 +16,8 @@ import {
 
 /**
  * Generate production order number: PO-YYYYMMDD-XXX
- * ใช้ start_date (วันที่สั่งผลิต) แทน created_at เพื่อให้ตรงกับใบวางแผน
+ * ใช้ start_date (วันที่ผลิตจริงที่ผู้ใช้เลือกในหน้าบันทึกผลิตจริง)
+ * ไม่ใช่ production_date (วันผลิตของ FG) หรือ created_at (วันที่สร้างบันทึก)
  */
 async function generateProductionNo(startDate?: string): Promise<string> {
   const supabase = await createClient();
@@ -212,7 +213,7 @@ export async function createProductionOrder(
   console.log('🏭 [createProductionOrder] Starting with input:', JSON.stringify(input, null, 2));
 
   try {
-    // 1. Generate production order number (ใช้ start_date เพื่อให้ตรงกับใบวางแผน)
+    // 1. Generate production order number (ใช้ start_date วันที่ผลิตจริงที่ผู้ใช้เลือก)
     const productionNo = await generateProductionNo(input.start_date);
     console.log('🏭 [createProductionOrder] Generated production_no:', productionNo, 'from start_date:', input.start_date);
 

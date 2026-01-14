@@ -26,6 +26,10 @@ async function handlePatch(
       updateData.order_type = body.order_type;
     }
 
+    if (body.text_field_long_1 !== undefined) {
+      updateData.text_field_long_1 = body.text_field_long_1;
+    }
+
     // Check if there's anything to update
     if (Object.keys(updateData).length === 0) {
       return NextResponse.json(

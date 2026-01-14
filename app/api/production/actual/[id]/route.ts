@@ -45,7 +45,10 @@ export async function GET(
           actual_qty,
           variance_qty,
           variance_type,
-          uom
+          uom,
+          material_production_date,
+          material_expiry_date,
+          pallet_id
         )
       `)
       .eq('id', id)

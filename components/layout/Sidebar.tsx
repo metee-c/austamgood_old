@@ -222,7 +222,7 @@ const menuItems = [
     hasSubmenu: true,
     submenu: [
       {
-        path: '/stock-management/count',
+        path: '/stock-management/stock-count',
         icon: ClipboardCheck,
         label: 'นับสต็อก',
         englishLabel: 'Stock Count'

@@ -51,6 +51,9 @@ export async function GET(request: NextRequest) {
           variance_qty,
           variance_type,
           uom,
+          material_production_date,
+          material_expiry_date,
+          pallet_id,
           material_sku:master_sku!production_receipt_materials_material_sku_id_fkey(
             sku_id,
             sku_name,
@@ -266,6 +269,10 @@ export async function GET(request: NextRequest) {
           variance_qty: parseFloat(m.variance_qty) || 0,
           variance_type: m.variance_type,
           uom: m.uom,
+          // ข้อมูลวันผลิต/วันหมดอายุของวัตถุดิบ (จาก production_receipt_materials)
+          material_production_date: m.material_production_date || null,
+          material_expiry_date: m.material_expiry_date || null,
+          pallet_id: m.pallet_id || null,
           // ข้อมูลรายพาเลท
           pallet_details: palletDetails.length > 0 ? palletDetails : null
         };

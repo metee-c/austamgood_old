@@ -345,7 +345,8 @@ async function handlePost(request: NextRequest, context: any) {
       if (!picklist.picklist_items) continue;
 
       for (const item of picklist.picklist_items) {
-        const qty = item.quantity_picked || item.quantity_to_pick || 0;
+        // ✅ FIX: Convert to Number (Supabase returns string for numeric)
+        const qty = Number(item.quantity_picked) || Number(item.quantity_to_pick) || 0;
         if (qty <= 0) continue;
 
         // Get SKU info
@@ -383,7 +384,8 @@ async function handlePost(request: NextRequest, context: any) {
           );
         }
 
-        const availableQty = dispatchBalance?.total_piece_qty || 0;
+        // ✅ FIX: Convert to Number for proper comparison (Supabase returns string for numeric)
+        const availableQty = Number(dispatchBalance?.total_piece_qty) || 0;
 
         // ✅ ตรวจสอบว่ามีสต็อคเพียงพอหรือไม่
         if (availableQty < qty) {
@@ -419,7 +421,8 @@ async function handlePost(request: NextRequest, context: any) {
       console.log(`🔍 Processing face sheet ${faceSheet.face_sheet_no} with ${faceSheet.face_sheet_items.length} items`);
 
       for (const item of faceSheet.face_sheet_items) {
-        const qty = item.quantity_picked || item.quantity_to_pick || 0;
+        // ✅ FIX: Convert to Number (Supabase returns string for numeric)
+        const qty = Number(item.quantity_picked) || Number(item.quantity_to_pick) || 0;
         console.log(`📦 Face sheet item: sku=${item.sku_id}, qty_picked=${item.quantity_picked}, qty_to_pick=${item.quantity_to_pick}, final_qty=${qty}`);
         
         if (qty <= 0) {
@@ -467,7 +470,8 @@ async function handlePost(request: NextRequest, context: any) {
 
         console.log(`📊 Dispatch balance: ${dispatchBalance ? `${dispatchBalance.total_piece_qty} pieces` : 'not found'}`);
 
-        const availableQty = dispatchBalance?.total_piece_qty || 0;
+        // ✅ FIX: Convert to Number for proper comparison (Supabase returns string for numeric)
+        const availableQty = Number(dispatchBalance?.total_piece_qty) || 0;
 
         // ✅ ตรวจสอบว่ามีสต็อคเพียงพอหรือไม่
         if (availableQty < qty) {
@@ -555,7 +559,8 @@ async function handlePost(request: NextRequest, context: any) {
       console.log(`🔍 Processing bonus face sheet ${bonusFaceSheet.face_sheet_no}: total items=${bonusFaceSheet.bonus_face_sheet_items.length}, filtered (with trip)=${filteredItems.length}`);
 
       for (const item of filteredItems) {
-        const qty = item.quantity_picked || item.quantity_to_pick || 0;
+        // ✅ FIX: Convert to Number (Supabase returns string for numeric)
+        const qty = Number(item.quantity_picked) || Number(item.quantity_to_pick) || 0;
         console.log(`📦 Bonus face sheet item: sku=${item.sku_id}, qty_picked=${item.quantity_picked}, qty_to_pick=${item.quantity_to_pick}, final_qty=${qty}, package_id=${item.package_id}`);
 
         if (qty <= 0) {

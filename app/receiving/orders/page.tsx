@@ -1899,6 +1899,11 @@ const OrdersPage = () => {
           onClose={() => setShowLocationModal(false)}
           order={selectedOrderForLocation}
           warehouse={warehouse}
+          onAddressUpdate={() => refetch()}
+          onEditCoordinates={() => {
+            setShowLocationModal(false);
+            openAddCoordinatesModal(selectedOrderForLocation);
+          }}
         />
       )}
 
@@ -1911,7 +1916,9 @@ const OrdersPage = () => {
             order_no: selectedOrderForAddCoords.order_no,
             customer_id: selectedOrderForAddCoords.customer_id,
             shop_name: selectedOrderForAddCoords.shop_name,
-            address: selectedOrderForAddCoords.text_field_long_1
+            address: selectedOrderForAddCoords.text_field_long_1,
+            latitude: selectedOrderForAddCoords.customer?.latitude,
+            longitude: selectedOrderForAddCoords.customer?.longitude
           }}
           warehouse={warehouse}
           onSuccess={handleAddCoordinatesSuccess}
