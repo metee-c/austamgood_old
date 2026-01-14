@@ -1271,6 +1271,16 @@ const EditShippingCostModal: React.FC<EditShippingCostModalProps> = ({
   const handleSaveAll = async () => {
     if (!selectedPlan?.trips) return;
 
+    // ✅ FIX: ตรวจสอบว่ามี fallback trip หรือไม่
+    const hasFallbackTrips = selectedPlan.trips.some(trip => 
+      String(trip.trip_id).startsWith('fallback-')
+    );
+
+    if (hasFallbackTrips) {
+      alert('⚠️ ไม่สามารถบันทึกค่าขนส่งได้\n\nสาเหตุ: ข้อมูลเที่ยวยังไม่ได้บันทึกในฐานข้อมูล\n\nวิธีแก้ไข:\n1. กลับไปหน้าจัดเส้นทาง\n2. กดปุ่ม "บันทึกแผน" หรือ "เผยแพร่แผน" เพื่อบันทึกข้อมูลเที่ยวลงฐานข้อมูล\n3. กลับมาแก้ไขค่าขนส่งอีกครั้ง');
+      return;
+    }
+
     setSavingAll(true);
     const errors: string[] = [];
     let successCount = 0;
@@ -1457,6 +1467,23 @@ const EditShippingCostModal: React.FC<EditShippingCostModalProps> = ({
 
           {step === 'edit' && selectedPlan && (
             <div>
+              {/* ✅ FIX: Warning banner for fallback trips */}
+              {selectedPlan.trips?.some(trip => String(trip.trip_id).startsWith('fallback-')) && (
+                <div className="mb-4 p-4 bg-orange-100 border-2 border-orange-400 rounded-lg">
+                  <div className="flex items-start gap-2">
+                    <span className="text-orange-600 text-xl">⚠️</span>
+                    <div>
+                      <p className="font-bold text-orange-800 font-thai text-sm">
+                        ไม่สามารถบันทึกค่าขนส่งได้
+                      </p>
+                      <p className="text-orange-700 font-thai text-xs mt-1">
+                        ข้อมูลเที่ยวยังไม่ได้บันทึกในฐานข้อมูล กรุณากลับไปหน้าจัดเส้นทางและกดปุ่ม "บันทึกแผน" หรือ "เผยแพร่แผน" ก่อน
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="mb-4 flex justify-between items-center">
                 <button
                   onClick={handleBack}
@@ -1505,7 +1532,7 @@ const EditShippingCostModal: React.FC<EditShippingCostModalProps> = ({
             {step === 'edit' && selectedPlan && (
               <button
                 onClick={handleSaveAll}
-                disabled={savingAll || Object.keys(tripsFormData).length === 0}
+                disabled={savingAll || Object.keys(tripsFormData).length === 0 || selectedPlan.trips?.some(trip => String(trip.trip_id).startsWith('fallback-'))}
                 className="px-6 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors disabled:bg-gray-400 font-thai font-semibold"
               >
                 {savingAll ? 'กำลังบันทึก...' : 'บันทึกทั้งหมด'}

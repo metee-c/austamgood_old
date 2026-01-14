@@ -442,10 +442,126 @@ export async function GET(
     });
 
     // If no trips in database, try to get from plan.settings.optimizedTrips (fallback mode)
+    // AUTO-SAVE: When optimizedTrips exist but no trips in DB, automatically save them to database
     let finalTrips = tripsWithSortedStops;
     
+    // Check if trips exist but have no stops (incomplete auto-save from previous run)
+    const hasTripsWithNoStops = tripsWithSortedStops.length > 0 && 
+      tripsWithSortedStops.every((t: any) => !t.stops || t.stops.length === 0) &&
+      plan.settings?.optimizedTrips;
+    
+    if (hasTripsWithNoStops) {
+      console.log('⚠️ Trips exist but have no stops - attempting to recover stops from optimizedTrips');
+      
+      // Try to insert missing stops for existing trips
+      try {
+        for (let tripIndex = 0; tripIndex < tripsWithSortedStops.length; tripIndex++) {
+          const dbTrip = tripsWithSortedStops[tripIndex];
+          const optimizedTrip = plan.settings.optimizedTrips[tripIndex];
+          
+          if (!optimizedTrip?.stops || optimizedTrip.stops.length === 0) continue;
+          
+          // Fetch inputs to get input_id for each order
+          const allOrderIds = optimizedTrip.stops
+            .flatMap((s: any) => Array.isArray(s.orderIds) ? s.orderIds : (s.orderId ? [s.orderId] : []))
+            .filter((id: any) => id != null);
+          
+          let inputsMap: Record<number, number> = {};
+          if (allOrderIds.length > 0) {
+            const { data: inputsData } = await supabase
+              .from('receiving_route_plan_inputs')
+              .select('input_id, order_id')
+              .eq('plan_id', planId);
+            
+            if (inputsData) {
+              inputsData.forEach((input: any) => {
+                inputsMap[input.order_id] = input.input_id;
+              });
+            }
+          }
+          
+          // Build stops to insert
+          const stopsToInsert = optimizedTrip.stops.map((stop: any, stopIndex: number) => {
+            const orderIds = Array.isArray(stop.orderIds) ? stop.orderIds : (stop.orderId ? [stop.orderId] : []);
+            const primaryOrderId = orderIds[0] || null;
+            const inputId = primaryOrderId ? inputsMap[primaryOrderId] : null;
+            
+            const tags: any = {};
+            if (orderIds.length > 1) {
+              tags.order_ids = orderIds;
+              tags.input_ids = orderIds.map((oid: number) => inputsMap[oid]).filter((id: number) => id != null);
+            }
+            
+            return {
+              trip_id: dbTrip.trip_id,
+              plan_id: Number(planId),
+              sequence_no: stopIndex + 1,
+              stop_name: stop.stopName || stop.address || `จุดที่ ${stopIndex + 1}`,
+              address: stop.address || null,
+              latitude: stop.latitude || null,
+              longitude: stop.longitude || null,
+              load_weight_kg: stop.weight || 0,
+              service_duration_minutes: Math.round(stop.serviceTime || 0),
+              order_id: primaryOrderId,
+              input_id: inputId,
+              tags: Object.keys(tags).length > 0 ? tags : null
+            };
+          });
+          
+          if (stopsToInsert.length > 0) {
+            const { error: stopsError } = await supabase
+              .from('receiving_route_stops')
+              .insert(stopsToInsert);
+            
+            if (stopsError) {
+              console.error('❌ Error recovering stops for trip:', dbTrip.trip_id, stopsError);
+            } else {
+              console.log('✅ Recovered stops for trip:', { trip_id: dbTrip.trip_id, count: stopsToInsert.length });
+            }
+          }
+        }
+        
+        // Re-fetch stops after recovery
+        const { data: recoveredStops } = await supabase
+          .from('receiving_route_stops')
+          .select(`
+            *,
+            order:wms_orders!fk_receiving_route_stops_order (
+              order_id,
+              order_no,
+              customer_id,
+              total_weight,
+              order_date,
+              delivery_date,
+              notes
+            )
+          `)
+          .in('trip_id', tripIds)
+          .order('sequence_no', { ascending: true });
+        
+        if (recoveredStops && recoveredStops.length > 0) {
+          // Re-process stops with order data (simplified version)
+          const recoveredStopsByTrip = recoveredStops.reduce((acc: any, stop: any) => {
+            if (!acc[stop.trip_id]) acc[stop.trip_id] = [];
+            acc[stop.trip_id].push(stop);
+            return acc;
+          }, {});
+          
+          // Update finalTrips with recovered stops
+          finalTrips = tripsWithSortedStops.map((trip: any) => ({
+            ...trip,
+            stops: recoveredStopsByTrip[trip.trip_id] || []
+          }));
+          
+          console.log('✅ Stops recovery complete');
+        }
+      } catch (recoveryError: any) {
+        console.error('❌ Stops recovery failed:', recoveryError);
+      }
+    }
+    
     if (tripsWithSortedStops.length === 0 && plan.settings?.optimizedTrips) {
-      console.log('⚠️ No trips in database, using optimizedTrips from settings');
+      console.log('⚠️ No trips in database, AUTO-SAVING optimizedTrips to database');
       
       // Get the max daily_trip_number for this plan_date from ALL plans
       const planDate = plan.plan_date ? new Date(plan.plan_date).toISOString().split('T')[0] : null;
@@ -458,7 +574,7 @@ export async function GET(
         if (maxDailyNumber && typeof maxDailyNumber === 'number') {
           startDailyTripNumber = maxDailyNumber;
         }
-        console.log('📊 Calculated daily_trip_number for fallback:', {
+        console.log('📊 Calculated daily_trip_number for auto-save:', {
           planDate,
           startDailyTripNumber
         });
@@ -488,6 +604,9 @@ export async function GET(
       let ordersMap: Record<number, any> = {};
       let orderItemsMap: Record<number, number> = {};
       let orderItemsDetailMap: Record<number, any[]> = {};
+      
+      // Fetch inputs to get input_id for each order
+      let inputsMap: Record<number, number> = {}; // order_id -> input_id
 
       if (allOrderIds.length > 0) {
         const { data: orders, error: ordersError } = await supabase
@@ -551,90 +670,258 @@ export async function GET(
             });
           });
         }
+        
+        // Fetch inputs to get input_id for each order
+        const { data: inputsData } = await supabase
+          .from('receiving_route_plan_inputs')
+          .select('input_id, order_id')
+          .eq('plan_id', planId);
+        
+        if (inputsData) {
+          inputsData.forEach((input: any) => {
+            inputsMap[input.order_id] = input.input_id;
+          });
+        }
       }
       
-      finalTrips = plan.settings.optimizedTrips.map((trip: any, index: number) => ({
-        trip_id: `fallback-${index + 1}`,
-        trip_sequence: index + 1,
-        daily_trip_number: startDailyTripNumber + index, // ใช้เลขคันที่ไม่ซ้ำกับแผนอื่นในวันเดียวกัน
-        trip_code: `TRIP-${String(index + 1).padStart(3, '0')}`,
-        plan_id: planId,
-        total_distance_km: trip.totalDistance || 0,
-        total_drive_minutes: trip.totalDriveTime || 0,
-        total_service_minutes: trip.totalServiceTime || 0,
-        total_weight_kg: trip.totalWeight || 0,
-        fuel_cost_estimate: trip.totalCost || 0,
-        notes: trip.zoneName || null,
-        stops: (trip.stops || []).map((stop: any, stopIndex: number) => {
-          // Handle both orderId (single) and orderIds (array)
-          const orderIds = Array.isArray(stop.orderIds) ? stop.orderIds : (stop.orderId ? [stop.orderId] : []);
-          const primaryOrderId = orderIds[0] || null;
-          const orderInfo = primaryOrderId ? ordersMap[primaryOrderId] : null;
-          
-          // Build orders array for consolidated stops
-          const orders = orderIds.map((oid: number) => {
-            const order = ordersMap[oid];
-            if (!order) return null;
-
-            // Use actual order weight if available, otherwise split evenly
-            const orderWeight = order.total_weight != null && Number.isFinite(Number(order.total_weight))
-              ? Number(order.total_weight)
-              : stop.weight / orderIds.length;
-
-            // Get quantity from order items map
-            const totalQty = orderItemsMap[order.order_id] || 0;
-
-            return {
-              order_id: order.order_id,
-              order_no: order.order_no,
-              customer_id: order.customer_id,
-              customer_name: stop.stopName,
-              shop_name: order.shop_name || stop.stopName,
-              province: order.province || null,
-              allocated_weight_kg: orderWeight,
-              total_order_weight_kg: orderWeight,
-              total_qty: totalQty,
-              note: order.notes || null,
-              text_field_long_1: order.text_field_long_1 || null,
-              items: orderItemsDetailMap[order.order_id] || []
-            };
-          }).filter((o: any) => o != null);
-          
-          return {
-            stop_id: `fallback-stop-${index + 1}-${stopIndex + 1}`,
-            trip_id: `fallback-${index + 1}`,
-            sequence_no: stopIndex + 1,
-            stop_name: stop.stopName || stop.address || `จุดที่ ${stopIndex + 1}`,
-            address: stop.address || null,
-            latitude: stop.latitude || null,
-            longitude: stop.longitude || null,
-            load_weight_kg: stop.weight || 0,
-            service_duration_minutes: stop.serviceTime || 0,
-            planned_arrival_at: stop.estimatedArrival || null,
-            planned_departure_at: stop.estimatedDeparture || null,
-            order_id: primaryOrderId,
-            order_no: orderInfo?.order_no || null,
-            customer_name: null,
-            orders: orders.length > 0 ? orders : null
-          };
-        })
-      }));
+      // ========== AUTO-SAVE TRIPS TO DATABASE ==========
+      console.log('🔄 AUTO-SAVING trips to database...');
       
-      console.log('✅ Converted optimizedTrips to trips format:', {
-        tripsCount: finalTrips.length,
-        ordersMapSize: Object.keys(ordersMap).length,
-        firstTrip: finalTrips[0] ? {
-          trip_id: finalTrips[0].trip_id,
-          stopsCount: finalTrips[0].stops?.length,
-          firstStop: finalTrips[0].stops?.[0] ? {
-            stop_id: finalTrips[0].stops[0].stop_id,
-            stop_name: finalTrips[0].stops[0].stop_name,
-            order_id: finalTrips[0].stops[0].order_id,
-            order_no: finalTrips[0].stops[0].order_no,
-            customer_name: finalTrips[0].stops[0].customer_name
-          } : null
-        } : null
-      });
+      const savedTrips: any[] = [];
+      let autoSaveSuccess = true;
+      
+      try {
+        for (let index = 0; index < plan.settings.optimizedTrips.length; index++) {
+          const trip = plan.settings.optimizedTrips[index];
+          const dailyTripNumber = startDailyTripNumber + index;
+          
+          // Calculate trip totals
+          const totalWeight = trip.totalWeight || (trip.stops || []).reduce((sum: number, s: any) => sum + (s.weight || 0), 0);
+          const totalDistance = trip.totalDistance || 0;
+          // Round to integers - database columns are INTEGER type
+          const totalDriveMinutes = Math.round(trip.totalDriveTime || 0);
+          const totalServiceMinutes = Math.round(trip.totalServiceTime || 0);
+          
+          // Insert trip into database
+          const { data: insertedTrip, error: tripError } = await supabase
+            .from('receiving_route_trips')
+            .insert({
+              plan_id: Number(planId),
+              trip_sequence: index + 1,
+              daily_trip_number: dailyTripNumber,
+              trip_code: `TRIP-${String(index + 1).padStart(3, '0')}`,
+              total_distance_km: totalDistance,
+              total_drive_minutes: totalDriveMinutes,
+              total_service_minutes: totalServiceMinutes,
+              total_weight_kg: totalWeight,
+              fuel_cost_estimate: trip.totalCost || 0,
+              notes: trip.zoneName || null,
+              trip_status: 'planned'
+            })
+            .select()
+            .single();
+          
+          if (tripError) {
+            console.error('❌ Error inserting trip:', tripError);
+            autoSaveSuccess = false;
+            break;
+          }
+          
+          console.log('✅ Inserted trip:', { trip_id: insertedTrip.trip_id, daily_trip_number: dailyTripNumber });
+          
+          // Insert stops for this trip
+          const stopsToInsert: any[] = [];
+          const stops = trip.stops || [];
+          
+          for (let stopIndex = 0; stopIndex < stops.length; stopIndex++) {
+            const stop = stops[stopIndex];
+            
+            // Handle both orderId (single) and orderIds (array)
+            const orderIds = Array.isArray(stop.orderIds) ? stop.orderIds : (stop.orderId ? [stop.orderId] : []);
+            const primaryOrderId = orderIds[0] || null;
+            const inputId = primaryOrderId ? inputsMap[primaryOrderId] : null;
+            
+            // Build tags for consolidated stops
+            const tags: any = {};
+            if (orderIds.length > 1) {
+              tags.order_ids = orderIds;
+              tags.input_ids = orderIds.map((oid: number) => inputsMap[oid]).filter((id: number) => id != null);
+            }
+            
+            stopsToInsert.push({
+              trip_id: insertedTrip.trip_id,
+              plan_id: Number(planId), // Required field
+              sequence_no: stopIndex + 1,
+              stop_name: stop.stopName || stop.address || `จุดที่ ${stopIndex + 1}`,
+              address: stop.address || null,
+              latitude: stop.latitude || null,
+              longitude: stop.longitude || null,
+              load_weight_kg: stop.weight || 0,
+              service_duration_minutes: Math.round(stop.serviceTime || 0), // Round to integer
+              planned_arrival_at: stop.estimatedArrival || null,
+              planned_departure_at: stop.estimatedDeparture || null,
+              order_id: primaryOrderId,
+              input_id: inputId,
+              tags: Object.keys(tags).length > 0 ? tags : null
+            });
+          }
+          
+          let insertedStopsData: any[] = [];
+          if (stopsToInsert.length > 0) {
+            const { data: insertedStops, error: stopsError } = await supabase
+              .from('receiving_route_stops')
+              .insert(stopsToInsert)
+              .select();
+            
+            if (stopsError) {
+              console.error('❌ Error inserting stops:', stopsError);
+            } else {
+              console.log('✅ Inserted stops:', { count: insertedStops?.length || 0 });
+              insertedStopsData = insertedStops || [];
+            }
+          }
+          
+          // Build trip object with stops for response
+          const tripStops = (insertedStopsData.length > 0 ? insertedStopsData : stopsToInsert).map((stop, stopIndex) => {
+            const orderIds = stop.tags?.order_ids || (stop.order_id ? [stop.order_id] : []);
+            
+            // Build orders array for consolidated stops
+            const orders = orderIds.map((oid: number) => {
+              const order = ordersMap[oid];
+              if (!order) return null;
+
+              const orderWeight = order.total_weight != null && Number.isFinite(Number(order.total_weight))
+                ? Number(order.total_weight)
+                : stop.load_weight_kg / orderIds.length;
+
+              const totalQty = orderItemsMap[order.order_id] || 0;
+
+              return {
+                order_id: order.order_id,
+                order_no: order.order_no,
+                customer_id: order.customer_id,
+                customer_name: stop.stop_name,
+                shop_name: order.shop_name || stop.stop_name,
+                province: order.province || null,
+                allocated_weight_kg: orderWeight,
+                total_order_weight_kg: orderWeight,
+                total_qty: totalQty,
+                note: order.notes || null,
+                text_field_long_1: order.text_field_long_1 || null,
+                items: orderItemsDetailMap[order.order_id] || []
+              };
+            }).filter((o: any) => o != null);
+            
+            return {
+              ...stop,
+              order_no: ordersMap[stop.order_id]?.order_no || null,
+              orders: orders.length > 0 ? orders : null
+            };
+          });
+          
+          savedTrips.push({
+            ...insertedTrip,
+            stops: tripStops
+          });
+        }
+        
+        // Update plan trips_count if auto-save was successful
+        if (autoSaveSuccess && savedTrips.length > 0) {
+          const { error: updatePlanError } = await supabase
+            .from('receiving_route_plans')
+            .update({ 
+              trips_count: savedTrips.length,
+              status: 'optimizing' // Keep as optimizing until shipping costs are filled
+            })
+            .eq('plan_id', planId);
+          
+          if (updatePlanError) {
+            console.error('❌ Error updating plan trips_count:', updatePlanError);
+          }
+          
+          console.log('✅ AUTO-SAVE complete:', {
+            tripsCount: savedTrips.length,
+            firstTrip: savedTrips[0] ? {
+              trip_id: savedTrips[0].trip_id,
+              stopsCount: savedTrips[0].stops?.length
+            } : null
+          });
+          
+          // Use saved trips with real IDs
+          finalTrips = savedTrips;
+        }
+      } catch (autoSaveError: any) {
+        console.error('❌ AUTO-SAVE failed:', autoSaveError);
+        autoSaveSuccess = false;
+      }
+      
+      // FALLBACK: If auto-save failed, return fallback trips with string IDs
+      if (!autoSaveSuccess || savedTrips.length === 0) {
+        console.log('⚠️ AUTO-SAVE failed, falling back to optimizedTrips format');
+        
+        finalTrips = plan.settings.optimizedTrips.map((trip: any, index: number) => ({
+          trip_id: `fallback-${index + 1}`,
+          trip_sequence: index + 1,
+          daily_trip_number: startDailyTripNumber + index,
+          trip_code: `TRIP-${String(index + 1).padStart(3, '0')}`,
+          plan_id: planId,
+          total_distance_km: trip.totalDistance || 0,
+          total_drive_minutes: trip.totalDriveTime || 0,
+          total_service_minutes: trip.totalServiceTime || 0,
+          total_weight_kg: trip.totalWeight || 0,
+          fuel_cost_estimate: trip.totalCost || 0,
+          notes: trip.zoneName || null,
+          stops: (trip.stops || []).map((stop: any, stopIndex: number) => {
+            const orderIds = Array.isArray(stop.orderIds) ? stop.orderIds : (stop.orderId ? [stop.orderId] : []);
+            const primaryOrderId = orderIds[0] || null;
+            const orderInfo = primaryOrderId ? ordersMap[primaryOrderId] : null;
+            
+            const orders = orderIds.map((oid: number) => {
+              const order = ordersMap[oid];
+              if (!order) return null;
+
+              const orderWeight = order.total_weight != null && Number.isFinite(Number(order.total_weight))
+                ? Number(order.total_weight)
+                : stop.weight / orderIds.length;
+
+              const totalQty = orderItemsMap[order.order_id] || 0;
+
+              return {
+                order_id: order.order_id,
+                order_no: order.order_no,
+                customer_id: order.customer_id,
+                customer_name: stop.stopName,
+                shop_name: order.shop_name || stop.stopName,
+                province: order.province || null,
+                allocated_weight_kg: orderWeight,
+                total_order_weight_kg: orderWeight,
+                total_qty: totalQty,
+                note: order.notes || null,
+                text_field_long_1: order.text_field_long_1 || null,
+                items: orderItemsDetailMap[order.order_id] || []
+              };
+            }).filter((o: any) => o != null);
+            
+            return {
+              stop_id: `fallback-stop-${index + 1}-${stopIndex + 1}`,
+              trip_id: `fallback-${index + 1}`,
+              sequence_no: stopIndex + 1,
+              stop_name: stop.stopName || stop.address || `จุดที่ ${stopIndex + 1}`,
+              address: stop.address || null,
+              latitude: stop.latitude || null,
+              longitude: stop.longitude || null,
+              load_weight_kg: stop.weight || 0,
+              service_duration_minutes: stop.serviceTime || 0,
+              planned_arrival_at: stop.estimatedArrival || null,
+              planned_departure_at: stop.estimatedDeparture || null,
+              order_id: primaryOrderId,
+              order_no: orderInfo?.order_no || null,
+              customer_name: null,
+              orders: orders.length > 0 ? orders : null
+            };
+          })
+        }));
+      }
     }
 
     console.log('Editor data:', {

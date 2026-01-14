@@ -134,12 +134,44 @@ export async function GET(request: NextRequest) {
     const movedPackages = packages?.filter(p => !p.storage_location || p.storage_location.trim() === '').length || 0;
     const pendingPackages = totalPackages - movedPackages;
 
+    // ✅ FIX (edit39): ตรวจสอบจาก ledger ด้วย - ถ้ามี ledger entries สำหรับ loadlist นี้แล้ว ถือว่าเสร็จ
+    const bfsIds = bfsLinks.map(link => link.bonus_face_sheet_id);
+    const { data: bfsData } = await supabase
+      .from('bonus_face_sheets')
+      .select('face_sheet_no')
+      .in('id', bfsIds);
+    
+    const bfsNos = bfsData?.map(b => b.face_sheet_no) || [];
+    
+    // ตรวจสอบว่ามี ledger entries สำหรับ BFS เหล่านี้หรือไม่
+    // ใช้ ILIKE เพราะ reference_no อาจมีหลาย BFS รวมกัน (เช่น "BFS-20260113-003, BFS-20260114-001")
+    let hasLedgerEntries = false;
+    if (bfsNos.length > 0) {
+      for (const bfsNo of bfsNos) {
+        const { data: ledgerEntries } = await supabase
+          .from('wms_inventory_ledger')
+          .select('ledger_id')
+          .eq('reference_doc_type', 'bonus_face_sheet_staging')
+          .ilike('reference_no', `%${bfsNo}%`)
+          .limit(1);
+        
+        if ((ledgerEntries?.length || 0) > 0) {
+          hasLedgerEntries = true;
+          break;
+        }
+      }
+    }
+
+    // ถ้ามี ledger entries แล้ว ถือว่าเสร็จ (แม้ว่า packages จะยังมี storage_location อยู่)
+    const isComplete = pendingPackages === 0 || hasLedgerEntries;
+
     return NextResponse.json({
       success: true,
       total_packages: totalPackages,
       moved_packages: movedPackages,
       pending_packages: pendingPackages,
-      is_complete: pendingPackages === 0
+      is_complete: isComplete,
+      has_ledger_entries: hasLedgerEntries
     });
 
   } catch (error: any) {
@@ -283,6 +315,8 @@ async function handlePost(request: NextRequest, context: any) {
     }
 
     console.log(`📦 Found ${packages.length} packages with storage locations from ${bonusFaceSheets.length} BFS (matched_package_ids: ${matchedPackageIds.length})`);
+    console.log(`📦 Package IDs: ${packages.map(p => p.id).join(', ')}`);
+    console.log(`📦 Package storage locations: ${packages.map(p => `${p.id}:${p.storage_location}`).join(', ')}`);
 
     // 4. ดึง items ของแต่ละ package เพื่อย้ายสต็อก
     const packageIds = packages.map(p => p.id);
@@ -502,13 +536,22 @@ async function handlePost(request: NextRequest, context: any) {
     }
 
     // 8. Clear storage_location from packages ที่มี trip_number (mark as moved to staging)
-    await supabase
+    // ✅ FIX: เพิ่ม logging และ error handling
+    console.log(`📦 Clearing storage_location for ${packageIds.length} packages: ${packageIds.join(', ')}`);
+    
+    const { error: updatePkgError, count: updatedCount } = await supabase
       .from('bonus_face_sheet_packages')
       .update({ 
         storage_location: null,
         updated_at: now
       })
       .in('id', packageIds);
+
+    if (updatePkgError) {
+      console.error('❌ Error clearing storage_location:', updatePkgError);
+    } else {
+      console.log(`✅ Cleared storage_location for packages`);
+    }
 
     console.log(`✅ Moved ${totalMoved} pieces to staging locations from ${bonusFaceSheets.length} BFS`);
 

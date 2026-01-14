@@ -580,7 +580,7 @@ export default function ExcelStyleRouteEditor({
           <Button 
             variant="primary" 
             onClick={handleSave} 
-            disabled={!hasChanges || loading || isSaving}
+            disabled={loading || isSaving}
           >
             <Save size={16} className="mr-1" />
             {isSaving ? 'กำลังบันทึก...' : 'บันทึก'}

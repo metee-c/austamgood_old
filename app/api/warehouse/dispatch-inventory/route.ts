@@ -89,121 +89,16 @@ export async function GET(request: NextRequest) {
       dispatchInventory = data || [];
     }
 
-    // ✅ ดึงข้อมูล bonus face sheet items ที่มี SKU ตรงกับ inventory ที่ Dispatch
-    // Query จาก bonus_face_sheet_items โดยไม่กรอง status เพื่อดูทุก item ที่เคยถูก pick
+    // ✅ ไม่ดึง bonus_face_sheet_items แล้ว - BFS ควรแสดงเฉพาะในแท็บ "จัดสินค้าเสร็จ (BFS)" เท่านั้น
+    // BFS flow: บ้านหยิบ -> PQ01-PQ10/MR01-MR10 -> MRTD/PQTD -> โหลดขึ้นรถ (ไม่ผ่าน Dispatch)
     const skuIds = dispatchInventory.map(item => item.sku_id);
-    console.log(`[DISPATCH-INVENTORY] Looking for bonus face sheets with SKUs:`, skuIds);
-
-    // ⚠️ CRITICAL FIX: If no inventory at Dispatch, don't query BFS items
-    // Supabase .in('field', []) with empty array returns ALL records!
-    let bonusFaceSheetData: any[] = [];
-    let bfsError = null;
+    console.log(`[DISPATCH-INVENTORY] SKUs at Dispatch:`, skuIds.length);
     
-    if (skuIds.length > 0) {
-      const result = await supabase
-        .from('bonus_face_sheet_items')
-        .select(`
-          id,
-          face_sheet_id,
-          package_id,
-          sku_id,
-          quantity_to_pick,
-          quantity_picked,
-          status,
-          picked_at,
-          voided_at,
-          bonus_face_sheets!face_sheet_id (
-            id,
-            face_sheet_no,
-            status,
-            picking_completed_at,
-            wms_loadlist_bonus_face_sheets (
-              loadlist_id,
-              loadlists (
-                loadlist_code,
-                status
-              )
-            )
-          )
-        `)
-        .in('sku_id', skuIds)
-        .gt('quantity_picked', 0) // ✅ กรองเฉพาะที่หยิบแล้ว (quantity_picked > 0)
-        .is('voided_at', null) // ✅ กรอง voided items ออก
-        .neq('status', 'voided'); // ✅ กรอง voided status ออก
-      
-      bonusFaceSheetData = result.data || [];
-      bfsError = result.error;
-    } else {
-      console.log(`[DISPATCH-INVENTORY] ⚠️ No inventory at Dispatch, skipping BFS query`);
-    }
-
-    if (bfsError) throw bfsError;
-
-    // ✅ ดึงข้อมูล bonus_face_sheet_packages แยกต่างหาก (รวม storage_location)
-    const packageIds = (bonusFaceSheetData || []).map(item => item.package_id).filter(Boolean);
-    let bonusPackagesMap: Record<number, any> = {};
+    // ไม่ query BFS items อีกต่อไป
+    const filteredBonusFaceSheets: any[] = [];
+    const bonusPackagesMap: Record<number, any> = {};
     
-    if (packageIds.length > 0) {
-      const { data: packagesData, error: packagesError } = await supabase
-        .from('bonus_face_sheet_packages')
-        .select(`
-          id,
-          package_number,
-          barcode_id,
-          order_id,
-          order_no,
-          shop_name,
-          province,
-          phone,
-          hub,
-          delivery_type,
-          storage_location
-        `)
-        .in('id', packageIds);
-      
-      if (packagesError) throw packagesError;
-      
-      // สร้าง map สำหรับ lookup
-      bonusPackagesMap = (packagesData || []).reduce((acc, pkg) => {
-        acc[pkg.id] = pkg;
-        return acc;
-      }, {} as Record<number, any>);
-      
-      console.log(`[DISPATCH-INVENTORY] Bonus packages loaded: ${Object.keys(bonusPackagesMap).length} packages`);
-    }
-
-    console.log(`[DISPATCH-INVENTORY] Bonus Face Sheet Items: Found ${bonusFaceSheetData?.length || 0} items (all statuses)`);
-    
-    // ✅ กรอง bonus face sheet items ที่ loadlist ยังไม่ loaded หรือ voided (ยังอยู่ที่ Dispatch)
-    // และกรองออก BFS items ที่อยู่ที่ staging areas (MRTD/PQTD)
-    const filteredBonusFaceSheets = (bonusFaceSheetData || []).filter(item => {
-      const faceSheet = Array.isArray(item.bonus_face_sheets) ? item.bonus_face_sheets[0] : item.bonus_face_sheets;
-      const loadlistBonusFaceSheets = faceSheet?.wms_loadlist_bonus_face_sheets || [];
-      
-      // ✅ กรองออก: BFS items ที่อยู่ที่ staging (storage_location = null/empty)
-      // BFS items ที่ staging ควรแสดงในแทบ "จัดสินค้าเสร็จ (BFS)" ไม่ใช่ Dispatch
-      const pkg = item.package_id ? bonusPackagesMap[item.package_id] : null;
-      const isAtStaging = !pkg?.storage_location || pkg.storage_location.trim() === '';
-      
-      if (isAtStaging) {
-        console.log(`[DISPATCH-INVENTORY] ⚠️ Filtering out BFS item at staging: Package #${pkg?.package_number}, SKU: ${item.sku_id}`);
-        return false; // กรองออก - อยู่ที่ staging ไม่ใช่ Dispatch
-      }
-      
-      // ถ้าไม่มี loadlist = ยังอยู่ที่ Dispatch
-      if (loadlistBonusFaceSheets.length === 0) return true;
-      
-      // ถ้ามี loadlist ที่ status = 'loaded' หรือ 'voided' = ไม่อยู่ที่ Dispatch แล้ว
-      const hasLoadedOrVoidedLoadlist = loadlistBonusFaceSheets.some((lbfs: any) => {
-        const loadlist = Array.isArray(lbfs.loadlists) ? lbfs.loadlists[0] : lbfs.loadlists;
-        return loadlist?.status === 'loaded' || loadlist?.status === 'voided';
-      });
-      
-      // กรองออกถ้ามี loadlist ที่ loaded หรือ voided
-      return !hasLoadedOrVoidedLoadlist;
-    });
-    
-    console.log(`[DISPATCH-INVENTORY] Bonus Face Sheet Items after loadlist + staging filter: ${filteredBonusFaceSheets.length} items`);
+    console.log(`[DISPATCH-INVENTORY] BFS items excluded from Dispatch tab (BFS should show in BFS staging tab only)`);
 
     // ✅ ดึงข้อมูล picklist items ที่มี SKU ตรงกับ inventory ที่ Dispatch
     console.log(`[DISPATCH-INVENTORY] Looking for picklists with SKUs:`, skuIds);
@@ -364,13 +259,8 @@ export async function GET(request: NextRequest) {
     
     console.log(`[DISPATCH-INVENTORY] Face Sheet Items after loadlist filter: ${filteredFaceSheets.length} items`);
 
-    // จับคู่ข้อมูล inventory กับ face sheet, bonus face sheet และ picklist
+    // จับคู่ข้อมูล inventory กับ face sheet และ picklist (ไม่รวม BFS)
     const enrichedData = (dispatchInventory || []).map(balance => {
-      // หา bonus face sheet items ที่ตรงกับ SKU (เฉพาะที่ยังไม่ loaded)
-      const relatedBonusItems = filteredBonusFaceSheets.filter(
-        item => item.sku_id === balance.sku_id
-      );
-
       // หา picklist items ที่ตรงกับ SKU
       const relatedPicklistItems = filteredPicklists.filter(
         item => item.sku_id === balance.sku_id
@@ -381,42 +271,8 @@ export async function GET(request: NextRequest) {
         item => item.sku_id === balance.sku_id
       );
 
-      // รวมเอกสารทั้งสามประเภท
+      // รวมเอกสาร Picklist และ Face Sheet เท่านั้น (ไม่รวม BFS)
       const allRelatedDocuments = [
-        // Bonus face sheet documents
-        ...relatedBonusItems.map(item => {
-          const faceSheet = Array.isArray(item.bonus_face_sheets) ? item.bonus_face_sheets[0] : item.bonus_face_sheets;
-          // ✅ ใช้ bonusPackagesMap แทน nested select
-          const faceSheetPackage = item.package_id ? bonusPackagesMap[item.package_id] : null;
-          
-          // ดึง loadlist_code จาก wms_loadlist_bonus_face_sheets
-          const loadlistBonusFaceSheets = faceSheet?.wms_loadlist_bonus_face_sheets || [];
-          const firstLoadlistLink = loadlistBonusFaceSheets[0];
-          const loadlist = firstLoadlistLink?.loadlists ? (Array.isArray(firstLoadlistLink.loadlists) ? firstLoadlistLink.loadlists[0] : firstLoadlistLink.loadlists) : null;
-
-          return {
-            document_type: 'bonus_face_sheet',
-            face_sheet_id: faceSheet?.id,
-            face_sheet_no: faceSheet?.face_sheet_no,
-            bonus_face_sheet_code: faceSheet?.face_sheet_no, // alias for display
-            face_sheet_status: faceSheet?.status,
-            package_id: faceSheetPackage?.id,
-            package_number: faceSheetPackage?.package_number,
-            barcode_id: faceSheetPackage?.barcode_id,
-            order_id: faceSheetPackage?.order_id,
-            order_no: faceSheetPackage?.order_no,
-            shop_name: faceSheetPackage?.shop_name,
-            province: faceSheetPackage?.province,
-            phone: faceSheetPackage?.phone,
-            delivery_date: null,
-            quantity_picked: item.quantity_picked,
-            picked_at: item.picked_at,
-            // ✅ เพิ่ม loadlist_code
-            loadlist_id: firstLoadlistLink?.loadlist_id,
-            loadlist_code: loadlist?.loadlist_code,
-            loadlist_status: loadlist?.status
-          };
-        }),
         // Picklist documents
         ...relatedPicklistItems.map(item => {
           const picklist = Array.isArray(item.picklists) ? item.picklists[0] : item.picklists;

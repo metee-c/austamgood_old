@@ -28,7 +28,7 @@ interface PreparedDocumentItem {
 }
 
 interface PreparedDocument {
-  document_type: 'picklist' | 'face_sheet' | 'bonus_face_sheet';
+  document_type: 'picklist' | 'face_sheet';  // ❌ ไม่รวม bonus_face_sheet - ใช้ API /api/warehouse/bfs-staging-inventory แทน
   document_id: number;
   document_no: string;
   status: string;
@@ -406,167 +406,10 @@ export async function GET(request: Request) {
       }
     }
 
-    // 3. ดึงข้อมูล Bonus Face Sheets ที่จัดเสร็จแล้ว แต่ยังไม่ได้เพิ่มเข้า loadlist หรือยังไม่ loaded
-    const { data: bonusFaceSheets, error: bonusFaceSheetError } = await supabase
-      .from('bonus_face_sheets')
-      .select(`
-        id,
-        face_sheet_no,
-        status,
-        total_items,
-        total_packages,
-        created_at,
-        bonus_face_sheet_items (
-          id,
-          sku_id,
-          product_name,
-          quantity,
-          quantity_picked,
-          source_location_id,
-          voided_at,
-          status,
-          package_id
-        ),
-        wms_loadlist_bonus_face_sheets (
-          loadlist_id,
-          loadlists (
-            loadlist_code,
-            status
-          )
-        )
-      `)
-      .eq('status', 'completed')  // ✅ เฉพาะที่จัดเสร็จแล้ว
-      .eq('warehouse_id', warehouseId)
-      .order('created_at', { ascending: false });
-
-    if (!bonusFaceSheetError && bonusFaceSheets) {
-      const dispatchLocationId = 'Dispatch';
-      
-      // ดึง package_ids ทั้งหมดจาก bonus_face_sheet_items เพื่อ fetch order_no และ shop_name
-      const allBfsPackageIds = bonusFaceSheets.flatMap(bfs => 
-        (bfs.bonus_face_sheet_items || []).map((item: any) => item.package_id).filter(Boolean)
-      );
-      
-      // Fetch bonus_face_sheet_packages แยกต่างหาก
-      let bfsPackageMap: Record<number, { order_no: string; shop_name: string }> = {};
-      if (allBfsPackageIds.length > 0) {
-        const uniqueBfsPackageIds = [...new Set(allBfsPackageIds)];
-        const { data: bfsPackages } = await supabase
-          .from('bonus_face_sheet_packages')
-          .select('id, order_no, shop_name')
-          .in('id', uniqueBfsPackageIds);
-        if (bfsPackages) {
-          bfsPackageMap = Object.fromEntries(
-            bfsPackages.map(p => [p.id, { order_no: p.order_no || '', shop_name: p.shop_name || '' }])
-          );
-        }
-      }
-      
-      for (const bfs of bonusFaceSheets) {
-        // ✅ ตรวจสอบว่ายังไม่ได้เพิ่มเข้า loadlist หรืออยู่ใน loadlist ที่ยังไม่ loaded/voided
-        const loadlistData = (bfs as any).wms_loadlist_bonus_face_sheets?.[0];
-        const loadlistCode = loadlistData?.loadlists?.loadlist_code;
-        const loadlistStatus = loadlistData?.loadlists?.status;
-        
-        // ✅ ข้ามถ้าอยู่ใน loadlist ที่ loaded หรือ voided แล้ว
-        if (loadlistCode && (loadlistStatus === 'loaded' || loadlistStatus === 'voided')) {
-          console.log(`⏭️ Skip bonus face sheet ${bfs.face_sheet_no} - in ${loadlistStatus} loadlist ${loadlistCode}`);
-          continue;
-        }
-        
-        // แสดงถ้า: ยังไม่ได้เข้า loadlist หรือ อยู่ใน loadlist ที่ยังไม่ loaded/voided
-        if (loadlistCode && loadlistStatus !== 'loaded' && loadlistStatus !== 'voided') {
-          console.log(`✅ Include bonus face sheet ${bfs.face_sheet_no} - in ${loadlistStatus} loadlist ${loadlistCode}`);
-        }
-        
-        const totalQty = (bfs.bonus_face_sheet_items || []).reduce((sum: number, item: any) => 
-          sum + (parseFloat(item.quantity_picked) || parseFloat(item.quantity) || 0), 0
-        );
-        
-        // ✅ ไม่ group by SKU แล้ว - แสดงแต่ละ item แยกกันเพื่อให้เห็น order_no และ shop_name ของแต่ละ package
-        const items: PreparedDocumentItem[] = [];
-        
-        for (const item of (bfs.bonus_face_sheet_items || [])) {
-          // ✅ ข้าม items ที่ถูก voided
-          if (item.voided_at || item.status === 'voided') {
-            console.log(`⏭️ Skip voided bonus face sheet item ${item.id} for SKU ${item.sku_id}`);
-            continue;
-          }
-          
-          const skuId = item.sku_id || '-';
-          const qty = parseFloat(item.quantity_picked) || parseFloat(item.quantity) || 0;
-          
-          // ดึง order_no และ shop_name จาก package
-          const packageInfo = item.package_id ? bfsPackageMap[item.package_id] : null;
-          
-          // Fetch balance data for this SKU
-          const { data: balances } = await supabase
-            .from('wms_inventory_balances')
-            .select(`
-              balance_id,
-              pallet_id,
-              pallet_id_external,
-              lot_no,
-              production_date,
-              expiry_date,
-              total_pack_qty,
-              total_piece_qty,
-              reserved_pack_qty,
-              reserved_piece_qty,
-              warehouse_id,
-              location_id,
-              last_movement_at,
-              updated_at
-            `)
-            .eq('location_id', dispatchLocationId)
-            .eq('sku_id', skuId)
-            .limit(1)
-            .single();
-          
-          items.push({
-            balance_id: balances?.balance_id,
-            sku_id: skuId,
-            sku_name: item.product_name || skuId,
-            quantity: qty,
-            location_id: balances?.location_id || dispatchLocationId,
-            pallet_id: balances?.pallet_id,
-            pallet_id_external: balances?.pallet_id_external,
-            lot_no: balances?.lot_no,
-            production_date: balances?.production_date,
-            expiry_date: balances?.expiry_date,
-            total_pack_qty: balances?.total_pack_qty,
-            total_piece_qty: balances?.total_piece_qty,
-            reserved_pack_qty: balances?.reserved_pack_qty,
-            reserved_piece_qty: balances?.reserved_piece_qty,
-            warehouse_id: balances?.warehouse_id,
-            last_movement_at: balances?.last_movement_at,
-            updated_at: balances?.updated_at,
-            order_no: packageInfo?.order_no,
-            shop_name: packageInfo?.shop_name
-          });
-        }
-        
-        // ✅ ข้าม bonus face sheet ที่ไม่มี items ที่ยังใช้งานได้ (ทั้งหมดถูก voided)
-        if (items.length === 0) {
-          console.log(`⏭️ Skip bonus face sheet ${bfs.face_sheet_no} - all items voided`);
-          continue;
-        }
-        
-        console.log(`✅ Include bonus face sheet ${bfs.face_sheet_no} - ${items.length} active items, ${bfs.total_packages} packages`);
-        
-        documents.push({
-          document_type: 'bonus_face_sheet',
-          document_id: bfs.id,
-          document_no: bfs.face_sheet_no,
-          status: bfs.status,
-          total_items: items.length,
-          total_quantity: totalQty,
-          created_at: bfs.created_at,
-          loadlist_code: loadlistCode || null,  // ✅ ส่ง loadlist_code ถ้ามี
-          items
-        } as any);
-      }
-    }
+    // ❌ ไม่ดึง Bonus Face Sheets ที่นี่แล้ว
+    // BFS ใช้ flow ที่แตกต่าง: บ้านหยิบ → PQ01-PQ10/MR01-MR10 → MRTD/PQTD → โหลดขึ้นรถ
+    // BFS ไม่ผ่าน Dispatch location เหมือน Picklist/Face Sheet
+    // BFS จะแสดงที่แทบ "จัดสินค้าเสร็จ (BFS)" ซึ่งใช้ API /api/warehouse/bfs-staging-inventory แทน
 
     // เรียงตามวันที่สร้างล่าสุด
     documents.sort((a, b) => 

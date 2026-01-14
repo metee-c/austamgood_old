@@ -379,7 +379,6 @@ const PreparedDocumentsTable: React.FC<PreparedDocumentsTableProps> = ({ warehou
                   <option value="">ทั้งหมด</option>
                   <option value="picklist">ใบหยิบสินค้า</option>
                   <option value="face_sheet">ใบปะหน้า</option>
-                  <option value="bonus_face_sheet">ใบปะหน้าของแถม</option>
                 </select>
               </div>
 

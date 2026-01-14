@@ -347,15 +347,33 @@ const LoadlistsPage = () => {
   }, []);
 
   // ตรวจสอบสถานะ staging สำหรับ loadlists ที่มี bonus face sheet
+  // ✅ ตรวจสอบทุกครั้งที่ loadlists เปลี่ยน เพื่อให้ผู้ใช้คนอื่นเห็นสถานะล่าสุด
   useEffect(() => {
     if (loadlists.length > 0) {
       loadlists.forEach((loadlist: any) => {
         const hasBonusFaceSheets = loadlist.bonus_face_sheets && loadlist.bonus_face_sheets.length > 0;
-        if (hasBonusFaceSheets && !stagingStatus[loadlist.id]) {
+        if (hasBonusFaceSheets) {
           checkStagingStatus(loadlist.id);
         }
       });
     }
+  }, [loadlists]);
+
+  // ✅ Auto-refresh staging status ทุก 10 วินาที เพื่อให้ผู้ใช้คนอื่นเห็นสถานะล่าสุด
+  useEffect(() => {
+    const refreshStagingStatus = () => {
+      loadlists.forEach((loadlist: any) => {
+        const hasBonusFaceSheets = loadlist.bonus_face_sheets && loadlist.bonus_face_sheets.length > 0;
+        if (hasBonusFaceSheets) {
+          checkStagingStatus(loadlist.id);
+        }
+      });
+    };
+
+    // Refresh ทุก 10 วินาที
+    const interval = setInterval(refreshStagingStatus, 10000);
+    
+    return () => clearInterval(interval);
   }, [loadlists]);
 
   // Auto-fill form fields from selected picklists
