@@ -91,6 +91,8 @@ interface TransferSelectedItem {
   move_method: 'pallet' | 'sku';
   to_location_id: string;
   default_location?: string | null; // บ้านหยิบ (pick face location)
+  production_date?: string | null; // วันผลิต
+  expiry_date?: string | null; // วันหมดอายุ
 }
 
 const STATUS_OPTIONS: { value: MoveStatus | 'all'; label: string }[] = [
@@ -486,11 +488,12 @@ const TransferPage: React.FC = () => {
     setFormError(null);
   };
 
-  const buildTransferKey = (item: { sku_id?: string | null; pallet_id?: string | null; from_location_id?: string | null }) => {
+  const buildTransferKey = (item: { sku_id?: string | null; pallet_id?: string | null; from_location_id?: string | null; production_date?: string | null }) => {
     const sku = (item.sku_id || '').toUpperCase();
     const pallet = (item.pallet_id || '').toUpperCase();
     const location = (item.from_location_id || '').toUpperCase();
-    return [sku, pallet, location].join('::');
+    const prodDate = item.production_date || '';
+    return [sku, pallet, location, prodDate].join('::');
   };
 
   const handleAddTransferItem = (raw: TransferSelectedItem) => {
@@ -583,7 +586,12 @@ const TransferPage: React.FC = () => {
 
       const mapped: TransferSelectedItem[] = balances
         .map((balance) => {
-          const key = buildTransferKey(balance);
+          const key = buildTransferKey({
+            sku_id: balance.sku_id,
+            pallet_id: balance.pallet_id,
+            from_location_id: balance.location_id,
+            production_date: balance.production_date
+          });
           return {
             key,
             sku_id: balance.sku_id,
@@ -598,6 +606,8 @@ const TransferPage: React.FC = () => {
             move_method: (balance.pallet_id ? 'pallet' : 'sku') as 'sku' | 'pallet',
             to_location_id: '',
             default_location: balance.master_sku?.default_location ?? null, // บ้านหยิบ
+            production_date: balance.production_date ?? null,
+            expiry_date: balance.expiry_date ?? null,
           };
         })
         .filter((item) => {
@@ -2286,6 +2296,7 @@ const TransferPage: React.FC = () => {
                               <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-700">ชื่อสินค้า</th>
                               <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-700">จากโลเคชั่น</th>
                               <th className="px-2 py-1.5 text-left text-xs font-medium text-gray-700">พาเลท</th>
+                              <th className="px-2 py-1.5 text-center text-xs font-medium text-gray-700">วันผลิต</th>
                               <th className="px-2 py-1.5 text-right text-xs font-medium text-gray-700">คงเหลือ</th>
                               <th className="px-2 py-1.5 text-center text-xs font-medium text-gray-700"></th>
                             </tr>
@@ -2299,6 +2310,11 @@ const TransferPage: React.FC = () => {
                                   <td className="px-2 py-1.5 text-xs text-gray-900">{result.sku_name || '-'}</td>
                                   <td className="px-2 py-1.5 text-xs text-gray-700">{result.from_location_code || result.from_location_id || '-'}</td>
                                   <td className="px-2 py-1.5 text-xs font-mono text-blue-600">{result.pallet_id || '-'}</td>
+                                  <td className="px-2 py-1.5 text-xs text-center text-gray-700">
+                                    {result.production_date 
+                                      ? new Date(result.production_date).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: '2-digit' })
+                                      : '-'}
+                                  </td>
                                   <td className="px-2 py-1.5 text-xs text-right font-semibold text-gray-900">{result.piece_qty.toLocaleString('th-TH')}</td>
                                   <td className="px-2 py-1.5 text-center">
                                     <Button
@@ -2357,6 +2373,7 @@ const TransferPage: React.FC = () => {
                               <th className="px-2 py-1.5 text-left text-xs font-medium text-blue-900">ชื่อสินค้า</th>
                               <th className="px-2 py-1.5 text-left text-xs font-medium text-blue-900">จากโลเคชั่น</th>
                               <th className="px-2 py-1.5 text-left text-xs font-medium text-blue-900">พาเลท</th>
+                              <th className="px-2 py-1.5 text-center text-xs font-medium text-blue-900">วันผลิต</th>
                               <th className="px-2 py-1.5 text-left text-xs font-medium text-blue-900">จำนวน</th>
                               <th className="px-2 py-1.5 text-left text-xs font-medium text-blue-900 w-[18rem]">ไปโลเคชั่น</th>
                               <th className="px-2 py-1.5 text-center text-xs font-medium text-blue-900"></th>
@@ -2371,6 +2388,11 @@ const TransferPage: React.FC = () => {
                                   <td className="px-2 py-1.5 text-xs text-gray-900">{item.sku_name || '-'}</td>
                                   <td className="px-2 py-1.5 text-xs text-gray-700">{item.from_location_code || item.from_location_id || '-'}</td>
                                   <td className="px-2 py-1.5 text-xs font-mono text-blue-600">{item.pallet_id || '-'}</td>
+                                  <td className="px-2 py-1.5 text-xs text-center text-gray-700">
+                                    {item.production_date 
+                                      ? new Date(item.production_date).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: '2-digit' })
+                                      : '-'}
+                                  </td>
                                   <td className="px-2 py-1.5">
                                     <div className="flex flex-col gap-0.5">
                                       <div className="flex items-center gap-1">

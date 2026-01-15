@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/client';
  * Generates an automatic Pallet ID in the format: ATG{YYYY}{MM}{DD}{10-digit-sequence}
  * Example: ATG20250922000000001
  * The sequence resets every year and continues incrementally throughout the year
+ * IMPORTANT: Checks both wms_receive_items AND wms_move_items.new_pallet_id to prevent duplicates
  */
 export class PalletIdGenerator {
   private supabase = createClient();
@@ -23,31 +24,50 @@ export class PalletIdGenerator {
       const currentYear = now.getFullYear();
       const yearPrefix = `ATG${currentYear}`;
 
-      // Get the last pallet ID from this year (from wms_receive_items table)
-      const { data: lastPallet, error: queryError } = await this.supabase
+      // Get the last pallet ID from BOTH wms_receive_items AND wms_move_items
+      // to prevent duplicate pallet IDs between receives and partial moves
+      const { data: lastReceivePallet, error: receiveError } = await this.supabase
         .from('wms_receive_items')
         .select('pallet_id')
         .ilike('pallet_id', `${yearPrefix}%`)
         .order('pallet_id', { ascending: false })
         .limit(1);
 
-      if (queryError && queryError.code !== 'PGRST116') { // PGRST116 = no rows returned
-        console.error('Error querying last pallet ID:', queryError);
-        return { palletId: null, error: queryError.message };
+      const { data: lastMovePallet, error: moveError } = await this.supabase
+        .from('wms_move_items')
+        .select('new_pallet_id')
+        .ilike('new_pallet_id', `${yearPrefix}%`)
+        .order('new_pallet_id', { ascending: false })
+        .limit(1);
+
+      if (receiveError && receiveError.code !== 'PGRST116') {
+        console.error('Error querying last pallet ID from receive_items:', receiveError);
+        return { palletId: null, error: receiveError.message };
+      }
+
+      if (moveError && moveError.code !== 'PGRST116') {
+        console.error('Error querying last pallet ID from move_items:', moveError);
+        return { palletId: null, error: moveError.message };
       }
 
       let nextSequence = 1;
 
-      // Handle both single result and array result
-      const palletData = Array.isArray(lastPallet) ? lastPallet[0] : lastPallet;
-      
-      if (palletData?.pallet_id) {
-        // Extract sequence number from last pallet ID
-        // Format: ATG{YYYY}{MM}{DD}{10-digit-sequence}
-        const lastSequenceStr = palletData.pallet_id.slice(-10); // Last 10 digits
+      // Check receive_items
+      const receivePalletData = Array.isArray(lastReceivePallet) ? lastReceivePallet[0] : lastReceivePallet;
+      if (receivePalletData?.pallet_id) {
+        const lastSequenceStr = receivePalletData.pallet_id.slice(-10);
         const lastSequence = parseInt(lastSequenceStr, 10);
-        
-        if (!isNaN(lastSequence)) {
+        if (!isNaN(lastSequence) && lastSequence >= nextSequence) {
+          nextSequence = lastSequence + 1;
+        }
+      }
+
+      // Check move_items (new_pallet_id)
+      const movePalletData = Array.isArray(lastMovePallet) ? lastMovePallet[0] : lastMovePallet;
+      if (movePalletData?.new_pallet_id) {
+        const lastSequenceStr = movePalletData.new_pallet_id.slice(-10);
+        const lastSequence = parseInt(lastSequenceStr, 10);
+        if (!isNaN(lastSequence) && lastSequence >= nextSequence) {
           nextSequence = lastSequence + 1;
         }
       }
@@ -69,22 +89,39 @@ export class PalletIdGenerator {
   }
 
   /**
-   * Check if a pallet ID already exists
+   * Check if a pallet ID already exists in either receive_items or move_items
    */
   async isPalletIdExists(palletId: string): Promise<{ exists: boolean; error: string | null }> {
     try {
-      const { data, error } = await this.supabase
+      // Check in receive_items
+      const { data: receiveData, error: receiveError } = await this.supabase
         .from('wms_receive_items')
         .select('pallet_id')
         .eq('pallet_id', palletId)
         .limit(1)
         .single();
 
-      if (error && error.code !== 'PGRST116') { // PGRST116 = no rows returned
-        return { exists: false, error: error.message };
+      if (receiveError && receiveError.code !== 'PGRST116') {
+        return { exists: false, error: receiveError.message };
       }
 
-      return { exists: !!data, error: null };
+      if (receiveData) {
+        return { exists: true, error: null };
+      }
+
+      // Check in move_items (new_pallet_id)
+      const { data: moveData, error: moveError } = await this.supabase
+        .from('wms_move_items')
+        .select('new_pallet_id')
+        .eq('new_pallet_id', palletId)
+        .limit(1)
+        .single();
+
+      if (moveError && moveError.code !== 'PGRST116') {
+        return { exists: false, error: moveError.message };
+      }
+
+      return { exists: !!moveData, error: null };
     } catch (error) {
       console.error('Error checking pallet ID existence:', error);
       return { 

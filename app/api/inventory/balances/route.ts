@@ -39,7 +39,8 @@ export async function GET(request: NextRequest) {
         )
       `)
       .gt('total_piece_qty', 0)
-      .order('created_at', { ascending: false });
+      .order('sku_id', { ascending: true })
+      .order('production_date', { ascending: true });
 
     // Apply filters
     if (warehouseId) {

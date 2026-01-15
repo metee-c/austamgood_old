@@ -57,6 +57,7 @@ export async function GET(
     }
 
     // 3. ดึง loadlist เพื่อหา delivery_number ตาม trip_id
+    // ต้องหา delivery_number ที่ขึ้นต้นด้วย "S" (รหัสงานจัดส่ง like S003324)
     const { data: loadlists, error: loadlistsError } = await supabase
       .from('loadlists')
       .select('trip_id, delivery_number')
@@ -66,11 +67,17 @@ export async function GET(
       return NextResponse.json({ error: loadlistsError.message }, { status: 500 });
     }
 
-    // สร้าง map trip_id -> delivery_number
+    // สร้าง map trip_id -> delivery_number (prefer S-code)
     const tripDeliveryNumbers: Record<number, string> = {};
     for (const ll of loadlists || []) {
       if (ll.trip_id && ll.delivery_number) {
-        tripDeliveryNumbers[ll.trip_id] = ll.delivery_number;
+        // ถ้า delivery_number ขึ้นต้นด้วย "S" ให้ใช้ค่านี้ (override ค่าเดิม)
+        if (ll.delivery_number.startsWith('S')) {
+          tripDeliveryNumbers[ll.trip_id] = ll.delivery_number;
+        } else if (!tripDeliveryNumbers[ll.trip_id]) {
+          // ถ้ายังไม่มีค่า ให้ใช้ค่านี้เป็น fallback
+          tripDeliveryNumbers[ll.trip_id] = ll.delivery_number;
+        }
       }
     }
 

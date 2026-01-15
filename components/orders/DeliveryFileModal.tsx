@@ -12,7 +12,7 @@ const COLUMNS = [
   { key: 'customer_id', label: 'รหัสลูกค้า/ผู้ขาย', width: 120 },
   { key: 'shop_name', label: 'ชื่อร้านค้า', width: 180 },
   { key: 'location_code', label: 'รหัสสถานที่', width: 100 },
-  { key: 'address', label: 'ประเภทข้อความแบบยาว 1', width: 250 },
+  { key: 'address', label: 'ที่อยู่จัดส่ง', width: 250 },
   { key: 'salesperson', label: 'พนักงานขาย', width: 100 },
   { key: 'additional_text_1', label: 'ข้อความเพิ่มเติม 1', width: 150 },
   { key: 'delivery_person', label: 'พนักงานจัดส่ง', width: 120 },
@@ -42,7 +42,8 @@ const HEADER_MAP: Record<string, string> = {
   'รหัสลูกค้า/ผู้ขาย': 'customer_id',
   'ชื่อร้านค้า': 'shop_name',
   'รหัสสถานที่': 'location_code',
-  'ประเภทข้อความแบบยาว 1': 'address',
+  'ที่อยู่จัดส่ง': 'address',
+  'ประเภทข้อความแบบยาว 1': 'address', // Legacy support
   'พนักงานขาย': 'salesperson',
   'ข้อความเพิ่มเติม 1': 'additional_text_1',
   'พนักงานจัดส่ง': 'delivery_person',
@@ -234,9 +235,14 @@ export default function DeliveryFileModal({ isOpen, onClose }: DeliveryFileModal
           const isExpress = matchedOrder.order_type === 'express';
           const sequence = sequenceMap.get(orderNo!) || null;
           
+          // Get address from order (text_field_long_1 is the delivery address field)
+          const orderAddress = matchedOrder.text_field_long_1 || matchedOrder.address || '';
+          
           return {
             ...row,
             sequence: sequence,
+            // Map address from order if not already set in Excel
+            address: row.address || orderAddress,
             // Only set actual_receive_date if NOT express type
             actual_receive_date: isExpress ? row.actual_receive_date : formatDateForExcel(matchedOrder.delivery_date),
             // Store order type for display (internal field, not exported)

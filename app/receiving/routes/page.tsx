@@ -340,12 +340,12 @@ const RoutesPage = () => {
             setEditorPlan(data.plan);
             setEditorWarehouse(data.warehouse);
 
-            // Fetch draft orders for this plan
-            if (data.plan?.warehouse_id && data.plan?.plan_date) {
+            // Fetch draft orders for this plan (forEditor=true เพื่อดึงออเดอร์ร่างทั้งหมดไม่กรองตามวันที่)
+            if (data.plan?.warehouse_id) {
                 setEditorDraftOrdersLoading(true);
                 try {
                     const draftRes = await fetch(
-                        `/api/route-plans/draft-orders?warehouseId=${data.plan.warehouse_id}&planDate=${data.plan.plan_date}`
+                        `/api/route-plans/draft-orders?warehouseId=${data.plan.warehouse_id}&forEditor=true`
                     );
                     const { data: draftData } = await draftRes.json();
                     setEditorDraftOrders(draftData || []);
@@ -3118,6 +3118,24 @@ const RoutesPage = () => {
                         planId={editorPlanId}
                         planName={editorPlan.plan_name || editorPlan.plan_code}
                         trips={editorTrips}
+                        draftOrders={editorDraftOrders}
+                        draftOrdersLoading={editorDraftOrdersLoading}
+                        onRefreshDraftOrders={async () => {
+                            if (editorPlan?.warehouse_id) {
+                                setEditorDraftOrdersLoading(true);
+                                try {
+                                    const draftRes = await fetch(
+                                        `/api/route-plans/draft-orders?warehouseId=${editorPlan.warehouse_id}&forEditor=true`
+                                    );
+                                    const { data: draftData } = await draftRes.json();
+                                    setEditorDraftOrders(draftData || []);
+                                } catch (err) {
+                                    console.error('Error refreshing draft orders:', err);
+                                } finally {
+                                    setEditorDraftOrdersLoading(false);
+                                }
+                            }
+                        }}
                         onSave={async (changes) => {
                             try {
                                 setEditorLoading(true);

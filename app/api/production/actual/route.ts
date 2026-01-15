@@ -251,15 +251,35 @@ export async function GET(request: NextRequest) {
       // สร้างรายละเอียดวัตถุดิบอาหารพร้อมข้อมูลรายพาเลท
       const foodMaterialsWithPallets = foodMaterials.map((m: any) => {
         // หา replenishment items ที่ตรงกับ SKU นี้
-        const palletDetails = replenishmentItems
-          .filter(r => r.sku_id === m.material_sku_id)
-          .map(r => ({
-            pallet_id: r.pallet_id,
-            production_date: r.production_date,
-            expiry_date: r.expiry_date,
-            qty: r.confirmed_qty,
-            from_location_id: r.from_location_id
-          }));
+        const rawPalletItems = replenishmentItems.filter(r => r.sku_id === m.material_sku_id);
+        
+        // รวมพาเลทที่ซ้ำกัน (aggregate by pallet_id)
+        const palletMap = new Map<string, {
+          pallet_id: string | null;
+          production_date: string | null;
+          expiry_date: string | null;
+          qty: number;
+          from_location_id: string | null;
+        }>();
+        
+        rawPalletItems.forEach(r => {
+          const key = r.pallet_id || 'no-pallet';
+          if (palletMap.has(key)) {
+            // รวม qty สำหรับพาเลทที่ซ้ำกัน
+            const existing = palletMap.get(key)!;
+            existing.qty += r.confirmed_qty;
+          } else {
+            palletMap.set(key, {
+              pallet_id: r.pallet_id,
+              production_date: r.production_date,
+              expiry_date: r.expiry_date,
+              qty: r.confirmed_qty,
+              from_location_id: r.from_location_id
+            });
+          }
+        });
+        
+        const palletDetails = Array.from(palletMap.values());
         
         return {
           sku_id: m.material_sku_id,
@@ -273,7 +293,7 @@ export async function GET(request: NextRequest) {
           material_production_date: m.material_production_date || null,
           material_expiry_date: m.material_expiry_date || null,
           pallet_id: m.pallet_id || null,
-          // ข้อมูลรายพาเลท
+          // ข้อมูลรายพาเลท (รวมพาเลทที่ซ้ำกันแล้ว)
           pallet_details: palletDetails.length > 0 ? palletDetails : null
         };
       });

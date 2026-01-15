@@ -8,6 +8,8 @@ export async function GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     const warehouseId = searchParams.get('warehouseId');
     const planDate = searchParams.get('planDate');
+    const forEditor = searchParams.get('forEditor'); // ถ้าเป็น 'true' จะดึงออเดอร์ร่างทั้งหมดที่ยังไม่อยู่ในแผน
+    const planId = searchParams.get('planId'); // สำหรับ exclude ออเดอร์ที่อยู่ในแผนนี้แล้ว
 
     const supabase = await createClient();
 
@@ -23,7 +25,9 @@ export async function GET(request: NextRequest) {
       ordersQuery = ordersQuery.or(`warehouse_id.eq.${warehouseId},warehouse_id.is.null`);
     }
 
-    if (planDate) {
+    // สำหรับ editor mode: ไม่กรอง delivery_date เพื่อให้เห็นออเดอร์ร่างทั้งหมด
+    // สำหรับ create mode: กรองตาม delivery_date
+    if (planDate && forEditor !== 'true') {
       ordersQuery = ordersQuery.eq('delivery_date', planDate);
     }
 

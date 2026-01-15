@@ -1,23 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 
+export const dynamic = 'force-dynamic';
+
+interface AddOrderRequest {
+  orderId: number | string;
+  tripId: number | string;
+  sequence?: number; // ถ้าไม่ระบุจะเพิ่มท้ายสุด
+}
+
 /**
- * POST /api/route-plans/[id]/add-order
- *
- * เพิ่มออเดอร์แบบ manual เข้าไปในแผนเส้นทางที่มีอยู่แล้ว
- *
- * Request Body:
- * - orderId: number - รหัสออเดอร์ที่ต้องการเพิ่ม
- * - tripId: number - รหัสเที่ยวที่ต้องการเพิ่มเข้าไป
- * - sequencePosition: number - ตำแหน่งลำดับที่ต้องการแทรก
- *
- * การทำงาน:
- * 1. ตรวจสอบออเดอร์และแผนเส้นทาง
- * 2. เปลี่ยนสถานะออเดอร์จาก 'draft' เป็น 'confirmed'
- * 3. อัพเดท delivery_date และ matched_trip_id
- * 4. เพิ่มเข้า receiving_route_plan_inputs
- * 5. สร้าง stop ใหม่ใน receiving_route_stops
- * 6. ปรับลำดับ sequence ของ stops ที่ตามมา
+ * API สำหรับเพิ่มออเดอร์ร่าง (draft) เข้าไปใน trip ที่มีอยู่แล้ว
+ * - ออเดอร์ต้องเป็น status = 'draft' และ order_type = 'route_planning'
+ * - จะสร้าง stop ใหม่ใน trip ที่ระบุ
+ * - อัปเดตสถานะออเดอร์เป็น 'confirmed' (หรือ 'route_planned')
  */
 export async function POST(
   request: NextRequest,
@@ -26,293 +22,301 @@ export async function POST(
   try {
     const supabase = await createClient();
     const { id: planId } = await params;
-    const body = await request.json();
+    const body: AddOrderRequest = await request.json();
 
-    const { orderId, tripId, sequencePosition } = body;
+    // แปลง orderId และ tripId เป็น number เพื่อให้แน่ใจว่าเป็นตัวเลข
+    const orderId = Number(body.orderId);
+    const tripId = Number(body.tripId);
+    const sequence = body.sequence;
 
-    // Validate required fields
-    if (!orderId || !tripId || sequencePosition === undefined) {
+    console.log('📥 Add order to trip request:', { planId, orderId, tripId, sequence, rawBody: body });
+
+    // ตรวจสอบว่า orderId และ tripId เป็นตัวเลขที่ถูกต้อง
+    if (!Number.isFinite(orderId) || orderId <= 0) {
       return NextResponse.json(
-        {
-          success: false,
-          error: 'Missing required fields: orderId, tripId, sequencePosition'
-        },
+        { error: `orderId ไม่ถูกต้อง: ${body.orderId}` },
         { status: 400 }
       );
     }
 
-    // 1. ตรวจสอบว่าแผนเส้นทางมีอยู่จริง
-    const { data: plan, error: planError } = await supabase
-      .from('receiving_route_plans')
-      .select('plan_id, plan_name, plan_date, warehouse_id, vehicle_id')
+    if (!Number.isFinite(tripId) || tripId <= 0) {
+      return NextResponse.json(
+        { error: `tripId ไม่ถูกต้อง: ${body.tripId}` },
+        { status: 400 }
+      );
+    }
+
+    // 1. ตรวจสอบว่า trip อยู่ในแผนนี้จริง
+    const { data: trip, error: tripError } = await supabase
+      .from('receiving_route_trips')
+      .select('trip_id, plan_id, daily_trip_number, trip_sequence')
+      .eq('trip_id', tripId)
       .eq('plan_id', planId)
       .single();
 
-    if (planError || !plan) {
+    if (tripError || !trip) {
       return NextResponse.json(
-        {
-          success: false,
-          error: 'ไม่พบแผนเส้นทางที่ระบุ'
-        },
+        { error: 'ไม่พบเที่ยวรถที่ระบุในแผนนี้' },
         { status: 404 }
       );
     }
 
-    // 2. ตรวจสอบว่าออเดอร์มีอยู่จริงและมีสถานะ 'draft'
+    // 2. ตรวจสอบว่าออเดอร์เป็น draft และ order_type = route_planning
+    console.log('🔍 Looking for order:', { orderId, orderIdType: typeof orderId });
+    
     const { data: order, error: orderError } = await supabase
       .from('wms_orders')
       .select(`
         order_id,
         order_no,
-        status,
         customer_id,
+        shop_name,
+        address,
+        province,
+        total_weight,
+        status,
+        order_type,
         delivery_date,
-        master_customer (
-          customer_id,
-          customer_name,
-          customer_code,
-          latitude,
-          longitude
-        )
+        notes,
+        text_field_long_1
       `)
       .eq('order_id', orderId)
       .single();
 
+    console.log('📦 Order query result:', { order, orderError });
+
     if (orderError || !order) {
+      console.error('❌ Order not found:', { orderId, orderError });
       return NextResponse.json(
-        {
-          success: false,
-          error: 'ไม่พบออเดอร์ที่ระบุ'
-        },
+        { error: 'ไม่พบออเดอร์ที่ระบุ' },
         { status: 404 }
       );
     }
 
     if (order.status !== 'draft') {
       return NextResponse.json(
-        {
-          success: false,
-          error: `ออเดอร์นี้มีสถานะ '${order.status}' แล้ว ไม่สามารถเพิ่มได้`
-        },
+        { error: `ออเดอร์นี้มีสถานะ "${order.status}" ไม่ใช่ "draft" ไม่สามารถเพิ่มได้` },
         { status: 400 }
       );
     }
 
-    // 3. ตรวจสอบว่ามี customer location
-    const customer = order.master_customer as any;
-    if (!customer || !customer.latitude || !customer.longitude) {
+    if (order.order_type !== 'route_planning') {
       return NextResponse.json(
-        {
-          success: false,
-          error: 'ไม่พบข้อมูลพิกัดของลูกค้า กรุณาตรวจสอบข้อมูล Master Customer'
-        },
+        { error: `ออเดอร์นี้เป็นประเภท "${order.order_type}" ไม่ใช่ "route_planning" ไม่สามารถเพิ่มได้` },
         { status: 400 }
       );
     }
 
-    // 4. ดึงข้อมูล order items
-    const { data: orderItems, error: itemsError } = await supabase
+    // 3. ตรวจสอบว่าออเดอร์ยังไม่อยู่ในแผนนี้
+    const { data: existingStop } = await supabase
+      .from('receiving_route_stops')
+      .select('stop_id')
+      .eq('plan_id', planId)
+      .eq('order_id', orderId)
+      .limit(1);
+
+    if (existingStop && existingStop.length > 0) {
+      return NextResponse.json(
+        { error: 'ออเดอร์นี้อยู่ในแผนนี้แล้ว' },
+        { status: 400 }
+      );
+    }
+
+    // 4. ดึงข้อมูลลูกค้าสำหรับพิกัด
+    let customerData: any = null;
+    if (order.customer_id) {
+      const { data: customer } = await supabase
+        .from('master_customer')
+        .select('customer_id, customer_name, customer_code, latitude, longitude, address, province')
+        .eq('customer_id', order.customer_id)
+        .single();
+      customerData = customer;
+    }
+
+    // 5. ดึง order items สำหรับคำนวณน้ำหนักและสร้าง stop items
+    const { data: orderItems } = await supabase
       .from('wms_order_items')
-      .select(`
-        *,
-        master_sku (
-          sku_code,
-          sku_name,
-          unit_weight_kg
-        )
-      `)
+      .select('order_item_id, sku_id, sku_name, order_qty, order_weight')
       .eq('order_id', orderId);
 
-    if (itemsError || !orderItems || orderItems.length === 0) {
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'ไม่พบรายการสินค้าในออเดอร์'
-        },
-        { status: 400 }
-      );
+    const totalWeight = orderItems?.reduce((sum, item) => sum + Number(item.order_weight || 0), 0) 
+      || Number(order.total_weight || 0);
+
+    // 6. หา sequence ถัดไป (ถ้าไม่ระบุ)
+    let newSequence = sequence;
+    if (!newSequence) {
+      const { data: maxSeqData } = await supabase
+        .from('receiving_route_stops')
+        .select('sequence_no')
+        .eq('trip_id', tripId)
+        .order('sequence_no', { ascending: false })
+        .limit(1);
+
+      newSequence = (maxSeqData?.[0]?.sequence_no || 0) + 1;
+    } else {
+      // ถ้าระบุ sequence ต้อง shift stops ที่มีอยู่
+      const { data: existingStops } = await supabase
+        .from('receiving_route_stops')
+        .select('stop_id, sequence_no')
+        .eq('trip_id', tripId)
+        .gte('sequence_no', newSequence)
+        .order('sequence_no', { ascending: false });
+
+      // Shift existing stops (from last to first to avoid conflicts)
+      if (existingStops && existingStops.length > 0) {
+        for (const stop of existingStops) {
+          await supabase
+            .from('receiving_route_stops')
+            .update({ sequence_no: stop.sequence_no + 1 })
+            .eq('stop_id', stop.stop_id);
+        }
+      }
     }
 
-    // คำนวณน้ำหนักและจำนวนรวม
-    const totalUnits = orderItems.reduce((sum, item) => sum + (item.ordered_qty || 0), 0);
-    const totalWeight = orderItems.reduce((sum, item) => {
-      const sku = item.master_sku as any;
-      const unitWeight = sku?.unit_weight_kg || 0;
-      return sum + (item.ordered_qty * unitWeight);
-    }, 0);
-
-    // 5. อัพเดทสถานะออเดอร์
-    const { error: updateOrderError } = await supabase
-      .from('wms_orders')
-      .update({
-        status: 'confirmed',
-        delivery_date: plan.plan_date,
-        matched_trip_id: tripId,
-        updated_at: new Date().toISOString()
-      })
-      .eq('order_id', orderId);
-
-    if (updateOrderError) {
-      console.error('Error updating order:', updateOrderError);
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'ไม่สามารถอัปเดตสถานะออเดอร์ได้'
-        },
-        { status: 500 }
-      );
-    }
-
-    // 6. เพิ่มเข้า receiving_route_plan_inputs
-    const { data: inputData, error: inputError } = await supabase
+    // 7. สร้าง input record (receiving_route_plan_inputs)
+    const { data: input, error: inputError } = await supabase
       .from('receiving_route_plan_inputs')
       .insert({
         plan_id: Number(planId),
         order_id: orderId,
-        customer_id: order.customer_id,
-        latitude: customer.latitude,
-        longitude: customer.longitude,
-        demand_units: totalUnits,
+        stop_name: order.shop_name || customerData?.customer_name || order.customer_id,
+        address: order.address || customerData?.address || null,
+        latitude: customerData?.latitude || null,
+        longitude: customerData?.longitude || null,
         demand_weight_kg: totalWeight,
-        created_at: new Date().toISOString()
+        demand_units: orderItems?.reduce((sum, item) => sum + Number(item.order_qty || 0), 0) || 0,
+        customer_id: order.customer_id
       })
       .select()
       .single();
 
-    if (inputError || !inputData) {
+    if (inputError) {
       console.error('Error creating input:', inputError);
-      // Rollback order status
-      await supabase
-        .from('wms_orders')
-        .update({
-          status: 'draft',
-          delivery_date: null,
-          matched_trip_id: null
-        })
-        .eq('order_id', orderId);
-
-      return NextResponse.json(
-        {
-          success: false,
-          error: 'ไม่สามารถเพิ่มข้อมูลลงแผนเส้นทางได้'
-        },
-        { status: 500 }
-      );
-    }
-
-    // 7. ปรับลำดับ sequence ของ stops ที่มีอยู่แล้วในเที่ยวนี้
-    const { data: existingStops, error: stopsError } = await supabase
-      .from('receiving_route_stops')
-      .select('*')
-      .eq('plan_id', planId)
-      .eq('trip_id', tripId)
-      .gte('sequence', sequencePosition)
-      .order('sequence', { ascending: true });
-
-    if (stopsError) {
-      console.error('Error fetching existing stops:', stopsError);
-    }
-
-    // เพิ่ม sequence ของ stops ที่ตามมา
-    if (existingStops && existingStops.length > 0) {
-      for (const stop of existingStops) {
-        await supabase
-          .from('receiving_route_stops')
-          .update({ sequence: stop.sequence + 1 })
-          .eq('stop_id', stop.stop_id);
-      }
+      // Continue anyway - input is optional
     }
 
     // 8. สร้าง stop ใหม่
+    const stopName = order.shop_name || customerData?.customer_name || order.customer_id || `ออเดอร์ ${order.order_no}`;
+    const stopAddress = order.address || customerData?.address || order.province || null;
+
     const { data: newStop, error: stopError } = await supabase
       .from('receiving_route_stops')
       .insert({
-        plan_id: Number(planId),
         trip_id: tripId,
+        plan_id: Number(planId),
+        sequence_no: newSequence,
         order_id: orderId,
-        customer_id: order.customer_id,
-        sequence: sequencePosition,
-        latitude: customer.latitude,
-        longitude: customer.longitude,
-        load_units: totalUnits,
+        input_id: input?.input_id || null,
+        stop_name: stopName,
+        address: stopAddress,
+        latitude: customerData?.latitude || null,
+        longitude: customerData?.longitude || null,
         load_weight_kg: totalWeight,
+        service_duration_minutes: 15, // default service time
+        customer_id: order.customer_id,
         tags: {
           order_ids: [orderId],
-          input_ids: [inputData.input_id],
-          manually_added: true
-        },
-        created_at: new Date().toISOString()
+          customer_id: order.customer_id,
+          added_manually: true
+        }
       })
       .select()
       .single();
 
-    if (stopError || !newStop) {
+    if (stopError) {
       console.error('Error creating stop:', stopError);
-      // Rollback
-      await supabase
-        .from('receiving_route_plan_inputs')
-        .delete()
-        .eq('input_id', inputData.input_id);
-
-      await supabase
-        .from('wms_orders')
-        .update({
-          status: 'draft',
-          delivery_date: null,
-          matched_trip_id: null
-        })
-        .eq('order_id', orderId);
-
       return NextResponse.json(
-        {
-          success: false,
-          error: 'ไม่สามารถสร้างจุดส่งใหม่ได้'
-        },
+        { error: 'ไม่สามารถสร้างจุดส่งได้: ' + stopError.message },
         { status: 500 }
       );
     }
 
-    // 9. สร้าง receiving_route_stop_items
-    const stopItems = orderItems.map(item => ({
-      stop_id: newStop.stop_id,
-      order_id: orderId,
-      sku_id: item.sku_id,
-      quantity: item.ordered_qty,
-      weight_kg: (item.master_sku as any)?.unit_weight_kg * item.ordered_qty || 0,
-      created_at: new Date().toISOString()
-    }));
+    // 9. สร้าง stop items
+    if (orderItems && orderItems.length > 0) {
+      const stopItems = orderItems.map(item => ({
+        plan_id: Number(planId),
+        trip_id: tripId,
+        stop_id: newStop.stop_id,
+        order_id: orderId,
+        order_item_id: item.order_item_id,
+        sku_id: item.sku_id,
+        sku_name: item.sku_name,
+        allocated_quantity: item.order_qty,
+        allocated_weight_kg: item.order_weight
+      }));
 
-    const { error: stopItemsError } = await supabase
-      .from('receiving_route_stop_items')
-      .insert(stopItems);
+      const { error: itemsError } = await supabase
+        .from('receiving_route_stop_items')
+        .insert(stopItems);
 
-    if (stopItemsError) {
-      console.error('Error creating stop items:', stopItemsError);
-      // ไม่ rollback เพราะไม่ critical
+      if (itemsError) {
+        console.error('Error creating stop items:', itemsError);
+        // Continue anyway - items are for tracking
+      }
     }
 
-    // ส่งผลลัพธ์สำเร็จ
+    // 10. อัปเดตสถานะออเดอร์เป็น 'confirmed'
+    const { error: orderUpdateError } = await supabase
+      .from('wms_orders')
+      .update({
+        status: 'confirmed',
+        updated_at: new Date().toISOString()
+      })
+      .eq('order_id', orderId);
+
+    if (orderUpdateError) {
+      console.error('Error updating order status:', orderUpdateError);
+    }
+
+    // 11. อัปเดต trip totals
+    const { data: tripStops } = await supabase
+      .from('receiving_route_stops')
+      .select('load_weight_kg')
+      .eq('trip_id', tripId);
+
+    const tripTotalWeight = tripStops?.reduce((sum, s) => sum + Number(s.load_weight_kg || 0), 0) || 0;
+
+    await supabase
+      .from('receiving_route_trips')
+      .update({
+        total_weight_kg: tripTotalWeight,
+        updated_at: new Date().toISOString()
+      })
+      .eq('trip_id', tripId);
+
+    console.log('✅ Order added to trip successfully:', {
+      orderId,
+      orderNo: order.order_no,
+      tripId,
+      stopId: newStop.stop_id,
+      sequence: newSequence,
+      weight: totalWeight
+    });
+
     return NextResponse.json({
       success: true,
-      message: `เพิ่มออเดอร์ ${order.order_no} เข้าแผนเส้นทางสำเร็จ`,
       data: {
-        order_id: orderId,
-        order_no: order.order_no,
-        plan_id: planId,
-        trip_id: tripId,
-        sequence: sequencePosition,
-        stop_id: newStop.stop_id,
-        input_id: inputData.input_id
-      }
+        stop: newStop,
+        order: {
+          order_id: order.order_id,
+          order_no: order.order_no,
+          customer_id: order.customer_id,
+          shop_name: order.shop_name,
+          total_weight: totalWeight
+        },
+        trip: {
+          trip_id: tripId,
+          daily_trip_number: trip.daily_trip_number,
+          new_total_weight: tripTotalWeight
+        }
+      },
+      message: `เพิ่มออเดอร์ ${order.order_no} เข้าคันที่ ${trip.daily_trip_number} จุดที่ ${newSequence} สำเร็จ`
     });
 
   } catch (error: any) {
-    console.error('API Error in POST /api/route-plans/[id]/add-order:', error);
+    console.error('Error in add-order API:', error);
     return NextResponse.json(
-      {
-        success: false,
-        error: 'เกิดข้อผิดพลาดในการเพิ่มออเดอร์เข้าแผนเส้นทาง'
-      },
+      { error: error.message || 'เกิดข้อผิดพลาดในการเพิ่มออเดอร์' },
       { status: 500 }
     );
   }

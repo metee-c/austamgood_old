@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { Plus, Trash2, Save, X, AlertTriangle, ChevronDown, ChevronUp, Scissors, ArrowRight, ExternalLink } from 'lucide-react';
+import { Plus, Trash2, Save, X, AlertTriangle, ChevronDown, ChevronUp, Scissors, ArrowRight, ExternalLink, Search, Package } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 
@@ -58,6 +58,26 @@ interface ExcelStyleRouteEditorProps {
   onClose: () => void;
   loading?: boolean;
   onCrossPlanTransfer?: (stop: OrderRow, tripId: number | string) => void;
+  draftOrders?: DraftOrder[];
+  draftOrdersLoading?: boolean;
+  onRefreshDraftOrders?: () => void;
+}
+
+interface DraftOrder {
+  order_id: number;
+  order_no: string;
+  customer_id?: string;
+  shop_name?: string;
+  customer?: {
+    customer_id: string;
+    customer_name?: string;
+    customer_code?: string;
+    latitude?: number;
+    longitude?: number;
+  };
+  total_weight?: number;
+  total_units?: number;
+  province?: string;
 }
 
 interface RouteChanges {
@@ -95,7 +115,10 @@ export default function ExcelStyleRouteEditor({
   onSave,
   onClose,
   loading = false,
-  onCrossPlanTransfer
+  onCrossPlanTransfer,
+  draftOrders = [],
+  draftOrdersLoading = false,
+  onRefreshDraftOrders
 }: ExcelStyleRouteEditorProps) {
   // Convert trips data to flat rows
   const initialRows = useMemo(() => {
@@ -173,6 +196,14 @@ export default function ExcelStyleRouteEditor({
   const [expandedTrips, setExpandedTrips] = useState<Set<number>>(new Set(trips.map((_, i) => i + 1)));
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  // State สำหรับเพิ่มออเดอร์ร่าง
+  const [showAddOrderPanel, setShowAddOrderPanel] = useState(false);
+  const [addOrderSearch, setAddOrderSearch] = useState('');
+  const [selectedDraftOrderId, setSelectedDraftOrderId] = useState<number | null>(null);
+  const [selectedTargetTripId, setSelectedTargetTripId] = useState<number | null>(null);
+  const [isAddingOrder, setIsAddingOrder] = useState(false);
+  const [addOrderError, setAddOrderError] = useState<string | null>(null);
 
   // Sync rows with initialRows when trips change (but only if no user changes)
   useEffect(() => {
@@ -374,6 +405,74 @@ export default function ExcelStyleRouteEditor({
     // Just expand the new trip section - rows will be added when moving orders
     setExpandedTrips(prev => new Set([...prev, newTripNumber]));
   }, [tripNumbers]);
+
+  // Filter draft orders ที่ยังไม่อยู่ในแผน
+  const filteredDraftOrders = useMemo(() => {
+    const existingOrderIds = new Set(rows.map(r => r.orderId));
+    let filtered = draftOrders.filter(o => !existingOrderIds.has(o.order_id));
+    
+    if (addOrderSearch) {
+      const searchLower = addOrderSearch.toLowerCase();
+      filtered = filtered.filter(o => 
+        o.order_no.toLowerCase().includes(searchLower) ||
+        o.customer?.customer_name?.toLowerCase().includes(searchLower) ||
+        o.customer?.customer_code?.toLowerCase().includes(searchLower) ||
+        o.shop_name?.toLowerCase().includes(searchLower) ||
+        o.province?.toLowerCase().includes(searchLower)
+      );
+    }
+    
+    return filtered;
+  }, [draftOrders, rows, addOrderSearch]);
+
+  // Handle add draft order to trip
+  const handleAddDraftOrder = useCallback(async () => {
+    if (!selectedDraftOrderId || !selectedTargetTripId) {
+      setAddOrderError('กรุณาเลือกออเดอร์และเที่ยวรถ');
+      return;
+    }
+
+    setIsAddingOrder(true);
+    setAddOrderError(null);
+
+    try {
+      const response = await fetch(`/api/route-plans/${planId}/add-order`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          orderId: selectedDraftOrderId,
+          tripId: selectedTargetTripId
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'เกิดข้อผิดพลาด');
+      }
+
+      // Reset selection
+      setSelectedDraftOrderId(null);
+      setSelectedTargetTripId(null);
+      setAddOrderSearch('');
+
+      // Refresh draft orders list
+      if (onRefreshDraftOrders) {
+        onRefreshDraftOrders();
+      }
+
+      // Trigger parent to refresh editor data
+      // We need to call onSave with empty changes to trigger refresh
+      await onSave({ moves: [], reorders: [], splits: [], newTrips: [], deletes: [] });
+
+      alert(result.message || 'เพิ่มออเดอร์สำเร็จ');
+    } catch (error: any) {
+      console.error('Error adding order:', error);
+      setAddOrderError(error.message || 'เกิดข้อผิดพลาดในการเพิ่มออเดอร์');
+    } finally {
+      setIsAddingOrder(false);
+    }
+  }, [selectedDraftOrderId, selectedTargetTripId, planId, onSave, onRefreshDraftOrders]);
 
   // Delete row (cancel stop)
   const handleDeleteRow = useCallback((rowId: string) => {
@@ -602,31 +701,183 @@ export default function ExcelStyleRouteEditor({
           <li>เปลี่ยนเลขคัน: คลิก dropdown ที่คอลัมน์ "คัน" แล้วเลือกคันใหม่</li>
           <li>เปลี่ยนลำดับจุด: คลิก dropdown ที่คอลัมน์ "จุด" แล้วเลือกลำดับใหม่</li>
           <li>แบ่งออเดอร์: คลิกปุ่ม <Scissors size={12} className="inline" /> แล้วกรอกน้ำหนักที่ต้องการแบ่ง</li>
+          <li>เพิ่มออเดอร์ร่าง: คลิกปุ่ม <Package size={12} className="inline" /> เพิ่มออเดอร์ร่าง แล้วเลือกออเดอร์และคันรถ</li>
         </ul>
       </div>
 
-      {/* Trip Summaries */}
+      {/* Trip Summaries + Add Order Panel */}
       <div className="p-4 border-b bg-gray-50">
-        <div className="flex flex-wrap gap-3">
-          {tripSummaries.map(summary => (
-            <div 
-              key={summary.tripNumber}
-              className="bg-white border rounded-lg px-3 py-2 text-sm"
-            >
-              <div className="font-semibold text-gray-800">คันที่ {summary.tripNumber}</div>
-              <div className="text-gray-600">
-                {summary.totalWeight.toFixed(1)} kg • {summary.uniqueCustomers} ร้าน • {summary.totalStops} จุด
+        <div className="flex flex-wrap items-start gap-3">
+          {/* Trip Cards */}
+          <div className="flex flex-wrap gap-3 flex-1">
+            {tripSummaries.map(summary => (
+              <div 
+                key={summary.tripNumber}
+                className="bg-white border rounded-lg px-3 py-2 text-sm"
+              >
+                <div className="font-semibold text-gray-800">คันที่ {summary.tripNumber}</div>
+                <div className="text-gray-600">
+                  {summary.totalWeight.toFixed(1)} kg • {summary.uniqueCustomers} ร้าน • {summary.totalStops} จุด
+                </div>
               </div>
-            </div>
-          ))}
+            ))}
+            <button
+              onClick={handleAddTrip}
+              className="flex items-center gap-1 px-3 py-2 border border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-100"
+            >
+              <Plus size={14} />
+              เพิ่มคัน
+            </button>
+          </div>
+
+          {/* Add Order Toggle Button */}
           <button
-            onClick={handleAddTrip}
-            className="flex items-center gap-1 px-3 py-2 border border-dashed border-gray-300 rounded-lg text-sm text-gray-600 hover:bg-gray-100"
+            onClick={() => setShowAddOrderPanel(!showAddOrderPanel)}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              showAddOrderPanel 
+                ? 'bg-green-600 text-white' 
+                : 'bg-green-100 text-green-700 hover:bg-green-200'
+            }`}
           >
-            <Plus size={14} />
-            เพิ่มคัน
+            <Package size={16} />
+            {showAddOrderPanel ? 'ซ่อนเพิ่มออเดอร์' : 'เพิ่มออเดอร์ร่าง'}
+            {filteredDraftOrders.length > 0 && !showAddOrderPanel && (
+              <span className="bg-green-600 text-white text-xs px-1.5 py-0.5 rounded-full">
+                {filteredDraftOrders.length}
+              </span>
+            )}
           </button>
         </div>
+
+        {/* Add Order Panel (Collapsible) */}
+        {showAddOrderPanel && (
+          <div className="mt-4 bg-white border border-green-200 rounded-lg p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h4 className="font-semibold text-gray-800 flex items-center gap-2">
+                <Package className="w-4 h-4 text-green-600" />
+                เพิ่มออเดอร์ร่างเข้าแผน
+              </h4>
+              {draftOrdersLoading && (
+                <span className="text-xs text-gray-500">กำลังโหลด...</span>
+              )}
+            </div>
+
+            {addOrderError && (
+              <div className="mb-3 p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+                {addOrderError}
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Search & Select Order */}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-600">1. เลือกออเดอร์ร่าง</label>
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-4 h-4 text-gray-400" />
+                  <input
+                    type="text"
+                    placeholder="ค้นหาเลขออเดอร์, ชื่อร้าน, จังหวัด..."
+                    className="w-full pl-8 pr-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-green-500"
+                    value={addOrderSearch}
+                    onChange={(e) => setAddOrderSearch(e.target.value)}
+                  />
+                </div>
+                <div className="max-h-40 overflow-y-auto border rounded-md">
+                  {filteredDraftOrders.length === 0 ? (
+                    <div className="p-3 text-center text-sm text-gray-500">
+                      {draftOrdersLoading ? 'กำลังโหลด...' : 
+                       addOrderSearch ? 'ไม่พบออเดอร์ที่ค้นหา' : 'ไม่มีออเดอร์ร่างที่พร้อมเพิ่ม'}
+                    </div>
+                  ) : (
+                    filteredDraftOrders.map(order => (
+                      <div
+                        key={order.order_id}
+                        className={`p-2 cursor-pointer border-b last:border-b-0 transition-colors ${
+                          selectedDraftOrderId === order.order_id
+                            ? 'bg-green-100 border-green-300'
+                            : 'hover:bg-gray-50'
+                        }`}
+                        onClick={() => setSelectedDraftOrderId(order.order_id)}
+                      >
+                        <div className="flex justify-between items-start">
+                          <div className="flex-1 min-w-0">
+                            <div className="text-xs font-semibold text-green-700 font-mono">
+                              {order.order_no}
+                            </div>
+                            <div className="text-xs text-gray-600 truncate">
+                              {order.shop_name || order.customer?.customer_name || order.customer_id || '-'}
+                            </div>
+                            {order.province && (
+                              <div className="text-xs text-blue-600">
+                                {order.province}
+                              </div>
+                            )}
+                          </div>
+                          <div className="text-xs text-gray-500 text-right whitespace-nowrap ml-2">
+                            {order.total_weight ? `${Number(order.total_weight).toFixed(1)} kg` : '-'}
+                          </div>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Select Trip */}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-600">2. เลือกคันรถ (เพิ่มท้ายสุด)</label>
+                <select
+                  className="w-full border border-gray-300 rounded-md px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+                  value={selectedTargetTripId || ''}
+                  onChange={(e) => setSelectedTargetTripId(e.target.value ? Number(e.target.value) : null)}
+                >
+                  <option value="">-- เลือกคันรถ --</option>
+                  {trips.map((trip, idx) => {
+                    const tripNum = trip.daily_trip_number || trip.trip_sequence || idx + 1;
+                    const summary = tripSummaries.find(s => s.tripNumber === tripNum);
+                    return (
+                      <option key={trip.trip_id} value={trip.trip_id}>
+                        คันที่ {tripNum} ({summary?.totalStops || 0} จุด, {summary?.totalWeight?.toFixed(1) || 0} kg)
+                      </option>
+                    );
+                  })}
+                </select>
+
+                {selectedDraftOrderId && selectedTargetTripId && (
+                  <div className="p-2 bg-green-50 rounded-md text-xs">
+                    <div className="font-medium text-green-800">สรุป:</div>
+                    <div className="text-green-700">
+                      เพิ่ม <span className="font-mono font-semibold">
+                        {filteredDraftOrders.find(o => o.order_id === selectedDraftOrderId)?.order_no}
+                      </span> เข้าคันที่ {
+                        trips.find(t => t.trip_id === selectedTargetTripId)?.daily_trip_number || 
+                        trips.findIndex(t => t.trip_id === selectedTargetTripId) + 1
+                      } (จุดท้ายสุด)
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Action Button */}
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-600">3. ยืนยัน</label>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={Plus}
+                  onClick={handleAddDraftOrder}
+                  disabled={!selectedDraftOrderId || !selectedTargetTripId || isAddingOrder}
+                  className="w-full bg-green-600 hover:bg-green-700"
+                >
+                  {isAddingOrder ? 'กำลังเพิ่ม...' : 'เพิ่มออเดอร์เข้าแผน'}
+                </Button>
+                <p className="text-xs text-gray-500">
+                  ออเดอร์จะถูกเพิ่มเป็นจุดส่งท้ายสุดของคันที่เลือก และสถานะจะเปลี่ยนเป็น "ยืนยันแล้ว"
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Table */}

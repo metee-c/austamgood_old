@@ -401,12 +401,28 @@ export async function GET(
       // Extract loading_door_number from picklists (first picklist)
       const loadingDoorNumber = trip.picklists?.[0]?.loading_door_number || null;
       
-      // Extract loading_queue_number from loadlist (first loadlist)
-      const loadlistData = trip.picklists?.[0]?.wms_loadlist_picklists?.[0]?.loadlist;
+      // Collect all loadlists from all picklists
+      const allLoadlists: any[] = [];
+      for (const picklist of trip.picklists || []) {
+        for (const llp of picklist.wms_loadlist_picklists || []) {
+          if (llp.loadlist) {
+            allLoadlists.push(llp.loadlist);
+          }
+        }
+      }
+      
+      // Find loadlist with delivery_number starting with "S" (รหัสงานจัดส่ง like S003324)
+      // This is the correct delivery job code, not BFS codes
+      const loadlistWithSCode = allLoadlists.find(
+        (ll: any) => ll.delivery_number && ll.delivery_number.startsWith('S')
+      );
+      
+      // Fallback to first loadlist if no S-code found
+      const loadlistData = loadlistWithSCode || allLoadlists[0] || null;
       const loadingQueueNumber = loadlistData?.loading_queue_number || null;
       
-      // Extract delivery_number from loadlist (รหัสงานจัดส่ง)
-      const deliveryNumber = loadlistData?.delivery_number || null;
+      // Extract delivery_number from loadlist (รหัสงานจัดส่ง) - prefer S-code
+      const deliveryNumber = loadlistWithSCode?.delivery_number || null;
       
       // Extract checker employee from loadlist
       const checkerEmployee = loadlistData?.checker_employee as any;

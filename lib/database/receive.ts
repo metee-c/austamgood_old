@@ -158,6 +158,7 @@ export class ReceiveService {
   }
 
   // Generate unique pallet_id in format ATG{YYYY}{MM}{DD}{9-digit-running-number}
+  // IMPORTANT: Checks both wms_receive_items AND wms_move_items.new_pallet_id to prevent duplicates
   async generatePalletId(): Promise<{ data: string | null; error: string | null }> {
     try {
       const now = new Date();
@@ -166,24 +167,40 @@ export class ReceiveService {
       const day = String(now.getDate()).padStart(2, '0');
       const datePrefix = `ATG${year}${month}${day}`;
 
-      // Get the latest pallet_id for this date from the new items table
-      const { data: latestRecord, error } = await this.supabase
+      // Get the latest pallet_id from BOTH receive_items AND move_items (new_pallet_id)
+      // to prevent duplicate pallet IDs between receives and partial moves
+      const { data: latestFromReceive } = await this.supabase
         .from('wms_receive_items')
         .select('pallet_id')
         .like('pallet_id', `${datePrefix}%`)
         .order('pallet_id', { ascending: false })
         .limit(1);
 
-      if (error) {
-        console.error('Error getting latest pallet_id:', error);
-        return { data: null, error: error.message };
-      }
+      const { data: latestFromMove } = await this.supabase
+        .from('wms_move_items')
+        .select('new_pallet_id')
+        .like('new_pallet_id', `${datePrefix}%`)
+        .order('new_pallet_id', { ascending: false })
+        .limit(1);
 
       let runningNo = 1;
-      if (latestRecord && latestRecord.length > 0 && latestRecord[0].pallet_id) {
-        const lastId = latestRecord[0].pallet_id;
-        const lastRunningNo = parseInt(lastId.substring(datePrefix.length));
-        runningNo = lastRunningNo + 1;
+      
+      // Find the max running number from both sources
+      const receivePalletId = latestFromReceive?.[0]?.pallet_id;
+      const movePalletId = latestFromMove?.[0]?.new_pallet_id;
+      
+      if (receivePalletId) {
+        const receiveRunningNo = parseInt(receivePalletId.substring(datePrefix.length));
+        if (!isNaN(receiveRunningNo) && receiveRunningNo >= runningNo) {
+          runningNo = receiveRunningNo + 1;
+        }
+      }
+      
+      if (movePalletId) {
+        const moveRunningNo = parseInt(movePalletId.substring(datePrefix.length));
+        if (!isNaN(moveRunningNo) && moveRunningNo >= runningNo) {
+          runningNo = moveRunningNo + 1;
+        }
       }
 
       const palletId = `${datePrefix}${String(runningNo).padStart(9, '0')}`;
@@ -195,6 +212,7 @@ export class ReceiveService {
   }
 
   // Generate multiple unique pallet_ids in batch (optimized version)
+  // IMPORTANT: Checks both wms_receive_items AND wms_move_items.new_pallet_id to prevent duplicates
   async generateMultiplePalletIds(count: number): Promise<{ data: string[] | null; error: string | null }> {
     try {
       const now = new Date();
@@ -203,24 +221,39 @@ export class ReceiveService {
       const day = String(now.getDate()).padStart(2, '0');
       const datePrefix = `ATG${year}${month}${day}`;
 
-      // Get the latest pallet_id for this date from the items table
-      const { data: latestRecord, error } = await this.supabase
+      // Get the latest pallet_id from BOTH receive_items AND move_items (new_pallet_id)
+      const { data: latestFromReceive } = await this.supabase
         .from('wms_receive_items')
         .select('pallet_id')
         .like('pallet_id', `${datePrefix}%`)
         .order('pallet_id', { ascending: false })
         .limit(1);
 
-      if (error) {
-        console.error('Error getting latest pallet_id:', error);
-        return { data: null, error: error.message };
-      }
+      const { data: latestFromMove } = await this.supabase
+        .from('wms_move_items')
+        .select('new_pallet_id')
+        .like('new_pallet_id', `${datePrefix}%`)
+        .order('new_pallet_id', { ascending: false })
+        .limit(1);
 
       let runningNo = 1;
-      if (latestRecord && latestRecord.length > 0 && latestRecord[0].pallet_id) {
-        const lastId = latestRecord[0].pallet_id;
-        const lastRunningNo = parseInt(lastId.substring(datePrefix.length));
-        runningNo = lastRunningNo + 1;
+      
+      // Find the max running number from both sources
+      const receivePalletId = latestFromReceive?.[0]?.pallet_id;
+      const movePalletId = latestFromMove?.[0]?.new_pallet_id;
+      
+      if (receivePalletId) {
+        const receiveRunningNo = parseInt(receivePalletId.substring(datePrefix.length));
+        if (!isNaN(receiveRunningNo) && receiveRunningNo >= runningNo) {
+          runningNo = receiveRunningNo + 1;
+        }
+      }
+      
+      if (movePalletId) {
+        const moveRunningNo = parseInt(movePalletId.substring(datePrefix.length));
+        if (!isNaN(moveRunningNo) && moveRunningNo >= runningNo) {
+          runningNo = moveRunningNo + 1;
+        }
       }
 
       const palletIds = [];
