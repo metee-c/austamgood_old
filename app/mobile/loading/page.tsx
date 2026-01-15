@@ -48,7 +48,7 @@ function MobileLoadingPage() {
   const [loading, setLoading] = useState(true);
   const [loadlists, setLoadlists] = useState<LoadlistTask[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedStatus, setSelectedStatus] = useState<string>('all');
+  const [selectedStatus, setSelectedStatus] = useState<string>('pending');
   const [showFilter, setShowFilter] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);

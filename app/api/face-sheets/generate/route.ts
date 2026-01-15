@@ -254,7 +254,7 @@ async function handlePost(request: NextRequest, context: any) {
       );
     }
 
-    // Reserve stock for face sheet items
+    // Reserve stock for face sheet items - CRITICAL: Must succeed
     try {
       console.log(`📦 Reserving stock for face sheet ${result.face_sheet_id}...`);
       const { data: reserveResult, error: reserveError } = await supabase
@@ -265,17 +265,76 @@ async function handlePost(request: NextRequest, context: any) {
         });
 
       if (reserveError) {
-        console.error('❌ Error reserving stock:', reserveError);
-      } else if (reserveResult && reserveResult.length > 0) {
-        const reserve = reserveResult[0];
-        if (reserve.success) {
-          console.log(`✅ Stock reserved: ${reserve.items_reserved} items`);
-        } else {
-          console.error('❌ Stock reservation failed:', reserve.message);
-        }
+        console.error('❌ CRITICAL: Error reserving stock:', reserveError);
+        // ✅ FIX: Fail the entire face sheet creation if stock reservation fails
+        return NextResponse.json(
+          { 
+            error: 'ไม่สามารถจองสต็อคสำหรับใบปะหน้าได้', 
+            details: `Face sheet ${result.face_sheet_no} ถูกสร้างแล้ว แต่ไม่สามารถจองสต็อคได้: ${reserveError.message}`,
+            face_sheet_id: result.face_sheet_id,
+            face_sheet_no: result.face_sheet_no,
+            reservation_failed: true
+          },
+          { status: 500 }
+        );
+      } 
+      
+      if (!reserveResult || reserveResult.length === 0) {
+        console.error('❌ CRITICAL: No reservation result returned');
+        return NextResponse.json(
+          { 
+            error: 'ไม่ได้รับผลลัพธ์การจองสต็อค', 
+            details: `Face sheet ${result.face_sheet_no} ถูกสร้างแล้ว แต่ไม่ได้รับผลลัพธ์การจองสต็อค`,
+            face_sheet_id: result.face_sheet_id,
+            face_sheet_no: result.face_sheet_no,
+            reservation_failed: true
+          },
+          { status: 500 }
+        );
       }
+
+      const reserve = reserveResult[0];
+      if (!reserve.success) {
+        console.error('❌ CRITICAL: Stock reservation failed:', reserve.message);
+        return NextResponse.json(
+          { 
+            error: 'การจองสต็อคไม่สำเร็จ', 
+            details: `Face sheet ${result.face_sheet_no} ถูกสร้างแล้ว แต่การจองสต็อคไม่สำเร็จ: ${reserve.message}`,
+            face_sheet_id: result.face_sheet_id,
+            face_sheet_no: result.face_sheet_no,
+            reservation_failed: true,
+            insufficient_stock_items: reserve.insufficient_stock_items || []
+          },
+          { status: 400 }
+        );
+      }
+
+      console.log(`✅ Stock reserved successfully: ${reserve.items_reserved} items`);
+      
+      // ✅ FIX: Verify reservations were actually created
+      const { data: verifyReservations, error: verifyError } = await supabase
+        .from('face_sheet_item_reservations')
+        .select('COUNT(*)')
+        .eq('face_sheet_item_id', supabase.from('face_sheet_items').select('id').eq('face_sheet_id', result.face_sheet_id));
+
+      if (verifyError) {
+        console.error('❌ Warning: Could not verify reservations:', verifyError);
+      } else {
+        console.log(`✅ Verified: ${verifyReservations?.[0]?.COUNT || 0} reservations created`);
+      }
+
     } catch (reserveError) {
-      console.error('❌ Exception reserving stock:', reserveError);
+      console.error('❌ CRITICAL: Exception reserving stock:', reserveError);
+      return NextResponse.json(
+        { 
+          error: 'เกิดข้อผิดพลาดในการจองสต็อค', 
+          details: `Face sheet ${result.face_sheet_no} ถูกสร้างแล้ว แต่เกิดข้อผิดพลาดในการจองสต็อค: ${reserveError instanceof Error ? reserveError.message : 'Unknown error'}`,
+          face_sheet_id: result.face_sheet_id,
+          face_sheet_no: result.face_sheet_no,
+          reservation_failed: true
+        },
+        { status: 500 }
+      );
     }
 
     // Update order statuses from 'draft' to 'confirmed' for orders included in this face sheet

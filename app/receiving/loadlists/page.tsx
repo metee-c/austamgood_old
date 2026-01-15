@@ -62,6 +62,7 @@ interface Loadlist {
   total_packages: number;
   created_at: string;
   created_by: string;
+  bfs_confirmed_to_staging?: string; // ✅ NEW: 'yes' = ยืนยันแล้ว, 'no' = ยังไม่ยืนยัน
   vehicle?: {
     vehicle_id: string;
     plate_number: string;
@@ -302,26 +303,6 @@ const LoadlistsPage = () => {
   const [selectedFaceSheetsForPrint, setSelectedFaceSheetsForPrint] = useState<number[]>([]); // เก็บ face_sheet_id สำหรับ filter
   const [printingPickListId, setPrintingPickListId] = useState<number | null>(null);
   const [confirmingPickId, setConfirmingPickId] = useState<number | null>(null); // สำหรับปุ่มยืนยันหยิบ
-  const [stagingStatus, setStagingStatus] = useState<Record<number, { is_complete: boolean; pending_packages: number }>>({});
-  
-  // ฟังก์ชันตรวจสอบสถานะการย้ายสต็อกไป staging สำหรับ loadlist ที่มี bonus face sheet
-  const checkStagingStatus = async (loadlistId: number) => {
-    try {
-      const response = await fetch(`/api/bonus-face-sheets/confirm-pick-to-staging?loadlist_id=${loadlistId}`);
-      const result = await response.json();
-      if (result.success) {
-        setStagingStatus(prev => ({
-          ...prev,
-          [loadlistId]: {
-            is_complete: result.is_complete,
-            pending_packages: result.pending_packages
-          }
-        }));
-      }
-    } catch (err) {
-      console.error('Error checking staging status:', err);
-    }
-  };
   
   const fetchLoadlists = async () => {
     setLoading(true);
@@ -345,36 +326,6 @@ const LoadlistsPage = () => {
     fetchEmployees();
     fetchVehicles();
   }, []);
-
-  // ตรวจสอบสถานะ staging สำหรับ loadlists ที่มี bonus face sheet
-  // ✅ ตรวจสอบทุกครั้งที่ loadlists เปลี่ยน เพื่อให้ผู้ใช้คนอื่นเห็นสถานะล่าสุด
-  useEffect(() => {
-    if (loadlists.length > 0) {
-      loadlists.forEach((loadlist: any) => {
-        const hasBonusFaceSheets = loadlist.bonus_face_sheets && loadlist.bonus_face_sheets.length > 0;
-        if (hasBonusFaceSheets) {
-          checkStagingStatus(loadlist.id);
-        }
-      });
-    }
-  }, [loadlists]);
-
-  // ✅ Auto-refresh staging status ทุก 10 วินาที เพื่อให้ผู้ใช้คนอื่นเห็นสถานะล่าสุด
-  useEffect(() => {
-    const refreshStagingStatus = () => {
-      loadlists.forEach((loadlist: any) => {
-        const hasBonusFaceSheets = loadlist.bonus_face_sheets && loadlist.bonus_face_sheets.length > 0;
-        if (hasBonusFaceSheets) {
-          checkStagingStatus(loadlist.id);
-        }
-      });
-    };
-
-    // Refresh ทุก 10 วินาที
-    const interval = setInterval(refreshStagingStatus, 10000);
-    
-    return () => clearInterval(interval);
-  }, [loadlists]);
 
   // Auto-fill form fields from selected picklists
   useEffect(() => {
@@ -1385,16 +1336,7 @@ const LoadlistsPage = () => {
 
       alert(`✅ ${result.message}`);
       
-      // อัปเดต stagingStatus ให้เป็น complete
-      setStagingStatus(prev => ({
-        ...prev,
-        [loadlist.id]: {
-          is_complete: true,
-          pending_packages: 0
-        }
-      }));
-      
-      // Refresh loadlists
+      // Refresh loadlists (จะดึงค่า bfs_confirmed_to_staging = 'yes' มาใหม่)
       await fetchLoadlists();
     } catch (err: any) {
       console.error('Error confirming pick:', err);
@@ -1777,27 +1719,29 @@ const LoadlistsPage = () => {
                             )}
                             {/* ปุ่มยืนยันหยิบไป PQTD/MRTD - แสดงเฉพาะ loadlist ที่มี bonus face sheet */}
                             {hasBonusFaceSheets && (() => {
-                              const status = stagingStatus[loadlist.id];
-                              const isComplete = status?.is_complete || false;
-                              const pendingCount = status?.pending_packages || 0;
+                              // ✅ FIX: ใช้ bfs_confirmed_to_staging จากฐานข้อมูลแทน
+                              const isConfirmed = loadlist.bfs_confirmed_to_staging === 'yes';
+                              const isProcessing = confirmingPickId === loadlist.id;
                               
                               return (
                                 <button
                                   onClick={() => handleConfirmPickToStaging(loadlist)}
                                   className={`p-1 rounded transition-colors ${
-                                    isComplete 
-                                      ? 'text-gray-400 cursor-not-allowed opacity-40' 
-                                      : 'hover:bg-emerald-50 hover:text-emerald-600'
-                                  } disabled:opacity-40`}
-                                  title={isComplete 
+                                    isConfirmed
+                                      ? 'opacity-30 cursor-not-allowed text-gray-400 bg-gray-100'
+                                      : isProcessing
+                                        ? 'cursor-wait text-gray-400 opacity-50'
+                                        : 'hover:bg-emerald-50 hover:text-emerald-600'
+                                  }`}
+                                  title={isConfirmed 
                                     ? 'ย้ายไปจุดพักรอโหลดครบแล้ว' 
-                                    : `ยืนยันหยิบไปจุดพักรอโหลด (${pendingCount} แพ็ครอย้าย)`}
-                                  disabled={confirmingPickId === loadlist.id || isComplete}
+                                    : 'ยืนยันหยิบไปจุดพักรอโหลด'}
+                                  disabled={isConfirmed || isProcessing}
                                 >
-                                  {confirmingPickId === loadlist.id ? (
+                                  {isProcessing ? (
                                     <Loader2 className="w-3 h-3 animate-spin" />
                                   ) : (
-                                    <CheckCircle className="w-3 h-3" />
+                                    <CheckCircle className={`w-3 h-3 ${isConfirmed ? 'opacity-30' : ''}`} />
                                   )}
                                 </button>
                               );

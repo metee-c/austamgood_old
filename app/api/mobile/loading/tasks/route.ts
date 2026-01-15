@@ -5,9 +5,13 @@ import { withAuth } from '@/lib/api/with-auth';
 async function handleGet(request: NextRequest, context: any) {
   try {
     const supabase = await createClient();
+    
+    // Get status filter from query params
+    const { searchParams } = new URL(request.url);
+    const statusFilter = searchParams.get('status');
 
-    // Fetch loadlists (all statuses)
-    const { data: loadlists, error } = await supabase
+    // Build query
+    let query = supabase
       .from('loadlists')
       .select(`
         id,
@@ -55,8 +59,65 @@ async function handleGet(request: NextRequest, context: any) {
             )
           )
         )
-      `)
-      .order('loadlist_code', { ascending: false });
+      `);
+    
+    // Apply status filter if provided
+    if (statusFilter && statusFilter !== 'all') {
+      query = query.eq('status', statusFilter);
+    }
+    
+    // Execute query
+    const { data: allLoadlists, error } = await query.order('loadlist_code', { ascending: false });
+
+    // ✅ กฎการแสดง Loadlist:
+    // 1. LD ที่มี Picklist หรือ Face Sheet → แสดงเสมอ
+    // 2. LD ที่มีเฉพาะ BFS → แสดงเฉพาะถ้า BFS นั้นไม่ได้แมพกับ LD อื่นที่มี picklist/face sheet
+    //    (ถ้า BFS แมพกับ LD ที่มี picklist/face sheet แล้ว จะโหลดพร้อมกัน ไม่ต้องแสดง LD BFS แยก)
+    // 3. LD ว่าง (ไม่มี document) → แสดง เพื่อรอแมพ document
+    
+    // หา BFS IDs ที่แมพกับ loadlist ที่มี picklist/face sheet
+    const bfsIdsWithMainLoadlist = new Set<number>();
+    allLoadlists?.forEach((loadlist: any) => {
+      const hasPicklist = (loadlist.wms_loadlist_picklists || []).length > 0;
+      const hasFaceSheet = (loadlist.loadlist_face_sheets || []).length > 0;
+      
+      if (hasPicklist || hasFaceSheet) {
+        // LD นี้มี picklist/face sheet - เก็บ BFS IDs ที่แมพกับ LD นี้
+        (loadlist.wms_loadlist_bonus_face_sheets || []).forEach((bfs: any) => {
+          if (bfs.bonus_face_sheet_id) {
+            bfsIdsWithMainLoadlist.add(bfs.bonus_face_sheet_id);
+          }
+        });
+      }
+    });
+    
+    // Filter loadlists
+    const loadlists = allLoadlists?.filter((loadlist: any) => {
+      const hasPicklist = (loadlist.wms_loadlist_picklists || []).length > 0;
+      const hasFaceSheet = (loadlist.loadlist_face_sheets || []).length > 0;
+      const bfsList = loadlist.wms_loadlist_bonus_face_sheets || [];
+      const hasBFS = bfsList.length > 0;
+      
+      // ถ้ามี picklist หรือ face sheet → แสดงเสมอ
+      if (hasPicklist || hasFaceSheet) {
+        return true;
+      }
+      
+      // ถ้ามีเฉพาะ BFS → ตรวจสอบว่า BFS นั้นแมพกับ LD อื่นที่มี picklist/face sheet หรือไม่
+      if (hasBFS && !hasPicklist && !hasFaceSheet) {
+        // ตรวจสอบว่า BFS ทั้งหมดใน LD นี้ แมพกับ LD อื่นที่มี picklist/face sheet หรือไม่
+        const allBfsHaveMainLoadlist = bfsList.every((bfs: any) => 
+          bfsIdsWithMainLoadlist.has(bfs.bonus_face_sheet_id)
+        );
+        
+        // ถ้า BFS ทั้งหมดแมพกับ LD อื่นแล้ว → ซ่อน LD นี้
+        // ถ้ามี BFS บางตัวที่ยังไม่แมพกับ LD อื่น → แสดง LD นี้
+        return !allBfsHaveMainLoadlist;
+      }
+      
+      // LD ว่าง (ไม่มี document) → ไม่แสดง
+      return false;
+    }) || [];
 
     if (error) {
       console.error('Database error:', error);
@@ -153,9 +214,10 @@ async function handleGet(request: NextRequest, context: any) {
       }
       
       // Calculate from face sheets
-      // ✅ FIX: ไม่นับ face_sheet_items ถ้า loadlist มี BFS (เพราะ FS เป็น mapping target ไม่ใช่ source)
+      // ✅ FIX: นับ face_sheet_items เสมอ ไม่ว่าจะมี BFS หรือไม่
+      // เพราะ Face Sheet และ BFS เป็นคนละ document - ต้องนับทั้งสองอย่าง
       const hasBonusFaceSheets = bonusFaceSheetIds.length > 0;
-      if (faceSheetIds.length > 0 && !hasBonusFaceSheets) {
+      if (faceSheetIds.length > 0) {
         const { data: faceSheetItems } = await supabase
           .from('face_sheet_items')
           .select(`

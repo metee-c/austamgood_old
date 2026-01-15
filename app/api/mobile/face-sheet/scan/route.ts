@@ -98,9 +98,18 @@ async function handlePost(request: NextRequest, context: any) {
     }
 
     // 4. ตรวจสอบจำนวนที่หยิบ
-    if (quantity_picked > (item.quantity_to_pick || item.quantity)) {
+    const expectedQuantity = item.quantity_to_pick || item.quantity || 0;
+    if (quantity_picked > expectedQuantity) {
       return NextResponse.json(
-        { error: `จำนวนที่หยิบ (${quantity_picked}) มากกว่าที่ต้องการ (${item.quantity_to_pick || item.quantity})` },
+        { error: `จำนวนที่หยิบ (${quantity_picked}) มากกว่าที่ต้องการ (${expectedQuantity})` },
+        { status: 400 }
+      );
+    }
+
+    // ✅ FIX: Validate that expected quantity is not zero
+    if (expectedQuantity <= 0) {
+      return NextResponse.json(
+        { error: `ไม่พบจำนวนที่ต้องหยิบสำหรับรายการนี้ (quantity_to_pick: ${item.quantity_to_pick}, quantity: ${item.quantity})` },
         { status: 400 }
       );
     }
@@ -180,7 +189,7 @@ async function handlePost(request: NextRequest, context: any) {
         // ดึงข้อมูล balance
         const { data: balance, error: balanceError } = await supabase
           .from('wms_inventory_balances')
-          .select('balance_id, location_id, total_piece_qty, reserved_piece_qty, total_pack_qty, reserved_pack_qty, production_date, expiry_date, lot_no')
+          .select('balance_id, location_id, total_piece_qty, reserved_piece_qty, total_pack_qty, reserved_pack_qty, production_date, expiry_date, lot_no, pallet_id')
           .eq('balance_id', reservation.balance_id)
           .single();
 
@@ -204,11 +213,18 @@ async function handlePost(request: NextRequest, context: any) {
         }
 
         // ตรวจสอบว่ามีสต็อคเพียงพอ
-        if (balance.total_piece_qty < qtyToDeduct) {
+        // ✅ FIX: รองรับ Virtual Pallet (pallet_id ขึ้นต้นด้วย VIRTUAL-)
+        const isVirtualPallet = balance.pallet_id && balance.pallet_id.startsWith('VIRTUAL-');
+        
+        if (!isVirtualPallet && balance.total_piece_qty < qtyToDeduct) {
           return NextResponse.json(
             { error: `สต็อคไม่เพียงพอ: ต้องการ ${qtyToDeduct} แต่มีเพียง ${balance.total_piece_qty} ชิ้น` },
             { status: 400 }
           );
+        }
+        
+        if (isVirtualPallet) {
+          console.log(`✅ Virtual Pallet detected: ${balance.pallet_id} - อนุญาตให้หักติดลบ`);
         }
 
         // ลดยอดจองและสต็อคจริง

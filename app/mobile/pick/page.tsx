@@ -224,7 +224,8 @@ function MobilePickPage() {
     const statusMap: Record<string, { label: string; variant: 'default' | 'primary' | 'success' | 'warning' | 'danger' | 'info' }> = {
       pending: { label: 'รอหยิบ', variant: 'default' },
       partial: { label: 'กำลังหยิบ', variant: 'warning' },
-      picked: { label: 'เสร็จสิ้น', variant: 'success' }
+      picked: { label: 'เสร็จสิ้น', variant: 'success' },
+      completed: { label: 'เสร็จสิ้น', variant: 'success' } // ✅ FIX: เพิ่ม completed status
     };
 
     const match = statusMap[pickStatus || 'pending'] || statusMap.pending;
@@ -256,6 +257,7 @@ function MobilePickPage() {
   const getPickStatusIcon = (pickStatus: string | undefined) => {
     switch (pickStatus) {
       case 'picked':
+      case 'completed': // ✅ FIX: เพิ่ม completed status
         return <CheckCircle className="w-3.5 h-3.5 text-green-500" />;
       case 'partial':
         return <Package className="w-3.5 h-3.5 text-yellow-500" />;

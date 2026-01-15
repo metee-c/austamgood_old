@@ -580,6 +580,7 @@ async function handleGet(request: NextRequest, context: any) {
         total_packages: totalPackages,
         created_at: loadlist.created_at,
         created_by: loadlist.created_by,
+        bfs_confirmed_to_staging: loadlist.bfs_confirmed_to_staging, // ✅ NEW: เพิ่ม field สำหรับ BFS confirmation
         vehicle: vehicle,
         driver: driver,
         face_sheets: faceSheets.map((fs: any) => ({

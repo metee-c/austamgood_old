@@ -107,6 +107,73 @@ async function handlePost(request: NextRequest, context: any) {
     const picklistIds = picklistLinks?.map(lp => lp.picklist_id) || [];
     const faceSheetIds = faceSheetLinks?.map(fs => fs.face_sheet_id) || [];
     const bonusFaceSheetIds = bonusFaceSheetLinks?.map(bfs => bfs.bonus_face_sheet_id) || [];
+
+    // ✅ FIX: ตรวจสอบว่า picklists ถูกโหลดไปแล้วโดย loadlist อื่นหรือไม่
+    // ป้องกันกรณี picklist เดียวกันถูกแมพกับหลาย loadlists
+    if (picklistIds.length > 0) {
+      const { data: alreadyLoadedPicklists } = await supabase
+        .from('wms_loadlist_picklists')
+        .select(`
+          picklist_id,
+          loaded_at,
+          loadlist_id,
+          loadlists!inner(loadlist_code, status)
+        `)
+        .in('picklist_id', picklistIds)
+        .not('loaded_at', 'is', null)
+        .neq('loadlist_id', loadlist.id);
+
+      if (alreadyLoadedPicklists && alreadyLoadedPicklists.length > 0) {
+        const loadedInfo = alreadyLoadedPicklists.map((lp: any) => ({
+          picklist_id: lp.picklist_id,
+          loaded_by: (lp.loadlists as any)?.loadlist_code,
+          loaded_at: lp.loaded_at
+        }));
+        
+        console.error('❌ Picklists already loaded by another loadlist:', loadedInfo);
+        return NextResponse.json(
+          {
+            error: 'ใบจัดสินค้าถูกโหลดไปแล้วโดยใบโหลดอื่น',
+            already_loaded_picklists: loadedInfo,
+            message: `Picklist ถูกโหลดไปแล้วโดย ${loadedInfo.map((l: any) => l.loaded_by).join(', ')}`
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    // ✅ FIX: ตรวจสอบว่า face sheets ถูกโหลดไปแล้วโดย loadlist อื่นหรือไม่
+    if (faceSheetIds.length > 0) {
+      const { data: alreadyLoadedFaceSheets } = await supabase
+        .from('loadlist_face_sheets')
+        .select(`
+          face_sheet_id,
+          loaded_at,
+          loadlist_id,
+          loadlists!inner(loadlist_code, status)
+        `)
+        .in('face_sheet_id', faceSheetIds)
+        .not('loaded_at', 'is', null)
+        .neq('loadlist_id', loadlist.id);
+
+      if (alreadyLoadedFaceSheets && alreadyLoadedFaceSheets.length > 0) {
+        const loadedInfo = alreadyLoadedFaceSheets.map((fs: any) => ({
+          face_sheet_id: fs.face_sheet_id,
+          loaded_by: (fs.loadlists as any)?.loadlist_code,
+          loaded_at: fs.loaded_at
+        }));
+        
+        console.error('❌ Face sheets already loaded by another loadlist:', loadedInfo);
+        return NextResponse.json(
+          {
+            error: 'ใบปะหน้าถูกโหลดไปแล้วโดยใบโหลดอื่น',
+            already_loaded_face_sheets: loadedInfo,
+            message: `Face Sheet ถูกโหลดไปแล้วโดย ${loadedInfo.map((l: any) => l.loaded_by).join(', ')}`
+          },
+          { status: 400 }
+        );
+      }
+    }
     
     // ✅ FIX (edit11): ตรวจสอบว่า BFS ถูกใช้หมดแล้วหรือไม่ (legacy_exhausted)
     const hasExhaustedBFS = bonusFaceSheetLinks?.some(bfs => bfs.mapping_type === 'legacy_exhausted');
@@ -171,14 +238,13 @@ async function handlePost(request: NextRequest, context: any) {
     }
 
     // ✅ ตรวจสอบว่า loadlist นี้มี bonus face sheets หรือไม่
-    // ถ้ามี BFS แสดงว่า loadlist นี้สร้างจาก BFS แมพ FS/Picklist
-    // ดังนั้นไม่ควรดึง items จาก face_sheets (เพราะ FS เป็น mapping target ไม่ใช่ source)
     const hasBonusFaceSheets = bonusFaceSheetIds.length > 0;
 
     // Fetch face sheets with items (including order_id)
-    // ✅ FIX: ไม่ดึง face_sheet_items ถ้ามี BFS (เพราะ items จะมาจาก BFS แทน)
+    // ✅ FIX: โหลด face_sheet_items เสมอ ไม่ว่าจะมี BFS หรือไม่
+    // เพราะ Face Sheet และ BFS เป็นคนละ document - ต้องโหลดทั้งสองอย่าง
     let faceSheets: any[] = [];
-    if (faceSheetIds.length > 0 && !hasBonusFaceSheets) {
+    if (faceSheetIds.length > 0) {
       console.log('🔍 Fetching face sheets:', faceSheetIds);
       const { data: faceSheetData, error: faceSheetsError } = await supabase
         .from('face_sheets')
@@ -204,8 +270,6 @@ async function handlePost(request: NextRequest, context: any) {
         );
       }
       faceSheets = faceSheetData || [];
-    } else if (faceSheetIds.length > 0 && hasBonusFaceSheets) {
-      console.log('⏭️ Skipping face sheet items because loadlist has BFS (FS is mapping target, not source)');
     }
 
     // Fetch bonus face sheets with items (including package_id)
@@ -340,167 +404,137 @@ async function handlePost(request: NextRequest, context: any) {
     const insufficientStockItems: any[] = [];
     const itemsToProcess: any[] = [];
 
-    // Process picklist items
+    // ✅ Helper function: ตรวจสอบว่าเป็น SKU สติ๊กเกอร์หรือไม่
+    const isSticker = (skuId: string) => skuId.includes('STICKER');
+
+    // ✅ FIX: รวมจำนวนตาม SKU ก่อนเช็คสต็อก (แก้ปัญหา SKU เดียวกันมีหลาย rows)
+    // Step 1: รวบรวม items ทั้งหมดจาก picklists และ face sheets
+    const allDispatchItems: { sku_id: string; qty: number; source: string; docCode: string }[] = [];
+
+    // Collect picklist items
     for (const picklist of picklists) {
       if (!picklist.picklist_items) continue;
-
       for (const item of picklist.picklist_items) {
-        // ✅ FIX: Convert to Number (Supabase returns string for numeric)
         const qty = Number(item.quantity_picked) || Number(item.quantity_to_pick) || 0;
         if (qty <= 0) continue;
-
-        // Get SKU info
-        const { data: skuInfo, error: skuError } = await supabase
-          .from('master_sku')
-          .select('qty_per_pack, sku_name')
-          .eq('sku_id', item.sku_id)
-          .single();
-
-        if (skuError) {
-          console.error(`❌ Error fetching SKU ${item.sku_id}:`, skuError);
+        if (isSticker(item.sku_id)) {
+          console.log(`⏭️ Skipping sticker SKU: ${item.sku_id} (not tracked in inventory)`);
+          continue;
         }
-
-        console.log(`🔍 SKU Info for ${item.sku_id}:`, skuInfo);
-
-        const qtyPerPack = skuInfo?.qty_per_pack || 1;
-        const qtyPack = qty / qtyPerPack;
-
-        console.log(`📦 SKU: ${item.sku_id}, qty: ${qty}, qtyPerPack: ${qtyPerPack}, qtyPack: ${qtyPack}`);
-
-        // Check Dispatch balance - SUM all rows (may have multiple pallet_ids)
-        const { data: dispatchBalances, error: balanceError } = await supabase
-          .from('wms_inventory_balances')
-          .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
-          .eq('warehouse_id', 'WH001')
-          .eq('location_id', dispatchLocation.location_id)
-          .eq('sku_id', item.sku_id)
-          .gt('total_piece_qty', 0);
-
-        if (balanceError) {
-          console.error('Error checking dispatch balance:', balanceError);
-          return NextResponse.json(
-            { error: 'ไม่สามารถตรวจสอบสต็อคได้', details: balanceError.message },
-            { status: 500 }
-          );
-        }
-
-        // ✅ FIX: SUM all rows (may have multiple pallet_ids)
-        const availableQty = (dispatchBalances || []).reduce((sum, b) => sum + Number(b.total_piece_qty || 0), 0);
-        // Use first balance for metadata (production_date, expiry_date, lot_no)
-        const dispatchBalance = dispatchBalances?.[0] || null;
-
-        // ✅ ตรวจสอบว่ามีสต็อคเพียงพอหรือไม่
-        if (availableQty < qty) {
-          insufficientStockItems.push({
-            sku_id: item.sku_id,
-            sku_name: skuInfo?.sku_name,
-            picklist_code: picklist.picklist_code,
-            required: qty,
-            available: availableQty,
-            shortage: qty - availableQty,
-            location: 'Dispatch'
-          });
-        } else {
-          // เก็บข้อมูลไว้สำหรับ process ทีหลัง
-          itemsToProcess.push({
-            sku_id: item.sku_id,
-            qty,
-            qtyPack,
-            qtyPerPack,
-            picklist_code: picklist.picklist_code,
-            sourceBalance: dispatchBalance,
-            sourceLocation: dispatchLocation.location_id,
-            isFromFaceSheet: false
-          });
-        }
+        allDispatchItems.push({
+          sku_id: item.sku_id,
+          qty,
+          source: 'picklist',
+          docCode: picklist.picklist_code
+        });
       }
     }
 
-    // Process face sheet items (from Dispatch, same as picklists)
+    // Collect face sheet items
     for (const faceSheet of faceSheets) {
       if (!faceSheet.face_sheet_items) continue;
-
-      console.log(`🔍 Processing face sheet ${faceSheet.face_sheet_no} with ${faceSheet.face_sheet_items.length} items`);
-
       for (const item of faceSheet.face_sheet_items) {
-        // ✅ FIX: Convert to Number (Supabase returns string for numeric)
         const qty = Number(item.quantity_picked) || Number(item.quantity_to_pick) || 0;
-        console.log(`📦 Face sheet item: sku=${item.sku_id}, qty_picked=${item.quantity_picked}, qty_to_pick=${item.quantity_to_pick}, final_qty=${qty}`);
-        
-        if (qty <= 0) {
-          console.log(`⚠️ Skipping item with qty=${qty}`);
+        if (qty <= 0) continue;
+        if (isSticker(item.sku_id)) {
+          console.log(`⏭️ Skipping sticker SKU: ${item.sku_id} (not tracked in inventory)`);
           continue;
         }
+        allDispatchItems.push({
+          sku_id: item.sku_id,
+          qty,
+          source: 'face_sheet',
+          docCode: faceSheet.face_sheet_no
+        });
+      }
+    }
 
-        // Get SKU info
-        console.log(`🔍 Fetching SKU info for ${item.sku_id}`);
-        const { data: skuInfo, error: skuError } = await supabase
+    // Step 2: รวมจำนวนตาม SKU
+    const skuTotalQtyMap = new Map<string, number>();
+    for (const item of allDispatchItems) {
+      const current = skuTotalQtyMap.get(item.sku_id) || 0;
+      skuTotalQtyMap.set(item.sku_id, current + item.qty);
+    }
+
+    console.log(`📦 Total unique SKUs from Dispatch: ${skuTotalQtyMap.size}`);
+
+    // Step 3: เช็คสต็อกแบบรวม (ต่อ SKU)
+    const skuBalanceCache = new Map<string, { availableQty: number; balance: any }>();
+    
+    for (const [skuId, totalQtyNeeded] of skuTotalQtyMap) {
+      // Get SKU info
+      const { data: skuInfo, error: skuError } = await supabase
+        .from('master_sku')
+        .select('qty_per_pack, sku_name')
+        .eq('sku_id', skuId)
+        .single();
+
+      if (skuError) {
+        console.error(`❌ Error fetching SKU ${skuId}:`, skuError);
+      }
+
+      // Check Dispatch balance - SUM all rows
+      const { data: dispatchBalances, error: balanceError } = await supabase
+        .from('wms_inventory_balances')
+        .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
+        .eq('warehouse_id', 'WH001')
+        .eq('location_id', dispatchLocation.location_id)
+        .eq('sku_id', skuId)
+        .gt('total_piece_qty', 0);
+
+      if (balanceError) {
+        console.error('Error checking dispatch balance:', balanceError);
+        return NextResponse.json(
+          { error: 'ไม่สามารถตรวจสอบสต็อคได้', details: balanceError.message },
+          { status: 500 }
+        );
+      }
+
+      const availableQty = (dispatchBalances || []).reduce((sum, b) => sum + Number(b.total_piece_qty || 0), 0);
+      const dispatchBalance = dispatchBalances?.[0] || null;
+
+      console.log(`📊 SKU ${skuId}: need ${totalQtyNeeded}, available ${availableQty} at Dispatch`);
+
+      // Cache balance info for later use
+      skuBalanceCache.set(skuId, { availableQty, balance: dispatchBalance });
+
+      // ✅ เช็คสต็อกแบบรวม
+      if (availableQty < totalQtyNeeded) {
+        insufficientStockItems.push({
+          sku_id: skuId,
+          sku_name: skuInfo?.sku_name,
+          required: totalQtyNeeded,
+          available: availableQty,
+          shortage: totalQtyNeeded - availableQty,
+          location: 'Dispatch'
+        });
+      }
+    }
+
+    // Step 4: ถ้าสต็อกพอทุก SKU ให้เพิ่ม items เข้า itemsToProcess
+    if (insufficientStockItems.length === 0) {
+      for (const item of allDispatchItems) {
+        const { data: skuInfo } = await supabase
           .from('master_sku')
-          .select('qty_per_pack, sku_name')
+          .select('qty_per_pack')
           .eq('sku_id', item.sku_id)
           .single();
 
-        if (skuError) {
-          console.error(`❌ Error fetching SKU ${item.sku_id}:`, skuError);
-          return NextResponse.json(
-            { error: `ไม่พบข้อมูล SKU: ${item.sku_id}`, details: skuError.message },
-            { status: 500 }
-          );
-        }
-
         const qtyPerPack = skuInfo?.qty_per_pack || 1;
-        const qtyPack = qty / qtyPerPack;
-        console.log(`✅ SKU info: qty_per_pack=${qtyPerPack}, qtyPack=${qtyPack}`);
+        const qtyPack = item.qty / qtyPerPack;
+        const cached = skuBalanceCache.get(item.sku_id);
 
-        // Check Dispatch balance for face sheets - SUM all rows (may have multiple pallet_ids)
-        console.log(`🔍 Checking Dispatch balance for ${item.sku_id}`);
-        const { data: dispatchBalances, error: balanceError } = await supabase
-          .from('wms_inventory_balances')
-          .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
-          .eq('warehouse_id', 'WH001')
-          .eq('location_id', dispatchLocation.location_id)
-          .eq('sku_id', item.sku_id)
-          .gt('total_piece_qty', 0);
-
-        if (balanceError) {
-          console.error('❌ Error checking dispatch balance:', balanceError);
-          return NextResponse.json(
-            { error: 'ไม่สามารถตรวจสอบสต็อคได้', details: balanceError.message },
-            { status: 500 }
-          );
-        }
-
-        // ✅ FIX: SUM all rows (may have multiple pallet_ids)
-        const availableQty = (dispatchBalances || []).reduce((sum, b) => sum + Number(b.total_piece_qty || 0), 0);
-        // Use first balance for metadata
-        const dispatchBalance = dispatchBalances?.[0] || null;
-
-        console.log(`📊 Dispatch balance: ${availableQty} pieces (from ${dispatchBalances?.length || 0} rows)`);
-
-        // ✅ ตรวจสอบว่ามีสต็อคเพียงพอหรือไม่
-        if (availableQty < qty) {
-          insufficientStockItems.push({
-            sku_id: item.sku_id,
-            sku_name: skuInfo?.sku_name,
-            face_sheet_no: faceSheet.face_sheet_no,
-            required: qty,
-            available: availableQty,
-            shortage: qty - availableQty,
-            location: 'Dispatch'
-          });
-        } else {
-          // เก็บข้อมูลไว้สำหรับ process ทีหลัง
-          itemsToProcess.push({
-            sku_id: item.sku_id,
-            qty,
-            qtyPack,
-            qtyPerPack,
-            face_sheet_no: faceSheet.face_sheet_no,
-            sourceBalance: dispatchBalance,
-            sourceLocation: dispatchLocation.location_id,
-            isFromFaceSheet: true
-          });
-        }
+        itemsToProcess.push({
+          sku_id: item.sku_id,
+          qty: item.qty,
+          qtyPack,
+          qtyPerPack,
+          picklist_code: item.source === 'picklist' ? item.docCode : undefined,
+          face_sheet_no: item.source === 'face_sheet' ? item.docCode : undefined,
+          sourceBalance: cached?.balance,
+          sourceLocation: dispatchLocation.location_id,
+          isFromFaceSheet: item.source === 'face_sheet'
+        });
       }
     }
 
@@ -572,6 +606,12 @@ async function handlePost(request: NextRequest, context: any) {
           continue;
         }
 
+        // ✅ FIX: ข้ามสติ๊กเกอร์ - ไม่ต้องเช็คสต็อก (ไม่ได้ track ในระบบ)
+        if (isSticker(item.sku_id)) {
+          console.log(`⏭️ Skipping sticker SKU: ${item.sku_id} (not tracked in inventory)`);
+          continue;
+        }
+
         // Get SKU info
         console.log(`🔍 Fetching SKU info for ${item.sku_id}`);
         const { data: skuInfo, error: skuError } = await supabase
@@ -592,22 +632,16 @@ async function handlePost(request: NextRequest, context: any) {
         const qtyPack = qty / qtyPerPack;
         console.log(`✅ SKU info: qty_per_pack=${qtyPerPack}, qtyPack=${qtyPack}`);
 
-        // ✅ Get package info (hub and storage_location)
+        // ✅ Get package info (storage_location only - hub ไม่จำเป็นต้องใช้)
         const packageInfo = packageInfoMap.get(item.package_id) || { hub: '', storage_location: null };
-        const packageHub = packageInfo.hub;
         const packageStorageLocation = packageInfo.storage_location;
-        
-        // Determine staging location based on package hub
-        // PQ hubs (กรุงเทพ/ภาคกลาง) → PQTD
-        // MR hubs (ต่างจังหวัด) → MRTD
-        const isPQHub = packageHub.includes('BKK') || packageHub.includes('Central') || packageHub.includes('Marketing') || packageHub.includes('กรุงเทพ') || packageHub.includes('ภาคกลาง');
-        const stagingLocationId = isPQHub ? pqtdLocation?.location_id : mrtdLocation?.location_id;
-        const stagingLocationName = isPQHub ? 'PQTD' : 'MRTD';
 
-        // ✅ BACKWARD COMPATIBLE: ตรวจสอบสต็อกตามลำดับ:
+        // ✅ FIX: ค้นหาสต็อกจากทุก staging locations โดยไม่ต้องสนใจ hub
+        // ลำดับการค้นหา:
         // 1. Prep area (MR01-MR10, PQ01-PQ10) - ถ้า package ยังมี storage_location
-        // 2. Staging (PQTD/MRTD) - ถ้า package ถูกย้ายไป staging แล้ว
-        // 3. Dispatch - legacy data
+        // 2. PQTD - staging สำหรับของแถม
+        // 3. MRTD - staging สำหรับของแถม
+        // 4. Dispatch - legacy data
         let sourceBalance: any = null;
         let sourceLocationId: number | null = null;
         let sourceLocationName: string = '';
@@ -625,7 +659,6 @@ async function handlePost(request: NextRequest, context: any) {
             .eq('sku_id', item.sku_id)
             .gt('total_piece_qty', 0);
 
-          // ✅ FIX: SUM all rows (may have multiple pallet_ids)
           const prepAreaAvailableQty = (prepAreaBalances || []).reduce((sum, b) => sum + Number(b.total_piece_qty || 0), 0);
           const prepAreaBalance = prepAreaBalances?.[0] || null;
 
@@ -637,32 +670,53 @@ async function handlePost(request: NextRequest, context: any) {
           }
         }
 
-        // 2. ตรวจสอบ staging location (PQTD/MRTD) - ถ้าไม่พบที่ prep area
-        if (!sourceBalance && stagingLocationId) {
-          console.log(`🔍 Checking ${stagingLocationName} balance for ${item.sku_id} (hub: ${packageHub})`);
-          const { data: stagingBalances, error: stagingError } = await supabase
+        // 2. ตรวจสอบ PQTD
+        if (!sourceBalance && pqtdLocation?.location_id) {
+          console.log(`🔍 Checking PQTD balance for ${item.sku_id}`);
+          const { data: pqtdBalances, error: pqtdError } = await supabase
             .from('wms_inventory_balances')
             .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
             .eq('warehouse_id', 'WH001')
-            .eq('location_id', stagingLocationId)
+            .eq('location_id', pqtdLocation.location_id)
             .eq('sku_id', item.sku_id)
             .gt('total_piece_qty', 0);
 
-          // ✅ FIX: SUM all rows (may have multiple pallet_ids)
-          const stagingAvailableQty = (stagingBalances || []).reduce((sum, b) => sum + Number(b.total_piece_qty || 0), 0);
-          const stagingBalance = stagingBalances?.[0] || null;
+          const pqtdAvailableQty = (pqtdBalances || []).reduce((sum, b) => sum + Number(b.total_piece_qty || 0), 0);
+          const pqtdBalance = pqtdBalances?.[0] || null;
 
-          if (!stagingError && stagingAvailableQty >= qty) {
-            sourceBalance = stagingBalance;
-            sourceLocationId = stagingLocationId;
-            sourceLocationName = stagingLocationName;
-            console.log(`✅ Found stock at ${stagingLocationName}: ${stagingAvailableQty} pieces`);
+          if (!pqtdError && pqtdAvailableQty >= qty) {
+            sourceBalance = pqtdBalance;
+            sourceLocationId = pqtdLocation.location_id;
+            sourceLocationName = 'PQTD';
+            console.log(`✅ Found stock at PQTD: ${pqtdAvailableQty} pieces`);
           }
         }
 
-        // 3. ถ้าไม่มีที่ staging → fallback ไป Dispatch (legacy data)
+        // 3. ตรวจสอบ MRTD
+        if (!sourceBalance && mrtdLocation?.location_id) {
+          console.log(`🔍 Checking MRTD balance for ${item.sku_id}`);
+          const { data: mrtdBalances, error: mrtdError } = await supabase
+            .from('wms_inventory_balances')
+            .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
+            .eq('warehouse_id', 'WH001')
+            .eq('location_id', mrtdLocation.location_id)
+            .eq('sku_id', item.sku_id)
+            .gt('total_piece_qty', 0);
+
+          const mrtdAvailableQty = (mrtdBalances || []).reduce((sum, b) => sum + Number(b.total_piece_qty || 0), 0);
+          const mrtdBalance = mrtdBalances?.[0] || null;
+
+          if (!mrtdError && mrtdAvailableQty >= qty) {
+            sourceBalance = mrtdBalance;
+            sourceLocationId = mrtdLocation.location_id;
+            sourceLocationName = 'MRTD';
+            console.log(`✅ Found stock at MRTD: ${mrtdAvailableQty} pieces`);
+          }
+        }
+
+        // 4. ตรวจสอบ Dispatch (legacy data)
         if (!sourceBalance) {
-          console.log(`🔍 Fallback: Checking Dispatch balance for ${item.sku_id} (legacy data)`);
+          console.log(`🔍 Checking Dispatch balance for ${item.sku_id}`);
           const { data: dispatchBonusBalances, error: dispatchError } = await supabase
             .from('wms_inventory_balances')
             .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
@@ -671,7 +725,6 @@ async function handlePost(request: NextRequest, context: any) {
             .eq('sku_id', item.sku_id)
             .gt('total_piece_qty', 0);
 
-          // ✅ FIX: SUM all rows (may have multiple pallet_ids)
           const dispatchAvailableQty = (dispatchBonusBalances || []).reduce((sum, b) => sum + Number(b.total_piece_qty || 0), 0);
           const dispatchBonusBalance = dispatchBonusBalances?.[0] || null;
 
@@ -683,21 +736,16 @@ async function handlePost(request: NextRequest, context: any) {
             isEnough: dispatchAvailableQty >= qty
           });
 
-          // ✅ FIX: Use SUM for comparison
           if (!dispatchError && dispatchAvailableQty >= qty) {
             sourceBalance = dispatchBonusBalance;
             sourceLocationId = dispatchLocation.location_id;
             sourceLocationName = 'Dispatch';
-            console.log(`✅ Found stock at Dispatch (legacy): ${dispatchAvailableQty} pieces`);
+            console.log(`✅ Found stock at Dispatch: ${dispatchAvailableQty} pieces`);
           }
         }
 
-        // 3. ถ้าไม่มีทั้งสองที่ → insufficient stock
+        // ถ้าไม่พบสต็อกที่ไหนเลย → insufficient stock
         if (!sourceBalance || !sourceLocationId) {
-          // รายงานว่าไม่พบสต็อกที่ไหนเลย
-          const stagingQty = 0; // ไม่มีที่ staging
-          const dispatchQty = 0; // ไม่มีที่ dispatch
-          
           insufficientStockItems.push({
             sku_id: item.sku_id,
             sku_name: skuInfo?.sku_name,
@@ -705,7 +753,7 @@ async function handlePost(request: NextRequest, context: any) {
             required: qty,
             available: 0,
             shortage: qty,
-            location: `${stagingLocationName} หรือ Dispatch` // แสดงทั้งสองที่
+            location: 'PQTD, MRTD, Dispatch'
           });
         } else {
           // เก็บข้อมูลไว้สำหรับ process ทีหลัง
@@ -1058,13 +1106,78 @@ async function handlePost(request: NextRequest, context: any) {
       }
     }
 
+    // ✅ FIX: อัพเดท loadlist ของแถมที่แมพพ่วงกับ picklist เดียวกันให้เป็น "loaded" ด้วย
+    // เพื่อไม่ให้แสดงซ้ำในหน้า loading list
+    let relatedBonusLoadlistsUpdated = 0;
+    if (picklistIds.length > 0) {
+      // หา loadlist ของแถมที่แมพกับ picklist เดียวกัน (ยกเว้น loadlist ปัจจุบัน)
+      const { data: relatedBfsMappings } = await supabase
+        .from('wms_loadlist_bonus_face_sheets')
+        .select('loadlist_id')
+        .in('mapped_picklist_id', picklistIds)
+        .neq('loadlist_id', loadlist.id);
+
+      if (relatedBfsMappings && relatedBfsMappings.length > 0) {
+        const relatedLoadlistIds = [...new Set(relatedBfsMappings.map((m: any) => m.loadlist_id))];
+        
+        // ตรวจสอบว่า loadlist เหล่านี้เป็น "ของแถมอย่างเดียว" (ไม่มี picklist/face_sheet)
+        const { data: relatedLoadlists } = await supabase
+          .from('loadlists')
+          .select(`
+            id,
+            loadlist_code,
+            status,
+            wms_loadlist_picklists (picklist_id),
+            loadlist_face_sheets (face_sheet_id)
+          `)
+          .in('id', relatedLoadlistIds)
+          .eq('status', 'pending');
+
+        // กรองเฉพาะ loadlist ที่เป็นของแถมอย่างเดียว (ไม่มี picklist/face_sheet)
+        const bonusOnlyLoadlistIds = relatedLoadlists
+          ?.filter((l: any) => 
+            (!l.wms_loadlist_picklists || l.wms_loadlist_picklists.length === 0) &&
+            (!l.loadlist_face_sheets || l.loadlist_face_sheets.length === 0)
+          )
+          .map((l: any) => l.id) || [];
+
+        if (bonusOnlyLoadlistIds.length > 0) {
+          console.log(`🔄 Updating ${bonusOnlyLoadlistIds.length} related bonus-only loadlists to loaded...`);
+          
+          const { error: updateRelatedError } = await supabase
+            .from('loadlists')
+            .update({
+              status: 'loaded',
+              updated_at: now,
+              checker_employee_id: checker_employee_id || null
+            })
+            .in('id', bonusOnlyLoadlistIds);
+
+          if (updateRelatedError) {
+            console.error('Error updating related bonus loadlists:', updateRelatedError);
+            // Continue anyway, don't fail
+          } else {
+            relatedBonusLoadlistsUpdated = bonusOnlyLoadlistIds.length;
+            console.log(`✅ Updated ${bonusOnlyLoadlistIds.length} related bonus-only loadlists to loaded`);
+            
+            // อัพเดท loaded_at สำหรับ BFS ใน loadlist เหล่านี้ด้วย
+            await supabase
+              .from('wms_loadlist_bonus_face_sheets')
+              .update({ loaded_at: now })
+              .in('loadlist_id', bonusOnlyLoadlistIds);
+          }
+        }
+      }
+    }
+
     return NextResponse.json({
       success: true,
       message: 'ยืนยันการโหลดสินค้าเสร็จสิ้น',
       loadlist_code: loadlist.loadlist_code,
       items_moved: itemsProcessed,
       total_items: itemsToProcess.length,
-      orders_loaded: orderDetails.length
+      orders_loaded: orderDetails.length,
+      related_bonus_loadlists_updated: relatedBonusLoadlistsUpdated
     });
 
   } catch (error: any) {

@@ -212,10 +212,10 @@ async function handlePost(request: NextRequest, context: any) {
         const qtyToDeduct = Math.min(reservation.reserved_piece_qty, remainingQty);
         const packToDeduct = qtyToDeduct / qtyPerPack;
 
-        // ดึงข้อมูล balance
+        // ดึงข้อมูล balance (รวม pallet_id สำหรับตรวจสอบ Virtual Pallet)
         const { data: balance, error: balanceError } = await supabase
           .from('wms_inventory_balances')
-          .select('balance_id, location_id, total_piece_qty, reserved_piece_qty, total_pack_qty, reserved_pack_qty, production_date, expiry_date, lot_no')
+          .select('balance_id, location_id, pallet_id, total_piece_qty, reserved_piece_qty, total_pack_qty, reserved_pack_qty, production_date, expiry_date, lot_no')
           .eq('balance_id', reservation.balance_id)
           .single();
 
@@ -238,16 +238,20 @@ async function handlePost(request: NextRequest, context: any) {
           sourceLotNo = balance.lot_no;
         }
 
-        // ✅ ยอมให้สต็อคติดลบได้ที่บ้านหยิบ (Preparation Area)
-        // ไม่ต้องตรวจสอบว่ามีสต็อคเพียงพอ เพราะของแถมอาจจองไว้ก่อนที่จะมีสต็อคจริง
+        // ✅ FIX: รองรับ Virtual Pallet (pallet_id ขึ้นต้นด้วย VIRTUAL-)
+        const isVirtualPallet = balance.pallet_id && balance.pallet_id.startsWith('VIRTUAL-');
         
-        // ลดยอดจองและสต็อคจริง (ยอมให้ติดลบได้)
+        if (isVirtualPallet) {
+          console.log(`✅ Virtual Pallet detected: ${balance.pallet_id} - อนุญาตให้หักติดลบ`);
+        }
+        
+        // ลดยอดจองและสต็อคจริง (ยอมให้ติดลบได้สำหรับ Virtual Pallet)
         const newTotalPiece = balance.total_piece_qty - qtyToDeduct;
         const newTotalPack = balance.total_pack_qty - packToDeduct;
         const newReservedPiece = balance.reserved_piece_qty - qtyToDeduct;
         const newReservedPack = balance.reserved_pack_qty - packToDeduct;
         
-        console.log(`🔄 Updating balance ${balance.balance_id}:`, {
+        console.log(`🔄 Updating balance ${balance.balance_id}${isVirtualPallet ? ' (Virtual Pallet)' : ''}:`, {
           before: { total: balance.total_piece_qty, reserved: balance.reserved_piece_qty },
           deduct: { total: qtyToDeduct, reserved: qtyToDeduct },
           after: { total: newTotalPiece, reserved: newReservedPiece }
@@ -258,8 +262,8 @@ async function handlePost(request: NextRequest, context: any) {
           .update({
             reserved_piece_qty: Math.max(0, newReservedPiece), // reserved ไม่ติดลบ
             reserved_pack_qty: Math.max(0, newReservedPack),
-            total_piece_qty: newTotalPiece, // ✅ ยอมให้ติดลบได้
-            total_pack_qty: newTotalPack,   // ✅ ยอมให้ติดลบได้
+            total_piece_qty: isVirtualPallet ? newTotalPiece : Math.max(0, newTotalPiece), // ✅ Virtual Pallet ยอมให้ติดลบได้
+            total_pack_qty: isVirtualPallet ? newTotalPack : Math.max(0, newTotalPack),   // ✅ Virtual Pallet ยอมให้ติดลบได้
             updated_at: now
           })
           .eq('balance_id', balance.balance_id);
@@ -277,6 +281,7 @@ async function handlePost(request: NextRequest, context: any) {
         // บันทึก ledger: OUT จาก source_location
         // ✅ CRITICAL FIX: Include order_id and order_item_id for BRCGS traceability
         // ✅ FIX: Include production_date and expiry_date for proper balance sync
+        // ✅ FIX: Include pallet_id for Virtual Pallet tracking
         // Note: bonus_face_sheet_items links via order_item_id → wms_order_items.order_id
         // Note: lot_no is NOT in wms_inventory_ledger table
         ledgerEntries.push({
@@ -286,6 +291,7 @@ async function handlePost(request: NextRequest, context: any) {
           warehouse_id: warehouseId,
           location_id: balance.location_id,
           sku_id: item.sku_id,
+          pallet_id: balance.pallet_id || null, // ✅ Include pallet_id for Virtual Pallet tracking
           pack_qty: packToDeduct,
           piece_qty: qtyToDeduct,
           production_date: balance.production_date || null,
@@ -294,7 +300,7 @@ async function handlePost(request: NextRequest, context: any) {
           reference_doc_type: 'bonus_face_sheet',
           reference_doc_id: bonus_face_sheet_id,
           order_item_id: item.order_item_id,
-          remarks: `หยิบของแถมจาก ${balance.location_id} (balance_id: ${balance.balance_id})`,
+          remarks: `หยิบของแถมจาก ${balance.location_id}${isVirtualPallet ? ' (Virtual Pallet)' : ''} (balance_id: ${balance.balance_id})`,
           created_by: userId,
           skip_balance_sync: true
         });
@@ -399,30 +405,59 @@ async function handlePost(request: NextRequest, context: any) {
           sourceLotNo = prepBalance.lot_no;
         }
       } else {
-        // สร้าง balance ใหม่ (จะติดลบทันที)
-        const { data: newBalance, error: insertError } = await supabase
+        // ✅ FIX: ใช้ upsert แทน insert เพื่อหลีกเลี่ยง duplicate key error
+        // ถ้ามี balance อยู่แล้ว (ที่ query ไม่เจอเพราะ null handling) ให้ใช้ตัวนั้น
+        const { data: existingBalance, error: findError } = await supabase
           .from('wms_inventory_balances')
-          .insert({
-            warehouse_id: warehouseId,
-            location_id: sourceLocationId,
-            sku_id: item.sku_id,
-            total_pack_qty: 0,
-            total_piece_qty: 0,
-            reserved_pack_qty: 0,
-            reserved_piece_qty: 0,
-            last_movement_at: now
-          })
-          .select('balance_id')
-          .single();
+          .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
+          .eq('warehouse_id', warehouseId)
+          .eq('location_id', sourceLocationId)
+          .eq('sku_id', item.sku_id)
+          .is('pallet_id', null)
+          .is('pallet_id_external', null)
+          .is('lot_no', null)
+          .is('production_date', null)
+          .is('expiry_date', null)
+          .maybeSingle();
 
-        if (insertError || !newBalance) {
-          console.error('❌ Error creating balance:', insertError);
-          return NextResponse.json(
-            { error: 'ไม่สามารถสร้างข้อมูลสต็อคได้', details: insertError?.message },
-            { status: 500 }
-          );
+        if (existingBalance) {
+          // ใช้ balance ที่มีอยู่แล้ว
+          balanceId = existingBalance.balance_id;
+          currentPieceQty = existingBalance.total_piece_qty || 0;
+          currentPackQty = existingBalance.total_pack_qty || 0;
+          console.log(`✅ Found existing balance with null dates: ${balanceId}`);
+        } else {
+          // สร้าง balance ใหม่ (จะติดลบทันที)
+          const { data: newBalance, error: insertError } = await supabase
+            .from('wms_inventory_balances')
+            .insert({
+              warehouse_id: warehouseId,
+              location_id: sourceLocationId,
+              sku_id: item.sku_id,
+              pallet_id: null,
+              pallet_id_external: null,
+              lot_no: null,
+              production_date: null,
+              expiry_date: null,
+              total_pack_qty: 0,
+              total_piece_qty: 0,
+              reserved_pack_qty: 0,
+              reserved_piece_qty: 0,
+              last_movement_at: now
+            })
+            .select('balance_id')
+            .single();
+
+          if (insertError || !newBalance) {
+            console.error('❌ Error creating balance:', insertError);
+            return NextResponse.json(
+              { error: 'ไม่สามารถสร้างข้อมูลสต็อคได้', details: insertError?.message },
+              { status: 500 }
+            );
+          }
+          balanceId = newBalance.balance_id;
+          console.log(`✅ Created new balance: ${balanceId}`);
         }
-        balanceId = newBalance.balance_id;
       }
 
       // ✅ หักสต็อกจากบ้านหยิบ (ยอมให้ติดลบได้)

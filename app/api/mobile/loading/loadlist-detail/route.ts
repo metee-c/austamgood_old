@@ -109,6 +109,7 @@ export async function GET(request: NextRequest) {
           }
           const orderData = ordersMap.get(item.order_id);
           orderData.items.push({
+            sku_id: item.sku_id,
             sku_name: item.master_sku?.sku_name || '-',
             quantity: qty,
             weight: weight
@@ -193,6 +194,7 @@ export async function GET(request: NextRequest) {
           }
           const orderData = ordersMap.get(item.order_id);
           orderData.items.push({
+            sku_id: item.sku_id,
             sku_name: item.master_sku?.sku_name || '-',
             quantity: qty,
             weight: weight

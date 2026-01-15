@@ -134,44 +134,16 @@ export async function GET(request: NextRequest) {
     const movedPackages = packages?.filter(p => !p.storage_location || p.storage_location.trim() === '').length || 0;
     const pendingPackages = totalPackages - movedPackages;
 
-    // ✅ FIX (edit39): ตรวจสอบจาก ledger ด้วย - ถ้ามี ledger entries สำหรับ loadlist นี้แล้ว ถือว่าเสร็จ
-    const bfsIds = bfsLinks.map(link => link.bonus_face_sheet_id);
-    const { data: bfsData } = await supabase
-      .from('bonus_face_sheets')
-      .select('face_sheet_no')
-      .in('id', bfsIds);
-    
-    const bfsNos = bfsData?.map(b => b.face_sheet_no) || [];
-    
-    // ตรวจสอบว่ามี ledger entries สำหรับ BFS เหล่านี้หรือไม่
-    // ใช้ ILIKE เพราะ reference_no อาจมีหลาย BFS รวมกัน (เช่น "BFS-20260113-003, BFS-20260114-001")
-    let hasLedgerEntries = false;
-    if (bfsNos.length > 0) {
-      for (const bfsNo of bfsNos) {
-        const { data: ledgerEntries } = await supabase
-          .from('wms_inventory_ledger')
-          .select('ledger_id')
-          .eq('reference_doc_type', 'bonus_face_sheet_staging')
-          .ilike('reference_no', `%${bfsNo}%`)
-          .limit(1);
-        
-        if ((ledgerEntries?.length || 0) > 0) {
-          hasLedgerEntries = true;
-          break;
-        }
-      }
-    }
-
-    // ถ้ามี ledger entries แล้ว ถือว่าเสร็จ (แม้ว่า packages จะยังมี storage_location อยู่)
-    const isComplete = pendingPackages === 0 || hasLedgerEntries;
+    // ✅ FIX (edit40): ตรวจสอบจาก storage_location ของ matched packages เท่านั้น
+    // ถ้า packages ทั้งหมดที่แมพกับ loadlist นี้ไม่มี storage_location แล้ว = เสร็จ
+    const isComplete = pendingPackages === 0;
 
     return NextResponse.json({
       success: true,
       total_packages: totalPackages,
       moved_packages: movedPackages,
       pending_packages: pendingPackages,
-      is_complete: isComplete,
-      has_ledger_entries: hasLedgerEntries
+      is_complete: isComplete
     });
 
   } catch (error: any) {
@@ -554,6 +526,21 @@ async function handlePost(request: NextRequest, context: any) {
     }
 
     console.log(`✅ Moved ${totalMoved} pieces to staging locations from ${bonusFaceSheets.length} BFS`);
+
+    // 9. ✅ NEW: Update loadlist bfs_confirmed_to_staging = 'yes'
+    const { error: updateLoadlistError } = await supabase
+      .from('loadlists')
+      .update({ 
+        bfs_confirmed_to_staging: 'yes',
+        updated_at: now
+      })
+      .eq('id', loadlist_id);
+
+    if (updateLoadlistError) {
+      console.error('❌ Error updating loadlist bfs_confirmed_to_staging:', updateLoadlistError);
+    } else {
+      console.log(`✅ Updated loadlist ${loadlist_id} bfs_confirmed_to_staging = 'yes'`);
+    }
 
     return NextResponse.json({
       success: true,

@@ -12,16 +12,18 @@ import {
 } from 'lucide-react';
 import Badge from '@/components/ui/Badge';
 import EmployeeSelectionModal from '@/components/mobile/EmployeeSelectionModal';
+import LoadingProgressModal, { LoadingItemProgress } from '@/components/mobile/LoadingProgressModal';
 
 interface LoadlistItem {
   order_code: string;
   customer_name: string;
   items: Array<{
-    sku_id: string;
+    sku_id?: string;
     sku_name: string;
     quantity: number;
     uom?: string;
     package_number?: string | number;
+    weight?: number;
   }>;
 }
 
@@ -95,6 +97,15 @@ export default function MobileLoadingDetailPage() {
   const [relatedBonusLoadlists, setRelatedBonusLoadlists] = useState<RelatedBonusLoadlist[]>([]);
   const [pendingCheckerId, setPendingCheckerId] = useState<number | null>(null);
   const [loadingBonus, setLoadingBonus] = useState(false);
+  
+  // ✅ NEW: State สำหรับ Loading Progress Modal
+  const [showProgressModal, setShowProgressModal] = useState(false);
+  const [progressItems, setProgressItems] = useState<LoadingItemProgress[]>([]);
+  const [currentProgressItem, setCurrentProgressItem] = useState<LoadingItemProgress | undefined>();
+  const [progressTotalItems, setProgressTotalItems] = useState(0);
+  const [progressCompletedItems, setProgressCompletedItems] = useState(0);
+  const [progressHasError, setProgressHasError] = useState(false);
+  const [progressErrorItem, setProgressErrorItem] = useState<LoadingItemProgress | undefined>();
 
   useEffect(() => {
     if (code) {
@@ -134,25 +145,9 @@ export default function MobileLoadingDetailPage() {
 
     const checkerId = parseInt(checkerIds[0]);
     setShowEmployeeModal(false);
+    setPendingCheckerId(checkerId);
 
-    // Find employee details
-    const response = await fetch('/api/employees');
-    const result = await response.json();
-    // API returns array directly, not wrapped in {data: [...]}
-    const employees = Array.isArray(result) ? result : (result.data || []);
-    const employee = employees.find((e: any) => e.employee_id === checkerId);
-
-    if (!employee) {
-      setErrorMessage('ไม่พบข้อมูลพนักงาน');
-      return;
-    }
-
-    const employeeName = employee.nickname || `${employee.first_name} ${employee.last_name}`;
-    if (!confirm(`ยืนยันการโหลดสินค้าโดย ${employeeName}?`)) {
-      return;
-    }
-
-    // ✅ NEW: ตรวจสอบว่ามี related BFS loadlists หรือไม่
+    // ✅ ตรวจสอบว่ามี related BFS loadlists หรือไม่
     try {
       setLoadingBonus(true);
       const relatedResponse = await fetch(`/api/mobile/loading/related-bonus-loadlists?loadlist_code=${loadlist?.loadlist_code}`);
@@ -161,7 +156,6 @@ export default function MobileLoadingDetailPage() {
       if (relatedData.success && relatedData.has_related && relatedData.related_loadlists.length > 0) {
         // มี BFS loadlists ที่แมพกับ picklist เดียวกัน → แสดง popup
         setRelatedBonusLoadlists(relatedData.related_loadlists);
-        setPendingCheckerId(checkerId);
         setShowBonusPopup(true);
         setLoadingBonus(false);
         return;
@@ -176,24 +170,66 @@ export default function MobileLoadingDetailPage() {
     await processLoadingComplete(checkerId, []);
   };
 
-  // ✅ NEW: Function สำหรับ process loading complete
+  // ✅ Function สำหรับ process loading complete - เรียก API ก่อน แล้วค่อยแสดง progress
   const processLoadingComplete = async (checkerId: number, bonusLoadlistCodes: string[]) => {
     if (!loadlist) return;
 
     try {
       setConfirming(true);
       setErrorMessage('');
-
-      // Update checker if changed
-      if (loadlist.checker_employee_id && checkerId !== loadlist.checker_employee_id) {
-        await fetch(`/api/loadlists/${loadlist.loadlist_code}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ checker_employee_id: checkerId })
-        });
+      setShowProgressModal(true);
+      setProgressItems([]);
+      setProgressCompletedItems(0);
+      setProgressHasError(false);
+      setProgressErrorItem(undefined);
+      setCurrentProgressItem(undefined);
+      setProgressTotalItems(0);
+      
+      // ✅ Step 1: สร้าง progress items จาก loadlist.orders
+      let items: LoadingItemProgress[] = [];
+      let itemId = 1;
+      
+      for (const order of loadlist.orders) {
+        for (const orderItem of order.items) {
+          const skuIdentifier = orderItem.sku_id || orderItem.sku_name || '';
+          const isSticker = skuIdentifier.toUpperCase().includes('STICKER');
+          
+          items.push({
+            id: itemId++,
+            sku_id: orderItem.sku_id || '-',
+            sku_name: orderItem.sku_name,
+            quantity: orderItem.quantity,
+            status: isSticker ? 'skipped' : 'pending' as const,
+            source_location: 'Dispatch',
+            dest_location: 'Delivery-In-Progress'
+          });
+        }
       }
 
-      // โหลด loadlist หลัก
+      // ถ้าไม่มี items จาก orders ให้ลอง fetch จาก preview API
+      if (items.length === 0) {
+        const previewResponse = await fetch(`/api/mobile/loading/preview?loadlist_code=${loadlist.loadlist_code}`);
+        const previewData = await previewResponse.json();
+        
+        if (previewData.success && previewData.items && previewData.items.length > 0) {
+          items = previewData.items.map((item: any, idx: number) => ({
+            id: idx + 1,
+            sku_id: item.sku_id,
+            sku_name: item.sku_name,
+            quantity: item.quantity,
+            status: item.status === 'skip' ? 'skipped' : 'pending' as const,
+            source_location: item.source_location,
+            dest_location: item.target_location,
+            available_qty: item.available_qty
+          }));
+        }
+      }
+
+      setProgressItems(items);
+      setProgressTotalItems(items.length);
+      setProgressCompletedItems(items.filter(i => i.status === 'skipped').length);
+
+      // ✅ Step 2: เรียก API ก่อนเลย - ตรวจสอบสต็อกจริง
       const apiResponse = await fetch('/api/mobile/loading/complete', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -205,16 +241,119 @@ export default function MobileLoadingDetailPage() {
 
       const data = await apiResponse.json();
 
-      if (!data.success) {
+      // ✅ Step 3: ถ้า API ตอบว่าสต็อกไม่พอ - แสดง error ทันที
+      // Check: API returns 400 with insufficient_items OR success: false
+      if (!apiResponse.ok || data.error) {
+        if (data.insufficient_items && data.insufficient_items.length > 0) {
+          // อัพเดท items - แสดง error สำหรับ SKU ที่ไม่พอ
+          const updatedItems = items.map((item) => {
+            if (item.status === 'skipped') return item;
+            
+            const insufficientItem = data.insufficient_items.find(
+              (i: any) => i.sku_id === item.sku_id
+            );
+            
+            if (insufficientItem) {
+              return {
+                ...item,
+                status: 'error' as const,
+                available_qty: insufficientItem.available || 0,
+                error_details: {
+                  message: `สต็อกไม่เพียงพอ (มี ${insufficientItem.available || 0} ต้องการ ${insufficientItem.required || item.quantity})`,
+                  sku_id: item.sku_id,
+                  sku_name: insufficientItem.sku_name || item.sku_name,
+                  quantity: item.quantity
+                }
+              };
+            }
+            return { ...item, status: 'pending' as const };
+          });
+          
+          const errorItem = updatedItems.find(i => i.status === 'error');
+          
+          setProgressItems(updatedItems);
+          setProgressCompletedItems(updatedItems.filter(i => i.status === 'skipped').length);
+          setProgressHasError(true);
+          setProgressErrorItem(errorItem);
+          setCurrentProgressItem(undefined);
+          setErrorMessage(data.error || 'สต็อกไม่เพียงพอ');
+          setConfirming(false);
+          return;
+        }
+        
+        // ✅ Handle already-loaded picklist/face sheet error
+        if (data.already_loaded_picklists || data.already_loaded_face_sheets) {
+          const loadedBy = data.already_loaded_picklists?.[0]?.loaded_by || 
+                          data.already_loaded_face_sheets?.[0]?.loaded_by || 
+                          'ใบโหลดอื่น';
+          setProgressHasError(true);
+          setProgressErrorItem({
+            id: 0,
+            sku_id: '-',
+            sku_name: 'เอกสารถูกโหลดแล้ว',
+            quantity: 0,
+            status: 'error',
+            error_details: {
+              message: `ใบจัดสินค้า/ใบปะหน้าถูกโหลดไปแล้วโดย ${loadedBy}`
+            }
+          });
+          setErrorMessage(data.message || data.error || 'เอกสารถูกโหลดไปแล้ว');
+          setConfirming(false);
+          return;
+        }
+        
+        // Other errors
+        setProgressHasError(true);
+        setProgressErrorItem({
+          id: 0,
+          sku_id: '-',
+          sku_name: 'ข้อผิดพลาดระบบ',
+          quantity: 0,
+          status: 'error',
+          error_details: {
+            message: data.error || 'เกิดข้อผิดพลาดในการโหลดสินค้า'
+          }
+        });
         setErrorMessage(data.error || 'เกิดข้อผิดพลาด');
+        setConfirming(false);
         return;
       }
 
-      // ✅ NEW: โหลด BFS loadlists ที่เลือก (ถ้ามี)
-      const bonusResults: { code: string; success: boolean; error?: string }[] = [];
+      // ✅ Step 4: API สำเร็จ - แสดง progress animation
+      const pendingItems = items.filter(i => i.status === 'pending');
+      let completedCount = items.filter(i => i.status === 'skipped').length;
+
+      for (let i = 0; i < pendingItems.length; i++) {
+        const item = pendingItems[i];
+        
+        // Checking
+        setCurrentProgressItem({ ...item, status: 'checking', message: `กำลังตรวจสอบสต็อก ${item.quantity} ชิ้น...` });
+        setProgressItems(prev => prev.map(p => 
+          p.id === item.id ? { ...p, status: 'checking' } : p
+        ));
+        await new Promise(r => setTimeout(r, 80));
+
+        // Moving
+        setCurrentProgressItem({ ...item, status: 'moving', message: 'กำลังย้ายสต็อก...' });
+        setProgressItems(prev => prev.map(p => 
+          p.id === item.id ? { ...p, status: 'moving' } : p
+        ));
+        await new Promise(r => setTimeout(r, 80));
+
+        // Success
+        setProgressItems(prev => prev.map(p => 
+          p.id === item.id ? { ...p, status: 'success', message: `ย้ายสำเร็จ: ${item.source_location} → ${item.dest_location}` } : p
+        ));
+        
+        completedCount++;
+        setProgressCompletedItems(completedCount);
+        setCurrentProgressItem(undefined);
+      }
+
+      // ✅ Step 5: Process BFS loadlists (if any)
       for (const bonusCode of bonusLoadlistCodes) {
         try {
-          const bonusResponse = await fetch('/api/mobile/loading/complete', {
+          await fetch('/api/mobile/loading/complete', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ 
@@ -222,31 +361,39 @@ export default function MobileLoadingDetailPage() {
               checker_employee_id: checkerId
             })
           });
-          const bonusData = await bonusResponse.json();
-          bonusResults.push({ 
-            code: bonusCode, 
-            success: bonusData.success,
-            error: bonusData.error
-          });
         } catch (err) {
-          bonusResults.push({ code: bonusCode, success: false, error: 'เกิดข้อผิดพลาด' });
+          console.error('Error loading bonus:', bonusCode, err);
         }
       }
 
       // สร้าง success message
-      const successBonusCount = bonusResults.filter(r => r.success).length;
       let message = 'โหลดสินค้าเสร็จสิ้น';
       if (bonusLoadlistCodes.length > 0) {
-        message += ` (รวมของแถม ${successBonusCount}/${bonusLoadlistCodes.length} ใบ)`;
+        message += ` (รวมของแถม ${bonusLoadlistCodes.length} ใบ)`;
       }
       
       setSuccessMessage(message);
+      
+      // Wait a moment then redirect
       setTimeout(() => {
+        setShowProgressModal(false);
         router.push('/mobile/loading');
-      }, 2000);
+      }, 1500);
 
-    } catch (error) {
-      setErrorMessage('เกิดข้อผิดพลาด');
+    } catch (error: any) {
+      console.error('Loading error:', error);
+      setProgressHasError(true);
+      setProgressErrorItem({
+        id: 0,
+        sku_id: '-',
+        sku_name: 'ข้อผิดพลาดระบบ',
+        quantity: 0,
+        status: 'error',
+        error_details: {
+          message: error.message || 'เกิดข้อผิดพลาดในการเชื่อมต่อ'
+        }
+      });
+      setErrorMessage(error.message || 'เกิดข้อผิดพลาด');
     } finally {
       setConfirming(false);
     }
@@ -434,25 +581,6 @@ export default function MobileLoadingDetailPage() {
         </div>
       )}
 
-      {/* Loading Overlay - Compact */}
-      {confirming && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-6 shadow-2xl max-w-xs mx-4">
-            <div className="flex flex-col items-center space-y-3">
-              <Loader2 className="w-12 h-12 text-sky-500 animate-spin" />
-              <div className="text-center">
-                <h3 className="text-sm font-bold text-gray-900 font-thai mb-1">
-                  กำลังบันทึกข้อมูล
-                </h3>
-                <p className="text-xs text-gray-600 font-thai">
-                  กรุณารอสักครู่...
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Employee Selection Modal */}
       {showEmployeeModal && (
         <EmployeeSelectionModal
@@ -494,7 +622,7 @@ export default function MobileLoadingDetailPage() {
 
             {/* Content */}
             <div className="p-4 max-h-[50vh] overflow-y-auto">
-              {relatedBonusLoadlists.map((bonus, idx) => (
+              {relatedBonusLoadlists.map((bonus) => (
                 <div 
                   key={bonus.loadlist_id}
                   className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3 last:mb-0"
@@ -592,6 +720,28 @@ export default function MobileLoadingDetailPage() {
           </div>
         </div>
       )}
+
+      {/* ✅ NEW: Loading Progress Modal */}
+      <LoadingProgressModal
+        isOpen={showProgressModal}
+        items={progressItems}
+        totalItems={progressTotalItems}
+        completedItems={progressCompletedItems}
+        currentItem={currentProgressItem}
+        hasError={progressHasError}
+        errorItem={progressErrorItem}
+        onClose={() => {
+          setShowProgressModal(false);
+          if (!progressHasError) {
+            router.push('/mobile/loading');
+          }
+        }}
+        onRetry={() => {
+          setShowProgressModal(false);
+          setProgressHasError(false);
+          // User can try again by clicking confirm button
+        }}
+      />
     </div>
   );
 }

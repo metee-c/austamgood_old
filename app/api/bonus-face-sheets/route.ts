@@ -347,7 +347,7 @@ async function handlePost(request: NextRequest, context: any) {
 
     console.log('🔄 [Bonus FS] All items created, now calling stock reservation...');
     
-    // เรียก function จองสต็อคด้วยตนเอง (เพราะ trigger ทำงานก่อนที่จะมี items)
+    // ✅ CRITICAL: เรียก function จองสต็อค - ต้องสำเร็จทุกรายการ
     const { data: reservationResult, error: reservationError } = await supabase
       .rpc('reserve_stock_for_bonus_face_sheet_items', {
         p_bonus_face_sheet_id: faceSheet.id,
@@ -356,10 +356,55 @@ async function handlePost(request: NextRequest, context: any) {
       });
 
     if (reservationError) {
-      console.error('❌ [Bonus FS] Reservation error:', reservationError);
-    } else {
-      console.log('✅ [Bonus FS] Reservation result:', reservationResult);
+      console.error('❌ [Bonus FS] CRITICAL: Reservation error:', reservationError);
+      // ✅ FIX: Fail the entire face sheet creation if stock reservation fails
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'ไม่สามารถจองสต็อคสำหรับใบปะหน้าของแถมได้', 
+          details: `Face sheet ${face_sheet_no} ถูกสร้างแล้ว แต่ไม่สามารถจองสต็อคได้: ${reservationError.message}`,
+          face_sheet_id: faceSheet.id,
+          face_sheet_no: face_sheet_no,
+          reservation_failed: true
+        },
+        { status: 500 }
+      );
     }
+    
+    if (!reservationResult || reservationResult.length === 0) {
+      console.error('❌ [Bonus FS] CRITICAL: No reservation result returned');
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'ไม่ได้รับผลลัพธ์การจองสต็อค', 
+          details: `Face sheet ${face_sheet_no} ถูกสร้างแล้ว แต่ไม่ได้รับผลลัพธ์การจองสต็อค`,
+          face_sheet_id: faceSheet.id,
+          face_sheet_no: face_sheet_no,
+          reservation_failed: true
+        },
+        { status: 500 }
+      );
+    }
+
+    const reserve = reservationResult[0];
+    if (!reserve.success) {
+      console.error('❌ [Bonus FS] CRITICAL: Stock reservation failed:', reserve.message);
+      return NextResponse.json(
+        { 
+          success: false, 
+          error: 'การจองสต็อคไม่สำเร็จ', 
+          details: `Face sheet ${face_sheet_no} ถูกสร้างแล้ว แต่การจองสต็อคไม่สำเร็จ: ${reserve.message}`,
+          face_sheet_id: faceSheet.id,
+          face_sheet_no: face_sheet_no,
+          reservation_failed: true,
+          items_reserved: reserve.items_reserved,
+          items_total: reserve.items_total
+        },
+        { status: 400 }
+      );
+    }
+
+    console.log(`✅ [Bonus FS] Stock reserved successfully: ${reserve.items_reserved}/${reserve.items_total} items (with Virtual Pallet support)`);
 
     // ✅ อัปเดตสถานะ orders เป็น 'confirmed' สำหรับทุก order ในใบปะหน้า
     const orderIds = packages.map(pkg => pkg.order_id).filter(Boolean);
@@ -383,9 +428,12 @@ async function handlePost(request: NextRequest, context: any) {
     return NextResponse.json({
       success: true,
       face_sheet_no,
+      face_sheet_id: faceSheet.id,
       total_packages,
-      reservation_result: reservationResult?.[0],
-      message: `สร้างใบปะหน้าของแถม ${face_sheet_no} สำเร็จ`
+      total_items,
+      items_reserved: reserve.items_reserved,
+      reservation_message: reserve.message,
+      message: `สร้างใบปะหน้าของแถม ${face_sheet_no} สำเร็จ (จองสต็อค ${reserve.items_reserved} รายการ)`
     });
   } catch (error: any) {
     console.error('Error in POST /api/bonus-face-sheets:', error);

@@ -1,111 +1,109 @@
-// Full system debug - check database, API, and component flow
 const { createClient } = require('@supabase/supabase-js');
-const fs = require('fs');
 
-const envContent = fs.readFileSync('.env.local', 'utf8');
-const envLines = envContent.split('\n');
-const env = {};
-envLines.forEach(line => {
-  const match = line.match(/^([^=]+)=(.*)$/);
-  if (match) {
-    env[match[1]] = match[2];
-  }
-});
-
+// สร้าง Supabase client
 const supabase = createClient(
-  env.NEXT_PUBLIC_SUPABASE_URL,
-  env.SUPABASE_SERVICE_ROLE_KEY
+  process.env.NEXT_PUBLIC_SUPABASE_URL || 'http://localhost:54321',
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZS1kZW1vIiwicm9sZSI6ImFub24iLCJleHAiOjE5ODM4MTI5OTZ9.CRXP1A7WOeoJeXxjNni43kdQwgnWNReilDMblYTn_I0'
 );
 
 async function debugFullSystem() {
-  console.log('🔍 === FULL SYSTEM DEBUG ===');
+  console.log('=== Debug Full BFS System ===');
   
   try {
-    // 1. Check database data
-    console.log('\n1️⃣ === DATABASE CHECK ===');
+    // 1. ตรวจสอบว่า migration รันแล้วหรือยัง
+    console.log('\n1. Checking if migration 215 exists...');
+    const { data: migrations } = await supabase
+      .from('supabase_migrations')
+      .select('version')
+      .eq('version', '215_add_bfs_confirmed_to_staging_column');
     
-    const { data: warehouses } = await supabase
-      .from('master_warehouse')
-      .select('*');
-    console.log('Warehouses:', warehouses?.length || 0);
-    warehouses?.forEach(w => console.log(`  - ${w.warehouse_id}: ${w.warehouse_name}`));
+    console.log('Migration 215 exists:', migrations?.length > 0);
     
-    const { data: locations } = await supabase
-      .from('master_location')
-      .select('*')
-      .eq('warehouse_id', 'WH001');
-    console.log('\nLocations for WH001:', locations?.length || 0);
-    locations?.forEach(l => console.log(`  - ${l.location_id}: ${l.location_name}`));
-
-    // 2. Test API endpoints directly
-    console.log('\n2️⃣ === API ENDPOINT TESTS ===');
+    // 2. ตรวจสอบ schema ของ loadlists table
+    console.log('\n2. Checking loadlists table schema...');
+    const { data: columns } = await supabase
+      .rpc('get_table_columns', { table_name: 'loadlists' })
+      .catch(() => null);
     
-    // Test warehouses API
-    const warehouseResponse = await fetch('http://localhost:3000/api/warehouses');
-    const warehouseData = await warehouseResponse.json();
-    console.log('Warehouses API:', {
-      status: warehouseResponse.status,
-      count: warehouseData?.length || 0
-    });
-    
-    // Test locations API
-    const locationsResponse = await fetch('http://localhost:3000/api/master-location?warehouse_id=WH001');
-    const locationsData = await locationsResponse.json();
-    console.log('Locations API:', {
-      status: locationsResponse.status,
-      count: locationsData?.locations?.length || 0,
-      error: locationsData?.error,
-      data: locationsData
-    });
-    
-    if (locationsData?.locations) {
-      console.log('API returned locations:');
-      locationsData.locations.forEach(l => console.log(`  - ${l.location_id}: ${l.location_name}`));
-    } else {
-      console.log('❌ No locations in API response');
-      console.log('Full API response:', JSON.stringify(locationsData, null, 2));
+    if (!columns) {
+      // ใช้วิธีอื่นตรวจสอบ
+      const { data: testQuery } = await supabase
+        .from('loadlists')
+        .select('id, bfs_confirmed_to_staging')
+        .limit(1);
+      
+      console.log('bfs_confirmed_to_staging column exists:', testQuery !== null);
     }
-
-    // Test bad API call with object parameter (like what we see in logs)
-    console.log('\\n🔍 Testing bad parameter that we see in logs:');
-    const badResponse = await fetch('http://localhost:3000/api/master-location?warehouse_id=%5Bobject+Object%5D');
-    const badData = await badResponse.json();
-    console.log('Bad parameter API response:', {
-      status: badResponse.status,
-      count: badData?.locations?.length || 0,
-      error: badData?.error
+    
+    // 3. ตรวจสอบข้อมูลจริงในฐานข้อมูล
+    console.log('\n3. Checking actual data in database...');
+    const { data: loadlistsWithBfs, error: dbError } = await supabase
+      .from('loadlists')
+      .select(`
+        id,
+        loadlist_code,
+        bfs_confirmed_to_staging,
+        wms_loadlist_bonus_face_sheets (
+          bonus_face_sheet_id
+        )
+      `)
+      .not('wms_loadlist_bonus_face_sheets', 'is', null)
+      .limit(5);
+    
+    if (dbError) {
+      console.error('Database error:', dbError);
+      return;
+    }
+    
+    console.log(`Found ${loadlistsWithBfs?.length || 0} loadlists with BFS in database`);
+    loadlistsWithBfs?.forEach(ll => {
+      console.log(`  ${ll.loadlist_code}: bfs_confirmed_to_staging = "${ll.bfs_confirmed_to_staging}"`);
     });
-
-    // 3. Test hook structure
-    console.log('\n3️⃣ === HOOK STRUCTURE TEST ===');
-    console.log('Expected hook return structure should have:');
-    console.log('- locations: array');
-    console.log('- loading: boolean');
-    console.log('- error: string | null');
-    console.log('- refetch: function');
-    console.log('- testFetch: function');
-
-    // 4. Test component flow
-    console.log('\n4️⃣ === COMPONENT FLOW TEST ===');
-    console.log('Expected flow:');
-    console.log('1. User selects warehouse');
-    console.log('2. watchedWarehouseId changes');
-    console.log('3. locationParams useMemo triggers');
-    console.log('4. useLocations hook receives new params');
-    console.log('5. fetchLocations useCallback re-creates');
-    console.log('6. useEffect triggers with new fetchLocations');
-    console.log('7. API call made');
-    console.log('8. locations state updated');
-    console.log('9. dropdown shows options');
-
-    return true;
-  } catch (err) {
-    console.error('❌ Debug error:', err);
-    return false;
+    
+    // 4. ทดสอบ API /api/loadlists
+    console.log('\n4. Testing API /api/loadlists...');
+    const apiResponse = await fetch('http://localhost:3000/api/loadlists');
+    
+    if (!apiResponse.ok) {
+      console.error('API Error:', apiResponse.status, apiResponse.statusText);
+      return;
+    }
+    
+    const apiData = await apiResponse.json();
+    console.log(`API returned ${apiData?.length || 0} loadlists`);
+    
+    // หา loadlist ที่มี BFS
+    const loadlistsWithBfsFromApi = apiData?.filter(ll => 
+      ll.bonus_face_sheets && ll.bonus_face_sheets.length > 0
+    ) || [];
+    
+    console.log(`Found ${loadlistsWithBfsFromApi.length} loadlists with BFS from API`);
+    
+    // ตรวจสอบ 3 รายการแรก
+    loadlistsWithBfsFromApi.slice(0, 3).forEach(ll => {
+      console.log(`\nLoadlist: ${ll.loadlist_code}`);
+      console.log(`  bfs_confirmed_to_staging: "${ll.bfs_confirmed_to_staging}"`);
+      console.log(`  Type: ${typeof ll.bfs_confirmed_to_staging}`);
+      console.log(`  BFS count: ${ll.bonus_face_sheets?.length || 0}`);
+      console.log(`  Should button be disabled: ${ll.bfs_confirmed_to_staging === 'yes'}`);
+    });
+    
+    // 5. ตรวจสอบว่า API ส่งค่า bfs_confirmed_to_staging หรือไม่
+    console.log('\n5. Checking if API includes bfs_confirmed_to_staging...');
+    const sampleLoadlist = apiData?.[0];
+    if (sampleLoadlist) {
+      const hasField = 'bfs_confirmed_to_staging' in sampleLoadlist;
+      console.log('API includes bfs_confirmed_to_staging field:', hasField);
+      
+      if (hasField) {
+        console.log('Sample value:', sampleLoadlist.bfs_confirmed_to_staging);
+        console.log('Sample type:', typeof sampleLoadlist.bfs_confirmed_to_staging);
+      }
+    }
+    
+  } catch (error) {
+    console.error('Error:', error.message);
   }
 }
 
-debugFullSystem().then(success => {
-  console.log(success ? '\n✅ Debug completed' : '\n❌ Debug failed');
-  process.exit(success ? 0 : 1);
-});
+debugFullSystem();
