@@ -35,6 +35,7 @@ import EditOrderModal from '@/components/orders/EditOrderModal';
 import OrderLocationModal from '@/components/orders/OrderLocationModal';
 import AddCoordinatesModal from '@/components/orders/AddCoordinatesModal';
 import RollbackPreviewModal from '@/components/orders/RollbackPreviewModal';
+import DeliveryFileModal from '@/components/orders/DeliveryFileModal';
 import { OrderType, OrderStatus, OrderPriority } from '@/hooks/useOrders';
 import { useAuth } from '@/hooks/useAuth';
 import useSWR from 'swr';
@@ -82,6 +83,7 @@ const OrdersPage = () => {
   const [selectedOrderForLocation, setSelectedOrderForLocation] = useState<any>(null);
   const [showAddCoordinatesModal, setShowAddCoordinatesModal] = useState(false);
   const [selectedOrderForAddCoords, setSelectedOrderForAddCoords] = useState<any>(null);
+  const [showDeliveryFileModal, setShowDeliveryFileModal] = useState(false);
   const [warehouse, setWarehouse] = useState<any>(null);
 
   // Pagination state
@@ -1231,6 +1233,15 @@ const OrdersPage = () => {
           >
             สร้างใหม่
           </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={FileText}
+            onClick={() => setShowDeliveryFileModal(true)}
+            className="text-xs py-1 px-2"
+          >
+            สร้างไฟล์ใบส่ง
+          </Button>
         </div>
       </div>
 
@@ -1941,6 +1952,12 @@ const OrdersPage = () => {
           }}
         />
       )}
+
+      {/* Delivery File Modal - สร้างไฟล์ใบส่ง */}
+      <DeliveryFileModal
+        isOpen={showDeliveryFileModal}
+        onClose={() => setShowDeliveryFileModal(false)}
+      />
     </PageContainer>
   );
 };
