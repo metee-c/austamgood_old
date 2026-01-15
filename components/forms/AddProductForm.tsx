@@ -1,12 +1,12 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { Save, X, AlertCircle } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import ComboBox from '@/components/ui/ComboBox';
 import { masterSkuService } from '@/lib/database/master-sku';
 import { useSkuOptions } from '@/hooks/useSkuOptions';
-import { useSuppliers, useStorageStrategies } from '@/hooks/useFormOptions';
+import { useStorageStrategies } from '@/hooks/useFormOptions';
 
 interface AddProductFormProps {
   onSuccess: () => void;
@@ -25,9 +25,7 @@ const AddProductForm: React.FC<AddProductFormProps> = ({ onSuccess, onCancel, in
   const { options: productTypeOptions } = useSkuOptions('product_type');
   const { options: uomOptions } = useSkuOptions('uom_base');
   const { options: storageConditionOptions } = useSkuOptions('storage_condition');
-  const { suppliers } = useSuppliers();
   const { strategies } = useStorageStrategies();
-  const supplierOptions = suppliers.map(s => ({ value: s.supplier_id, label: s.supplier_name }));
   const storageStrategyOptions = strategies.map(s => ({ value: s.strategy_id, label: s.strategy_name }));
 
   const [formData, setFormData] = useState<Record<string, any>>({
@@ -38,8 +36,6 @@ const AddProductForm: React.FC<AddProductFormProps> = ({ onSuccess, onCancel, in
     sub_category: initialData?.sub_category || '',
     brand: initialData?.brand || '',
     product_type: initialData?.product_type || '',
-    unit_cost: initialData?.unit_cost || undefined,
-    sales_price: initialData?.sales_price || undefined,
     uom_base: initialData?.uom_base || 'ชิ้น',
     qty_per_pack: initialData?.qty_per_pack || 1,
     qty_per_pallet: initialData?.qty_per_pallet || undefined,
@@ -288,54 +284,6 @@ const AddProductForm: React.FC<AddProductFormProps> = ({ onSuccess, onCancel, in
             />
           </div>
         </div>
-        </div>
-
-        {/* Pricing Information */}
-        <div className="bg-white border border-thai-gray-200 rounded-xl p-6 space-y-6">
-          <div className="flex items-center space-x-3">
-            <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
-            <h4 className="text-lg font-semibold text-thai-gray-900 font-thai">ข้อมูลราคา</h4>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
-                ต้นทุนต่อหน่วย
-              </label>
-              <input
-                type="number"
-                name="unit_cost"
-                value={formData.unit_cost || ''}
-                onChange={handleInputChange}
-                min="0"
-                step="0.01"
-                className="
-                  w-full px-3 py-2 border border-thai-gray-300 rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
-                  text-sm font-thai
-                "
-                placeholder="100.00"
-              />
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
-                ราคาขาย
-              </label>
-              <input
-                type="number"
-                name="sales_price"
-                value={formData.sales_price || ''}
-                onChange={handleInputChange}
-                min="0"
-                step="0.01"
-                className="
-                  w-full px-3 py-2 border border-thai-gray-300 rounded-lg
-                  focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent
-                  text-sm font-thai
-                "
-                placeholder="150.00"
-              />
-            </div>
-          </div>
         </div>
 
         {/* Unit Information */}

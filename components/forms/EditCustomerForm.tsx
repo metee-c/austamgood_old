@@ -154,6 +154,14 @@ const EditCustomerForm: React.FC<EditCustomerFormProps> = ({ customer, onSuccess
             <label htmlFor="postal_code" className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">รหัสไปรษณีย์</label>
             <input {...register('postal_code')} id="postal_code" className="w-full px-3 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm" />
           </div>
+          <div>
+            <label htmlFor="latitude" className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">ละติจูด</label>
+            <input {...register('latitude', { valueAsNumber: true })} id="latitude" type="number" step="any" placeholder="เช่น 13.7563" className="w-full px-3 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm placeholder:text-thai-gray-400" />
+          </div>
+          <div>
+            <label htmlFor="longitude" className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">ลองจิจูด</label>
+            <input {...register('longitude', { valueAsNumber: true })} id="longitude" type="number" step="any" placeholder="เช่น 100.5018" className="w-full px-3 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm placeholder:text-thai-gray-400" />
+          </div>
         </div>
       </div>
        <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-2xl p-6 space-y-6 shadow-sm">
@@ -184,6 +192,10 @@ const EditCustomerForm: React.FC<EditCustomerFormProps> = ({ customer, onSuccess
                     <option value="active">Active</option>
                     <option value="inactive">Inactive</option>
                 </select>
+            </div>
+            <div>
+                <label htmlFor="hub" className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">Hub</label>
+                <input {...register('hub')} id="hub" placeholder="เช่น BKK, CNX, HKT" className="w-full px-3 py-2 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-500/50 focus:border-primary-500/50 focus:bg-white/80 text-sm font-thai transition-all duration-300 backdrop-blur-sm placeholder:text-thai-gray-400" />
             </div>
             <div>
                 <label htmlFor="remarks" className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">หมายเหตุ</label>
