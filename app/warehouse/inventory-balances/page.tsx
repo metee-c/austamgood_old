@@ -15,7 +15,10 @@ import {
   ChevronLeft,
   ChevronsLeft,
   ChevronsRight,
-  MapPin
+  MapPin,
+  Filter,
+  X,
+  RotateCcw
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
@@ -92,11 +95,25 @@ const InventoryBalancesPage = () => {
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState(searchParams.get('sku') || '');
   const [selectedWarehouse, setSelectedWarehouse] = useState('all');
   const [selectedZone, setSelectedZone] = useState('all');
-  const [productionDateFilter, setProductionDateFilter] = useState(searchParams.get('production_date') || '');
-  const [expiryDateFilter, setExpiryDateFilter] = useState(searchParams.get('expiry_date') || '');
   const [showLowStock, setShowLowStock] = useState(false);
   const [showExpiringSoon, setShowExpiringSoon] = useState(false);
   const [showEmptyLocations, setShowEmptyLocations] = useState(true);
+
+  // Advanced filters
+  const [showFilters, setShowFilters] = useState(false);
+  interface AdvancedFilters {
+    sku_id?: string;
+    sku_name?: string;
+    location_id?: string;
+    location_name?: string;
+    pallet_id?: string;
+    lot_no?: string;
+    production_date?: string;
+    expiry_date?: string;
+    location_type?: string;
+  }
+  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>({});
+  const [tempAdvancedFilters, setTempAdvancedFilters] = useState<AdvancedFilters>({});
 
   // Warehouses for filter
   const [warehouses, setWarehouses] = useState<any[]>([]);
@@ -124,17 +141,19 @@ const InventoryBalancesPage = () => {
 
   // Fetch balance data after preparation areas are loaded
   useEffect(() => {
-    if (preparationAreaCodes.length > 0 && masterLocations.length > 0) {
+    if (preparationAreaCodes.length >= 0 && masterLocations.length > 0) {
+      console.log('[Inventory Balances] Initial data load triggered');
       fetchBalanceData();
     }
-  }, [preparationAreaCodes, masterLocations]);
+  }, [preparationAreaCodes.length, masterLocations.length]);
 
   // Refetch when filters change
   useEffect(() => {
-    if (preparationAreaCodes.length > 0 && masterLocations.length > 0) {
+    if (preparationAreaCodes.length >= 0 && masterLocations.length > 0) {
+      console.log('[Inventory Balances] Filter change triggered');
       fetchBalanceData();
     }
-  }, [debouncedSearchTerm, selectedWarehouse, selectedZone, productionDateFilter, expiryDateFilter]);
+  }, [debouncedSearchTerm, selectedWarehouse, selectedZone, JSON.stringify(advancedFilters)]);
 
   const fetchPreparationAreas = async () => {
     try {
@@ -213,6 +232,8 @@ const InventoryBalancesPage = () => {
         'SHIP',
       ];
 
+      console.log(`[Inventory Balances] Starting fetch with ${excludeLocations.length} excluded locations`);
+
       // If searching, first find matching SKU IDs
       let matchingSkuIds: string[] = [];
       if (debouncedSearchTerm) {
@@ -228,8 +249,11 @@ const InventoryBalancesPage = () => {
       const batchSize = 1000;
       let from = 0;
       let hasMore = true;
+      let batchNum = 1;
 
       while (hasMore) {
+        console.log(`[Inventory Balances] Fetching batch ${batchNum} (${from}-${from + batchSize - 1})...`);
+        
         let dataQuery = supabase
           .from('wms_inventory_balances')
           .select(`
@@ -276,30 +300,39 @@ const InventoryBalancesPage = () => {
           dataQuery = dataQuery.eq('warehouse_id', selectedWarehouse);
         }
 
-        if (productionDateFilter) {
-          dataQuery = dataQuery.eq('production_date', productionDateFilter);
+        // Apply advanced filters
+        if (advancedFilters.production_date) {
+          dataQuery = dataQuery.eq('production_date', advancedFilters.production_date);
         }
 
-        if (expiryDateFilter) {
-          dataQuery = dataQuery.eq('expiry_date', expiryDateFilter);
+        if (advancedFilters.expiry_date) {
+          dataQuery = dataQuery.eq('expiry_date', advancedFilters.expiry_date);
         }
 
         const { data, error } = await dataQuery;
 
         if (error) {
+          console.error(`[Inventory Balances] Error in batch ${batchNum}:`, error.message);
           setError(error.message);
           hasMore = false;
           break;
         }
 
+        console.log(`[Inventory Balances] Batch ${batchNum} fetched ${data?.length || 0} rows`);
+
         if (data && data.length > 0) {
           allBalances.push(...data);
           from += batchSize;
           hasMore = data.length === batchSize;
+          batchNum++;
+          console.log(`[Inventory Balances] hasMore = ${hasMore} (${data.length} === ${batchSize})`);
         } else {
           hasMore = false;
+          console.log(`[Inventory Balances] No more data, stopping pagination`);
         }
       }
+
+      console.log(`[Inventory Balances] Pagination complete. Total records: ${allBalances.length}`);
 
       const data = allBalances;
       const error = null;
@@ -348,6 +381,32 @@ const InventoryBalancesPage = () => {
     return new Date(expiryDate) < new Date();
   };
 
+  // Helper function to check if value matches any of comma-separated search terms
+  const matchesMultiValue = (value: string | null | undefined, searchTerms: string): boolean => {
+    if (!value || !searchTerms) return false;
+    const terms = searchTerms.split(',').map(t => t.trim().toLowerCase()).filter(t => t);
+    if (terms.length === 0) return false;
+    const valueLower = value.toLowerCase();
+    return terms.some(term => valueLower.includes(term));
+  };
+
+  // Apply advanced filters
+  const applyFilters = () => {
+    setAdvancedFilters(tempAdvancedFilters);
+    setShowFilters(false);
+  };
+
+  // Reset all filters
+  const resetAllFilters = () => {
+    setTempAdvancedFilters({});
+    setAdvancedFilters({});
+    setSearchTerm('');
+    setSelectedWarehouse('all');
+    setSelectedZone('all');
+    setShowLowStock(false);
+    setShowExpiringSoon(false);
+  };
+
   // Get unique zones from master locations
   const availableZones = useMemo(() => {
     const zones = new Set<string>();
@@ -379,6 +438,12 @@ const InventoryBalancesPage = () => {
       if (loc.location_type === 'dispatch' || loc.location_type === 'delivery') return false;
       if (selectedWarehouse !== 'all' && loc.warehouse_id !== selectedWarehouse) return false;
       if (selectedZone !== 'all' && loc.zone !== selectedZone) return false;
+      
+      // Apply advanced filters for location
+      if (advancedFilters.location_id && !matchesMultiValue(loc.location_id, advancedFilters.location_id)) return false;
+      if (advancedFilters.location_name && !matchesMultiValue(loc.location_name, advancedFilters.location_name)) return false;
+      if (advancedFilters.location_type && !matchesMultiValue(loc.location_type, advancedFilters.location_type)) return false;
+      
       return true;
     });
 
@@ -389,10 +454,23 @@ const InventoryBalancesPage = () => {
       if (!balancesByLocation.has(locId)) {
         balancesByLocation.set(locId, []);
       }
+      
       // Apply client-side filters
       const matchesLowStock = !showLowStock || (balance.total_piece_qty - balance.reserved_piece_qty) <= 10;
       const matchesExpiring = !showExpiringSoon || isExpiringSoon(balance.expiry_date);
-      if (matchesLowStock && matchesExpiring) {
+      
+      // Apply advanced filters for balance items
+      let matchesAdvanced = true;
+      if (advancedFilters.sku_id && !matchesMultiValue(balance.sku_id, advancedFilters.sku_id)) matchesAdvanced = false;
+      if (advancedFilters.sku_name && !matchesMultiValue((balance as any).master_sku?.sku_name, advancedFilters.sku_name)) matchesAdvanced = false;
+      if (advancedFilters.pallet_id) {
+        const palletMatch = matchesMultiValue(balance.pallet_id, advancedFilters.pallet_id) || 
+                           matchesMultiValue(balance.pallet_id_external, advancedFilters.pallet_id);
+        if (!palletMatch) matchesAdvanced = false;
+      }
+      if (advancedFilters.lot_no && !matchesMultiValue(balance.lot_no, advancedFilters.lot_no)) matchesAdvanced = false;
+      
+      if (matchesLowStock && matchesExpiring && matchesAdvanced) {
         balancesByLocation.get(locId)!.push(balance);
       }
     });
@@ -414,8 +492,14 @@ const InventoryBalancesPage = () => {
       zoneGroups.get(zone)!.push({ location: loc, balances });
     });
 
+    // Filter out zones with no locations (after filtering)
+    const zonesWithData = Array.from(zoneGroups.keys()).filter(zone => {
+      const locations = zoneGroups.get(zone) || [];
+      return locations.length > 0;
+    });
+
     // Sort zones by priority
-    const sortedZones = Array.from(zoneGroups.keys()).sort((a, b) => {
+    const sortedZones = zonesWithData.sort((a, b) => {
       const priorityA = ZONE_PRIORITY[a] || 50;
       const priorityB = ZONE_PRIORITY[b] || 50;
       if (priorityA !== priorityB) return priorityA - priorityB;
@@ -429,7 +513,16 @@ const InventoryBalancesPage = () => {
     });
 
     return { zones: sortedZones, groups: zoneGroups };
-  }, [masterLocations, balanceData, preparationAreaCodes, selectedWarehouse, selectedZone, showEmptyLocations, showLowStock, showExpiringSoon]);
+  }, [masterLocations, balanceData, preparationAreaCodes, selectedWarehouse, selectedZone, showEmptyLocations, showLowStock, showExpiringSoon, advancedFilters]);
+
+  // Auto-expand zones when filters are applied
+  useEffect(() => {
+    const hasActiveFilters = Object.keys(advancedFilters).some(k => advancedFilters[k as keyof AdvancedFilters]);
+    if (hasActiveFilters || showLowStock || showExpiringSoon) {
+      // Auto-expand all zones when filtering
+      setExpandedZones(new Set(groupedByZone.zones));
+    }
+  }, [advancedFilters, showLowStock, showExpiringSoon, groupedByZone.zones]);
 
   // Calculate totals
   const totals = useMemo(() => {
@@ -540,7 +633,7 @@ const InventoryBalancesPage = () => {
                 type="text"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="ค้นหา SKU..."
+                placeholder="ค้นหา SKU, Lot, Pallet, Location..."
                 className="w-full pl-7 pr-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50"
               />
             </div>
@@ -578,6 +671,15 @@ const InventoryBalancesPage = () => {
               <input type="checkbox" className="mr-1 w-3 h-3" checked={showEmptyLocations} onChange={(e) => setShowEmptyLocations(e.target.checked)} />
               โลเคชั่นว่าง
             </label>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              icon={Filter} 
+              onClick={() => setShowFilters(!showFilters)} 
+              className={`text-xs py-1 px-2 ${Object.keys(advancedFilters).some(k => advancedFilters[k as keyof AdvancedFilters]) ? 'bg-blue-50 border-blue-300 text-blue-700' : ''}`}
+            >
+              ตัวกรองเพิ่มเติม
+            </Button>
             <Button variant="outline" size="sm" icon={exporting ? Loader2 : Download} onClick={handleExportExcel} disabled={loading || exporting} className={`text-xs py-1 px-2 ${exporting ? 'animate-pulse' : ''}`}>
               {exporting ? 'กำลังส่งออก...' : 'Excel'}
             </Button>
@@ -585,6 +687,116 @@ const InventoryBalancesPage = () => {
               รีเฟรช
             </Button>
           </div>
+
+          {/* Advanced Filters Panel */}
+          {showFilters && (
+            <div className="mt-2 pt-2 border-t border-gray-200">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">รหัสสินค้า</label>
+                  <input
+                    type="text"
+                    value={tempAdvancedFilters.sku_id || ''}
+                    onChange={(e) => setTempAdvancedFilters({ ...tempAdvancedFilters, sku_id: e.target.value })}
+                    placeholder="SKU001, SKU002..."
+                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">ชื่อสินค้า</label>
+                  <input
+                    type="text"
+                    value={tempAdvancedFilters.sku_name || ''}
+                    onChange={(e) => setTempAdvancedFilters({ ...tempAdvancedFilters, sku_name: e.target.value })}
+                    placeholder="ชื่อสินค้า..."
+                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">รหัสโลเคชั่น</label>
+                  <input
+                    type="text"
+                    value={tempAdvancedFilters.location_id || ''}
+                    onChange={(e) => setTempAdvancedFilters({ ...tempAdvancedFilters, location_id: e.target.value })}
+                    placeholder="A-01-01, B-02-03..."
+                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">ชื่อโลเคชั่น</label>
+                  <input
+                    type="text"
+                    value={tempAdvancedFilters.location_name || ''}
+                    onChange={(e) => setTempAdvancedFilters({ ...tempAdvancedFilters, location_name: e.target.value })}
+                    placeholder="ชื่อโลเคชั่น..."
+                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">รหัสพาเลท</label>
+                  <input
+                    type="text"
+                    value={tempAdvancedFilters.pallet_id || ''}
+                    onChange={(e) => setTempAdvancedFilters({ ...tempAdvancedFilters, pallet_id: e.target.value })}
+                    placeholder="PLT001, PLT002..."
+                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">Lot No</label>
+                  <input
+                    type="text"
+                    value={tempAdvancedFilters.lot_no || ''}
+                    onChange={(e) => setTempAdvancedFilters({ ...tempAdvancedFilters, lot_no: e.target.value })}
+                    placeholder="LOT001, LOT002..."
+                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">วันผลิต</label>
+                  <input
+                    type="date"
+                    value={tempAdvancedFilters.production_date || ''}
+                    onChange={(e) => setTempAdvancedFilters({ ...tempAdvancedFilters, production_date: e.target.value })}
+                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">วันหมดอายุ</label>
+                  <input
+                    type="date"
+                    value={tempAdvancedFilters.expiry_date || ''}
+                    onChange={(e) => setTempAdvancedFilters({ ...tempAdvancedFilters, expiry_date: e.target.value })}
+                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">ประเภทโลเคชั่น</label>
+                  <input
+                    type="text"
+                    value={tempAdvancedFilters.location_type || ''}
+                    onChange={(e) => setTempAdvancedFilters({ ...tempAdvancedFilters, location_type: e.target.value })}
+                    placeholder="rack, floor..."
+                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-2 mt-2">
+                <Button variant="primary" size="sm" onClick={applyFilters} className="text-xs py-1 px-3">
+                  ใช้ตัวกรอง
+                </Button>
+                <Button variant="outline" size="sm" icon={RotateCcw} onClick={resetAllFilters} className="text-xs py-1 px-3">
+                  ล้างทั้งหมด
+                </Button>
+                <Button variant="ghost" size="sm" icon={X} onClick={() => setShowFilters(false)} className="text-xs py-1 px-2">
+                  ปิด
+                </Button>
+                <div className="text-xs text-gray-500 font-thai ml-2">
+                  💡 รองรับการค้นหาหลายค่า เช่น: SKU001, SKU002, SKU003
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Summary Stats */}
           <div className="flex items-center gap-4 mt-1.5 pt-1.5 border-t border-gray-100 text-xs">

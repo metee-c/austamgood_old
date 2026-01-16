@@ -260,8 +260,20 @@ export async function GET(
             if (!order) return null;
 
             // Find the corresponding input for this order to get actual allocated weight
-            const inputId = inputIds[index];
-            const input = inputId ? inputsMap[inputId] : null;
+            // FIX: Match input by order_id instead of index to handle cases where
+            // input_ids and order_ids arrays are out of sync after order moves
+            let input: any = null;
+            for (const inputId of inputIds) {
+              const candidateInput = inputsMap[inputId];
+              if (candidateInput && candidateInput.order_id === orderId) {
+                input = candidateInput;
+                break;
+              }
+            }
+            // Fallback to index-based matching if no match found by order_id
+            if (!input && inputIds[index]) {
+              input = inputsMap[inputIds[index]];
+            }
 
             // Determine which items to use for this stop
             let itemsForStop: any[] = [];

@@ -461,7 +461,40 @@ export class ReceiveService {
         }
       }
 
-      const { data, error } = await query;
+      let { data, error } = await query;
+
+      // Client-side filtering for item-level search (SKU, product name, barcode)
+      if (filters?.searchTerm && data) {
+        const searchLower = filters.searchTerm.toLowerCase();
+        data = data.filter((receive: any) => {
+          // Check if already matched by header search
+          const headerMatch = 
+            receive.receive_no?.toLowerCase().includes(searchLower) ||
+            receive.reference_doc?.toLowerCase().includes(searchLower) ||
+            receive.warehouse_id?.toLowerCase().includes(searchLower) ||
+            receive.receive_type?.toLowerCase().includes(searchLower) ||
+            receive.status?.toLowerCase().includes(searchLower) ||
+            receive.supplier_id?.toLowerCase().includes(searchLower) ||
+            receive.customer_id?.toLowerCase().includes(searchLower);
+
+          if (headerMatch) return true;
+
+          // Check items for SKU, product name, or barcode match
+          if (receive.wms_receive_items && receive.wms_receive_items.length > 0) {
+            return receive.wms_receive_items.some((item: any) => {
+              return (
+                item.sku_id?.toLowerCase().includes(searchLower) ||
+                item.product_name?.toLowerCase().includes(searchLower) ||
+                item.barcode?.toLowerCase().includes(searchLower) ||
+                item.master_sku?.sku_name?.toLowerCase().includes(searchLower) ||
+                item.master_sku?.barcode?.toLowerCase().includes(searchLower)
+              );
+            });
+          }
+
+          return false;
+        });
+      }
 
       if (error) {
         console.error('Error fetching receive records:', error);

@@ -1,0 +1,718 @@
+[
+  {
+    "type": "ADD",
+    "locationId": "AA-BLK-17",
+    "palletId": "ATG20260115000000044",
+    "skuId": "B-NET-C|CNT|010",
+    "qty": 576,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AA-BLK-17",
+    "palletId": "ATG20260115000000045",
+    "skuId": "B-NET-C|CNT|010",
+    "qty": 576,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AA-BLK-17",
+    "palletId": "ATG20260115000000042",
+    "skuId": "B-NET-C|CNT|010",
+    "qty": 576,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AA-BLK-17",
+    "palletId": "ATG20260115000000046",
+    "skuId": "B-NET-C|CNT|010",
+    "qty": 469,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AA-BLK-17",
+    "palletId": "ATG20260115000000041",
+    "skuId": "B-NET-C|CNT|010",
+    "qty": 576,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AA-BLK-17",
+    "palletId": "ATG20260115000000043",
+    "skuId": "B-NET-C|CNT|010",
+    "qty": 576,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-17",
+    "palletId": "ATG20260110000000006",
+    "skuId": "B-NET-C|CNT|010",
+    "balanceId": 34677,
+    "qty": 576,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-20",
+    "palletId": "ATG20260106000000082",
+    "skuId": "B-NET-C|FNC|010",
+    "balanceId": 29559,
+    "qty": 444,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-20",
+    "palletId": "ATG20260106000000082",
+    "skuId": "B-NET-C|FNC|010",
+    "balanceId": 29559,
+    "qty": 444,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-24",
+    "palletId": "ATG20260108000000015",
+    "skuId": "B-NET-C|CNT|040",
+    "balanceId": 29658,
+    "qty": 160,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-24",
+    "palletId": "ATG20260108000000015",
+    "skuId": "B-NET-C|CNT|040",
+    "balanceId": 29658,
+    "qty": 160,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AA-BLK-26",
+    "palletId": "ATG20260109000000010",
+    "skuId": "B-NET-C|FHC|010",
+    "qty": 576,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-26",
+    "palletId": "ATG20260109000000004",
+    "skuId": "B-NET-C|CNT|010",
+    "balanceId": 34658,
+    "qty": 576,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-26",
+    "palletId": "ATG20260109000000005",
+    "skuId": "B-NET-C|CNT|010",
+    "balanceId": 34659,
+    "qty": 576,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-26",
+    "palletId": "ATG20260109000000006",
+    "skuId": "B-NET-C|CNT|010",
+    "balanceId": 34667,
+    "qty": 576,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-26",
+    "palletId": "ATG20260109000000007",
+    "skuId": "B-NET-C|CNT|010",
+    "balanceId": 34668,
+    "qty": 576,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AA-BLK-27",
+    "palletId": "ATG20260110000000009",
+    "skuId": "B-NET-C|CNT|010",
+    "qty": 576,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AA-BLK-27",
+    "palletId": "ATG20260110000000006",
+    "skuId": "B-NET-C|CNT|010",
+    "qty": 576,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AA-BLK-27",
+    "palletId": "ATG20260109000000005",
+    "skuId": "B-NET-C|CNT|010",
+    "qty": 576,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AA-BLK-27",
+    "palletId": "ATG20260109000000004",
+    "skuId": "B-NET-C|CNT|010",
+    "qty": 576,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AA-BLK-27",
+    "palletId": "ATG20260110000000010",
+    "skuId": "B-NET-C|CNT|010",
+    "qty": 576,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AA-BLK-27",
+    "palletId": "ATG20260110000000007",
+    "skuId": "B-NET-C|CNT|010",
+    "qty": 576,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AA-BLK-27",
+    "palletId": "ATG20260109000000006",
+    "skuId": "B-NET-C|CNT|010",
+    "qty": 576,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AA-BLK-27",
+    "palletId": "ATG20260110000000008",
+    "skuId": "B-NET-C|CNT|010",
+    "qty": 576,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AA-BLK-27",
+    "palletId": "ATG20260109000000007",
+    "skuId": "B-NET-C|CNT|010",
+    "qty": 576,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-27",
+    "palletId": "ATG20260115000000041",
+    "skuId": "B-NET-C|CNT|010",
+    "balanceId": 34714,
+    "qty": 576,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-27",
+    "palletId": "ATG20260115000000042",
+    "skuId": "B-NET-C|CNT|010",
+    "balanceId": 34715,
+    "qty": 576,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-27",
+    "palletId": "ATG20260115000000043",
+    "skuId": "B-NET-C|CNT|010",
+    "balanceId": 34716,
+    "qty": 576,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-27",
+    "palletId": "ATG20260115000000044",
+    "skuId": "B-NET-C|CNT|010",
+    "balanceId": 34717,
+    "qty": 576,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-27",
+    "palletId": "ATG20260115000000045",
+    "skuId": "B-NET-C|CNT|010",
+    "balanceId": 34718,
+    "qty": 576,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-27",
+    "palletId": "ATG20260115000000046",
+    "skuId": "B-NET-C|CNT|010",
+    "balanceId": 34719,
+    "qty": 469,
+    "lotNo": null
+  },
+  {
+    "type": "ADJUST",
+    "locationId": "AA-BLK-28",
+    "palletId": "ATG20260112000000078",
+    "skuId": "B-NET-C|FNC|010",
+    "balanceId": 34696,
+    "oldQty": 272,
+    "newQty": 276,
+    "diff": 4,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-28",
+    "palletId": "ATG20260106000000014",
+    "skuId": "B-NET-C|SAL|040",
+    "balanceId": 34617,
+    "qty": 320,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-28",
+    "palletId": "ATG20260106000000015",
+    "skuId": "B-NET-C|SAL|040",
+    "balanceId": 34618,
+    "qty": 288,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-28",
+    "palletId": "ATG20260107000000004",
+    "skuId": "B-NET-C|FNC|010",
+    "balanceId": 34619,
+    "qty": 576,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-29",
+    "palletId": "ATG20260110000000007",
+    "skuId": "B-NET-C|CNT|010",
+    "balanceId": 34678,
+    "qty": 576,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-29",
+    "palletId": "ATG20260110000000008",
+    "skuId": "B-NET-C|CNT|010",
+    "balanceId": 34679,
+    "qty": 576,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-29",
+    "palletId": "ATG20260110000000009",
+    "skuId": "B-NET-C|CNT|010",
+    "balanceId": 34680,
+    "qty": 576,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-29",
+    "palletId": "ATG20260110000000010",
+    "skuId": "B-NET-C|CNT|010",
+    "balanceId": 34681,
+    "qty": 576,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-29",
+    "palletId": "ATG2500017854",
+    "skuId": "B-NET-C|FNC|040",
+    "balanceId": 26179,
+    "qty": 71,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-29",
+    "palletId": "ATG20260115000000067",
+    "skuId": "B-NET-C|SAL|010",
+    "balanceId": 34740,
+    "qty": 576,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-29",
+    "palletId": "ATG20260115000000071",
+    "skuId": "B-NET-C|SAL|010",
+    "balanceId": 34744,
+    "qty": 576,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-29",
+    "palletId": "ATG20260115000000072",
+    "skuId": "B-NET-C|SAL|010",
+    "balanceId": 34745,
+    "qty": 576,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-29",
+    "palletId": "ATG20260115000000068",
+    "skuId": "B-NET-C|SAL|010",
+    "balanceId": 34741,
+    "qty": 576,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-29",
+    "palletId": "ATG20260115000000069",
+    "skuId": "B-NET-C|SAL|010",
+    "balanceId": 34742,
+    "qty": 576,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-29",
+    "palletId": "ATG20260115000000070",
+    "skuId": "B-NET-C|SAL|010",
+    "balanceId": 34743,
+    "qty": 576,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-29",
+    "palletId": "ATG20260115000000073",
+    "skuId": "B-NET-C|SAL|010",
+    "balanceId": 34746,
+    "qty": 576,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AA-BLK-29",
+    "palletId": "ATG20260115000000074",
+    "skuId": "B-NET-C|SAL|010",
+    "balanceId": 34747,
+    "qty": 273,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AA-BLK-30",
+    "palletId": "ATG20260115000000074",
+    "skuId": "B-NET-C|SAL|010",
+    "qty": 576,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AA-BLK-30",
+    "palletId": "ATG20260115000000072",
+    "skuId": "B-NET-C|SAL|010",
+    "qty": 576,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AA-BLK-30",
+    "palletId": "ATG20260115000000071",
+    "skuId": "B-NET-C|SAL|010",
+    "qty": 576,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AA-BLK-30",
+    "palletId": "ATG20260115000000068",
+    "skuId": "B-NET-C|SAL|010",
+    "qty": 576,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AA-BLK-30",
+    "palletId": "ATG20260115000000069",
+    "skuId": "B-NET-C|SAL|010",
+    "qty": 576,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AA-BLK-30",
+    "palletId": "ATG20260115000000067",
+    "skuId": "B-NET-C|SAL|010",
+    "qty": 576,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AA-BLK-30",
+    "palletId": "ATG20260115000000073",
+    "skuId": "B-NET-C|SAL|010",
+    "qty": 576,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AA-BLK-30",
+    "palletId": "ATG20260115000000070",
+    "skuId": "B-NET-C|SAL|010",
+    "qty": 576,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AB-BLK-20",
+    "palletId": "ATG2500018070",
+    "skuId": "00-BEY-C|SAL|20",
+    "qty": 36,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AB-BLK-20",
+    "palletId": "ATG20260113000000163",
+    "skuId": "00-BEY-C|SAL|20",
+    "qty": 36,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AB-BLK-20",
+    "palletId": "ATG2500017950",
+    "skuId": "00-BEY-C|SAL|20",
+    "qty": 36,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AB-BLK-20",
+    "palletId": "ATG20260113000000011",
+    "skuId": "00-BEY-C|SAL|20",
+    "qty": 36,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AB-BLK-20",
+    "palletId": "ATG2500015441",
+    "skuId": "00-BEY-C|SAL|20",
+    "qty": 36,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AB-BLK-20",
+    "palletId": "ATG2500018026",
+    "skuId": "00-BEY-C|SAL|20",
+    "qty": 36,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AB-BLK-20",
+    "palletId": "ATG2500018069",
+    "skuId": "00-BEY-C|SAL|20",
+    "qty": 36,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AB-BLK-23",
+    "palletId": "ATG20260116000000011",
+    "skuId": "00-BEY-C|LAM|20",
+    "balanceId": 34748,
+    "qty": 10,
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AB-BLK-24",
+    "palletId": "ATG20260108000000015",
+    "skuId": "B-NET-C|CNT|040",
+    "qty": 160,
+    "productionDate": "2025-11-28",
+    "expiryDate": "2027-05-27",
+    "lotNo": null
+  },
+  {
+    "type": "ADD",
+    "locationId": "AB-BLK-25",
+    "palletId": "ATG20260112000000043",
+    "skuId": "B-NET-C|SAL|040",
+    "qty": 160,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AB-BLK-25",
+    "palletId": "ATG20260106000000013",
+    "skuId": "B-NET-C|SAL|040",
+    "balanceId": 29675,
+    "qty": 397,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AB-BLK-26",
+    "palletId": "ATG20260108000000018",
+    "skuId": "B-NET-C|FNC|040",
+    "balanceId": 29673,
+    "qty": 160,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AB-BLK-26",
+    "palletId": "ATG2500016400",
+    "skuId": "B-NET-C|CNT|010",
+    "balanceId": 26407,
+    "qty": 396,
+    "lotNo": null
+  },
+  {
+    "type": "ADJUST",
+    "locationId": "AB-BLK-27",
+    "palletId": "ATG20260113000000181",
+    "skuId": "B-NET-C|FHC|040",
+    "balanceId": 34712,
+    "oldQty": 135,
+    "newQty": 160,
+    "diff": 25,
+    "productionDate": null,
+    "expiryDate": null,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AB-BLK-27",
+    "palletId": "ATG20260106000000002",
+    "skuId": "B-NET-C|FHC|040",
+    "balanceId": 29556,
+    "qty": 640,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AB-BLK-29",
+    "palletId": "ATG20260112000000031",
+    "skuId": "00-BAP-C|WEP|200",
+    "balanceId": 34682,
+    "qty": 20,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AB-BLK-29",
+    "palletId": "ATG20260112000000042",
+    "skuId": "00-BAP-C|HNS|200",
+    "balanceId": 34683,
+    "qty": 20,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AB-BLK-29",
+    "palletId": "ATG20260113000000011",
+    "skuId": "00-BAP-C|IND|200",
+    "balanceId": 34697,
+    "qty": 30,
+    "lotNo": null
+  },
+  {
+    "type": "REMOVE",
+    "locationId": "AB-BLK-29",
+    "palletId": "ATG20260113000000163",
+    "skuId": "00-BAP-C|KNP|200",
+    "balanceId": 34705,
+    "qty": 30,
+    "lotNo": null
+  }
+]

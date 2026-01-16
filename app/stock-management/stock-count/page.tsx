@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { FileText, Eye, AlertCircle, Check, X, AlertTriangle, Plus, ClipboardList, RefreshCw, Search, ArrowLeft, Package, MapPin } from 'lucide-react';
+import { FileText, Eye, AlertCircle, Check, X, AlertTriangle, Plus, ClipboardList, RefreshCw, Search, ArrowLeft, Package, MapPin, Download } from 'lucide-react';
 import { PageContainer, PageHeaderWithFilters, SearchInput, FilterSelect, PaginationBar } from '@/components/ui/page-components';
 import Button from '@/components/ui/Button';
 import Table from '@/components/ui/Table';
 import { format } from 'date-fns';
 import useSWR from 'swr';
+import * as XLSX from 'xlsx';
 
 interface Session {
   id: number;
@@ -313,6 +314,66 @@ function SessionDetailView({ sessionId, onBack }: { sessionId: number; onBack: (
   const isPrepArea = session.count_type === 'prep_area';
   const isPremiumOcr = session.count_type === 'premium_ocr';
 
+  const handleExportExcel = () => {
+    if (!session || items.length === 0) {
+      alert('ไม่มีข้อมูลให้ส่งออก');
+      return;
+    }
+
+    // เตรียมข้อมูลสำหรับ Excel
+    const excelData = items.map((item: any, index: number) => ({
+      'ลำดับ': index + 1,
+      'โลเคชั่น': item.location_code || '-',
+      'พาเลท (คาดหวัง)': item.expected_pallet_id || '-',
+      'พาเลท (สแกน)': item.scanned_pallet_id || '-',
+      'SKU (คาดหวัง)': item.expected_sku_code || '-',
+      'ชื่อสินค้า (คาดหวัง)': item.expected_sku_name || '-',
+      'จำนวน (คาดหวัง)': item.expected_quantity || 0,
+      'SKU (จริง)': item.actual_sku_code || item.sku_code || '-',
+      'ชื่อสินค้า (จริง)': item.actual_sku_name || item.sku_name || '-',
+      'จำนวน (จริง)': item.actual_quantity ?? item.quantity ?? 0,
+      'สถานะ': item.status === 'matched' ? 'ถูกต้อง' :
+               item.status === 'mismatched' ? 'ไม่ตรง' :
+               item.status === 'empty' ? 'ว่าง' :
+               item.status === 'extra' ? 'เพิ่มเติม' : 'รอนับ',
+      'เวลานับ': item.counted_at ? format(new Date(item.counted_at), 'dd/MM/yyyy HH:mm:ss') : '-',
+      'ผู้นับ': item.counted_by || '-',
+      'หมายเหตุ': item.notes || '-',
+    }));
+
+    // สร้าง workbook และ worksheet
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(excelData);
+
+    // ปรับความกว้างคอลัมน์
+    const colWidths = [
+      { wch: 8 },  // ลำดับ
+      { wch: 15 }, // โลเคชั่น
+      { wch: 20 }, // พาเลท (คาดหวัง)
+      { wch: 20 }, // พาเลท (สแกน)
+      { wch: 15 }, // SKU (คาดหวัง)
+      { wch: 30 }, // ชื่อสินค้า (คาดหวัง)
+      { wch: 12 }, // จำนวน (คาดหวัง)
+      { wch: 15 }, // SKU (จริง)
+      { wch: 30 }, // ชื่อสินค้า (จริง)
+      { wch: 12 }, // จำนวน (จริง)
+      { wch: 12 }, // สถานะ
+      { wch: 18 }, // เวลานับ
+      { wch: 15 }, // ผู้นับ
+      { wch: 25 }, // หมายเหตุ
+    ];
+    ws['!cols'] = colWidths;
+
+    // เพิ่ม worksheet เข้า workbook
+    XLSX.utils.book_append_sheet(wb, ws, 'รายละเอียดการนับ');
+
+    // สร้างชื่อไฟล์
+    const fileName = `รอบนับ_${session.session_code}_${format(new Date(), 'yyyyMMdd_HHmmss')}.xlsx`;
+
+    // ส่งออกไฟล์
+    XLSX.writeFile(wb, fileName);
+  };
+
   return (
     <PageContainer>
       <div className="flex items-center justify-between mb-4">
@@ -329,7 +390,12 @@ function SessionDetailView({ sessionId, onBack }: { sessionId: number; onBack: (
             <p className="text-xs text-gray-500">คลัง: {session.warehouse_id} | สร้างเมื่อ: {format(new Date(session.created_at), 'dd/MM/yyyy HH:mm')}</p>
           </div>
         </div>
-        <Button variant="secondary" size="sm" icon={RefreshCw} onClick={() => mutate()} className="text-xs py-1 px-3">รีเฟรช</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="success" size="sm" icon={Download} onClick={handleExportExcel} className="text-xs py-1 px-3">
+            ส่งออก Excel
+          </Button>
+          <Button variant="secondary" size="sm" icon={RefreshCw} onClick={() => mutate()} className="text-xs py-1 px-3">รีเฟรช</Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-6 gap-3 mb-4">
