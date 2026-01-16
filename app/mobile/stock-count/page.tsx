@@ -256,8 +256,12 @@ export default function MobileStockCountPage() {
       });
       const data = await res.json();
       if (data.success) {
-        // เล่นเสียง success + vibration
-        playSuccessSound();
+        // เล่นเสียง success สำหรับ matched, error สำหรับ mismatched
+        if (data.status === 'matched') {
+          playSuccessSound();
+        } else if (data.status === 'mismatched') {
+          playErrorSound();
+        }
         
         // อัปเดต item ที่ตรงกัน
         const updatedItems = currentItems.map(item => 
@@ -274,7 +278,11 @@ export default function MobileStockCountPage() {
           setScanMode('extra');
           setMessage({ type: 'success', text: '✓ ครบทุกพาเลท - สแกนโลถัดไปหรือพาเลทเพิ่ม' });
         } else {
-          setMessage({ type: 'success', text: `✓ เหลืออีก ${remaining} พาเลท` });
+          if (data.status === 'matched') {
+            setMessage({ type: 'success', text: `✓ เหลืออีก ${remaining} พาเลท` });
+          } else {
+            setMessage({ type: 'error', text: `✗ ไม่ตรง - บันทึกแล้ว - เหลือ ${remaining}` });
+          }
         }
         
         loadActiveSession();
@@ -305,54 +313,7 @@ export default function MobileStockCountPage() {
         return;
       }
 
-      // ถ้ายังมี pending items อยู่ - ถือว่าเป็น mismatch (สแกนพาเลทผิด)
-      const pendingItems = currentItems.filter(i => i.status === 'pending');
-      if (pendingItems.length > 0) {
-        // ดึงข้อมูล SKU ของพาเลทที่สแกนมา
-        const palletInfoRes = await fetch(`/api/stock-count/scan`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            session_id: session.id,
-            scan_type: 'check_pallet',
-            scanned_code: palletId
-          })
-        });
-        const palletInfo = await palletInfoRes.json();
-        
-        // เล่นเสียงเตือน
-        playErrorSound();
-        
-        // แสดง modal - ใช้ pending item แรกเป็นตัวเทียบ
-        const firstPending = pendingItems[0];
-        setMismatchModal({
-          expected: firstPending.expected_pallet_id || '',
-          scanned: palletId,
-          expectedSku: firstPending.expected_sku_name,
-          scannedSku: palletInfo?.sku_name || 'ไม่พบในระบบ / พาเลทเพิ่ม'
-        });
-        
-        // บันทึกเป็น extra
-        const res = await fetch('/api/stock-count/scan', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            session_id: session.id,
-            scan_type: 'extra_pallet',
-            scanned_code: palletId,
-            location_code: currentLocation,
-            counted_by: user?.user_id
-          })
-        });
-        const data = await res.json();
-        if (data.success) {
-          loadActiveSession();
-        }
-        setScanning(false);
-        return;
-      }
-
-      // ไม่มี pending items - บันทึกเป็น extra ปกติ
+      // บันทึกเป็น extra pallet
       const res = await fetch('/api/stock-count/scan', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -377,7 +338,7 @@ export default function MobileStockCountPage() {
     } finally {
       setScanning(false);
     }
-  }, [session, currentLocation, currentItems, user?.user_id, handleLocationScan, scanning]);
+  }, [session, currentLocation, user?.user_id, handleLocationScan, scanning]);
 
   const handleScan = useCallback(() => {
     const code = scanInput.trim().toUpperCase();
@@ -386,12 +347,15 @@ export default function MobileStockCountPage() {
 
     if (scanMode === 'location') {
       handleLocationScan(code);
-    } else {
-      // ทั้ง pallet และ extra mode ใช้ handlePalletScan เพราะจะตรวจสอบเองว่าอยู่ในรายการหรือไม่
+    } else if (scanMode === 'pallet') {
+      // โหมดสแกนพาเลทตามรายการ
       handlePalletScan(code);
+    } else {
+      // โหมด extra - โลเคชั่นว่างหรือสแกนครบแล้ว
+      handleExtraPalletScan(code);
     }
     inputRef.current?.focus();
-  }, [scanInput, scanMode, handleLocationScan, handlePalletScan]);
+  }, [scanInput, scanMode, handleLocationScan, handlePalletScan, handleExtraPalletScan]);
 
   // กดปุ่มไม่มีของจริง - mark item เป็น empty
   const handleMarkEmpty = async (item: CountItem) => {

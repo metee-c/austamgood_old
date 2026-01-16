@@ -81,12 +81,12 @@ export async function POST(request: NextRequest) {
 
     if (scan_type === 'pallet') {
       // สแกนพาเลท - ตรวจสอบว่าตรงกับที่คาดหวังหรือไม่ (realtime mode)
-      const { expected_item, location_code } = body;
+      const { expected_item, location_code, allow_mismatch } = body;
       
-      if (!expected_item || !location_code) {
+      if (!location_code) {
         return NextResponse.json({
           success: false,
-          error: 'กรุณาระบุ expected_item และ location_code'
+          error: 'กรุณาระบุ location_code'
         }, { status: 400 });
       }
 
@@ -109,10 +109,10 @@ export async function POST(request: NextRequest) {
           .insert({
             session_id,
             location_code,
-            expected_pallet_id: expected_item.expected_pallet_id,
-            expected_sku_code: expected_item.expected_sku_code,
-            expected_sku_name: expected_item.expected_sku_name,
-            expected_quantity: expected_item.expected_quantity,
+            expected_pallet_id: expected_item?.expected_pallet_id || null,
+            expected_sku_code: expected_item?.expected_sku_code || null,
+            expected_sku_name: expected_item?.expected_sku_name || null,
+            expected_quantity: expected_item?.expected_quantity || null,
             scanned_pallet_id: 'INVALID_PALLET',
             status: 'empty',
             counted_at: new Date().toISOString(),
@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
         // อัปเดต session counts
         await updateSessionCounts(supabase, session_id);
 
-      } else if (scanned_code === expected_item.expected_pallet_id) {
+      } else if (expected_item && scanned_code === expected_item.expected_pallet_id) {
         // สแกนถูกต้อง
         status = 'matched';
         resultItem = {
@@ -158,8 +158,8 @@ export async function POST(request: NextRequest) {
         await updateSessionCounts(supabase, session_id);
 
       } else {
-        // สแกนไม่ตรง
-        status = 'mismatched';
+        // สแกนไม่ตรง หรือไม่มี expected_item (โลเคชั่นว่าง)
+        status = expected_item ? 'mismatched' : 'extra';
         
         // ตรวจสอบว่าพาเลทที่สแกนมีในระบบหรือไม่
         const { data: palletInfo } = await supabase
@@ -176,28 +176,32 @@ export async function POST(request: NextRequest) {
           actual_sku_code: sku?.sku_code || null,
           actual_sku_name: sku?.sku_name || null,
           actual_quantity: palletInfo?.total_pack_qty || null,
-          status: 'mismatched',
-          notes: palletInfo ? 'พาเลทไม่ตรงกับที่คาดหวัง' : 'พาเลทไม่มีในระบบ'
+          status,
+          notes: expected_item 
+            ? (palletInfo ? 'พาเลทไม่ตรงกับที่คาดหวัง' : 'พาเลทไม่มีในระบบ')
+            : (palletInfo ? 'พาเลทเพิ่มเติม' : 'พาเลทไม่มีในระบบ')
         };
 
-        // บันทึกลง wms_stock_count_items
+        // บันทึกลง wms_stock_count_items - รองรับทั้งกรณีมี expected และไม่มี
         await supabase
           .from('wms_stock_count_items')
           .insert({
             session_id,
             location_code,
-            expected_pallet_id: expected_item.expected_pallet_id,
-            expected_sku_code: expected_item.expected_sku_code,
-            expected_sku_name: expected_item.expected_sku_name,
-            expected_quantity: expected_item.expected_quantity,
+            expected_pallet_id: expected_item?.expected_pallet_id || null,
+            expected_sku_code: expected_item?.expected_sku_code || null,
+            expected_sku_name: expected_item?.expected_sku_name || null,
+            expected_quantity: expected_item?.expected_quantity || null,
             scanned_pallet_id: scanned_code,
             actual_sku_code: sku?.sku_code || null,
             actual_sku_name: sku?.sku_name || null,
             actual_quantity: palletInfo?.total_pack_qty || null,
-            status: 'mismatched',
+            status,
             counted_at: new Date().toISOString(),
             counted_by,
-            notes: palletInfo ? 'พาเลทไม่ตรงกับที่คาดหวัง' : 'พาเลทไม่มีในระบบ'
+            notes: expected_item 
+              ? (palletInfo ? 'พาเลทไม่ตรงกับที่คาดหวัง' : 'พาเลทไม่มีในระบบ')
+              : (palletInfo ? 'พาเลทเพิ่มเติม' : 'พาเลทไม่มีในระบบ')
           });
 
         // อัปเดต session counts
@@ -210,7 +214,8 @@ export async function POST(request: NextRequest) {
         item: resultItem,
         message: status === 'matched' ? 'สแกนถูกต้อง' : 
                  status === 'empty' ? 'บันทึกว่าของจริงไม่มี' : 
-                 'พาเลทไม่ตรงกับที่คาดหวัง'
+                 status === 'extra' ? 'บันทึกพาเลทเพิ่มเติม' :
+                 'พาเลทไม่ตรงกับที่คาดหวัง - บันทึกแล้ว'
       });
     }
 

@@ -223,61 +223,86 @@ const InventoryBalancesPage = () => {
         matchingSkuIds = matchingSkus?.map((s) => s.sku_id) || [];
       }
 
-      // Fetch all balance data (no pagination - we'll group by location)
-      let dataQuery = supabase
-        .from('wms_inventory_balances')
-        .select(`
-          *,
-          master_location!location_id (
-            location_name,
-            location_type,
-            zone
-          ),
-          master_warehouse!warehouse_id (
-            warehouse_name
-          ),
-          master_sku!sku_id (
-            sku_name,
-            weight_per_piece_kg
-          )
-        `)
-        .gt('total_piece_qty', 0); // ไม่แสดงแถวที่เป็น 0 ชิ้น
+      // Fetch all balance data with pagination (Supabase has 1000 row limit)
+      const allBalances: InventoryBalance[] = [];
+      const batchSize = 1000;
+      let from = 0;
+      let hasMore = true;
 
-      // Exclude preparation areas
-      if (excludeLocations.length > 0) {
-        dataQuery = dataQuery.not('location_id', 'in', `(${excludeLocations.join(',')})`);
-      }
+      while (hasMore) {
+        let dataQuery = supabase
+          .from('wms_inventory_balances')
+          .select(`
+            *,
+            master_location!location_id (
+              location_name,
+              location_type,
+              zone
+            ),
+            master_warehouse!warehouse_id (
+              warehouse_name
+            ),
+            master_sku!sku_id (
+              sku_name,
+              weight_per_piece_kg
+            )
+          `)
+          .gt('total_piece_qty', 0) // ไม่แสดงแถวที่เป็น 0 ชิ้น
+          .range(from, from + batchSize - 1);
 
-      // Apply filters
-      if (matchingSkuIds.length > 0) {
-        const encodedIds = matchingSkuIds.map(id => `"${id}"`).join(',');
-        dataQuery = dataQuery.filter('sku_id', 'in', `(${encodedIds})`);
-      } else if (debouncedSearchTerm) {
-        const hasSpecialChars = /[|,()\\]/.test(debouncedSearchTerm);
-        if (!hasSpecialChars) {
-          const conditions = [
-            `sku_id.ilike.%${debouncedSearchTerm}%`,
-            `lot_no.ilike.%${debouncedSearchTerm}%`,
-            `pallet_id.ilike.%${debouncedSearchTerm}%`,
-            `location_id.ilike.%${debouncedSearchTerm}%`,
-          ];
-          dataQuery = dataQuery.or(conditions.join(','));
+        // Exclude preparation areas
+        if (excludeLocations.length > 0) {
+          dataQuery = dataQuery.not('location_id', 'in', `(${excludeLocations.join(',')})`);
+        }
+
+        // Apply filters
+        if (matchingSkuIds.length > 0) {
+          const encodedIds = matchingSkuIds.map(id => `"${id}"`).join(',');
+          dataQuery = dataQuery.filter('sku_id', 'in', `(${encodedIds})`);
+        } else if (debouncedSearchTerm) {
+          const hasSpecialChars = /[|,()\\]/.test(debouncedSearchTerm);
+          if (!hasSpecialChars) {
+            const conditions = [
+              `sku_id.ilike.%${debouncedSearchTerm}%`,
+              `lot_no.ilike.%${debouncedSearchTerm}%`,
+              `pallet_id.ilike.%${debouncedSearchTerm}%`,
+              `location_id.ilike.%${debouncedSearchTerm}%`,
+            ];
+            dataQuery = dataQuery.or(conditions.join(','));
+          }
+        }
+
+        if (selectedWarehouse !== 'all') {
+          dataQuery = dataQuery.eq('warehouse_id', selectedWarehouse);
+        }
+
+        if (productionDateFilter) {
+          dataQuery = dataQuery.eq('production_date', productionDateFilter);
+        }
+
+        if (expiryDateFilter) {
+          dataQuery = dataQuery.eq('expiry_date', expiryDateFilter);
+        }
+
+        const { data, error } = await dataQuery;
+
+        if (error) {
+          setError(error.message);
+          hasMore = false;
+          break;
+        }
+
+        if (data && data.length > 0) {
+          allBalances.push(...data);
+          from += batchSize;
+          hasMore = data.length === batchSize;
+        } else {
+          hasMore = false;
         }
       }
 
-      if (selectedWarehouse !== 'all') {
-        dataQuery = dataQuery.eq('warehouse_id', selectedWarehouse);
-      }
-
-      if (productionDateFilter) {
-        dataQuery = dataQuery.eq('production_date', productionDateFilter);
-      }
-
-      if (expiryDateFilter) {
-        dataQuery = dataQuery.eq('expiry_date', expiryDateFilter);
-      }
-
-      const { data, error } = await dataQuery;
+      const data = allBalances;
+      const error = null;
 
       if (error && error.message) {
         setError(error.message);
