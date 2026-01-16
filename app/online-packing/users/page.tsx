@@ -2,6 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { Users, Plus } from 'lucide-react'
+import { PageContainer, PageHeaderWithFilters } from '@/components/ui/page-components'
+import Button from '@/components/ui/Button'
 
 interface User {
   id: string
@@ -291,72 +294,44 @@ export default function UsersPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-lightBlue to-softWhite font-thai flex items-center justify-center">
-        <div className="text-center p-8 card-modern">
-          <div className="animate-spin w-16 h-16 border-4 border-primary-600 border-t-transparent rounded-full mx-auto mb-6"></div>
-          <p className="text-xl font-bold text-gray-700 font-thai">กำลังโหลดข้อมูลผู้ใช้...</p>
+      <PageContainer>
+        <div className="flex-1 flex items-center justify-center">
+          <div className="text-center p-8">
+            <div className="animate-spin w-10 h-10 border-4 border-primary-600 border-t-transparent rounded-full mx-auto mb-3"></div>
+            <p className="text-sm font-medium text-gray-700">กำลังโหลดข้อมูลผู้ใช้...</p>
+          </div>
         </div>
-      </div>
+      </PageContainer>
     )
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-lightBlue to-softWhite font-thai">
-      {/* Header */}
-      <header className="glass-morphism shadow-xl border-b border-primary-200/40">
-        <div className="max-w-7xl mx-auto px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-6">
-              <div className="p-4 bg-gradient-to-r from-primary-300 to-primary-400 rounded-2xl shadow-xl">
-                <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
-                </svg>
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold gradient-text font-thai">
-                  จัดการผู้ใช้และสิทธิ์
-                </h1>
-                <p className="text-lg text-gray-600 font-thai font-medium">User Management & Permissions</p>
-              </div>
-            </div>
-
+    <PageContainer>
+      {/* Page Header */}
+      <PageHeaderWithFilters title="จัดการผู้ใช้">
+        {/* Tab Navigation */}
+        <div className="flex items-center gap-1 ml-4 border-l border-gray-200 pl-4">
+          {[
+            { id: 'users', name: 'ผู้ใช้งาน' },
+            { id: 'permissions', name: 'สิทธิ์การเข้าถึง' }
+          ].map(tab => (
             <button
-              onClick={() => window.location.href = '/online-packing'}
-              className="primary-button text-white px-6 py-3 rounded-xl font-thai font-medium transition-all duration-300 shadow-lg hover:shadow-xl card-hover"
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-3 py-1 text-xs font-medium rounded transition-all ${
+                activeTab === tab.id
+                  ? 'bg-primary-100 text-primary-700'
+                  : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'
+              }`}
             >
-              กลับหน้าหลัก
+              {tab.name}
             </button>
-          </div>
+          ))}
         </div>
-      </header>
-
-      {/* Tab Navigation */}
-      <nav className="bg-white/90 backdrop-blur-sm shadow-lg border-b border-gray-200/50">
-        <div className="max-w-7xl mx-auto px-8">
-          <div className="flex space-x-8">
-            {[
-              { id: 'users', name: 'ผู้ใช้งาน', desc: 'จัดการข้อมูลผู้ใช้' },
-              { id: 'permissions', name: 'สิทธิ์การเข้าถึง', desc: 'กำหนดสิทธิ์เมนู' }
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`py-5 px-8 border-b-3 font-thai font-medium text-sm transition-all duration-300 ${
-                  activeTab === tab.id
-                    ? 'border-primary-500 text-primary-600 bg-gradient-to-b from-primary-50/50 to-transparent shadow-sm'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 hover:bg-gray-50/50'
-                }`}
-              >
-                <div className="text-base font-bold">{tab.name}</div>
-                <div className="text-xs text-gray-500 font-thai">{tab.desc}</div>
-              </button>
-            ))}
-          </div>
-        </div>
-      </nav>
+      </PageHeaderWithFilters>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-8 py-8">
+      <div className="flex-1 min-h-0 overflow-auto p-3">
         {activeTab === 'users' && (
           <UsersManagement
             users={users}
@@ -379,8 +354,8 @@ export default function UsersPage() {
             getUserPermission={getUserPermission}
           />
         )}
-      </main>
-    </div>
+      </div>
+    </PageContainer>
   )
 }
 
@@ -454,76 +429,58 @@ const UsersManagement = ({ users, onAdd, onUpdate, onDelete, selectedUser, setSe
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-10">
-        <h2 className="text-3xl font-bold text-gray-800 font-thai">จัดการผู้ใช้งาน</h2>
-        <button
-          onClick={() => openModal()}
-          className="primary-button text-white px-8 py-4 rounded-xl font-thai font-bold transition-all duration-300 shadow-lg hover:shadow-xl card-hover"
-        >
-          + เพิ่มผู้ใช้ใหม่
-        </button>
+      <div className="flex justify-between items-center mb-3">
+        <h2 className="text-sm font-semibold text-gray-800">จัดการผู้ใช้งาน ({users.length} คน)</h2>
+        <Button variant="primary" size="sm" onClick={() => openModal()} className="text-xs">
+          <Plus className="w-3 h-3 mr-1" />
+          เพิ่มผู้ใช้ใหม่
+        </Button>
       </div>
 
       {/* Users Table */}
-      <div className="card-modern overflow-hidden fade-in">
+      <div className="bg-white border rounded-lg shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full table-auto min-w-[1000px]">
-            <thead className="bg-gradient-to-r from-primary-200 to-primary-300">
+          <table className="w-full text-[10px]">
+            <thead className="bg-gray-50 border-b">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-primary-800 border-b border-primary-400/30 font-thai min-w-[80px]">ID</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-primary-800 border-b border-primary-400/30 font-thai min-w-[120px]">ชื่อผู้ใช้</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-primary-800 border-b border-primary-400/30 font-thai min-w-[150px]">ชื่อจริง</th>
-                <th className="px-4 py-3 text-left text-xs font-semibold text-primary-800 border-b border-primary-400/30 font-thai min-w-[200px]">อีเมล</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-primary-800 border-b border-primary-400/30 font-thai min-w-[100px]">บทบาท</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-primary-800 border-b border-primary-400/30 font-thai min-w-[100px]">สถานะ</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-primary-800 border-b border-primary-400/30 font-thai min-w-[120px]">ล็อกอินล่าสุด</th>
-                <th className="px-4 py-3 text-center text-xs font-semibold text-primary-800 border-b border-primary-400/30 font-thai min-w-[100px]">การจัดการ</th>
+                <th className="px-2 py-1.5 text-left font-semibold text-gray-600">ID</th>
+                <th className="px-2 py-1.5 text-left font-semibold text-gray-600">ชื่อผู้ใช้</th>
+                <th className="px-2 py-1.5 text-left font-semibold text-gray-600">ชื่อจริง</th>
+                <th className="px-2 py-1.5 text-left font-semibold text-gray-600">อีเมล</th>
+                <th className="px-2 py-1.5 text-center font-semibold text-gray-600">บทบาท</th>
+                <th className="px-2 py-1.5 text-center font-semibold text-gray-600">สถานะ</th>
+                <th className="px-2 py-1.5 text-center font-semibold text-gray-600">ล็อกอินล่าสุด</th>
+                <th className="px-2 py-1.5 text-center font-semibold text-gray-600">การจัดการ</th>
               </tr>
             </thead>
             <tbody>
               {users.map((user: User, index: number) => (
-                <tr key={user.id} className={`border-b border-gray-100/50 hover:bg-primary-50/30 transition-all duration-200 ${
-                  index % 2 === 0 ? 'bg-white/80' : 'bg-gray-50/50'
-                }`}>
-                  <td className="px-4 py-3">
-                    <span className="font-mono text-primary-600 font-semibold text-sm">{user.id}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="font-semibold text-gray-900 font-thai text-sm">{user.username}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="text-gray-900 font-thai text-sm">{user.full_name}</span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <span className="text-gray-600 font-thai text-sm">{user.email || '-'}</span>
-                  </td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold font-thai border ${getRoleColor(user.role).replace('bg-', 'bg-').replace('text-', 'text-')} ${getRoleColor(user.role).includes('red') ? 'border-red-200' : getRoleColor(user.role).includes('orange') ? 'border-orange-200' : getRoleColor(user.role).includes('blue') ? 'border-blue-200' : 'border-gray-200'}`}>
+                <tr key={user.id} className={`border-b hover:bg-gray-50 ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
+                  <td className="px-2 py-1.5 font-mono text-primary-600 font-medium">{user.id}</td>
+                  <td className="px-2 py-1.5 font-medium text-gray-900">{user.username}</td>
+                  <td className="px-2 py-1.5 text-gray-900">{user.full_name}</td>
+                  <td className="px-2 py-1.5 text-gray-600">{user.email || '-'}</td>
+                  <td className="px-2 py-1.5 text-center">
+                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${getRoleColor(user.role)}`}>
                       {getRoleName(user.role)}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-center">
-                    <span className={`px-2 py-1 rounded-full text-xs font-semibold font-thai border ${
-                      user.is_active ? 'bg-green-100 text-green-800 border-green-200' : 'bg-red-100 text-red-800 border-red-200'
+                  <td className="px-2 py-1.5 text-center">
+                    <span className={`px-1.5 py-0.5 rounded text-[9px] font-medium ${
+                      user.is_active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
                     }`}>
-                      {user.is_active ? 'ใช้งาน' : 'ปิดใช้งาน'}
+                      {user.is_active ? 'ใช้งาน' : 'ปิด'}
                     </span>
                   </td>
-                  <td className="px-4 py-3 text-center text-xs text-gray-500 font-thai">
-                    {user.last_login ? new Date(user.last_login).toLocaleDateString('th-TH') : 'ยังไม่เคยล็อกอิน'}
+                  <td className="px-2 py-1.5 text-center text-gray-500">
+                    {user.last_login ? new Date(user.last_login).toLocaleDateString('th-TH') : '-'}
                   </td>
-                  <td className="px-4 py-3 text-center">
-                    <div className="flex justify-center space-x-2">
-                      <button
-                        onClick={() => openModal(user)}
-                        className="text-primary-600 hover:text-primary-800 text-xs font-semibold font-thai transition-colors duration-200"
-                      >
+                  <td className="px-2 py-1.5 text-center">
+                    <div className="flex justify-center gap-2">
+                      <button onClick={() => openModal(user)} className="text-primary-600 hover:text-primary-800 font-medium">
                         แก้ไข
                       </button>
-                      <button
-                        onClick={() => onDelete(user.id)}
-                        className="text-red-600 hover:text-red-800 text-xs font-semibold font-thai transition-colors duration-200"
-                      >
+                      <button onClick={() => onDelete(user.id)} className="text-red-600 hover:text-red-800 font-medium">
                         ลบ
                       </button>
                     </div>
@@ -538,119 +495,112 @@ const UsersManagement = ({ users, onAdd, onUpdate, onDelete, selectedUser, setSe
       {/* Add/Edit Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-          <div className="card-modern max-w-3xl w-full max-h-screen overflow-y-auto fade-in">
-            <div className="p-8">
-              <h3 className="text-2xl font-bold text-gray-800 mb-8 font-thai">
+          <div className="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto">
+            <div className="p-4 border-b">
+              <h3 className="text-sm font-semibold text-gray-800">
                 {selectedUser ? 'แก้ไขข้อมูลผู้ใช้' : 'เพิ่มผู้ใช้ใหม่'}
               </h3>
+            </div>
 
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-3 font-thai">ID ผู้ใช้</label>
-                    <input
-                      type="text"
-                      value={formData.id}
-                      onChange={(e) => setFormData({ ...formData, id: e.target.value })}
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-primary-500/20 focus:border-primary-500 font-thai bg-white/90 backdrop-blur-sm shadow-sm transition-all duration-300"
-                      required
-                      placeholder="เช่น USER00009"
-                      disabled={!!selectedUser}
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-semibold text-gray-700 mb-3 font-thai">ชื่อผู้ใช้</label>
-                    <input
-                      type="text"
-                      value={formData.username}
-                      onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-                      className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-primary-500/20 focus:border-primary-500 font-thai bg-white/90 backdrop-blur-sm shadow-sm transition-all duration-300"
-                      required
-                      placeholder="ชื่อผู้ใช้สำหรับล็อกอิน"
-                    />
-                  </div>
-                </div>
-
+            <form onSubmit={handleSubmit} className="p-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-3 font-thai">รหัสผ่าน</label>
-                  <input
-                    type="password"
-                    value={formData.password_hash}
-                    onChange={(e) => setFormData({ ...formData, password_hash: e.target.value })}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-primary-500/20 focus:border-primary-500 font-thai bg-white/90 backdrop-blur-sm shadow-sm transition-all duration-300"
-                    required={!selectedUser}
-                    placeholder={selectedUser ? "เว้นว่างหากไม่ต้องการเปลี่ยน" : "รหัสผ่าน"}
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-3 font-thai">ชื่อจริง</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">ID ผู้ใช้</label>
                   <input
                     type="text"
-                    value={formData.full_name}
-                    onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-primary-500/20 focus:border-primary-500 font-thai bg-white/90 backdrop-blur-sm shadow-sm transition-all duration-300"
+                    value={formData.id}
+                    onChange={(e) => setFormData({ ...formData, id: e.target.value })}
+                    className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
                     required
-                    placeholder="ชื่อ-นามสกุล"
+                    placeholder="เช่น USER00009"
+                    disabled={!!selectedUser}
                   />
                 </div>
-
                 <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-3 font-thai">อีเมล</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">ชื่อผู้ใช้</label>
                   <input
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-primary-500/20 focus:border-primary-500 font-thai bg-white/90 backdrop-blur-sm shadow-sm transition-all duration-300"
-                    placeholder="อีเมลสำหรับติดต่อ (ไม่บังคับ)"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-semibold text-gray-700 mb-3 font-thai">บทบาท</label>
-                  <select
-                    value={formData.role}
-                    onChange={(e) => setFormData({ ...formData, role: e.target.value as any })}
-                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-primary-500/20 focus:border-primary-500 font-thai bg-white/90 backdrop-blur-sm shadow-sm transition-all duration-300"
+                    type="text"
+                    value={formData.username}
+                    onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                    className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
                     required
-                  >
-                    <option value="viewer" className="font-thai">ผู้ดู (Viewer) - ดูรายงานเท่านั้น</option>
-                    <option value="user" className="font-thai">ผู้ใช้งาน (User) - ใช้งานพื้นฐาน</option>
-                    <option value="manager" className="font-thai">ผู้จัดการ (Manager) - จัดการข้อมูล</option>
-                    <option value="admin" className="font-thai">ผู้ดูแลระบบ (Admin) - เข้าถึงทุกอย่าง</option>
-                  </select>
-                </div>
-
-                <div className="flex items-center">
-                  <input
-                    type="checkbox"
-                    id="is_active"
-                    checked={formData.is_active}
-                    onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
-                    className="w-5 h-5 text-primary-600 focus:ring-primary-500 border-gray-300 rounded-lg"
+                    placeholder="ชื่อผู้ใช้สำหรับล็อกอิน"
                   />
-                  <label htmlFor="is_active" className="ml-3 text-sm font-semibold text-gray-700 font-thai">
-                    เปิดใช้งานผู้ใช้นี้
-                  </label>
                 </div>
+              </div>
 
-                <div className="flex justify-end space-x-4 pt-8 border-t border-gray-200/50">
-                  <button
-                    type="button"
-                    onClick={() => setIsModalOpen(false)}
-                    className="px-8 py-3 bg-gradient-to-r from-gray-200 to-gray-300 hover:from-gray-300 hover:to-gray-400 text-gray-700 rounded-xl font-thai font-semibold transition-all duration-300"
-                  >
-                    ยกเลิก
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-8 py-3 primary-button text-white rounded-xl font-thai font-bold transition-all duration-300 shadow-lg hover:shadow-xl card-hover"
-                  >
-                    {selectedUser ? 'อัปเดต' : 'เพิ่มผู้ใช้'}
-                  </button>
-                </div>
-              </form>
-            </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">รหัสผ่าน</label>
+                <input
+                  type="password"
+                  value={formData.password_hash}
+                  onChange={(e) => setFormData({ ...formData, password_hash: e.target.value })}
+                  className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+                  required={!selectedUser}
+                  placeholder={selectedUser ? "เว้นว่างหากไม่ต้องการเปลี่ยน" : "รหัสผ่าน"}
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">ชื่อจริง</label>
+                <input
+                  type="text"
+                  value={formData.full_name}
+                  onChange={(e) => setFormData({ ...formData, full_name: e.target.value })}
+                  className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+                  required
+                  placeholder="ชื่อ-นามสกุล"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">อีเมล</label>
+                <input
+                  type="email"
+                  value={formData.email}
+                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                  className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+                  placeholder="อีเมลสำหรับติดต่อ (ไม่บังคับ)"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">บทบาท</label>
+                <select
+                  value={formData.role}
+                  onChange={(e) => setFormData({ ...formData, role: e.target.value as any })}
+                  className="w-full px-2 py-1.5 text-xs border border-gray-200 rounded focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+                  required
+                >
+                  <option value="viewer">ผู้ดู (Viewer) - ดูรายงานเท่านั้น</option>
+                  <option value="user">ผู้ใช้งาน (User) - ใช้งานพื้นฐาน</option>
+                  <option value="manager">ผู้จัดการ (Manager) - จัดการข้อมูล</option>
+                  <option value="admin">ผู้ดูแลระบบ (Admin) - เข้าถึงทุกอย่าง</option>
+                </select>
+              </div>
+
+              <div className="flex items-center">
+                <input
+                  type="checkbox"
+                  id="is_active"
+                  checked={formData.is_active}
+                  onChange={(e) => setFormData({ ...formData, is_active: e.target.checked })}
+                  className="w-4 h-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
+                />
+                <label htmlFor="is_active" className="ml-2 text-xs font-medium text-gray-700">
+                  เปิดใช้งานผู้ใช้นี้
+                </label>
+              </div>
+
+              <div className="flex justify-end gap-2 pt-3 border-t">
+                <Button variant="secondary" size="sm" type="button" onClick={() => setIsModalOpen(false)} className="text-xs">
+                  ยกเลิก
+                </Button>
+                <Button variant="primary" size="sm" type="submit" className="text-xs">
+                  {selectedUser ? 'อัปเดต' : 'เพิ่มผู้ใช้'}
+                </Button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -684,22 +634,22 @@ const PermissionsManagement = ({ users, menus, permissions, onUpdatePermission, 
 
   return (
     <div>
-      <div className="mb-10">
-        <h2 className="text-3xl font-bold text-gray-800 mb-4 font-thai">จัดการสิทธิ์การเข้าถึง</h2>
-        <p className="text-gray-600 font-thai">เลือกผู้ใช้เพื่อกำหนดสิทธิ์การเข้าถึงเมนูต่างๆ</p>
+      <div className="mb-3">
+        <h2 className="text-sm font-semibold text-gray-800 mb-2">จัดการสิทธิ์การเข้าถึง</h2>
+        <p className="text-xs text-gray-500">เลือกผู้ใช้เพื่อกำหนดสิทธิ์การเข้าถึงเมนูต่างๆ</p>
       </div>
 
       {/* User Selection */}
-      <div className="card-modern p-8 mb-10 fade-in">
-        <h3 className="text-xl font-bold text-gray-800 mb-6 font-thai">เลือกผู้ใช้</h3>
+      <div className="bg-white border rounded-lg p-3 mb-3">
+        <label className="block text-xs font-medium text-gray-700 mb-1">เลือกผู้ใช้</label>
         <select
           value={selectedUserId}
           onChange={(e) => setSelectedUserId(e.target.value)}
-          className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-primary-500/20 focus:border-primary-500 font-thai text-lg bg-white/90 backdrop-blur-sm shadow-sm transition-all duration-300"
+          className="w-full max-w-md px-2 py-1.5 text-xs border border-gray-200 rounded focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
         >
-          <option value="" className="font-thai">-- เลือกผู้ใช้ --</option>
+          <option value="">-- เลือกผู้ใช้ --</option>
           {users.map((user: User) => (
-            <option key={user.id} value={user.id} className="font-thai">
+            <option key={user.id} value={user.id}>
               {user.id} - {user.full_name} ({user.role})
             </option>
           ))}
@@ -708,43 +658,41 @@ const PermissionsManagement = ({ users, menus, permissions, onUpdatePermission, 
 
       {/* Permissions Matrix */}
       {selectedUser && (
-        <div className="card-modern overflow-hidden fade-in">
-          <div className="bg-gradient-to-r from-primary-50 to-primary-100 px-8 py-6 border-b border-primary-200/50">
-            <h3 className="text-xl font-bold text-gray-800 font-thai">
+        <div className="bg-white border rounded-lg shadow-sm overflow-hidden">
+          <div className="bg-gray-50 px-3 py-2 border-b">
+            <h3 className="text-xs font-semibold text-gray-800">
               สิทธิ์ของ: {selectedUser.full_name} ({selectedUser.role})
             </h3>
           </div>
 
-          <div className="p-8">
+          <div className="p-3 space-y-4 max-h-[60vh] overflow-y-auto">
             {Object.entries(groupedMenus).map(([category, categoryMenus]) => (
-              <div key={category} className="mb-10">
-                <h4 className="text-lg font-bold text-gray-700 mb-6 pb-3 border-b-2 border-primary-200 font-thai">
+              <div key={category}>
+                <h4 className="text-xs font-semibold text-gray-700 mb-2 pb-1 border-b">
                   {getCategoryName(category)}
                 </h4>
 
-                <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
                   {(categoryMenus as Menu[]).map((menu: Menu) => {
                     const permission = getUserPermission(selectedUserId, menu.menu_path)
 
                     return (
-                      <div key={menu.menu_path} className="border border-gray-200/60 rounded-xl p-6 hover:shadow-lg hover:border-primary-300/50 transition-all duration-300 bg-white/50 backdrop-blur-sm">
-                        <div className="flex items-center justify-between mb-4">
-                          <div>
-                            <h5 className="font-bold text-gray-800 font-thai">{menu.menu_name}</h5>
-                            <p className="text-sm text-gray-500 font-thai mt-1">{menu.description}</p>
-                          </div>
+                      <div key={menu.menu_path} className="border border-gray-200 rounded p-2 hover:bg-gray-50">
+                        <div className="mb-2">
+                          <h5 className="text-xs font-medium text-gray-800">{menu.menu_name}</h5>
+                          <p className="text-[10px] text-gray-500">{menu.description}</p>
                         </div>
 
-                        <div className="grid grid-cols-3 gap-3">
+                        <div className="grid grid-cols-3 gap-1">
                           {[
-                            { key: 'can_access', label: 'เข้าถึง', color: 'blue' },
-                            { key: 'can_create', label: 'สร้าง', color: 'green' },
-                            { key: 'can_edit', label: 'แก้ไข', color: 'yellow' },
-                            { key: 'can_delete', label: 'ลบ', color: 'red' },
-                            { key: 'can_export', label: 'ส่งออก', color: 'purple' },
-                            { key: 'can_print', label: 'พิมพ์', color: 'indigo' }
-                          ].map(({ key, label, color }) => (
-                            <label key={key} className="inline-flex items-center cursor-pointer p-2 rounded-lg hover:bg-gray-50 transition-colors duration-200">
+                            { key: 'can_access', label: 'เข้าถึง' },
+                            { key: 'can_create', label: 'สร้าง' },
+                            { key: 'can_edit', label: 'แก้ไข' },
+                            { key: 'can_delete', label: 'ลบ' },
+                            { key: 'can_export', label: 'ส่งออก' },
+                            { key: 'can_print', label: 'พิมพ์' }
+                          ].map(({ key, label }) => (
+                            <label key={key} className="inline-flex items-center cursor-pointer p-1 rounded hover:bg-gray-100">
                               <input
                                 type="checkbox"
                                 checked={permission?.[key as keyof UserPermission] || false}
@@ -753,9 +701,9 @@ const PermissionsManagement = ({ users, menus, permissions, onUpdatePermission, 
                                   menu.menu_path,
                                   { [key]: e.target.checked }
                                 )}
-                                className="w-4 h-4 text-primary-600 focus:ring-primary-500 border-gray-300 rounded transition-all duration-200"
+                                className="w-3 h-3 text-primary-600 focus:ring-primary-500 border-gray-300 rounded"
                               />
-                              <span className="ml-3 text-xs font-semibold text-gray-700 font-thai">{label}</span>
+                              <span className="ml-1 text-[10px] text-gray-700">{label}</span>
                             </label>
                           ))}
                         </div>
@@ -770,14 +718,12 @@ const PermissionsManagement = ({ users, menus, permissions, onUpdatePermission, 
       )}
 
       {!selectedUser && (
-        <div className="card-modern p-16 text-center fade-in">
-          <div className="p-8 bg-gradient-to-br from-slate-50 to-gray-100 rounded-2xl border border-gray-200/50 inline-block shadow-sm">
-            <svg className="w-20 h-20 text-gray-300 mx-auto mb-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
-            </svg>
-            <h3 className="text-xl font-bold text-gray-800 mb-4 font-thai">เลือกผู้ใช้เพื่อจัดการสิทธิ์</h3>
-            <p className="text-gray-600 font-thai">กรุณาเลือกผู้ใช้จากรายการด้านบนเพื่อกำหนดสิทธิ์การเข้าถึงเมนูต่างๆ</p>
-          </div>
+        <div className="bg-white border rounded-lg p-8 text-center">
+          <svg className="w-12 h-12 text-gray-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z" />
+          </svg>
+          <h3 className="text-sm font-medium text-gray-800 mb-1">เลือกผู้ใช้เพื่อจัดการสิทธิ์</h3>
+          <p className="text-xs text-gray-500">กรุณาเลือกผู้ใช้จากรายการด้านบน</p>
         </div>
       )}
     </div>

@@ -738,7 +738,7 @@ export default function PackingPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex items-center justify-center">
+      <div className="h-full flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin w-12 h-12 border-4 border-primary-500 border-t-transparent rounded-full mx-auto mb-4"></div>
           <p className="text-lg font-semibold text-gray-800 font-thai">กำลังโหลดข้อมูลออเดอร์...</p>
@@ -748,7 +748,7 @@ export default function PackingPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-white flex flex-col font-thai">
+    <div className="h-full overflow-auto bg-gradient-to-br from-blue-50 to-white flex flex-col font-thai">
       {isProcessingCompletion && (
         <div className="fixed inset-0 bg-black bg-opacity-75 flex items-center justify-center z-[100]">
           <div className="text-center text-white">
@@ -759,35 +759,29 @@ export default function PackingPage() {
         </div>
       )}
 
-      {/* Header */}
-      <header className="bg-white shadow-lg border-b border-gray-200">
-        <div className="w-full px-6 py-5">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="bg-gradient-to-r from-primary-500 to-primary-600 p-3 rounded-xl shadow-lg">
-                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <rect x="3" y="6" width="18" height="12" rx="2" strokeWidth={2} fill="none" opacity="0.9"/>
-                  <line x1="7" y1="9" x2="7" y2="15" strokeWidth={1.5} opacity="0.9"/>
-                  <line x1="9" y1="9" x2="9" y2="15" strokeWidth={2} opacity="0.9"/>
-                  <line x1="11.5" y1="9" x2="11.5" y2="15" strokeWidth={1.5} opacity="0.9"/>
-                  <line x1="13.5" y1="9" x2="13.5" y2="15" strokeWidth={2} opacity="0.9"/>
-                  <line x1="16" y1="9" x2="16" y2="15" strokeWidth={1.5} opacity="0.9"/>
-                  <line x1="17.5" y1="9" x2="17.5" y2="15" strokeWidth={1.5} opacity="0.9"/>
-                  <line x1="3" y1="12" x2="21" y2="12" strokeWidth={1} stroke="#FFE4E1" opacity="0.6"/>
-                </svg>
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold text-primary-600 font-thai">ระบบสแกนแพ็คสินค้า</h1>
-                <p className="text-base text-gray-600 font-thai font-medium">Packing System v2.0 Pro</p>
-              </div>
+      {/* Page Header */}
+      <div className="bg-white shadow-sm border-b border-gray-200 px-6 py-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-4">
+            <div className="bg-gradient-to-r from-primary-500 to-primary-600 p-2 rounded-lg shadow">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <rect x="3" y="6" width="18" height="12" rx="2" strokeWidth={2} fill="none" opacity="0.9"/>
+                <line x1="7" y1="9" x2="7" y2="15" strokeWidth={1.5} opacity="0.9"/>
+                <line x1="9" y1="9" x2="9" y2="15" strokeWidth={2} opacity="0.9"/>
+                <line x1="11.5" y1="9" x2="11.5" y2="15" strokeWidth={1.5} opacity="0.9"/>
+                <line x1="13.5" y1="9" x2="13.5" y2="15" strokeWidth={2} opacity="0.9"/>
+                <line x1="16" y1="9" x2="16" y2="15" strokeWidth={1.5} opacity="0.9"/>
+                <line x1="17.5" y1="9" x2="17.5" y2="15" strokeWidth={1.5} opacity="0.9"/>
+              </svg>
             </div>
-            <div className="flex items-center space-x-4">
-              <div className="text-sm font-thai">สถานะ: <span className="font-semibold text-primary-600">{systemStatus}</span></div>
-              <button onClick={() => window.location.href = '/'} className="bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg text-sm font-thai font-medium transition-colors">กลับหน้าหลัก</button>
+            <div>
+              <h1 className="text-xl font-bold text-primary-600 font-thai">ระบบสแกนแพ็คสินค้า</h1>
+              <p className="text-sm text-gray-500 font-thai">Packing System v2.0 Pro</p>
             </div>
           </div>
+          <div className="text-sm font-thai">สถานะ: <span className="font-semibold text-primary-600">{systemStatus}</span></div>
         </div>
-      </header>
+      </div>
 
       {/* Scanner Section */}
       <section className="bg-white shadow-lg border-b border-gray-200">

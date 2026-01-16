@@ -2,6 +2,9 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { RotateCcw, Plus, Search } from 'lucide-react'
+import { PageContainer, PageHeaderWithFilters, SearchInput } from '@/components/ui/page-components'
+import Button from '@/components/ui/Button'
 import type { Order } from '@/types/online-packing'
 
 // Type definitions
@@ -579,63 +582,43 @@ export default function ReturnsPage() {
   if (!mounted) return null
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-lightBlue to-softWhite font-thai" suppressHydrationWarning>
-      <header className="glass-morphism shadow-xl border-b border-primary-200/40">
-        <div className="container mx-auto px-6 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="p-3 bg-gradient-to-r from-primary-500 to-primary-600 rounded-xl shadow-lg">
-                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 15v-1a4 4 0 00-4-4H8m0 0l3 3m-3-3l3-3m9 14V5a2 2 0 00-2-2H6a2 2 0 00-2 2v16l4-2 4 2 4-2 4 2z" />
-                </svg>
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold gradient-text font-thai">สินค้าตีกลับ</h1>
-                <p className="text-base text-gray-600 font-thai font-medium">Returns & Refunds Management</p>
-              </div>
-            </div>
-            <button
-              onClick={() => window.location.href = '/online-packing'}
-              className="primary-button text-white px-6 py-3 rounded-xl text-sm font-thai font-medium transition-all duration-300 shadow-lg hover:shadow-xl card-hover"
-              suppressHydrationWarning
-            >
-              กลับหน้าหลัก
-            </button>
-          </div>
+    <PageContainer>
+      {/* Header */}
+      <PageHeaderWithFilters title="สินค้าตีกลับ">
+        <div className="flex items-center gap-2 ml-auto">
+          <span className="text-xs text-thai-gray-600 font-thai">Returns & Refunds</span>
         </div>
-      </header>
+      </PageHeaderWithFilters>
 
-      <main className="container mx-auto px-6 py-8">
-        <div className="card-modern fade-in overflow-hidden mb-8">
-          <div className="flex border-b border-gray-200/50">
-            <button
-              onClick={() => setActiveTab('create')}
-              className={`px-8 py-5 font-thai font-semibold transition-all duration-300 ${
-                activeTab === 'create'
-                  ? 'bg-gradient-to-r from-primary-200 to-primary-300 text-primary-800 border-b-3 border-primary-400 shadow-md'
-                  : 'text-gray-600 hover:text-primary-600 hover:bg-primary-50/50'
-              }`}
-              suppressHydrationWarning
-            >
-              สร้างคำขอตีกลับ
-            </button>
-            <button
-              onClick={() => setActiveTab('manage')}
-              className={`px-8 py-5 font-thai font-semibold transition-all duration-300 ${
-                activeTab === 'manage'
-                  ? 'bg-gradient-to-r from-primary-200 to-primary-300 text-primary-800 border-b-3 border-primary-400 shadow-md'
-                  : 'text-gray-600 hover:text-primary-600 hover:bg-primary-50/50'
-              }`}
-              suppressHydrationWarning
-            >
-              จัดการคำขอตีกลับ ({groupedReturns.length})
-            </button>
-          </div>
+      {/* Main Content */}
+      <div className="flex-1 min-h-0 bg-white border rounded-lg shadow-sm flex flex-col overflow-hidden">
+        {/* Tabs */}
+        <div className="flex border-b border-thai-gray-200 flex-shrink-0">
+          <button
+            onClick={() => setActiveTab('create')}
+            className={`px-4 py-2 text-xs font-thai font-medium transition-all ${
+              activeTab === 'create'
+                ? 'bg-primary-50 text-primary-700 border-b-2 border-primary-500'
+                : 'text-thai-gray-600 hover:text-primary-600 hover:bg-thai-gray-50'
+            }`}
+          >
+            สร้างคำขอตีกลับ
+          </button>
+          <button
+            onClick={() => setActiveTab('manage')}
+            className={`px-4 py-2 text-xs font-thai font-medium transition-all ${
+              activeTab === 'manage'
+                ? 'bg-primary-50 text-primary-700 border-b-2 border-primary-500'
+                : 'text-thai-gray-600 hover:text-primary-600 hover:bg-thai-gray-50'
+            }`}
+          >
+            จัดการคำขอตีกลับ ({groupedReturns.length})
+          </button>
+        </div>
 
+        <div className="flex-1 overflow-auto p-4">
           {activeTab === 'create' && (
-            <div className="p-8">
-              <h2 className="text-2xl font-bold text-gray-800 mb-8 font-thai">สร้างคำขอตีกลับใหม่</h2>
-
+            <div>
               <div className="flex justify-between items-center mb-8">
                 <div className="flex-grow">
                   <label className="block text-sm font-semibold text-gray-700 mb-3 font-thai">
@@ -979,7 +962,7 @@ export default function ReturnsPage() {
           )}
 
           {activeTab === 'manage' && (
-             <div className="p-8">
+            <div className="p-8">
               <h2 className="text-2xl font-bold text-gray-800 mb-8 font-thai">จัดการคำขอตีกลับ</h2>
               <div className="mb-6">
                 <input
@@ -1063,18 +1046,18 @@ export default function ReturnsPage() {
             </div>
           )}
         </div>
-      </main>
+      </div>
 
       {/* Warehouse Detail Modal */}
       {showDetailModal && selectedReturn && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="card-modern max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto fade-in">
-            <div className="p-8">
-              <div className="flex justify-between items-center mb-8">
-                <h3 className="text-2xl font-bold text-gray-800 font-thai">รับสินค้าคืน - รายละเอียดคลังสินค้า</h3>
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto shadow-2xl border border-thai-gray-200">
+            <div className="p-4">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-sm font-bold text-thai-gray-800 font-thai">รับสินค้าคืน - รายละเอียดคลังสินค้า</h3>
                 <button
                   onClick={() => setShowDetailModal(false)}
-                  className="text-gray-400 hover:text-primary-600 p-2 rounded-lg transition-colors duration-300"
+                  className="text-thai-gray-400 hover:text-thai-gray-600 p-1 rounded transition-colors"
                 >
                   <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1575,25 +1558,27 @@ export default function ReturnsPage() {
                       setShowDetailViewModal(false)
                       setShowDetailModal(true)
                     }}
-                    className="bg-orange-500 hover:bg-orange-600 text-white px-8 py-3 rounded-xl font-thai font-semibold transition-all duration-300 shadow-lg hover:shadow-xl flex items-center gap-2"
+                    className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded-lg text-xs font-thai font-medium transition-all flex items-center gap-1"
                   >
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                     </svg>
                     แก้ไข/เพิ่มข้อมูล
                   </button>
                 )}
-                <button
+                <Button
+                  variant="secondary"
+                  size="sm"
                   onClick={() => setShowDetailViewModal(false)}
-                  className="bg-gray-500 hover:bg-gray-600 text-white px-8 py-3 rounded-xl font-thai font-semibold transition-all duration-300 shadow-lg hover:shadow-xl card-hover"
+                  className="text-xs"
                 >
                   ปิด
-                </button>
+                </Button>
               </div>
             </div>
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   )
 }

@@ -2,9 +2,12 @@
 
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { FileOutput, Search } from 'lucide-react'
 import type { Order, Product } from '@/types/online-packing'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { PageContainer, PageHeaderWithFilters, FilterSelect } from '@/components/ui/page-components'
+import Button from '@/components/ui/Button'
 
 // กำหนดข้อมูลการประกอบสินค้าเซต (Bundle/Set Products)
 const PRODUCT_BUNDLES = {
@@ -1394,394 +1397,169 @@ export default function ERPPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-lightBlue to-softWhite font-thai">
-      {/* Header */}
-      <header className="glass-morphism shadow-xl border-b border-primary-200/40">
-        <div className="container mx-auto px-6 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-4">
-              <div className="p-3 bg-gradient-to-r from-primary-300 to-primary-400 rounded-xl shadow-lg">
-                <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
-                </svg>
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold gradient-text font-thai">
-                  รายการเบิกสินค้า (ERP)
-                </h1>
-                <p className="text-base text-gray-600 font-thai font-medium">ERP Integration & Export System</p>
-              </div>
-            </div>
-            
-            <button 
-              onClick={() => window.location.href = '/online-packing'}
-              className="primary-button text-white px-6 py-3 rounded-xl text-sm font-thai font-medium transition-all duration-300 shadow-lg hover:shadow-xl card-hover"
-            >
-              กลับหน้าหลัก
-            </button>
+    <PageContainer>
+      <PageHeaderWithFilters title="ส่งออก ERP">
+        <FilterSelect
+          value={selectedPlatform}
+          onChange={setSelectedPlatform}
+          options={[
+            { value: '', label: '-- แพลตฟอร์ม --' },
+            ...availablePlatforms.map(p => ({ value: p, label: p }))
+          ]}
+        />
+        <FilterSelect
+          value={selectedStatus}
+          onChange={setSelectedStatus}
+          options={[
+            { value: '', label: '-- ทุกสถานะ --' },
+            ...availableStatuses.map(s => ({ value: s, label: getStatusText(s) }))
+          ]}
+        />
+        <input
+          type="datetime-local"
+          value={startDate}
+          onChange={(e) => setStartDate(e.target.value)}
+          className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs"
+        />
+        <input
+          type="datetime-local"
+          value={endDate}
+          onChange={(e) => setEndDate(e.target.value)}
+          className="px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs"
+        />
+        <Button
+          variant="primary"
+          size="sm"
+          icon={Search}
+          onClick={searchPendingOrders}
+          disabled={!selectedPlatform || isSearching}
+          loading={isSearching}
+          className="text-xs py-1 px-2"
+        >
+          ค้นหา
+        </Button>
+        {(selectedPlatform || selectedStatus || startDate || endDate) && (
+          <button
+            onClick={() => {
+              setSelectedPlatform('')
+              setSelectedStatus('')
+              setStartDate('')
+              setEndDate('')
+              setSearchResults(null)
+              setPendingOrders([])
+            }}
+            className="px-2 py-1 text-xs text-red-600 hover:text-red-800 hover:bg-red-50 rounded"
+          >
+            ล้าง
+          </button>
+        )}
+      </PageHeaderWithFilters>
+
+      {/* Main Content */}
+      <div className="flex-1 min-h-0 bg-white border rounded-lg shadow-sm flex flex-col overflow-hidden">
+        {/* Status Messages */}
+        {exportStatus === 'success' && (
+          <div className="flex-shrink-0 px-3 py-2 bg-green-50 border-b border-green-200 text-green-800 text-xs flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+            </svg>
+            <span>ส่งออกข้อมูลสำเร็จแล้ว</span>
           </div>
-        </div>
-      </header>
+        )}
 
-      <main className="container mx-auto px-6 py-8">
-        <div className="card-modern p-8 fade-in">
-          {/* Search Controls */}
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold text-gray-800 mb-6 font-thai">ค้นหาออเดอร์</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
-              {/* Platform Selection */}
-              <div className="flex flex-col">
-                <label className="text-sm font-semibold text-gray-700 mb-3 font-thai">เลือกแพลตฟอร์ม</label>
-                <select
-                  value={selectedPlatform}
-                  onChange={(e) => setSelectedPlatform(e.target.value)}
-                  className="px-5 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-primary-500/20 focus:border-primary-500 font-thai bg-white/90 backdrop-blur-sm shadow-sm transition-all duration-300"
-                >
-                  <option value="">-- เลือกแพลตฟอร์ม --</option>
-                  {availablePlatforms.map(platform => (
-                    <option key={platform} value={platform}>{platform}</option>
-                  ))}
-                </select>
-              </div>
+        {exportStatus === 'error' && (
+          <div className="flex-shrink-0 px-3 py-2 bg-red-50 border-b border-red-200 text-red-800 text-xs flex items-center gap-2">
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>เกิดข้อผิดพลาด กรุณาลองใหม่</span>
+          </div>
+        )}
 
-              {/* Status Selection */}
-              <div className="flex flex-col">
-                <label className="text-sm font-semibold text-gray-700 mb-3 font-thai">สถานะออเดอร์</label>
-                <select
-                  value={selectedStatus}
-                  onChange={(e) => setSelectedStatus(e.target.value)}
-                  className="px-5 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-primary-500/20 focus:border-primary-500 font-thai bg-white/90 backdrop-blur-sm shadow-sm transition-all duration-300"
-                >
-                  <option value="">-- ทุกสถานะ --</option>
-                  {availableStatuses.map(status => (
-                    <option key={status} value={status}>{getStatusText(status)}</option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Start Date & Time */}
-              <div className="flex flex-col">
-                <label className="text-sm font-semibold text-gray-700 mb-3 font-thai">วันที่และเวลาเริ่มต้น</label>
-                <input
-                  type="datetime-local"
-                  value={startDate}
-                  onChange={(e) => setStartDate(e.target.value)}
-                  className="px-5 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-primary-500/20 focus:border-primary-500 font-thai bg-white/90 backdrop-blur-sm shadow-sm transition-all duration-300"
-                />
-              </div>
-
-              {/* End Date & Time */}
-              <div className="flex flex-col">
-                <label className="text-sm font-semibold text-gray-700 mb-3 font-thai">วันที่และเวลาสิ้นสุด</label>
-                <input
-                  type="datetime-local"
-                  value={endDate}
-                  onChange={(e) => setEndDate(e.target.value)}
-                  className="px-5 py-3 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-primary-500/20 focus:border-primary-500 font-thai bg-white/90 backdrop-blur-sm shadow-sm transition-all duration-300"
-                />
-              </div>
-
-              {/* Search Button */}
-              <div className="flex flex-col">
-                <label className="text-sm font-semibold text-gray-700 mb-3 font-thai">&nbsp;</label>
-                <button
-                  onClick={searchPendingOrders}
-                  disabled={!selectedPlatform || isSearching}
-                  className="primary-button text-white px-8 py-3 rounded-xl font-thai font-medium transition-all duration-300 flex items-center justify-center space-x-2 shadow-lg hover:shadow-xl disabled:bg-gray-400 disabled:shadow-sm card-hover"
-                >
-                  {isSearching ? (
-                    <>
-                      <svg className="animate-spin w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      <span>กำลังค้นหา...</span>
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                      </svg>
-                      <span>ค้นหา</span>
-                    </>
-                  )}
-                </button>
-              </div>
+        {/* Action Bar */}
+        {searchResults && (
+          <div className="flex-shrink-0 px-3 py-2 bg-gray-50 border-b flex items-center justify-between flex-wrap gap-2">
+            <div className="flex items-center gap-3 text-[10px]">
+              <span className="text-gray-600">SKU: <span className="font-semibold text-primary-600">{searchResults.totalExpandedSkus}/{searchResults.totalSkus}</span></span>
+              <span className="text-gray-600">ชิ้น: <span className="font-semibold text-blue-600">{searchResults.totalExpandedItems}/{searchResults.totalItems}</span></span>
+              <span className="text-gray-600">ออเดอร์: <span className="font-semibold text-gray-800">{searchResults.totalOrders}</span></span>
             </div>
+            <div className="flex flex-wrap gap-1">
+              <Button variant="primary" size="sm" onClick={exportToERP} disabled={selectedOrders.size === 0 || exportStatus === 'exporting'} className="text-[10px] py-1 px-2">
+                ส่งออกจัดสินค้า ({getExpandedItemCount()})
+              </Button>
+              <Button variant="primary" size="sm" onClick={exportSOToERP} disabled={selectedOrders.size === 0 || exportStatus === 'exporting'} className="text-[10px] py-1 px-2">
+                ส่งออก SO ({getSOItemCount()})
+              </Button>
+              <Button variant="success" size="sm" onClick={generatePrintableReport} disabled={selectedOrders.size === 0} className="text-[10px] py-1 px-2">
+                ปริ้นจัดสินค้า
+              </Button>
+              <Button variant="success" size="sm" onClick={printSOReport} disabled={selectedOrders.size === 0} className="text-[10px] py-1 px-2">
+                ปริ้น SO
+              </Button>
+            </div>
+          </div>
+        )}
 
-            {/* Active Filters Display & Clear Button */}
-            {(selectedPlatform || selectedStatus || startDate || endDate) && (
-              <div className="mt-4 flex flex-wrap items-center gap-3">
-                <span className="text-sm font-semibold text-gray-600 font-thai">ตัวกรองที่เลือก:</span>
-                {selectedPlatform && (
-                  <span className="inline-flex items-center px-3 py-1 rounded-lg bg-primary-100 text-primary-800 text-sm font-thai">
-                    แพลตฟอร์ม: {selectedPlatform}
-                  </span>
-                )}
-                {selectedStatus && (
-                  <span className="inline-flex items-center px-3 py-1 rounded-lg bg-blue-100 text-blue-800 text-sm font-thai">
-                    สถานะ: {getStatusText(selectedStatus)}
-                  </span>
-                )}
-                {startDate && (
-                  <span className="inline-flex items-center px-3 py-1 rounded-lg bg-green-100 text-green-800 text-sm font-thai">
-                    เริ่ม: {new Date(startDate).toLocaleString('th-TH', {
-                      year: 'numeric',
-                      month: '2-digit',
-                      day: '2-digit',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </span>
-                )}
-                {endDate && (
-                  <span className="inline-flex items-center px-3 py-1 rounded-lg bg-green-100 text-green-800 text-sm font-thai">
-                    สิ้นสุด: {new Date(endDate).toLocaleString('th-TH', {
-                      year: 'numeric',
-                      month: '2-digit',
-                      day: '2-digit',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
-                  </span>
-                )}
-                <button
-                  onClick={() => {
-                    setSelectedPlatform('')
-                    setSelectedStatus('')
-                    setStartDate('')
-                    setEndDate('')
-                    setSearchResults(null)
-                    setPendingOrders([])
-                  }}
-                  className="inline-flex items-center px-3 py-1 rounded-lg bg-red-100 text-red-800 hover:bg-red-200 text-sm font-thai transition-colors duration-200"
-                >
-                  <svg className="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                  ล้างตัวกรอง
-                </button>
-              </div>
+        {/* Table Content */}
+        <div className="flex-1 overflow-auto">
+          {searchResults && searchResults.productSummary ? (
+            <table className="w-full text-[10px]">
+              <thead className="bg-gray-50 sticky top-0">
+                <tr>
+                  <th className="px-2 py-1.5 text-left font-semibold text-gray-700 border-b whitespace-nowrap">บาร์โค้ด</th>
+                  <th className="px-2 py-1.5 text-left font-semibold text-gray-700 border-b whitespace-nowrap">รหัสสินค้า</th>
+                  <th className="px-2 py-1.5 text-left font-semibold text-gray-700 border-b whitespace-nowrap">ชื่อสินค้า ERP</th>
+                  <th className="px-2 py-1.5 text-left font-semibold text-gray-700 border-b whitespace-nowrap">ชื่อสินค้า E-commerce</th>
+                  <th className="px-2 py-1.5 text-center font-semibold text-gray-700 border-b whitespace-nowrap">จำนวน</th>
+                </tr>
+              </thead>
+              <tbody>
+                {searchResults.productSummary.map((item: any, index: number) => {
+                  const parentSku = getBestParentSku(item.barcode)
+                  return (
+                    <tr key={index} className="hover:bg-gray-50 border-b border-gray-100">
+                      <td className="px-2 py-1 font-mono text-gray-800">{item.barcode}</td>
+                      <td className="px-2 py-1 font-mono text-gray-600">{parentSku}</td>
+                      <td className="px-2 py-1">
+                        {item.erpProductName ? (
+                          <span className="font-medium text-gray-800">{item.erpProductName}</span>
+                        ) : (
+                          <span className="text-red-600 font-medium">ไม่พบข้อมูล</span>
+                        )}
+                      </td>
+                      <td className="px-2 py-1 text-gray-600 max-w-[200px] truncate" title={item.ecommerceProductName}>
+                        {item.ecommerceProductName || '-'}
+                      </td>
+                      <td className="px-2 py-1 text-center font-semibold text-primary-600">{item.totalQuantity}</td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          ) : (
+            <div className="flex-1 flex flex-col items-center justify-center py-16 text-gray-400">
+              <Search className="w-12 h-12 mb-3 opacity-50" />
+              <p className="text-sm font-medium">กรุณาเลือกแพลตฟอร์มและค้นหาออเดอร์</p>
+              <p className="text-xs mt-1">คุณสามารถเลือกสถานะและช่วงวันที่เพื่อกรองข้อมูลได้</p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex-shrink-0 px-3 py-1.5 border-t bg-gray-50 flex items-center justify-between text-[10px] text-gray-500">
+          <div>
+            {searchResults && (
+              <span>รายการสินค้า: {searchResults.productSummary?.length || 0} รายการ</span>
             )}
           </div>
-
-          {/* Search Results Summary */}
-          {searchResults && (
-            <div className="mb-8 bg-gradient-to-r from-primary-50/50 to-blue-50/50 border border-primary-200/50 rounded-2xl p-6 shadow-sm">
-              <h3 className="text-xl font-bold text-primary-800 mb-4 font-thai">ผลการค้นหา</h3>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <div className="text-center bg-white/60 backdrop-blur-sm rounded-xl p-4 border border-primary-100/50">
-                  <div className="text-3xl font-bold text-primary-600 font-thai">{searchResults.totalExpandedSkus} / {searchResults.totalSkus}</div>
-                  <div className="text-sm text-gray-600 font-thai font-medium">SKU (แตกชุด/ไม่แตกชุด)</div>
-                </div>
-                <div className="text-center bg-white/60 backdrop-blur-sm rounded-xl p-4 border border-blue-100/50">
-                  <div className="text-3xl font-bold text-blue-600 font-thai">{searchResults.totalExpandedItems} / {searchResults.totalItems}</div>
-                  <div className="text-sm text-gray-600 font-thai font-medium">ชิ้น (แตกชุด/ไม่แตกชุด)</div>
-                </div>
-                <div className="text-center bg-white/60 backdrop-blur-sm rounded-xl p-4 border border-slate-100/50">
-                  <div className="text-3xl font-bold text-slate-600 font-thai">{searchResults.totalOrders}</div>
-                  <div className="text-sm text-gray-600 font-thai font-medium">ออเดอร์</div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* Export Controls */}
-          {searchResults && (
-            <div className="flex flex-wrap items-center justify-between gap-4 mb-8">
-              <div className="text-base text-gray-600 font-thai">
-                พบออเดอร์ {selectedStatus && `สถานะ "${getStatusText(selectedStatus)}" `}จำนวน <span className="font-bold text-primary-600">{searchResults.totalOrders}</span> รายการ
-                {(startDate || endDate) && (
-                  <span className="ml-2 text-sm text-gray-500">
-                    ({startDate && `ตั้งแต่ ${new Date(startDate).toLocaleString('th-TH', {
-                      year: 'numeric',
-                      month: '2-digit',
-                      day: '2-digit',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}`}
-                    {startDate && endDate && ' '}
-                    {endDate && `ถึง ${new Date(endDate).toLocaleString('th-TH', {
-                      year: 'numeric',
-                      month: '2-digit',
-                      day: '2-digit',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}`})
-                  </span>
-                )}
-              </div>
-
-              {/* Export and Print Buttons */}
-              <div className="flex flex-wrap gap-2">
-                {/* ส่งออกไฟล์จัดสินค้า */}
-                <button
-                  onClick={exportToERP}
-                  disabled={selectedOrders.size === 0 || exportStatus === 'exporting'}
-                  className="primary-button text-white px-6 py-3 rounded-xl font-thai font-medium transition-all duration-300 flex items-center space-x-2 shadow-md hover:shadow-lg disabled:bg-gray-400 card-hover"
-                >
-                  {exportStatus === 'exporting' ? (
-                    <>
-                      <svg className="animate-spin w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      <span>กำลังส่งออก...</span>
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-                      </svg>
-                      <span>ส่งออกไฟล์จัดสินค้า ({getExpandedItemCount()})</span>
-                    </>
-                  )}
-                </button>
-
-                {/* ส่งออกไฟล์เปิด SO ลอจิส */}
-                <button
-                  onClick={exportSOToERP}
-                  disabled={selectedOrders.size === 0 || exportStatus === 'exporting'}
-                  className="primary-button text-white px-6 py-3 rounded-xl font-thai font-medium transition-all duration-300 flex items-center space-x-2 shadow-md hover:shadow-lg disabled:bg-gray-400 card-hover"
-                >
-                  {exportStatus === 'exporting' ? (
-                    <>
-                      <svg className="animate-spin w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                      </svg>
-                      <span>กำลังส่งออก...</span>
-                    </>
-                  ) : (
-                    <>
-                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" />
-                      </svg>
-                      <span>ส่งออกไฟล์เปิด SO ({getSOItemCount()})</span>
-                    </>
-                  )}
-                </button>
-
-                {/* ปริ้นใบจัดสินค้า */}
-                <button
-                  onClick={generatePrintableReport}
-                  disabled={selectedOrders.size === 0 || exportStatus === 'exporting'}
-                  className="bg-gradient-to-r from-green-500 to-green-600 hover:from-green-600 hover:to-green-700 text-white px-6 py-3 rounded-xl font-thai font-medium transition-all duration-300 flex items-center space-x-2 shadow-md hover:shadow-lg disabled:bg-gray-400 card-hover"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                  </svg>
-                  <span>ปริ้นใบจัดสินค้า ({getExpandedItemCount()})</span>
-                </button>
-
-                {/* ปริ้นเปิด SO ลอจิส */}
-                <button
-                  onClick={printSOReport}
-                  disabled={selectedOrders.size === 0 || exportStatus === 'exporting'}
-                  className="bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-600 hover:to-emerald-700 text-white px-6 py-3 rounded-xl font-thai font-medium transition-all duration-300 flex items-center space-x-2 shadow-md hover:shadow-lg disabled:bg-gray-400 card-hover"
-                >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" />
-                  </svg>
-                  <span>ปริ้นเปิด SO ({getSOItemCount()})</span>
-                </button>
-              </div>
+          <div className="flex items-center gap-2">
+            {searchResults && (
+              <span>ออเดอร์ที่เลือก: {getSelectedOrderCount()} รายการ</span>
+            )}
           </div>
-          )}
-
-          {/* Status Messages */}
-          {exportStatus === 'success' && (
-            <div className="mb-6 p-5 bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200/50 rounded-xl text-green-800 shadow-sm">
-              <div className="flex items-center space-x-3">
-                <svg className="w-5 h-5 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-                <span className="font-thai font-medium">ส่งออกข้อมูลไป ERP สำเร็จแล้ว ไฟล์ถูกดาวน์โหลดไปยังเครื่องของคุณ</span>
-              </div>
-            </div>
-          )}
-
-          {exportStatus === 'error' && (
-            <div className="mb-6 p-5 bg-gradient-to-r from-red-50 to-pink-50 border border-red-200/50 rounded-xl text-red-800 shadow-sm">
-              <div className="flex items-center space-x-3">
-                <svg className="w-5 h-5 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                </svg>
-                <span className="font-thai font-medium">เกิดข้อผิดพลาดในการส่งออกข้อมูล กรุณาลองใหม่อีกครั้ง</span>
-              </div>
-            </div>
-          )}
-
-          {/* Product Preview Table (Non-Bundle) */}
-          {searchResults && searchResults.productSummary && (
-            <div className="mt-8">
-              <h3 className="text-xl font-bold text-gray-800 mb-6 font-thai">ตารางพรีวิวสินค้า (ไม่แตกชุด)</h3>
-              <div className="overflow-x-auto rounded-2xl border border-gray-200/50 shadow-sm">
-                <table className="w-full bg-white/80 backdrop-blur-sm">
-                  <thead className="bg-gradient-to-r from-primary-200 to-primary-300">
-                    <tr>
-                      <th className="text-left py-4 px-6 font-semibold text-primary-800 border-b border-primary-400/30 font-thai">บาร์โค้ด</th>
-                      <th className="text-left py-4 px-6 font-semibold text-primary-800 border-b border-primary-400/30 font-thai">รหัสสินค้า</th>
-                      <th className="text-left py-4 px-6 font-semibold text-primary-800 border-b border-primary-400/30 font-thai">ชื่อสินค้า ERP</th>
-                      <th className="text-left py-4 px-6 font-semibold text-primary-800 border-b border-primary-400/30 font-thai">ชื่อสินค้า E-commerce</th>
-                      <th className="text-center py-4 px-6 font-semibold text-primary-800 border-b border-primary-400/30 font-thai">จำนวน</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {searchResults.productSummary.map((item: any, index: number) => {
-                      // ใช้ฟังก์ชันใหม่สำหรับหา parent_sku ที่ถูกต้อง
-                      const parentSku = getBestParentSku(item.barcode)
-                      
-                      return (
-                        <tr key={index} className="hover:bg-primary-50/30 border-b border-gray-100/50 transition-all duration-200">
-                          <td className="py-4 px-6 font-mono text-sm font-medium text-gray-800">
-                            {item.barcode}
-                          </td>
-                          <td className="py-4 px-6 font-mono text-sm font-medium text-gray-600">
-                            {parentSku}
-                          </td>
-                          <td className="py-4 px-6">
-                            {item.erpProductName ? (
-                              <span className="font-semibold text-gray-800 font-thai">{item.erpProductName}</span>
-                            ) : (
-                              <span className="text-red-600 font-semibold font-thai">ไม่พบข้อมูลสินค้า ERP</span>
-                            )}
-                          </td>
-                          <td className="py-4 px-6 text-sm text-gray-600 font-thai">
-                            {item.ecommerceProductName || '-'}
-                          </td>
-                          <td className="py-4 px-6 text-center font-bold text-primary-600 text-lg font-thai">
-                            {item.totalQuantity}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-
-              {/* Summary for Selected Results */}
-              <div className="mt-6 p-5 bg-gradient-to-r from-slate-50/80 to-gray-50/80 backdrop-blur-sm rounded-xl border border-gray-200/50 shadow-sm">
-                <div className="flex justify-between text-base text-gray-600 font-thai">
-                  <span className="font-medium">รายการสินค้า: <span className="font-bold text-primary-600">{searchResults.productSummary.length}</span> รายการ</span>
-                  <span className="font-medium">ออเดอร์ที่เลือก: <span className="font-bold text-blue-600">{getSelectedOrderCount()}</span> รายการ</span>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* No Search Results Message */}
-          {!searchResults && (
-            <div className="text-center py-16 text-gray-500">
-              <div className="p-6 bg-gradient-to-br from-slate-50 to-gray-100 rounded-2xl border border-gray-200/50 inline-block shadow-sm">
-                <svg className="w-20 h-20 text-gray-300 mx-auto mb-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
-                </svg>
-                <p className="text-lg font-thai text-gray-600">กรุณาเลือกแพลตฟอร์มและค้นหาออเดอร์</p>
-                <p className="text-sm font-thai text-gray-500 mt-2">คุณสามารถเลือกสถานะและช่วงวันที่เพื่อกรองข้อมูลได้</p>
-                <p className="text-xs font-thai text-gray-400 mt-1">ระบบจะแสดงข้อมูลสินค้าที่พบหลังจากการค้นหา</p>
-              </div>
-            </div>
-          )}
         </div>
-      </main>
-    </div>
+      </div>
+    </PageContainer>
   )
 }

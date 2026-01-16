@@ -2,6 +2,9 @@
 
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { Settings } from 'lucide-react'
+import { PageContainer, PageHeaderWithFilters } from '@/components/ui/page-components'
+import Button from '@/components/ui/Button'
 
 // --- TYPE DEFINITIONS ---
 interface Box {
@@ -216,75 +219,59 @@ export default function SettingsPage() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-50 to-white font-thai">
-      <header className="bg-white/90 backdrop-blur-sm shadow-xl border-b border-primary-200">
-        <div className="max-w-7xl mx-auto px-8 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-6">
-              <div className="p-4 bg-gradient-to-r from-primary-500 to-primary-600 rounded-2xl shadow-xl">
-                <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                </svg>
-              </div>
-              <div>
-                <h1 className="text-3xl font-bold text-primary-600">ตั้งค่ากล่องแพ็คสินค้า</h1>
-                <p className="text-lg text-gray-600 font-medium">Box Configuration & Stock Management</p>
+    <PageContainer>
+      {/* Header */}
+      <PageHeaderWithFilters title="ตั้งค่ากล่อง">
+        <div className="flex items-center gap-2 ml-auto">
+          <span className="text-xs text-thai-gray-600 font-thai">Box Configuration & Stock</span>
+        </div>
+      </PageHeaderWithFilters>
+
+      {/* Main Content */}
+      <div className="flex-1 min-h-0 bg-white border rounded-lg shadow-sm flex flex-col overflow-hidden">
+        {/* Tabs */}
+        <div className="flex border-b border-thai-gray-200 flex-shrink-0 px-2">
+          {[
+            { id: 'stock', name: 'สต็อกกล่อง' },
+            { id: 'rules', name: 'กฎการแพ็ค' },
+            { id: 'boxes', name: 'ขนาดกล่อง' },
+            { id: 'profiles', name: 'ขนาดสินค้าตามน้ำหนัก' },
+            { id: 'history', name: 'ประวัติการตัดสต็อก' },
+          ].map(tab => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`py-2 px-3 text-xs font-thai font-medium transition-all ${
+                activeTab === tab.id
+                  ? 'border-b-2 border-primary-500 text-primary-600'
+                  : 'border-b-2 border-transparent text-thai-gray-500 hover:text-thai-gray-700'
+              }`}
+            >
+              {tab.name}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex-1 overflow-auto p-4">
+          {isLoading ? (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-4"></div>
+                <p className="text-thai-gray-600 font-thai text-sm">กำลังโหลดข้อมูล...</p>
               </div>
             </div>
-            <button
-              onClick={() => window.location.href = '/online-packing'}
-              className="bg-primary-500 hover:bg-primary-600 text-white px-6 py-3 rounded-xl font-medium transition-all duration-300 shadow-lg hover:shadow-xl"
-            >
-              กลับหน้าหลัก
-            </button>
-          </div>
+          ) : (
+            <div>
+              {activeTab === 'rules' && <PackingRulesTab rules={rules} boxes={boxes} profiles={profiles} setRules={setRules} />}
+              {activeTab === 'boxes' && <BoxDimensionsTab boxes={boxes} />}
+              {activeTab === 'profiles' && <ProductProfilesTab profiles={profiles} />}
+              {activeTab === 'stock' && <BoxStockTab boxStocks={boxStocks} setBoxStocks={setBoxStocks} currentUser={currentUser} onDataRefresh={fetchData} />}
+              {activeTab === 'history' && <BoxStockHistoryTab history={boxStockHistory} onDataRefresh={fetchData} />}
+            </div>
+          )}
         </div>
-      </header>
-
-      <nav className="bg-white/90 backdrop-blur-sm shadow-lg border-b border-gray-200/50">
-        <div className="max-w-7xl mx-auto px-8">
-          <div className="flex space-x-1">
-            {[
-              { id: 'stock', name: 'สต็อกกล่อง' },
-              { id: 'rules', name: 'กฎการแพ็ค' },
-              { id: 'boxes', name: 'ขนาดกล่อง' },
-              { id: 'profiles', name: 'ขนาดสินค้าตามน้ำหนัก' },
-              { id: 'history', name: 'ประวัติการตัดสต็อก' },
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id)}
-                className={`py-4 px-6 font-semibold text-sm transition-all duration-300 rounded-t-lg ${
-                  activeTab === tab.id
-                    ? 'border-b-4 border-primary-500 text-primary-600 bg-primary-50/50'
-                    : 'border-b-4 border-transparent text-gray-500 hover:text-gray-700 hover:bg-gray-50/50'
-                }`}
-              >
-                {tab.name}
-              </button>
-            ))}
-          </div>
-        </div>
-      </nav>
-
-      <main className="max-w-7xl mx-auto px-8 py-8">
-        {isLoading ? (
-          <div className="text-center p-8 bg-white rounded-xl shadow-sm border border-gray-200">
-            <div className="animate-spin w-12 h-12 border-4 border-primary-600 border-t-transparent rounded-full mx-auto mb-4"></div>
-            <p className="text-lg font-bold text-gray-700">กำลังโหลดข้อมูล...</p>
-          </div>
-        ) : (
-          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6">
-            {activeTab === 'rules' && <PackingRulesTab rules={rules} boxes={boxes} profiles={profiles} setRules={setRules} />}
-            {activeTab === 'boxes' && <BoxDimensionsTab boxes={boxes} />}
-            {activeTab === 'profiles' && <ProductProfilesTab profiles={profiles} />}
-            {activeTab === 'stock' && <BoxStockTab boxStocks={boxStocks} setBoxStocks={setBoxStocks} currentUser={currentUser} onDataRefresh={fetchData} />}
-            {activeTab === 'history' && <BoxStockHistoryTab history={boxStockHistory} onDataRefresh={fetchData} />}
-          </div>
-        )}
-      </main>
-    </div>
+      </div>
+    </PageContainer>
   )
 }
 

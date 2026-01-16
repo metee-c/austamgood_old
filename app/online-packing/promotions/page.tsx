@@ -1,9 +1,10 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import Link from 'next/link'
-import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
+import { Gift, Plus, X, Trash2, Pencil, FileText } from 'lucide-react'
+import { PageContainer, PageHeaderWithFilters, SearchInput } from '@/components/ui/page-components'
+import Button from '@/components/ui/Button'
 
 // Types
 interface Product {
@@ -117,7 +118,6 @@ const DocumentTextIcon = (props: React.SVGProps<SVGSVGElement>) => (
 )
 
 export default function PromotionsPage() {
-  const router = useRouter()
   const [freebies, setFreebies] = useState<PromotionFreebie[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -857,213 +857,182 @@ export default function PromotionsPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-lightBlue to-softWhite font-thai">
-      {/* Background Pattern */}
-      <div className="absolute inset-0 opacity-30">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_50%,rgba(26,115,232,0.1)_0%,transparent_50%)]"></div>
-        <div className="absolute inset-0 bg-[linear-gradient(45deg,rgba(26,115,232,0.05)_1px,transparent_1px),linear-gradient(-45deg,rgba(26,115,232,0.05)_1px,transparent_1px)] bg-[size:20px_20px]"></div>
-      </div>
-
+    <PageContainer>
       {/* Header */}
-      <header className="relative glass-morphism shadow-xl border-b border-primary-200/40">
-        <div className="container mx-auto px-6 py-8">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center space-x-6">
-              <Link
-                href="/online-packing"
-                className="flex items-center space-x-3 text-gray-600 hover:text-primary-600 transition-colors group"
-              >
-                <div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center group-hover:bg-primary-100 transition-colors">
-                  <ArrowLeftIcon className="w-5 h-5" />
-                </div>
-                <span className="font-medium">กลับหน้าหลัก</span>
-              </Link>
-
-              <div className="w-px h-8 bg-gray-300"></div>
-
-              <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 rounded-2xl bg-blue-50 flex items-center justify-center shadow-lg border border-blue-200/30">
-                  <GiftIcon className="w-8 h-8 text-blue-600" />
-                </div>
-                <div>
-                  <h1 className="text-3xl font-bold text-gray-800 font-thai tracking-tight">
-                    กลยุทธ์ของแถม
-                  </h1>
-                  <p className="text-gray-600 font-light">ตั้งค่าของแถมที่จะแสดงในหน้าแพ็คสินค้า</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-3">
-              {/* Platform Report Buttons */}
-              <div className="flex items-center space-x-2">
-                <button
-                  onClick={() => generateFreebieReport('Shopee Thailand')}
-                  disabled={isLoadingReport}
-                  className="flex items-center space-x-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl font-medium transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <DocumentTextIcon className="w-4 h-4" />
-                  <span className="text-sm">สินค้าแถม Shopee</span>
-                </button>
-
-                <button
-                  onClick={() => generateFreebieReport('TikTok Shop')}
-                  disabled={isLoadingReport}
-                  className="flex items-center space-x-2 px-4 py-2 bg-black hover:bg-gray-800 text-white rounded-xl font-medium transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <DocumentTextIcon className="w-4 h-4" />
-                  <span className="text-sm">สินค้าแถม TikTok</span>
-                </button>
-
-                <button
-                  onClick={() => generateFreebieReport('Lazada Thailand')}
-                  disabled={isLoadingReport}
-                  className="flex items-center space-x-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-medium transition-all duration-300 shadow-lg hover:shadow-xl disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <DocumentTextIcon className="w-4 h-4" />
-                  <span className="text-sm">สินค้าแถม Lazada</span>
-                </button>
-              </div>
-
-              <div className="w-px h-8 bg-gray-300"></div>
-
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="primary-button text-white px-6 py-3 rounded-xl font-thai font-medium transition-all duration-300 shadow-lg hover:shadow-xl card-hover flex items-center space-x-2"
-              >
-                <PlusIcon className="w-5 h-5" />
-                <span>เพิ่มของแถม</span>
-              </button>
-            </div>
-          </div>
+      <PageHeaderWithFilters title="จัดการโปรโมชั่น">
+        <div className="flex items-center gap-2 ml-auto">
+          <Button
+            variant="warning"
+            size="sm"
+            icon={FileText}
+            onClick={() => generateFreebieReport('Shopee Thailand')}
+            disabled={isLoadingReport}
+            className="text-xs py-1 px-2"
+          >
+            Shopee
+          </Button>
+          <Button
+            variant="secondary"
+            size="sm"
+            icon={FileText}
+            onClick={() => generateFreebieReport('TikTok Shop')}
+            disabled={isLoadingReport}
+            className="text-xs py-1 px-2 bg-black hover:bg-gray-800 text-white"
+          >
+            TikTok
+          </Button>
+          <Button
+            variant="primary"
+            size="sm"
+            icon={FileText}
+            onClick={() => generateFreebieReport('Lazada Thailand')}
+            disabled={isLoadingReport}
+            className="text-xs py-1 px-2"
+          >
+            Lazada
+          </Button>
+          <Button
+            variant="success"
+            size="sm"
+            icon={Plus}
+            onClick={() => setShowAddModal(true)}
+            className="text-xs py-1 px-2"
+          >
+            เพิ่มของแถม
+          </Button>
         </div>
-      </header>
+      </PageHeaderWithFilters>
 
-      {/* Content */}
-      <main className="container mx-auto px-6 py-12 relative z-10">
-        {/* Freebies List */}
-        <div className="card-modern">
-          <div className="p-6 border-b border-gray-200">
-            <h2 className="text-xl font-bold text-gray-800 font-thai">รายการของแถม</h2>
-            <p className="text-gray-600 font-light">รายการของแถมที่จะแสดงเมื่อสแกนสินค้าในหน้าแพ็ค</p>
-          </div>
-
+      {/* Main Content */}
+      <div className="flex-1 min-h-0 bg-white border rounded-lg shadow-sm flex flex-col overflow-hidden">
+        <div className="flex-1 overflow-auto">
           {isLoading ? (
-            <div className="p-12 text-center">
-              <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
-              <p className="text-gray-600 font-thai text-lg">กำลังโหลดข้อมูล...</p>
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-4"></div>
+                <p className="text-thai-gray-600 font-thai text-sm">กำลังโหลดข้อมูล...</p>
+              </div>
             </div>
           ) : freebies.length === 0 ? (
-            <div className="text-center py-16">
-              <div className="w-20 h-20 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <GiftIcon className="w-10 h-10 text-gray-400" />
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center">
+                <Gift className="w-12 h-12 mx-auto mb-3 text-thai-gray-300" />
+                <p className="text-sm font-thai text-thai-gray-600">ยังไม่มีรายการของแถม</p>
+                <p className="text-xs text-thai-gray-400 mt-1 font-thai">เริ่มต้นเพิ่มของแถมแรกเพื่อให้แสดงในหน้าแพ็คสินค้า</p>
+                <Button
+                  variant="primary"
+                  size="sm"
+                  icon={Plus}
+                  onClick={() => setShowAddModal(true)}
+                  className="mt-4 text-xs"
+                >
+                  เพิ่มของแถม
+                </Button>
               </div>
-              <h3 className="text-xl font-semibold text-gray-800 mb-2">ยังไม่มีรายการของแถม</h3>
-              <p className="text-gray-600 mb-8">เริ่มต้นเพิ่มของแถมแรกเพื่อให้แสดงในหน้าแพ็คสินค้า</p>
-              <button
-                onClick={() => setShowAddModal(true)}
-                className="primary-button text-white px-8 py-3 rounded-xl font-thai font-medium transition-all duration-300 shadow-lg hover:shadow-xl flex items-center space-x-2 mx-auto"
-              >
-                <PlusIcon className="w-5 h-5" />
-                <span>เพิ่มของแถม</span>
-              </button>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600 font-thai">บาร์โค้ดสินค้า</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600 font-thai">ชื่อสินค้า</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600 font-thai">ชื่อที่แสดงหน้าแพ็ค</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600 font-thai">รายละเอียด</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600 font-thai">สถานะ</th>
-                    <th className="px-6 py-4 text-left text-sm font-semibold text-gray-600 font-thai">จัดการ</th>
+            <table className="w-full text-[10px]">
+              <thead className="bg-thai-gray-50 sticky top-0 z-10">
+                <tr>
+                  <th className="text-left py-2 px-3 font-semibold text-thai-gray-700 font-thai border-b">บาร์โค้ดสินค้า</th>
+                  <th className="text-left py-2 px-3 font-semibold text-thai-gray-700 font-thai border-b">ชื่อสินค้า</th>
+                  <th className="text-left py-2 px-3 font-semibold text-thai-gray-700 font-thai border-b">ชื่อที่แสดงหน้าแพ็ค</th>
+                  <th className="text-left py-2 px-3 font-semibold text-thai-gray-700 font-thai border-b">รายละเอียด</th>
+                  <th className="text-center py-2 px-3 font-semibold text-thai-gray-700 font-thai border-b">สถานะ</th>
+                  <th className="text-center py-2 px-3 font-semibold text-thai-gray-700 font-thai border-b">จัดการ</th>
+                </tr>
+              </thead>
+              <tbody>
+                {freebies.map((freebie) => (
+                  <tr key={freebie.id} className="border-b border-thai-gray-100 hover:bg-thai-gray-50/50 transition-colors">
+                    <td className="py-1.5 px-3">
+                      <code className="px-1.5 py-0.5 bg-thai-gray-100 text-thai-gray-800 rounded text-[9px] font-mono">
+                        {freebie.product_barcode}
+                      </code>
+                    </td>
+                    <td className="py-1.5 px-3">
+                      <div className="font-medium text-thai-gray-800 font-thai">{freebie.product_name}</div>
+                    </td>
+                    <td className="py-1.5 px-3">
+                      <span className="px-1.5 py-0.5 text-[9px] font-medium bg-blue-50 text-blue-700 rounded font-thai">
+                        {freebie.display_name || freebie.freebie_name}
+                      </span>
+                    </td>
+                    <td className="py-1.5 px-3">
+                      <span className="text-thai-gray-600 font-thai truncate block max-w-[150px]" title={freebie.freebie_description || ''}>
+                        {freebie.freebie_description || '-'}
+                      </span>
+                    </td>
+                    <td className="py-1.5 px-3 text-center">
+                      {freebie.is_active ? (
+                        <span className="inline-flex px-1.5 py-0.5 text-[9px] font-medium bg-green-100 text-green-700 rounded font-thai">
+                          เปิดใช้งาน
+                        </span>
+                      ) : (
+                        <span className="inline-flex px-1.5 py-0.5 text-[9px] font-medium bg-thai-gray-100 text-thai-gray-600 rounded font-thai">
+                          ปิดใช้งาน
+                        </span>
+                      )}
+                    </td>
+                    <td className="py-1.5 px-3 text-center">
+                      <div className="flex items-center justify-center gap-1">
+                        <button
+                          onClick={() => handleToggleStatus(freebie.id, freebie.is_active)}
+                          className={`px-1.5 py-0.5 text-[9px] rounded font-medium transition-colors font-thai ${
+                            freebie.is_active
+                              ? 'bg-yellow-100 text-yellow-700 hover:bg-yellow-200'
+                              : 'bg-green-100 text-green-700 hover:bg-green-200'
+                          }`}
+                        >
+                          {freebie.is_active ? 'ปิด' : 'เปิด'}
+                        </button>
+                        <button
+                          onClick={() => handleEditFreebie(freebie)}
+                          className="p-1 text-blue-600 hover:bg-blue-50 rounded transition-colors"
+                          title="แก้ไข"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteFreebie(freebie.id)}
+                          className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors"
+                          title="ลบ"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-200">
-                  {freebies.map((freebie) => (
-                    <tr key={freebie.id} className="hover:bg-gray-50 transition-colors">
-                      <td className="px-6 py-4">
-                        <div className="font-mono text-sm bg-gray-100 px-3 py-2 rounded-lg border">
-                          {freebie.product_barcode}
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div>
-                          <p className="font-semibold text-gray-800 font-thai">{freebie.product_name}</p>
-                          <p className="text-xs text-gray-500 mt-1">SKU: {freebie.product_barcode}</p>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center space-x-2">
-                          <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                          <p className="font-medium text-blue-700 bg-blue-50 px-3 py-1 rounded-full text-sm">
-                            {freebie.display_name || freebie.freebie_name}
-                          </p>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4">
-                        <p className="text-sm text-gray-600 max-w-xs truncate" title={freebie.freebie_description || ''}>
-                          {freebie.freebie_description || '-'}
-                        </p>
-                      </td>
-                      <td className="px-6 py-4">
-                        {getStatusBadge(freebie.is_active)}
-                      </td>
-                      <td className="px-6 py-4">
-                        <div className="flex items-center space-x-1">
-                          <button
-                            onClick={() => handleToggleStatus(freebie.id, freebie.is_active)}
-                            className={`px-2 py-1 text-xs rounded-full font-medium transition-colors ${
-                              freebie.is_active
-                                ? 'bg-yellow-100 text-yellow-800 hover:bg-yellow-200'
-                                : 'bg-green-100 text-green-800 hover:bg-green-200'
-                            }`}
-                            title={freebie.is_active ? 'คลิกเพื่อปิดใช้งาน' : 'คลิกเพื่อเปิดใช้งาน'}
-                          >
-                            {freebie.is_active ? 'ปิด' : 'เปิด'}
-                          </button>
-                          <button
-                            onClick={() => handleEditFreebie(freebie)}
-                            className="p-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                            title="แก้ไขข้อมูล"
-                          >
-                            <PencilIcon className="w-4 h-4" />
-                          </button>
-                          <button
-                            onClick={() => handleDeleteFreebie(freebie.id)}
-                            className="p-2 text-red-600 hover:bg-red-50 rounded-lg transition-colors"
-                            title="ลบรายการนี้"
-                          >
-                            <TrashIcon className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
           )}
         </div>
-      </main>
+
+        {/* Footer */}
+        <div className="flex-shrink-0 px-3 py-2 border-t bg-thai-gray-50 rounded-b-lg">
+          <div className="flex items-center justify-between text-[10px] text-thai-gray-600 font-thai">
+            <span>แสดง {freebies.length} รายการ</span>
+            <span>Promotions Management</span>
+          </div>
+        </div>
+      </div>
 
       {/* Add Freebie Modal */}
       {showAddModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="card-modern max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-thai-gray-200">
+            <div className="p-4 border-b border-thai-gray-200">
               <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-gray-800 font-thai">เพิ่มของแถมใหม่</h2>
+                <h2 className="text-sm font-bold text-thai-gray-800 font-thai">เพิ่มของแถมใหม่</h2>
                 <button
                   onClick={() => {
                     setShowAddModal(false)
                     resetForm()
                   }}
-                  className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                  className="p-1 text-thai-gray-400 hover:text-thai-gray-600 transition-colors"
                 >
-                  <XMarkIcon className="w-6 h-6" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
@@ -1474,19 +1443,19 @@ export default function PromotionsPage() {
 
       {/* Edit Freebie Modal */}
       {showEditModal && editingFreebie && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-          <div className="card-modern max-w-2xl w-full max-h-[90vh] overflow-y-auto">
-            <div className="p-6 border-b border-gray-200">
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl max-w-2xl w-full max-h-[90vh] overflow-y-auto shadow-2xl border border-thai-gray-200">
+            <div className="p-4 border-b border-thai-gray-200">
               <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-gray-800 font-thai">แก้ไขของแถม</h2>
+                <h2 className="text-sm font-bold text-thai-gray-800 font-thai">แก้ไขของแถม</h2>
                 <button
                   onClick={() => {
                     setShowEditModal(false)
                     resetForm()
                   }}
-                  className="p-2 text-gray-400 hover:text-gray-600 transition-colors"
+                  className="p-1 text-thai-gray-400 hover:text-thai-gray-600 transition-colors"
                 >
-                  <XMarkIcon className="w-6 h-6" />
+                  <X className="w-4 h-4" />
                 </button>
               </div>
             </div>
@@ -1895,6 +1864,6 @@ export default function PromotionsPage() {
         </div>
       )}
 
-    </div>
+    </PageContainer>
   )
 }

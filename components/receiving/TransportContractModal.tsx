@@ -234,6 +234,13 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
           }
           
           const summary = supplierMap.get(supplierId)!;
+          
+          // ⚠️ Skip empty trips (no stops)
+          const hasStops = (trip.stops?.length || 0) > 0;
+          if (!hasStops) {
+            continue; // Skip this trip
+          }
+          
           summary.trips.push(trip);
           summary.trip_count++;
           summary.total_trips++;
@@ -363,9 +370,15 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
       }
       
       if (data?.trips) {
-        // Group trips by supplier
+        // Group trips by supplier (filter out empty trips)
         const grouped = data.trips.reduce((acc: Record<string, any>, trip: Trip) => {
           if (!trip.supplier_id) return acc;
+          
+          // ⚠️ Skip empty trips (no stops)
+          const hasStops = (trip.stops?.length || 0) > 0;
+          if (!hasStops) {
+            return acc; // Skip this trip
+          }
           
           if (!acc[trip.supplier_id]) {
             // ใช้ supplier_name จาก trip โดยตรง (จาก API) ก่อน ถ้าไม่มีค่อยหาจาก suppliers list
@@ -687,7 +700,7 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
       <div className="w-[297mm] min-h-[210mm] p-6 bg-white font-thai landscape-page page-break-after" style={{ fontSize: '12px' }}>
         {/* Trip Info Cards - Show all trip summary info first */}
         <div className="mb-4 space-y-3 print-trip-summary">
-          {supplier.trips.map((trip, tripIndex) => {
+          {supplier.trips.filter(trip => (trip.stops?.length || 0) > 0).map((trip, tripIndex) => {
             let notes: any = {};
             try {
               notes = trip.notes ? JSON.parse(trip.notes) : {};
@@ -819,7 +832,7 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
               </tr>
             </thead>
             <tbody>
-              {supplier.trips.map((trip, tripIndex) => {
+              {supplier.trips.filter(trip => (trip.stops?.length || 0) > 0).map((trip, tripIndex) => {
                 let notes: any = {};
                 try {
                   notes = trip.notes ? JSON.parse(trip.notes) : {};
@@ -1231,7 +1244,7 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
             </tr>
           </thead>
           <tbody>
-            {supplier.trips.map((trip, tripIndex) => {
+            {supplier.trips.filter(trip => (trip.stops?.length || 0) > 0).map((trip, tripIndex) => {
               let notes: any = {};
               try {
                 notes = trip.notes ? JSON.parse(trip.notes) : {};
