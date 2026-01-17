@@ -2,8 +2,8 @@
 const config = {
   preset: 'ts-jest',
   testEnvironment: 'node',
-  roots: ['<rootDir>/lib'],
-  testMatch: ['**/__tests__/**/*.test.ts'],
+  roots: ['<rootDir>/lib', '<rootDir>/tests'],
+  testMatch: ['**/__tests__/**/*.test.ts', '**/tests/**/*.test.ts'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/$1',
   },

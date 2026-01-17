@@ -198,43 +198,18 @@ async function handlePost(request: NextRequest, context: any) {
       );
     }
 
-    // Call the stored procedure to create face sheet packages
-    const rpcParams: {
-      p_face_sheet_no: null;
-      p_warehouse_id: string;
-      p_created_by: string;
-      p_delivery_date: string;
-      p_order_ids?: number[];
-    } = {
-      p_face_sheet_no: null,
+    // ✅ FIX (BUG-002): Use atomic function - single transaction for all operations
+    console.log('📦 Creating face sheet with atomic transaction...');
+    
+    const { data, error } = await supabase.rpc('create_face_sheet_with_reservation', {
       p_warehouse_id: warehouse_id,
-      p_created_by: created_by || 'System',
-      p_delivery_date: delivery_date
-    };
-
-    // Add order_ids if provided (use the filtered list from body)
-    if (body.order_ids && body.order_ids.length > 0) {
-      rpcParams.p_order_ids = body.order_ids;
-    }
-
-    const { data, error } = await supabase
-      .rpc('create_face_sheet_packages', rpcParams);
+      p_delivery_date: delivery_date,
+      p_order_ids: body.order_ids && body.order_ids.length > 0 ? body.order_ids : null,
+      p_created_by: created_by || 'System'
+    });
 
     if (error) {
-      console.error('Error creating face sheet:', error);
-      
-      // ✅ Check if this is a duplicate constraint violation
-      if ((error as any).code === '23505') {
-        return NextResponse.json(
-          { 
-            error: 'ใบปะหน้าสำหรับวันที่นี้ถูกสร้างไปแล้ว', 
-            details: 'มีใบปะหน้าที่มีรายการเดียวกันอยู่แล้วในระบบ กรุณาตรวจสอบใบปะหน้าที่มีอยู่',
-            duplicate: true
-          },
-          { status: 409 } // 409 Conflict
-        );
-      }
-      
+      console.error('❌ Error creating face sheet:', error);
       return NextResponse.json(
         { error: 'Failed to create face sheet', details: error.message },
         { status: 500 }
@@ -244,128 +219,22 @@ async function handlePost(request: NextRequest, context: any) {
     // The function returns a table, so we need to get the first row
     const result = Array.isArray(data) && data.length > 0 ? data[0] : data;
 
-    console.log('Face sheet creation result:', JSON.stringify(result, null, 2));
+    console.log('✅ Face sheet creation result:', JSON.stringify(result, null, 2));
 
     if (!result || !result.success) {
-      console.error('Face sheet creation failed:', result);
+      console.error('❌ Face sheet creation failed:', result);
       return NextResponse.json(
-        { error: result?.message || 'Failed to create face sheet', details: result },
+        { 
+          error: result?.message || 'Failed to create face sheet', 
+          details: result?.error_details || result 
+        },
         { status: 400 }
       );
     }
 
-    // Reserve stock for face sheet items - CRITICAL: Must succeed
-    try {
-      console.log(`📦 Reserving stock for face sheet ${result.face_sheet_id}...`);
-      const { data: reserveResult, error: reserveError } = await supabase
-        .rpc('reserve_stock_for_face_sheet_items', {
-          p_face_sheet_id: result.face_sheet_id,
-          p_warehouse_id: warehouse_id,
-          p_reserved_by: created_by || 'System'
-        });
-
-      if (reserveError) {
-        console.error('❌ CRITICAL: Error reserving stock:', reserveError);
-        // ✅ FIX: Fail the entire face sheet creation if stock reservation fails
-        return NextResponse.json(
-          { 
-            error: 'ไม่สามารถจองสต็อคสำหรับใบปะหน้าได้', 
-            details: `Face sheet ${result.face_sheet_no} ถูกสร้างแล้ว แต่ไม่สามารถจองสต็อคได้: ${reserveError.message}`,
-            face_sheet_id: result.face_sheet_id,
-            face_sheet_no: result.face_sheet_no,
-            reservation_failed: true
-          },
-          { status: 500 }
-        );
-      } 
-      
-      if (!reserveResult || reserveResult.length === 0) {
-        console.error('❌ CRITICAL: No reservation result returned');
-        return NextResponse.json(
-          { 
-            error: 'ไม่ได้รับผลลัพธ์การจองสต็อค', 
-            details: `Face sheet ${result.face_sheet_no} ถูกสร้างแล้ว แต่ไม่ได้รับผลลัพธ์การจองสต็อค`,
-            face_sheet_id: result.face_sheet_id,
-            face_sheet_no: result.face_sheet_no,
-            reservation_failed: true
-          },
-          { status: 500 }
-        );
-      }
-
-      const reserve = reserveResult[0];
-      if (!reserve.success) {
-        console.error('❌ CRITICAL: Stock reservation failed:', reserve.message);
-        return NextResponse.json(
-          { 
-            error: 'การจองสต็อคไม่สำเร็จ', 
-            details: `Face sheet ${result.face_sheet_no} ถูกสร้างแล้ว แต่การจองสต็อคไม่สำเร็จ: ${reserve.message}`,
-            face_sheet_id: result.face_sheet_id,
-            face_sheet_no: result.face_sheet_no,
-            reservation_failed: true,
-            insufficient_stock_items: reserve.insufficient_stock_items || []
-          },
-          { status: 400 }
-        );
-      }
-
-      console.log(`✅ Stock reserved successfully: ${reserve.items_reserved} items`);
-      
-      // ✅ FIX: Verify reservations were actually created
-      const { data: verifyReservations, error: verifyError } = await supabase
-        .from('face_sheet_item_reservations')
-        .select('COUNT(*)')
-        .eq('face_sheet_item_id', supabase.from('face_sheet_items').select('id').eq('face_sheet_id', result.face_sheet_id));
-
-      if (verifyError) {
-        console.error('❌ Warning: Could not verify reservations:', verifyError);
-      } else {
-        console.log(`✅ Verified: ${verifyReservations?.[0]?.COUNT || 0} reservations created`);
-      }
-
-    } catch (reserveError) {
-      console.error('❌ CRITICAL: Exception reserving stock:', reserveError);
-      return NextResponse.json(
-        { 
-          error: 'เกิดข้อผิดพลาดในการจองสต็อค', 
-          details: `Face sheet ${result.face_sheet_no} ถูกสร้างแล้ว แต่เกิดข้อผิดพลาดในการจองสต็อค: ${reserveError instanceof Error ? reserveError.message : 'Unknown error'}`,
-          face_sheet_id: result.face_sheet_id,
-          face_sheet_no: result.face_sheet_no,
-          reservation_failed: true
-        },
-        { status: 500 }
-      );
-    }
-
-    // Update order statuses from 'draft' to 'confirmed' for orders included in this face sheet
-    try {
-      let updateQuery = supabase
-        .from('wms_orders')
-        .update({ status: 'confirmed' })
-        .eq('order_type', 'express')
-        .eq('delivery_date', delivery_date)
-        .eq('status', 'draft');
-
-      // If specific orders were selected, only update those
-      if (order_ids && order_ids.length > 0) {
-        updateQuery = updateQuery.in('order_id', order_ids);
-      }
-
-      const { error: updateError } = await updateQuery;
-
-      if (updateError) {
-        console.error('Error updating order statuses:', updateError);
-        // Log the error but don't fail the face sheet creation
-      } else {
-        const orderInfo = order_ids && order_ids.length > 0
-          ? `${order_ids.length} selected orders`
-          : `all orders for delivery date: ${delivery_date}`;
-        console.log(`Updated order statuses from 'draft' to 'confirmed' for ${orderInfo}`);
-      }
-    } catch (updateCatchError) {
-      console.error('Exception updating order statuses:', updateCatchError);
-      // Log the error but don't fail the face sheet creation
-    }
+    console.log(`✅ Face sheet created successfully: ${result.face_sheet_no}`);
+    console.log(`✅ Stock reserved: ${result.items_reserved} items`);
+    console.log(`✅ Total packages: ${result.total_packages} (${result.small_size_count} small, ${result.large_size_count} large)`);
 
     return NextResponse.json({
       success: true,
@@ -374,6 +243,7 @@ async function handlePost(request: NextRequest, context: any) {
       total_packages: result.total_packages,
       small_size_count: result.small_size_count,
       large_size_count: result.large_size_count,
+      items_reserved: result.items_reserved,
       message: result.message
     });
 
