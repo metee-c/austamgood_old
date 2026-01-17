@@ -42,6 +42,63 @@ interface BatchUpdateRequest {
 }
 
 /**
+ * ใช้ SQL function สำหรับ batch update ใน transaction
+ * แก้ไข Bug #7 - Batch Update Transaction
+ * ป้องกัน partial update โดยใช้ atomic operations
+ */
+async function batchUpdateWithTransaction(
+  supabase: any,
+  moves: MoveChange[],
+  reorders: ReorderChange[],
+  deletes: DeleteChange[]
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    // แปลง moves, reorders, deletes เป็น format ที่ SQL function รับได้
+    const movesJson = moves.map(m => ({
+      orderId: m.orderId,
+      fromTripId: typeof m.fromTripId === 'string' ? null : m.fromTripId,
+      toTripId: typeof m.toTripId === 'string' ? null : m.toTripId
+    })).filter(m => m.fromTripId && m.toTripId);
+
+    const reordersJson = reorders.map(r => ({
+      tripId: typeof r.tripId === 'string' ? null : r.tripId,
+      orderedStopIds: r.orderedStopIds.filter(id => typeof id === 'number')
+    })).filter(r => r.tripId && r.orderedStopIds.length > 0);
+
+    const deletesJson = deletes.map(d => ({
+      stopId: typeof d.stopId === 'string' ? null : d.stopId,
+      orderId: d.orderId,
+      tripId: typeof d.tripId === 'string' ? null : d.tripId
+    })).filter(d => d.stopId);
+
+    console.log('🔄 Calling batch_update_route_stops function:', {
+      movesCount: movesJson.length,
+      reordersCount: reordersJson.length,
+      deletesCount: deletesJson.length
+    });
+
+    // เรียก SQL function ที่ทำงานใน transaction
+    const { data, error } = await supabase.rpc('batch_update_route_stops', {
+      p_moves: movesJson,
+      p_reorders: reordersJson,
+      p_deletes: deletesJson
+    });
+
+    if (error) {
+      console.error('❌ Batch update transaction failed:', error);
+      return { success: false, error: error.message };
+    }
+
+    console.log('✅ Batch update transaction succeeded:', data);
+    return { success: true };
+
+  } catch (error: any) {
+    console.error('❌ Batch update transaction error:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+/**
  * Helper function to materialize trips from optimizedTrips settings
  * This converts fallback trips to real database records
  */

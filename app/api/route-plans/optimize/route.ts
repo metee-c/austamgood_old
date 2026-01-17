@@ -14,6 +14,126 @@ import {
   enforceVehicleLimit
 } from '@/lib/vrp/algorithms';
 
+/**
+ * Timeout wrapper สำหรับป้องกัน VRP optimization ค้างนานเกินไป
+ * @param promise Promise ที่ต้องการ timeout
+ * @param timeoutMs เวลา timeout (milliseconds)
+ * @param errorMessage ข้อความ error เมื่อ timeout
+ */
+async function withTimeout<T>(
+  promise: Promise<T>,
+  timeoutMs: number,
+  errorMessage: string
+): Promise<T> {
+  let timeoutId: NodeJS.Timeout;
+  
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(() => {
+      reject(new Error(errorMessage));
+    }, timeoutMs);
+  });
+
+  try {
+    const result = await Promise.race([promise, timeoutPromise]);
+    clearTimeout(timeoutId!);
+    return result;
+  } catch (error) {
+    clearTimeout(timeoutId!);
+    throw error;
+  }
+}
+
+/**
+ * ฟังก์ชันหลักสำหรับคำนวณ VRP optimization
+ * แยกออกมาเพื่อให้ wrap ด้วย timeout ได้
+ */
+async function performVRPOptimization(
+  deliveries: any[],
+  warehouseLocation: any,
+  settings: any,
+  zonedDeliveries: any
+): Promise<any[]> {
+  // 4. Apply geographic clustering if enabled
+  if (settings.zoneMethod && settings.zoneMethod !== 'none') {
+    const numZones = settings.numZones || Math.max(2, Math.ceil(deliveries.length / (settings.maxStoresPerZone || 10)));
+    zonedDeliveries = clusterDeliveriesIntoZones(
+      deliveries,
+      settings.zoneMethod,
+      numZones,
+      settings.maxStoresPerZone || 10
+    );
+    console.log(`Clustered into ${Object.keys(zonedDeliveries).length} zones`);
+  } else {
+    zonedDeliveries = { 0: deliveries };
+  }
+
+  // 5. Optimize routes for each zone
+  let allTrips: any[] = [];
+  let tripSequence = 1;
+
+  for (const [zoneId, zoneDeliveries] of Object.entries(zonedDeliveries)) {
+    if (!Array.isArray(zoneDeliveries) || zoneDeliveries.length === 0) continue;
+
+    console.log(`Optimizing zone ${zoneId} with ${zoneDeliveries.length} deliveries`);
+
+    // Choose algorithm based on settings
+    let zoneTrips: any[] = [];
+    const algorithm = settings.routingAlgorithm || 'insertion';
+
+    switch (algorithm) {
+      case 'savings':
+        zoneTrips = clarkeWrightSavings(zoneDeliveries, warehouseLocation, settings);
+        break;
+      case 'nearest':
+        zoneTrips = nearestNeighbor(zoneDeliveries, warehouseLocation, settings);
+        break;
+      case 'insertion':
+      default:
+        zoneTrips = insertionHeuristic(zoneDeliveries, warehouseLocation, settings);
+        break;
+    }
+
+    // Apply local search optimization if enabled
+    if (settings.localSearchMethod && settings.localSearchMethod !== 'none') {
+      console.log(`Applying ${settings.localSearchMethod} optimization`);
+      zoneTrips = localSearch2Opt(zoneTrips, warehouseLocation, settings);
+    }
+
+    // Add zone information and sequence
+    zoneTrips = zoneTrips.map((trip: any) => ({
+      ...trip,
+      zoneId: parseInt(zoneId),
+      zoneName: `โซน ${parseInt(zoneId) + 1}`,
+      tripSequence: tripSequence++
+    }));
+
+    allTrips.push(...zoneTrips);
+  }
+
+  // 6. Consolidate routes if enabled
+  if (settings.consolidationEnabled && allTrips.length > 1) {
+    console.log('Consolidating routes...');
+    allTrips = consolidateRoutes(allTrips, warehouseLocation, settings);
+  }
+
+  // 7. Reorder stops based on user-selected method
+  if (settings.stopOrderingMethod && settings.stopOrderingMethod !== 'optimized') {
+    console.log(`Reordering stops using method: ${settings.stopOrderingMethod}`);
+    allTrips = reorderStopsByMethod(allTrips, warehouseLocation, settings.stopOrderingMethod);
+  }
+
+  // 8. Enforce vehicle limit if specified
+  if (settings.maxVehicles > 0 && settings.enforceVehicleLimit) {
+    console.log(`Enforcing vehicle limit: max ${settings.maxVehicles} vehicles`);
+    allTrips = enforceVehicleLimit(allTrips, warehouseLocation, settings);
+  }
+
+  // 9. Calculate costs and metrics
+  allTrips = calculateRouteCosts(allTrips, warehouseLocation, settings);
+
+  return allTrips;
+}
+
 export async function POST(request: Request) {
   try {
     const supabase = await createClient();
@@ -291,83 +411,31 @@ export async function POST(request: Request) {
       console.warn('Please update master_sku table with dimension data for accurate volume calculation');
     }
 
-    // 4. Apply geographic clustering if enabled
+    // Wrap VRP optimization with timeout (5 minutes max)
+    const VRP_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+    
+    let allTrips: any[] = [];
     let zonedDeliveries: any = { 0: deliveries };
     
-    if (settings.zoneMethod && settings.zoneMethod !== 'none') {
-      const numZones = settings.numZones || Math.max(2, Math.ceil(deliveries.length / (settings.maxStoresPerZone || 10)));
-      zonedDeliveries = clusterDeliveriesIntoZones(
-        deliveries,
-        settings.zoneMethod,
-        numZones,
-        settings.maxStoresPerZone || 10
+    try {
+      allTrips = await withTimeout(
+        performVRPOptimization(deliveries, warehouseLocation, settings, zonedDeliveries),
+        VRP_TIMEOUT_MS,
+        'VRP optimization timeout: การคำนวณเส้นทางใช้เวลานานเกิน 5 นาที กรุณาลดจำนวนออเดอร์หรือปรับการตั้งค่า'
       );
-      console.log(`Clustered into ${Object.keys(zonedDeliveries).length} zones`);
-    }
-
-    // 5. Optimize routes for each zone
-    let allTrips: any[] = [];
-    let tripSequence = 1;
-
-    for (const [zoneId, zoneDeliveries] of Object.entries(zonedDeliveries)) {
-      if (!Array.isArray(zoneDeliveries) || zoneDeliveries.length === 0) continue;
-
-      console.log(`Optimizing zone ${zoneId} with ${zoneDeliveries.length} deliveries`);
-
-      // Choose algorithm based on settings
-      let zoneTrips: any[] = [];
-      const algorithm = settings.routingAlgorithm || 'insertion';
-
-      switch (algorithm) {
-        case 'savings':
-          zoneTrips = clarkeWrightSavings(zoneDeliveries, warehouseLocation, settings);
-          break;
-        case 'nearest':
-          zoneTrips = nearestNeighbor(zoneDeliveries, warehouseLocation, settings);
-          break;
-        case 'insertion':
-        default:
-          zoneTrips = insertionHeuristic(zoneDeliveries, warehouseLocation, settings);
-          break;
+    } catch (error: any) {
+      if (error.message.includes('timeout')) {
+        console.error('❌ VRP Optimization Timeout:', error.message);
+        return NextResponse.json(
+          { 
+            error: error.message,
+            suggestion: 'ลองลดจำนวนออเดอร์ หรือเพิ่มจำนวนโซน หรือปรับการตั้งค่า VRP'
+          },
+          { status: 408 } // Request Timeout
+        );
       }
-
-      // Apply local search optimization if enabled
-      if (settings.localSearchMethod && settings.localSearchMethod !== 'none') {
-        console.log(`Applying ${settings.localSearchMethod} optimization`);
-        zoneTrips = localSearch2Opt(zoneTrips, warehouseLocation, settings);
-      }
-
-      // Add zone information and sequence
-      zoneTrips = zoneTrips.map((trip: any) => ({
-        ...trip,
-        zoneId: parseInt(zoneId),
-        zoneName: `โซน ${parseInt(zoneId) + 1}`,
-        tripSequence: tripSequence++
-      }));
-
-      allTrips.push(...zoneTrips);
+      throw error;
     }
-
-    // 6. Consolidate routes if enabled
-    if (settings.consolidationEnabled && allTrips.length > 1) {
-      console.log('Consolidating routes...');
-      allTrips = consolidateRoutes(allTrips, warehouseLocation, settings);
-    }
-
-    // 7. Reorder stops based on user-selected method
-    if (settings.stopOrderingMethod && settings.stopOrderingMethod !== 'optimized') {
-      console.log(`Reordering stops using method: ${settings.stopOrderingMethod}`);
-      allTrips = reorderStopsByMethod(allTrips, warehouseLocation, settings.stopOrderingMethod);
-    }
-
-    // 8. Enforce vehicle limit if specified
-    if (settings.maxVehicles > 0 && settings.enforceVehicleLimit) {
-      console.log(`Enforcing vehicle limit: max ${settings.maxVehicles} vehicles`);
-      allTrips = enforceVehicleLimit(allTrips, warehouseLocation, settings);
-    }
-
-    // 9. Calculate costs and metrics
-    allTrips = calculateRouteCosts(allTrips, warehouseLocation, settings);
 
     // 10. Save trips to database
     try {

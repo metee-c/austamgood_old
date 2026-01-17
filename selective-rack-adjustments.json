@@ -1,0 +1,273 @@
+{
+  "adjustments": [
+    {
+      "type": "MOVE",
+      "pallet_id": null,
+      "sku_id": "TT-NET-C|CNT|0005",
+      "from_location": "A10-02-007",
+      "to_location": "A10-01-022",
+      "qty": 200,
+      "reason": "ย้ายไปบ้านหยิบ (ไม่พบในการนับสต็อก)"
+    },
+    {
+      "type": "MOVE",
+      "pallet_id": "ATG2500015592",
+      "sku_id": "B-BAP-C|KNP|010",
+      "from_location": "B02-05-018",
+      "to_location": "PK001",
+      "qty": 576,
+      "reason": "ย้ายไปบ้านหยิบ (ไม่พบในการนับสต็อก)"
+    },
+    {
+      "type": "MOVE",
+      "pallet_id": "ATG2500012354",
+      "sku_id": "B-BEY-D|MNB|010",
+      "from_location": "B03-01-008",
+      "to_location": "PK001",
+      "qty": 516,
+      "reason": "ย้ายไปบ้านหยิบ (ไม่พบในการนับสต็อก)"
+    },
+    {
+      "type": "MOVE",
+      "pallet_id": "ATG2500014515",
+      "sku_id": "B-BEY-D|BEF|100",
+      "from_location": "B04-02-023",
+      "to_location": "PK001",
+      "qty": 16,
+      "reason": "ย้ายไปบ้านหยิบ (ไม่พบในการนับสต็อก)"
+    },
+    {
+      "type": "MOVE",
+      "pallet_id": "ATG2500015500",
+      "sku_id": "B-BAP-C|HNS|030",
+      "from_location": "B04-04-001",
+      "to_location": "PK001",
+      "qty": 201,
+      "reason": "ย้ายไปบ้านหยิบ (ไม่พบในการนับสต็อก)"
+    },
+    {
+      "type": "MOVE",
+      "pallet_id": "ATG2500015523",
+      "sku_id": "B-BAP-C|HNS|010",
+      "from_location": "B04-05-004",
+      "to_location": "PK001",
+      "qty": 12,
+      "reason": "ย้ายไปบ้านหยิบ (ไม่พบในการนับสต็อก)"
+    },
+    {
+      "type": "MOVE",
+      "pallet_id": "ATG2500015725",
+      "sku_id": "B-BEY-D|LAM|012",
+      "from_location": "B05-02-012",
+      "to_location": "PK001",
+      "qty": 72,
+      "reason": "ย้ายไปบ้านหยิบ (ไม่พบในการนับสต็อก)"
+    },
+    {
+      "type": "MOVE",
+      "pallet_id": "ATG2500016354",
+      "sku_id": "B-BEY-D|LAM|100",
+      "from_location": "B05-02-014",
+      "to_location": "PK001",
+      "qty": 4,
+      "reason": "ย้ายไปบ้านหยิบ (ไม่พบในการนับสต็อก)"
+    },
+    {
+      "type": "MOVE",
+      "pallet_id": "ATG2500014563",
+      "sku_id": "B-BEY-D|CNL|100",
+      "from_location": "B06-01-018",
+      "to_location": "PK001",
+      "qty": 38,
+      "reason": "ย้ายไปบ้านหยิบ (ไม่พบในการนับสต็อก)"
+    },
+    {
+      "type": "MOVE",
+      "pallet_id": "ATG2500015708",
+      "sku_id": "B-BEY-D|CNL|100",
+      "from_location": "B06-01-019",
+      "to_location": "PK001",
+      "qty": 60,
+      "reason": "ย้ายไปบ้านหยิบ (ไม่พบในการนับสต็อก)"
+    },
+    {
+      "type": "MOVE",
+      "pallet_id": "ATG2500014600",
+      "sku_id": "B-BEY-D|CNL|100",
+      "from_location": "B06-01-023",
+      "to_location": "PK001",
+      "qty": 60,
+      "reason": "ย้ายไปบ้านหยิบ (ไม่พบในการนับสต็อก)"
+    },
+    {
+      "type": "MOVE",
+      "pallet_id": "ATG2500015888",
+      "sku_id": "B-BEY-C|TUN|010",
+      "from_location": "B06-04-010",
+      "to_location": "PK001",
+      "qty": 576,
+      "reason": "ย้ายไปบ้านหยิบ (ไม่พบในการนับสต็อก)"
+    },
+    {
+      "type": "MOVE",
+      "pallet_id": "ATG2500013900",
+      "sku_id": "B-BEY-C|SAL|070",
+      "from_location": "B10-05-024",
+      "to_location": "PK001",
+      "qty": 48,
+      "reason": "ย้ายไปบ้านหยิบ (ไม่พบในการนับสต็อก)"
+    },
+    {
+      "type": "MOVE",
+      "pallet_id": "ATG2500018587",
+      "sku_id": "B-BEY-C|LAM|070",
+      "from_location": "A03-02-025",
+      "to_location": "A03-02-023",
+      "qty": 84,
+      "reason": "ย้ายมาตามการนับสต็อก"
+    },
+    {
+      "type": "MOVE",
+      "pallet_id": "ATG2500018537",
+      "sku_id": "B-BEY-C|TUN|070",
+      "from_location": "A04-03-008",
+      "to_location": "A04-03-007",
+      "qty": 84,
+      "reason": "ย้ายมาตามการนับสต็อก"
+    },
+    {
+      "type": "MOVE",
+      "pallet_id": "ATG2500017869",
+      "sku_id": "B-BEY-D|SAL|100",
+      "from_location": "A06-02-019",
+      "to_location": "A06-02-020",
+      "qty": 60,
+      "reason": "ย้ายมาตามการนับสต็อก"
+    },
+    {
+      "type": "MOVE",
+      "pallet_id": "ATG20260112000000052",
+      "sku_id": "B-BAP-C|WEP|030",
+      "from_location": "B03-03-003",
+      "to_location": "B03-03-002",
+      "qty": 216,
+      "reason": "ย้ายมาตามการนับสต็อก"
+    },
+    {
+      "type": "MOVE",
+      "pallet_id": "ATG20260112000000068",
+      "sku_id": "B-BAP-C|WEP|010",
+      "from_location": "B03-04-006",
+      "to_location": "B03-04-007",
+      "qty": 576,
+      "reason": "ย้ายมาตามการนับสต็อก"
+    },
+    {
+      "type": "MOVE",
+      "pallet_id": "ATG20260112000000036",
+      "sku_id": "B-BAP-C|WEP|010",
+      "from_location": "B03-05-025",
+      "to_location": "B03-05-024",
+      "qty": 576,
+      "reason": "ย้ายมาตามการนับสต็อก"
+    },
+    {
+      "type": "MOVE",
+      "pallet_id": "ATG20260112000000012",
+      "sku_id": "B-BAP-C|HNS|030",
+      "from_location": "B04-04-014",
+      "to_location": "B04-04-013",
+      "qty": 216,
+      "reason": "ย้ายมาตามการนับสต็อก"
+    },
+    {
+      "type": "MOVE",
+      "pallet_id": "ATG2500018246",
+      "sku_id": "B-BEY-C|MNB|070",
+      "from_location": "B07-03-009",
+      "to_location": "B07-03-008",
+      "qty": 84,
+      "reason": "ย้ายมาตามการนับสต็อก"
+    },
+    {
+      "type": "MOVE",
+      "pallet_id": "ATG2500018261",
+      "sku_id": "B-BEY-C|MNB|070",
+      "from_location": "B07-03-017",
+      "to_location": "B07-03-016",
+      "qty": 84,
+      "reason": "ย้ายมาตามการนับสต็อก"
+    },
+    {
+      "type": "MOVE",
+      "pallet_id": "ATG2500018382",
+      "sku_id": "B-BEY-C|MNB|070",
+      "from_location": "B07-04-008",
+      "to_location": "B07-04-009",
+      "qty": 84,
+      "reason": "ย้ายมาตามการนับสต็อก"
+    }
+  ],
+  "errors": [
+    {
+      "type": "EXCEL_ONLY",
+      "location": "A02-04-025",
+      "sku_id": "B-BEY-C|SAL|010",
+      "pallet_id": "ATG2500015373",
+      "system_qty": 0,
+      "excel_qty": 576,
+      "action": "หาและย้ายมาที่นี่",
+      "error": "Pallet not found in system"
+    },
+    {
+      "type": "EXCEL_ONLY",
+      "location": "A04-02-011",
+      "sku_id": "B-BEY-C|TUN|070",
+      "pallet_id": "ATG2500015026",
+      "system_qty": 0,
+      "excel_qty": 84,
+      "action": "หาและย้ายมาที่นี่",
+      "error": "Pallet not found in system"
+    },
+    {
+      "type": "EXCEL_ONLY",
+      "location": "A05-03-015",
+      "sku_id": "B-BEY-C|MCK|070",
+      "pallet_id": "ATG2500015427",
+      "system_qty": 0,
+      "excel_qty": 84,
+      "action": "หาและย้ายมาที่นี่",
+      "error": "Pallet not found in system"
+    },
+    {
+      "type": "EXCEL_ONLY",
+      "location": "A05-04-002",
+      "sku_id": "B-BEY-C|MCK|070",
+      "pallet_id": "ATG2500015443",
+      "system_qty": 0,
+      "excel_qty": 84,
+      "action": "หาและย้ายมาที่นี่",
+      "error": "Pallet not found in system"
+    },
+    {
+      "type": "EXCEL_ONLY",
+      "location": "B09-05-008",
+      "sku_id": "B-BEY-C|SAL|070",
+      "pallet_id": "ATG2500015212",
+      "system_qty": 0,
+      "excel_qty": 84,
+      "action": "หาและย้ายมาที่นี่",
+      "error": "Pallet not found in system"
+    },
+    {
+      "type": "EXCEL_ONLY",
+      "location": "B09-05-009",
+      "sku_id": "B-BEY-C|SAL|070",
+      "pallet_id": "ATG2500015211",
+      "system_qty": 0,
+      "excel_qty": 84,
+      "action": "หาและย้ายมาที่นี่",
+      "error": "Pallet not found in system"
+    }
+  ]
+}

@@ -1,0 +1,200 @@
+[
+  {
+    "type": "EXCEL_ONLY",
+    "location": "A02-04-025",
+    "sku_id": "B-BEY-C|SAL|010",
+    "pallet_id": "ATG2500015373",
+    "system_qty": 0,
+    "excel_qty": 576,
+    "action": "หาและย้ายมาที่นี่"
+  },
+  {
+    "type": "EXCEL_ONLY",
+    "location": "A03-02-025",
+    "sku_id": "B-BEY-C|LAM|070",
+    "pallet_id": "ATG2500018587",
+    "system_qty": 0,
+    "excel_qty": 84,
+    "action": "หาและย้ายมาที่นี่"
+  },
+  {
+    "type": "EXCEL_ONLY",
+    "location": "A04-02-011",
+    "sku_id": "B-BEY-C|TUN|070",
+    "pallet_id": "ATG2500015026",
+    "system_qty": 0,
+    "excel_qty": 84,
+    "action": "หาและย้ายมาที่นี่"
+  },
+  {
+    "type": "EXCEL_ONLY",
+    "location": "A04-03-008",
+    "sku_id": "B-BEY-C|TUN|070",
+    "pallet_id": "ATG2500018537",
+    "system_qty": 0,
+    "excel_qty": 84,
+    "action": "หาและย้ายมาที่นี่"
+  },
+  {
+    "type": "EXCEL_ONLY",
+    "location": "A05-03-015",
+    "sku_id": "B-BEY-C|MCK|070",
+    "pallet_id": "ATG2500015427",
+    "system_qty": 0,
+    "excel_qty": 84,
+    "action": "หาและย้ายมาที่นี่"
+  },
+  {
+    "type": "EXCEL_ONLY",
+    "location": "A05-04-002",
+    "sku_id": "B-BEY-C|MCK|070",
+    "pallet_id": "ATG2500015443",
+    "system_qty": 0,
+    "excel_qty": 84,
+    "action": "หาและย้ายมาที่นี่"
+  },
+  {
+    "type": "EXCEL_ONLY",
+    "location": "A06-02-019",
+    "sku_id": "B-BEY-D|SAL|100",
+    "pallet_id": "ATG2500017869",
+    "system_qty": 0,
+    "excel_qty": 60,
+    "action": "หาและย้ายมาที่นี่"
+  },
+  {
+    "type": "EXCEL_ONLY",
+    "location": "A08-01-020",
+    "sku_id": "ว่าง",
+    "pallet_id": "-",
+    "system_qty": 0,
+    "excel_qty": "-",
+    "action": "หาและย้ายมาที่นี่"
+  },
+  {
+    "type": "SYSTEM_ONLY",
+    "location": "A10-02-007",
+    "sku_id": "TT-NET-C|CNT|0005",
+    "pallet_id": null,
+    "system_qty": 200,
+    "excel_qty": 0,
+    "action": "ย้ายไปบ้านหยิบ"
+  },
+  {
+    "type": "EXCEL_ONLY",
+    "location": "B03-03-003",
+    "sku_id": "B-BAP-C|WEP|030",
+    "pallet_id": "ATG20260112000000052",
+    "system_qty": 0,
+    "excel_qty": 216,
+    "action": "หาและย้ายมาที่นี่"
+  },
+  {
+    "type": "EXCEL_ONLY",
+    "location": "B03-04-006",
+    "sku_id": "B-BAP-C|WEP|010",
+    "pallet_id": "ATG20260112000000068",
+    "system_qty": 0,
+    "excel_qty": 576,
+    "action": "หาและย้ายมาที่นี่"
+  },
+  {
+    "type": "EXCEL_ONLY",
+    "location": "B03-05-025",
+    "sku_id": "B-BAP-C|WEP|010",
+    "pallet_id": "ATG20260112000000036",
+    "system_qty": 0,
+    "excel_qty": 576,
+    "action": "หาและย้ายมาที่นี่"
+  },
+  {
+    "type": "EXCEL_ONLY",
+    "location": "B04-04-014",
+    "sku_id": "B-BAP-C|HNS|030",
+    "pallet_id": "ATG20260112000000012",
+    "system_qty": 0,
+    "excel_qty": 216,
+    "action": "หาและย้ายมาที่นี่"
+  },
+  {
+    "type": "EXCEL_ONLY",
+    "location": "B07-02-022",
+    "system_qty": 0,
+    "action": "หาและย้ายมาที่นี่"
+  },
+  {
+    "type": "EXCEL_ONLY",
+    "location": "B07-03-009",
+    "sku_id": "B-BEY-C|MNB|070",
+    "pallet_id": "ATG2500018246",
+    "system_qty": 0,
+    "excel_qty": 84,
+    "action": "หาและย้ายมาที่นี่"
+  },
+  {
+    "type": "EXCEL_ONLY",
+    "location": "B07-03-017",
+    "sku_id": "B-BEY-C|MNB|070",
+    "pallet_id": "ATG2500018261",
+    "system_qty": 0,
+    "excel_qty": 84,
+    "action": "หาและย้ายมาที่นี่"
+  },
+  {
+    "type": "EXCEL_ONLY",
+    "location": "B07-04-008",
+    "sku_id": "B-BEY-C|MNB|070",
+    "pallet_id": "ATG2500018382",
+    "system_qty": 0,
+    "excel_qty": 84,
+    "action": "หาและย้ายมาที่นี่"
+  },
+  {
+    "type": "EXCEL_ONLY",
+    "location": "B07-04-013",
+    "system_qty": 0,
+    "action": "หาและย้ายมาที่นี่"
+  },
+  {
+    "type": "EXCEL_ONLY",
+    "location": "B07-04-016",
+    "system_qty": 0,
+    "action": "หาและย้ายมาที่นี่"
+  },
+  {
+    "type": "EXCEL_ONLY",
+    "location": "B07-04-025",
+    "system_qty": 0,
+    "action": "หาและย้ายมาที่นี่"
+  },
+  {
+    "type": "EXCEL_ONLY",
+    "location": "B07-05-004",
+    "system_qty": 0,
+    "action": "หาและย้ายมาที่นี่"
+  },
+  {
+    "type": "EXCEL_ONLY",
+    "location": "B08-01-025",
+    "system_qty": 0,
+    "action": "หาและย้ายมาที่นี่"
+  },
+  {
+    "type": "EXCEL_ONLY",
+    "location": "B09-05-008",
+    "sku_id": "B-BEY-C|SAL|070",
+    "pallet_id": "ATG2500015212",
+    "system_qty": 0,
+    "excel_qty": 84,
+    "action": "หาและย้ายมาที่นี่"
+  },
+  {
+    "type": "EXCEL_ONLY",
+    "location": "B09-05-009",
+    "sku_id": "B-BEY-C|SAL|070",
+    "pallet_id": "ATG2500015211",
+    "system_qty": 0,
+    "excel_qty": 84,
+    "action": "หาและย้ายมาที่นี่"
+  }
+]

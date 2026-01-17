@@ -28,7 +28,8 @@ import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
-import OptimizationSidebar, { OptimizationSettings } from '@/components/vrp/OptimizationSidebar';
+import { OptimizationSettings } from '@/components/vrp/OptimizationSidebar';
+import OptimizationSidebar from '@/components/vrp/OptimizationSidebar';
 import { PageContainer, PageHeaderWithFilters, SearchInput, FilterSelect } from '@/components/ui/page-components';
 import RouteMap from '@/components/maps/RouteMap';
 import PrintRoutePlanModal from '@/components/receiving/PrintRoutePlanModal';
@@ -36,7 +37,6 @@ import EditShippingCostModal from '@/components/receiving/EditShippingCostModal'
 import TransportContractModal from '@/components/receiving/TransportContractModal';
 import DraggableStopList from '@/components/receiving/DraggableStopList';
 import EditorDraftOrdersPanel from '@/components/receiving/EditorDraftOrdersPanel';
-import ExcelStyleRouteEditor from '@/components/receiving/ExcelStyleRouteEditor';
 
 // ===== Import Types & Utils จากไฟล์ที่แยกออกมา =====
 import type {
@@ -50,7 +50,7 @@ import type {
     SplitFormPayload,
     BadgeVariant
 } from './types';
-import { MetricCard, SplitStopModal, MultiPlanContractModal, MultiPlanTransportContractModal, CrossPlanTransferModal, ConfirmDialog } from './components';
+import { MetricCard, SplitStopModal, MultiPlanContractModal, MultiPlanTransportContractModal, CrossPlanTransferModal, ConfirmDialog, RoutesPlanTable, CreatePlanModal, ExcelEditor } from './components';
 import { 
     STATUSES, 
     STATUS_BADGE_MAP, 
@@ -261,21 +261,27 @@ const RoutesPage = () => {
     } | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
 
-    const fetchDraftOrders = useCallback(async (warehouseId: string, planDate: string) => {
+    const fetchDraftOrders = useCallback(async (warehouseId: string, planDate: string, signal?: AbortSignal) => {
         try {
-            const res = await fetch(`/api/route-plans/draft-orders?warehouseId=${warehouseId}&planDate=${planDate}`);
+            const res = await fetch(`/api/route-plans/draft-orders?warehouseId=${warehouseId}&planDate=${planDate}`, { signal });
+            if (signal?.aborted) return;
             const { data } = await res.json();
-            setDraftOrders(data || []);
-        } catch (error) {
+            if (!signal?.aborted) {
+                setDraftOrders(data || []);
+            }
+        } catch (error: any) {
+            if (error.name === 'AbortError') return;
             console.error('Error fetching draft orders:', error);
         }
     }, [setDraftOrders]);
 
-    const fetchWarehouses = useCallback(async () => {
+    const fetchWarehouses = useCallback(async (signal?: AbortSignal) => {
         try {
-            const res = await fetch('/api/master-warehouse');
+            const res = await fetch('/api/master-warehouse', { signal });
+            if (signal?.aborted) return;
             const data = await res.json();
             const list = Array.isArray(data) ? data : data?.data || [];
+            if (signal?.aborted) return;
             setWarehouses(list);
 
             if (list.length > 0) {
@@ -283,33 +289,39 @@ const RoutesPage = () => {
                     list.find((w: any) => w.warehouse_id === 'สินค้าสำเร็จรูป' || w.warehouse_name?.includes('สินค้าสำเร็จรูป')) ||
                     list[0];
 
-                setPlanForm(prev => {
-                    if (prev.warehouseId) return prev;
-                    return { ...prev, warehouseId: defaultWarehouse.warehouse_id };
-                });
+                if (!signal?.aborted) {
+                    setPlanForm(prev => {
+                        if (prev.warehouseId) return prev;
+                        return { ...prev, warehouseId: defaultWarehouse.warehouse_id };
+                    });
 
-                setVrpSettings(prev => {
-                    if (!defaultWarehouse.latitude || !defaultWarehouse.longitude) return prev;
-                    return {
-                        ...prev,
-                        warehouseLat: Number(defaultWarehouse.latitude),
-                        warehouseLng: Number(defaultWarehouse.longitude)
-                    };
-                });
+                    setVrpSettings(prev => {
+                        if (!defaultWarehouse.latitude || !defaultWarehouse.longitude) return prev;
+                        return {
+                            ...prev,
+                            warehouseLat: Number(defaultWarehouse.latitude),
+                            warehouseLng: Number(defaultWarehouse.longitude)
+                        };
+                    });
+                }
 
-                await fetchDraftOrders(defaultWarehouse.warehouse_id, planForm.planDate);
+                await fetchDraftOrders(defaultWarehouse.warehouse_id, planForm.planDate, signal);
             } else {
-                setDraftOrders([]);
+                if (!signal?.aborted) {
+                    setDraftOrders([]);
+                }
             }
-        } catch (error) {
+        } catch (error: any) {
+            if (error.name === 'AbortError') return;
             console.error('Error fetching warehouses:', error);
         }
     }, [fetchDraftOrders, planForm.planDate]);
 
-    const fetchRoutePlans = useCallback(async () => {
+    const fetchRoutePlans = useCallback(async (signal?: AbortSignal) => {
         try {
             setLoading(true);
-            const res = await fetch('/api/route-plans');
+            const res = await fetch('/api/route-plans', { signal });
+            if (signal?.aborted) return;
             const { data, error } = await res.json();
             
             console.log('Fetched route plans:', { data, error, count: data?.length });
@@ -318,42 +330,66 @@ const RoutesPage = () => {
                 console.error('Error from API:', error);
             }
             
-            setRoutePlans(data || []);
-        } catch (error) {
+            if (!signal?.aborted) {
+                setRoutePlans(data || []);
+            }
+        } catch (error: any) {
+            if (error.name === 'AbortError') return;
             console.error('Error fetching route plans:', error);
         } finally {
-            setLoading(false);
+            if (!signal?.aborted) {
+                setLoading(false);
+            }
         }
     }, []);
 
-    const fetchEditorData = useCallback(async (planId: number) => {
+    const fetchEditorData = useCallback(async (planId: number, signal?: AbortSignal) => {
+        // Bug #2 Fix: Create AbortController if not provided
+        const abortController = signal ? null : new AbortController();
+        const fetchSignal = signal || abortController!.signal;
+        let isMounted = true;
+
         try {
             setEditorLoading(true);
             setEditorError(null);
-            const res = await fetch(`/api/route-plans/${planId}/editor`);
+            const res = await fetch(`/api/route-plans/${planId}/editor`, { signal: fetchSignal });
+            if (fetchSignal?.aborted || !isMounted) return;
             const { data, error } = await res.json();
             if (error) {
-                setEditorError(error);
+                if (!fetchSignal?.aborted && isMounted) {
+                    setEditorError(error);
+                }
                 return;
             }
 
-            setEditorPlan(data.plan);
-            setEditorWarehouse(data.warehouse);
+            if (!fetchSignal?.aborted && isMounted) {
+                setEditorPlan(data.plan);
+                setEditorWarehouse(data.warehouse);
+            }
 
             // Fetch draft orders for this plan (forEditor=true เพื่อดึงออเดอร์ร่างทั้งหมดไม่กรองตามวันที่)
-            if (data.plan?.warehouse_id) {
+            if (data.plan?.warehouse_id && !fetchSignal?.aborted && isMounted) {
                 setEditorDraftOrdersLoading(true);
                 try {
                     const draftRes = await fetch(
-                        `/api/route-plans/draft-orders?warehouseId=${data.plan.warehouse_id}&forEditor=true`
+                        `/api/route-plans/draft-orders?warehouseId=${data.plan.warehouse_id}&forEditor=true`,
+                        { signal: fetchSignal }
                     );
+                    if (fetchSignal?.aborted || !isMounted) return;
                     const { data: draftData } = await draftRes.json();
-                    setEditorDraftOrders(draftData || []);
-                } catch (err) {
+                    if (!fetchSignal?.aborted && isMounted) {
+                        setEditorDraftOrders(draftData || []);
+                    }
+                } catch (err: any) {
+                    if (err.name === 'AbortError') return;
                     console.error('Error fetching editor draft orders:', err);
-                    setEditorDraftOrders([]);
+                    if (!fetchSignal?.aborted && isMounted) {
+                        setEditorDraftOrders([]);
+                    }
                 } finally {
-                    setEditorDraftOrdersLoading(false);
+                    if (!fetchSignal?.aborted && isMounted) {
+                        setEditorDraftOrdersLoading(false);
+                    }
                 }
             }
 
@@ -462,27 +498,48 @@ const RoutesPage = () => {
                 return normalizedTrip;
             });
 
-            setEditorTrips(tripsFromApi);
+            if (!fetchSignal?.aborted && isMounted) {
+                setEditorTrips(tripsFromApi);
 
-            const firstTrip = tripsFromApi[0];
-            setSelectedEditorTripId(firstTrip?.trip_id ?? null);
-            setSelectedEditorStopId(firstTrip?.stops?.[0]?.stop_id ?? null);
-            setTransferTripId(firstTrip?.trip_id ?? null);
-        } catch (error) {
+                const firstTrip = tripsFromApi[0];
+                setSelectedEditorTripId(firstTrip?.trip_id ?? null);
+                setSelectedEditorStopId(firstTrip?.stops?.[0]?.stop_id ?? null);
+                setTransferTripId(firstTrip?.trip_id ?? null);
+            }
+        } catch (error: any) {
+            if (error.name === 'AbortError') return;
             console.error('Error loading editor data:', error);
-            setEditorError('เกิดข้อผิดพลาดในการโหลดข้อมูล');
+            if (isMounted) {
+                setEditorError('เกิดข้อผิดพลาดในการโหลดข้อมูล');
+            }
         } finally {
-            setEditorLoading(false);
+            if (isMounted) {
+                setEditorLoading(false);
+            }
         }
+
+        // Bug #2 Fix: Cleanup function
+        return () => {
+            isMounted = false;
+            if (abortController) {
+                abortController.abort();
+            }
+        };
     }, []);
 
     useEffect(() => {
+        const abortController = new AbortController();
+        
         const loadInitialData = async () => {
-            await fetchWarehouses();
-            await fetchRoutePlans();
+            await fetchWarehouses(abortController.signal);
+            await fetchRoutePlans(abortController.signal);
         };
 
         loadInitialData();
+
+        return () => {
+            abortController.abort();
+        };
     }, [fetchWarehouses, fetchRoutePlans]);
 
     const handleSelectOrder = (orderId: number) => {
@@ -535,6 +592,19 @@ const RoutesPage = () => {
     const handleCreatePlan = () => {
         fetchNextPlanCode(planForm.planDate);
         setShowCreateModal(true);
+    };
+
+    const handlePlanDateChange = (newDate: string) => {
+        setPlanForm(prev => ({ ...prev, planDate: newDate }));
+        fetchNextPlanCode(newDate);
+        if (planForm.warehouseId) {
+            fetchDraftOrders(planForm.warehouseId, newDate);
+        }
+    };
+
+    const handleCloseCreateModal = () => {
+        setShowCreateModal(false);
+        setSelectedOrders(new Set());
     };
 
     const handleOpenEditor = async (planId: number) => {
@@ -658,17 +728,22 @@ const RoutesPage = () => {
 
     const handleOptimize = async () => {
         if (optimizeLockRef.current) {
+            console.warn('⚠️ การคำนวณเส้นทางกำลังทำงานอยู่ กรุณารอให้เสร็จก่อน');
+            setStatusMessage('⚠️ การคำนวณเส้นทางกำลังทำงานอยู่ กรุณารอให้เสร็จก่อน');
+            setTimeout(() => setStatusMessage(''), 3000);
             return;
         }
 
         try {
             if (selectedOrders.size === 0) {
-                alert('กรุณาเลือกออเดอร์อย่างน้อย 1 รายการ');
+                setStatusMessage('❌ กรุณาเลือกออเดอร์อย่างน้อย 1 รายการ');
+                setTimeout(() => setStatusMessage(''), 3000);
                 return;
             }
 
             if (!planForm.warehouseId) {
-                alert('กรุณาเลือกคลังสินค้า');
+                setStatusMessage('❌ กรุณาเลือกคลังสินค้า');
+                setTimeout(() => setStatusMessage(''), 3000);
                 return;
             }
 
@@ -760,8 +835,8 @@ const RoutesPage = () => {
 
             const { data: optimizeData, error: optimizeError } = await optimizeRes.json();
             if (optimizeError) {
-                setStatusMessage('เกิดข้อผิดพลาดในการคำนวณเส้นทาง: ' + optimizeError);
-                alert('เกิดข้อผิดพลาดในการคำนวณเส้นทาง: ' + optimizeError);
+                setStatusMessage('❌ เกิดข้อผิดพลาดในการคำนวณเส้นทาง: ' + optimizeError);
+                setTimeout(() => setStatusMessage(''), 5000);
             } else {
                 const summary = optimizeData?.summary;
                 const vehicleText = summary ? `จำนวนเที่ยว ${summary.totalVehicles} เที่ยว` : '';
@@ -798,8 +873,8 @@ const RoutesPage = () => {
             }
         } catch (error: any) {
             console.error('Error optimizing plan:', error);
-            alert('เกิดข้อผิดพลาด: ' + error.message);
-            setStatusMessage('เกิดข้อผิดพลาด: ' + error.message);
+            setStatusMessage('❌ เกิดข้อผิดพลาด: ' + error.message);
+            setTimeout(() => setStatusMessage(''), 5000);
         } finally {
             setIsOptimizing(false);
             optimizeLockRef.current = false;
@@ -977,12 +1052,14 @@ const RoutesPage = () => {
     }, []);
 
     const closePreviewModal = useCallback(() => {
+        // Bug #3 Fix: Clear all preview-related state
         setIsPreviewModalOpen(false);
         setPreviewPlan(null);
         setPreviewTrips([]);
         setSelectedPreviewTripIndex(null);
         setSelectedPreviewTripIndices([]);
         setPreviewError(null);
+        setPreviewLoading(false);
     }, []);
 
     // ฟังก์ชันสำหรับจัดลำดับ stops ในโหมดดู (drag marker บนแผนที่)
@@ -1027,8 +1104,19 @@ const RoutesPage = () => {
     }, [previewPlan]);
 
     const handleMoveOrder = useCallback(async (orderId: number, fromTripId: number, toTripId: number) => {
-        if (!previewPlan?.plan_id) {
-            console.error('No preview plan ID available');
+        // Bug #8 Fix: Use functional update to prevent stale closure
+        let currentPlanId: number | null = null;
+        
+        setPreviewPlan(prev => {
+            if (!prev?.plan_id) {
+                console.error('No preview plan ID available');
+                return prev;
+            }
+            currentPlanId = prev.plan_id;
+            return prev;
+        });
+
+        if (!currentPlanId) {
             return;
         }
 
@@ -1042,7 +1130,7 @@ const RoutesPage = () => {
         try {
             console.log('Moving order:', { orderId, fromTripId, toTripId });
 
-            const response = await fetch(`/api/route-plans/${previewPlan.plan_id}/move-order`, {
+            const response = await fetch(`/api/route-plans/${currentPlanId}/move-order`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1059,13 +1147,13 @@ const RoutesPage = () => {
             console.log('Order moved successfully:', result);
 
             // Reload the preview data to show updated trips
-            await handlePreviewPlan(previewPlan.plan_id);
+            await handlePreviewPlan(currentPlanId);
 
         } catch (error: any) {
             console.error('Error moving order:', error);
             setPreviewError(`ไม่สามารถย้ายออเดอร์ได้: ${error.message}`);
         }
-    }, [previewPlan, handlePreviewPlan]);
+    }, [handlePreviewPlan]);
 
     // ใช้ STATUSES จาก utils แทน local definition
     const statuses = STATUSES;
@@ -1078,6 +1166,76 @@ const RoutesPage = () => {
             setSortDirection('asc');
         }
     };
+
+    // Handler สำหรับเปลี่ยนสถานะแผน
+    const handleStatusChange = useCallback(async (planId: number, newStatus: string) => {
+        try {
+            setEditingStatusPlanId(planId);
+            const response = await fetch(`/api/route-plans/${planId}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ status: newStatus })
+            });
+            const result = await response.json();
+            if (result.error) {
+                console.error('Error updating status:', result.error);
+                alert('เกิดข้อผิดพลาดในการอัปเดตสถานะ: ' + result.error);
+            } else {
+                await fetchRoutePlans();
+            }
+        } catch (error: any) {
+            console.error('Error updating status:', error);
+            alert('เกิดข้อผิดพลาดในการอัปเดตสถานะ: ' + error.message);
+        } finally {
+            setEditingStatusPlanId(null);
+        }
+    }, []);
+
+    // Handler สำหรับแก้ไขค่าขนส่ง
+    const handleEditShippingCost = useCallback(async (planId: number) => {
+        const plan = routePlans.find(p => p.plan_id === planId);
+        if (plan && plan.status === 'draft') {
+            try {
+                const res = await fetch(`/api/route-plans/${planId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: 'optimizing' })
+                });
+                if (res.ok) {
+                    await fetchRoutePlans();
+                }
+            } catch (error) {
+                console.error('Error updating status:', error);
+            }
+        }
+        setSelectedPlanIdForShippingCost(planId);
+        setShowEditShippingCostModal(true);
+    }, [routePlans]);
+
+    // Handler สำหรับอนุมัติแผน
+    const handleApprovePlan = useCallback(async (planId: number) => {
+        if (confirm('อนุมัติใบว่าจ้างนี้หรือไม่?')) {
+            try {
+                const response = await fetch(`/api/route-plans/${planId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        status: 'approved',
+                        approved_at: new Date().toISOString()
+                    })
+                });
+                if (response.ok) {
+                    alert('✅ อนุมัติเรียบร้อยแล้ว');
+                    await fetchRoutePlans();
+                } else {
+                    const result = await response.json();
+                    alert('❌ เกิดข้อผิดพลาด: ' + (result.error || 'Unknown error'));
+                }
+            } catch (err: any) {
+                alert('เกิดข้อผิดพลาด: ' + err.message);
+            }
+        }
+    }, []);
 
     // ใช้ resequenceTripStops จาก utils แทน local definition
 
@@ -2027,481 +2185,26 @@ const RoutesPage = () => {
                 <div className="flex-1 flex flex-col overflow-hidden">
                     <div className="flex-1 min-h-0 bg-white border rounded-lg shadow-sm flex flex-col overflow-hidden">
                         <div className="flex-1 overflow-auto">
-                            {loading ? (
-                                <div className="p-12 text-center text-gray-500">กำลังโหลด...</div>
-                            ) : filteredPlans.length === 0 ? (
-                                <div className="p-12 text-center text-gray-500">ยังไม่มีแผนเส้นทาง</div>
-                            ) : (
-                                <table className="min-w-max w-full border-collapse text-sm">
-                                        <thead className="sticky top-0 z-10 bg-gray-100">
-                                            <tr className="bg-gray-100">
-                                                <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-r border-gray-200 w-8">
-                                                    {/* Expand column */}
-                                                </th>
-                                                <th {...getSortCellProps('plan_code')}>รหัสแผน {getSortIcon('plan_code')}</th>
-                                                <th {...getSortCellProps('plan_name')}>ชื่อแผน {getSortIcon('plan_name')}</th>
-                                                <th {...getSortCellProps('plan_date')}>วันที่ {getSortIcon('plan_date')}</th>
-                                                <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-r border-gray-200">
-                                                    คลัง
-                                                </th>
-                                                <th className="px-2 py-1 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-r border-gray-200">รถ</th>
-                                                <th className="px-2 py-1 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-r border-gray-200">ระยะทาง</th>
-                                                <th className="px-2 py-1 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-r border-gray-200">เวลาขับ</th>
-                                                <th className="px-2 py-1 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-r border-gray-200">น้ำหนัก</th>
-                                                <th className="px-2 py-1 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-r border-gray-200">ปริมาตร</th>
-                                                <th className="px-2 py-1 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-r border-gray-200">พาเลท</th>
-                                                <th className="px-2 py-1 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-r border-gray-200">ต้นทุน</th>
-                                                <th className="px-2 py-1 text-left text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-r border-gray-200">สถานะ</th>
-                                                <th className="px-2 py-1 text-center text-xs font-semibold text-gray-700 uppercase tracking-wide border-b border-gray-200">
-                                                    <Edit className="w-3 h-3 mx-auto" />
-                                                </th>
-                                            </tr>
-                                        </thead>
-                                        <tbody className="bg-white divide-y divide-gray-100">
-                                            {filteredPlans.map(plan => {
-                                                const isExpanded = expandedPlanIds.has(plan.plan_id);
-                                                const trips = planTripsData.get(plan.plan_id) || [];
-                                                const isLoadingTrips = loadingTrips.has(plan.plan_id);
-
-                                                return (
-                                                    <React.Fragment key={plan.plan_id}>
-                                                        <tr className="hover:bg-gray-50/80 transition-colors duration-200">
-                                                            <td className="px-2 py-2 text-xs border-r border-gray-100">
-                                                                <button
-                                                                    onClick={() => toggleExpandPlan(plan.plan_id)}
-                                                                    className="p-1 hover:bg-gray-200 rounded transition-colors"
-                                                                    disabled={isLoadingTrips}
-                                                                >
-                                                                    {isLoadingTrips ? (
-                                                                        <div className="w-3 h-3 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
-                                                                    ) : (
-                                                                        <ChevronDown
-                                                                            className={`w-3 h-3 transition-transform ${isExpanded ? 'transform rotate-180' : ''}`}
-                                                                        />
-                                                                    )}
-                                                                </button>
-                                                            </td>
-                                                            <td className="px-2 py-2 text-xs border-r border-gray-100">
-                                                                <div className="font-semibold text-blue-600 font-mono">{plan.plan_code}</div>
-                                                            </td>
-                                                    <td className="px-2 py-2 text-xs border-r border-gray-100">
-                                                        <div className="font-medium text-thai-gray-800">{plan.plan_name || '-'}</div>
-                                                    </td>
-                                                    <td className="px-2 py-2 text-xs border-r border-gray-100">
-                                                        <div className="font-medium text-gray-700">
-                                                            {new Date(plan.plan_date).toLocaleDateString('th-TH')}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-2 py-2 text-xs border-r border-gray-100">
-                                                        <div className="font-medium text-thai-gray-700">
-                                                            {plan.warehouse?.warehouse_name || '-'}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-2 py-2 text-xs border-r border-gray-100 text-center">
-                                                        <div className="font-bold text-blue-600">{plan.total_trips || 0}</div>
-                                                    </td>
-                                                    <td className="px-2 py-2 text-xs border-r border-gray-100 text-center">
-                                                        <div className="font-medium text-thai-gray-700">
-                                                            {plan.total_distance_km ? `${plan.total_distance_km.toFixed(1)} km` : '-'}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-2 py-2 text-xs border-r border-gray-100 text-center">
-                                                        <div className="font-medium text-thai-gray-700">
-                                                            {plan.total_drive_minutes
-                                                                ? `${Math.round((plan.total_drive_minutes || 0) / 60)} ชม.`
-                                                                : '-'}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-2 py-2 text-xs border-r border-gray-100 text-center">
-                                                        <div className="font-medium text-thai-gray-700">
-                                                            {plan.total_weight_kg ? `${plan.total_weight_kg.toFixed(0)} kg` : '-'}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-2 py-2 text-xs border-r border-gray-100 text-center">
-                                                        <div className="font-medium text-thai-gray-700">
-                                                            {plan.total_volume_cbm ? `${plan.total_volume_cbm.toFixed(2)} m³` : '-'}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-2 py-2 text-xs border-r border-gray-100 text-center">
-                                                        <div className="font-medium text-thai-gray-700">
-                                                            {plan.total_pallets ? `${plan.total_pallets.toFixed(1)}` : '-'}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-2 py-2 text-xs border-r border-gray-100 text-center">
-                                                        <div className="font-semibold text-green-600">
-                                                            {plan.objective_value ? `฿${plan.objective_value.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '-'}
-                                                        </div>
-                                                    </td>
-                                                    <td className="px-2 py-2 text-xs border-r border-gray-100">
-                                                        <div className="relative">
-                                                            <select
-                                                                className="w-full px-2 py-1 border border-gray-300 rounded text-xs font-thai text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
-                                                                value={plan.status}
-                                                                disabled={editingStatusPlanId === plan.plan_id}
-                                                                data-plan-id={plan.plan_id}
-                                                                onChange={async event => {
-                                                                    const planId = event.currentTarget.dataset.planId;
-                                                                    const newStatus = event.target.value;
-
-                                                                    if (!planId || planId === 'undefined') {
-                                                                        alert('เกิดข้อผิดพลาด: ไม่สามารถอัปเดตสถานะได้เนื่องจากไม่พบรหัสแผน (ID is undefined)');
-                                                                        return;
-                                                                    }
-
-                                                                    try {
-                                                                        setEditingStatusPlanId(Number(planId));
-                                                                        const response = await fetch(`/api/route-plans/${planId}`, {
-                                                                            method: 'PATCH',
-                                                                            headers: { 'Content-Type': 'application/json' },
-                                                                            body: JSON.stringify({ status: newStatus })
-                                                                        });
-                                                                        const result = await response.json();
-                                                                        if (result.error) {
-                                                                            console.error('Error updating status:', result.error);
-                                                                            alert('เกิดข้อผิดพลาดในการอัปเดตสถานะ: ' + result.error);
-                                                                        } else {
-                                                                            await fetchRoutePlans();
-                                                                        }
-                                                                    } catch (error: any) {
-                                                                        console.error('Error updating status:', error);
-                                                                        alert('เกิดข้อผิดพลาดในการอัปเดตสถานะ: ' + error.message);
-                                                                    } finally {
-                                                                        setEditingStatusPlanId(null);
-                                                                    }
-                                                                }}
-                                                                onClick={(e) => e.stopPropagation()}
-                                                            >
-                                                                {statuses
-                                                                    .filter(s => s.value !== 'all')
-                                                                    .map(status => (
-                                                                        <option key={status.value} value={status.value}>
-                                                                            {status.label}
-                                                                        </option>
-                                                                    ))}
-                                                            </select>
-                                                        </div>
-                                                    </td>
-                                                            <td className="px-2 py-2 text-xs">
-                                                                <div className="flex items-center space-x-1">
-                                                                    {/* ปุ่มดูแผนที่ - แสดงตลอด */}
-                                                                    <button
-                                                                        className="p-1 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                                                                        title="ดูแผนที่และเส้นทาง"
-                                                                        onClick={() => handlePreviewPlan(plan.plan_id)}
-                                                                    >
-                                                                        <Eye className="w-3 h-3" />
-                                                                    </button>
-
-                                                                    {/* ปุ่มแก้ไขเส้นทาง - แสดงตลอด */}
-                                                                    <button
-                                                                        className="p-1 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors"
-                                                                        title="แก้ไขเส้นทางและจุดส่ง"
-                                                                        onClick={() => handleOpenEditor(plan.plan_id)}
-                                                                    >
-                                                                        <Edit className="w-3 h-3" />
-                                                                    </button>
-
-                                                                    {/* ปุ่มกรอกค่าขนส่ง - แสดงตลอด เปลี่ยนสีตามสถานะ */}
-                                                                    <button
-                                                                        className={`p-1 rounded transition-colors ${
-                                                                            plan.status === 'draft'
-                                                                                ? 'hover:bg-yellow-50 hover:text-yellow-600 text-yellow-600'
-                                                                                : plan.status === 'optimizing'
-                                                                                ? 'hover:bg-orange-50 hover:text-orange-600 text-orange-600'
-                                                                                : plan.status === 'published'
-                                                                                ? 'hover:bg-green-50 hover:text-green-600 text-green-600'
-                                                                                : 'hover:bg-gray-50 hover:text-gray-600 text-gray-500'
-                                                                        }`}
-                                                                        title={
-                                                                            plan.status === 'draft'
-                                                                                ? '💡 กรอกค่าขนส่ง (คลิกเพื่อเริ่มกรอก)'
-                                                                                : plan.status === 'optimizing'
-                                                                                ? '✏️ แก้ไขค่าขนส่ง (กำลังกรอก)'
-                                                                                : plan.status === 'published'
-                                                                                ? '✅ ดู/แก้ไขค่าขนส่ง (กรอกเสร็จแล้ว)'
-                                                                                : '📋 ดูค่าขนส่ง (สถานะ: ' + plan.status + ')'
-                                                                        }
-                                                                        onClick={async () => {
-                                                                            // ถ้าสถานะเป็น draft ให้เปลี่ยนเป็น optimizing ก่อน
-                                                                            if (plan.status === 'draft') {
-                                                                                try {
-                                                                                    const res = await fetch(`/api/route-plans/${plan.plan_id}`, {
-                                                                                        method: 'PATCH',
-                                                                                        headers: { 'Content-Type': 'application/json' },
-                                                                                        body: JSON.stringify({ status: 'optimizing' })
-                                                                                    });
-                                                                                    if (res.ok) {
-                                                                                        await fetchRoutePlans(); // Refresh data
-                                                                                    }
-                                                                                } catch (error) {
-                                                                                    console.error('Error updating status:', error);
-                                                                                }
-                                                                            }
-                                                                            setSelectedPlanIdForShippingCost(plan.plan_id);
-                                                                            setShowEditShippingCostModal(true);
-                                                                        }}
-                                                                    >
-                                                                        <DollarSign className="w-3 h-3" />
-                                                                    </button>
-
-                                                                    {/* ปุ่มพิมพ์ใบว่าจ้าง - แสดงตลอด เปลี่ยนสีตามสถานะ */}
-                                                                    <button
-                                                                        className={`p-1 rounded transition-colors ${
-                                                                            plan.status === 'published'
-                                                                                ? 'hover:bg-purple-50 hover:text-purple-600 text-purple-600'
-                                                                                : plan.status === 'pending_approval'
-                                                                                ? 'hover:bg-blue-50 hover:text-blue-600 text-blue-600'
-                                                                                : plan.status === 'approved'
-                                                                                ? 'hover:bg-green-50 hover:text-green-600 text-green-600'
-                                                                                : 'hover:bg-gray-50 hover:text-gray-600 text-gray-500'
-                                                                        }`}
-                                                                        title="พิมพ์ใบว่าจ้าง"
-                                                                        onClick={() => handlePrintPlan(plan.plan_id)}
-                                                                    >
-                                                                        <Printer className="w-3 h-3" />
-                                                                    </button>
-
-                                                                    {/* ปุ่มจัดส่ง - Export TMS Excel */}
-                                                                    <button
-                                                                        className="p-1 rounded hover:bg-teal-50 hover:text-teal-600 transition-colors text-teal-600"
-                                                                        title="ส่งออก Excel สำหรับ TMS"
-                                                                        onClick={() => handleExportTMS(plan.plan_id, plan.plan_code, plan.plan_date)}
-                                                                    >
-                                                                        <FileSpreadsheet className="w-3 h-3" />
-                                                                    </button>
-
-                                                                    {/* ปุ่มอนุมัติ - แสดงเฉพาะเมื่อรออนุมัติ */}
-                                                                    {plan.status === 'pending_approval' && (
-                                                                        <button
-                                                                            className="p-1 rounded hover:bg-green-50 hover:text-green-600 transition-colors text-green-600"
-                                                                            title="✅ อนุมัติใบว่าจ้าง (สำหรับผู้จัดการ)"
-                                                                            onClick={async () => {
-                                                                                if (confirm('อนุมัติใบว่าจ้างนี้หรือไม่?')) {
-                                                                                    try {
-                                                                                        const response = await fetch(`/api/route-plans/${plan.plan_id}`, {
-                                                                                            method: 'PATCH',
-                                                                                            headers: { 'Content-Type': 'application/json' },
-                                                                                            body: JSON.stringify({
-                                                                                                status: 'approved',
-                                                                                                approved_at: new Date().toISOString()
-                                                                                            })
-                                                                                        });
-                                                                                        if (response.ok) {
-                                                                                            alert('✅ อนุมัติเรียบร้อยแล้ว');
-                                                                                            await fetchRoutePlans();
-                                                                                        } else {
-                                                                                            const result = await response.json();
-                                                                                            alert('❌ เกิดข้อผิดพลาด: ' + (result.error || 'Unknown error'));
-                                                                                        }
-                                                                                    } catch (err: any) {
-                                                                                        alert('เกิดข้อผิดพลาด: ' + err.message);
-                                                                                    }
-                                                                                }
-                                                                            }}
-                                                                        >
-                                                                            <CheckCircle className="w-3 h-3" />
-                                                                        </button>
-                                                                    )}
-
-                                                                    {/* ปุ่มลบแผน - แสดงทุกแถว แต่ disabled ถ้าลบไม่ได้ */}
-                                                                    <button
-                                                                        className={`p-1 rounded transition-colors ${
-                                                                            ['in_transit', 'loading', 'completed'].includes(plan.status)
-                                                                                ? 'text-gray-300 cursor-not-allowed'
-                                                                                : 'hover:bg-red-50 hover:text-red-600 text-red-500'
-                                                                        }`}
-                                                                        title={
-                                                                            plan.status === 'in_transit' ? 'ไม่สามารถลบได้ - กำลังจัดส่ง'
-                                                                            : plan.status === 'loading' ? 'ไม่สามารถลบได้ - กำลังโหลดสินค้า'
-                                                                            : plan.status === 'completed' ? 'ไม่สามารถลบได้ - เสร็จสิ้นแล้ว'
-                                                                            : 'ลบแผนจัดเส้นทาง'
-                                                                        }
-                                                                        disabled={['in_transit', 'loading', 'completed'].includes(plan.status)}
-                                                                        onClick={() => handleCheckDeletePlan(plan.plan_id)}
-                                                                    >
-                                                                        <Trash2 className="w-3 h-3" />
-                                                                    </button>
-                                                                </div>
-                                                            </td>
-                                                        </tr>
-
-                                                        {/* Expandable Trips Section */}
-                                                        {isExpanded && (
-                                                            <tr>
-                                                                <td colSpan={14} className="px-0 py-0 bg-gray-50">
-                                                                    <div className="border-t border-gray-200">
-                                                                        <div className="p-4">
-                                                                            {/* Header */}
-                                                                            <div className="flex items-center justify-between mb-3">
-                                                                                <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-2">
-                                                                                    <TruckIcon className="w-4 h-4 text-blue-600" />
-                                                                                    รายละเอียดเที่ยวรถ
-                                                                                </h4>
-                                                                                <Badge variant="info" size="sm">
-                                                                                    {trips.length} เที่ยว
-                                                                                </Badge>
-                                                                            </div>
-
-                                                                            {/* Trips Table */}
-                                                                            {trips.length > 0 ? (
-                                                                                <div className="overflow-x-auto">
-                                                                                    <table className="w-full text-xs">
-                                                                                        <thead>
-                                                                                            <tr className="bg-gradient-to-r from-gray-50 to-gray-100 border-b border-gray-200">
-                                                                                                <th className="text-left px-2 py-2 text-xs font-semibold text-gray-700 uppercase">รหัสเที่ยว</th>
-                                                                                                <th className="text-left px-2 py-2 text-xs font-semibold text-gray-700 uppercase">หมายเหตุ</th>
-                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">ลำดับ</th>
-                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">คลัง</th>
-                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">จุดส่ง</th>
-                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">ระยะทาง</th>
-                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">เวลาขับ</th>
-                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">น้ำหนัก</th>
-                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">ปริมาตร</th>
-                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">พาเลท</th>
-                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">ราคาเริ่มต้น</th>
-                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">ค่าเด็ก</th>
-                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">ค่าจุดเพิ่ม</th>
-                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">ค่าแบก</th>
-                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase bg-blue-50">รวมค่าขนส่ง</th>
-                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">สถานะ</th>
-                                                                                                <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">%ใช้งาน</th>
-                                                                                            </tr>
-                                                                                        </thead>
-                                                                                        <tbody>
-                                                                                            {trips.map((trip: any, idx: number) => {
-                                                                                                // ตรวจสอบว่ามีค่าขนส่งหรือไม่
-                                                                                                const hasShippingCost = trip.shipping_cost && trip.shipping_cost > 0;
-
-                                                                                                return (
-                                                                                                <tr
-                                                                                                    key={`trip-${trip.trip_id}`}
-                                                                                                    className={`border-b border-gray-100 transition-colors ${
-                                                                                                        !hasShippingCost
-                                                                                                            ? 'bg-red-50 hover:bg-red-100' // แถวที่ยังไม่มีค่าขนส่ง → สีแดง
-                                                                                                            : idx % 2 === 0
-                                                                                                                ? 'bg-white hover:bg-blue-50/50'
-                                                                                                                : 'bg-gray-50/50 hover:bg-blue-50/50'
-                                                                                                    }`}
-                                                                                                >
-                                                                                                    <td className="px-2 py-2 text-xs">
-                                                                                                        <div className="flex items-center gap-2">
-                                                                                                            <TruckIcon className="w-3 h-3 text-blue-600" />
-                                                                                                            <span className="font-semibold text-blue-700">{trip.trip_code}</span>
-                                                                                                        </div>
-                                                                                                    </td>
-                                                                                                    <td className="px-2 py-2 text-xs text-gray-600">{trip.notes || '-'}</td>
-                                                                                                    <td className="px-2 py-2 text-xs text-center">
-                                                                                                        <span className="font-medium text-gray-700">คันที่ {trip.daily_trip_number || trip.trip_sequence || '-'}</span>
-                                                                                                    </td>
-                                                                                                    <td className="px-2 py-2 text-xs text-center text-gray-600">{trip.warehouse_id || '-'}</td>
-                                                                                                    <td className="px-2 py-2 text-xs text-center">
-                                                                                                        <span className="font-medium text-gray-700">{trip.total_stops || 0}</span>
-                                                                                                    </td>
-                                                                                                    <td className="px-2 py-2 text-xs text-center text-gray-700">
-                                                                                                        {trip.total_distance_km ? `${trip.total_distance_km.toFixed(1)} km` : '-'}
-                                                                                                    </td>
-                                                                                                    <td className="px-2 py-2 text-xs text-center text-gray-700">
-                                                                                                        {trip.total_drive_minutes ? `${Math.round(trip.total_drive_minutes / 60)} ชม.` : '-'}
-                                                                                                    </td>
-                                                                                                    <td className="px-2 py-2 text-xs text-center text-gray-700">
-                                                                                                        {trip.total_weight_kg ? `${trip.total_weight_kg.toFixed(0)} kg` : '-'}
-                                                                                                    </td>
-                                                                                                    <td className="px-2 py-2 text-xs text-center text-gray-700">
-                                                                                                        {trip.total_volume_cbm ? `${trip.total_volume_cbm.toFixed(2)} m³` : '-'}
-                                                                                                    </td>
-                                                                                                    <td className="px-2 py-2 text-xs text-center text-gray-700">
-                                                                                                        {trip.total_pallets ? `${trip.total_pallets.toFixed(1)}` : '-'}
-                                                                                                    </td>
-                                                                                                    {/* ราคาเริ่มต้น */}
-                                                                                                    <td className="px-2 py-2 text-xs text-center text-gray-700">
-                                                                                                        {trip.base_price ? `฿${trip.base_price.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '-'}
-                                                                                                    </td>
-                                                                                                    {/* ค่าเด็ก */}
-                                                                                                    <td className="px-2 py-2 text-xs text-center text-gray-700">
-                                                                                                        {trip.helper_fee ? `฿${trip.helper_fee.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '-'}
-                                                                                                    </td>
-                                                                                                    {/* ค่าจุดเพิ่ม */}
-                                                                                                    <td className="px-2 py-2 text-xs text-center text-gray-700">
-                                                                                                        {trip.extra_stop_fee && trip.extra_stops_count > 0
-                                                                                                            ? `฿${(trip.extra_stop_fee * trip.extra_stops_count).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`
-                                                                                                            : '-'}
-                                                                                                        {trip.extra_stops_count > 0 && (
-                                                                                                            <div className="text-[9px] text-gray-500 mt-0.5">
-                                                                                                                ({trip.extra_stops_count} จุด × ฿{trip.extra_stop_fee})
-                                                                                                            </div>
-                                                                                                        )}
-                                                                                                    </td>
-                                                                                                    {/* ค่าแบกน้ำหนัก */}
-                                                                                                    <td className="px-2 py-2 text-xs text-center text-gray-700">
-                                                                                                        {trip.porterage_fee ? `฿${Number(trip.porterage_fee).toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '-'}
-                                                                                                    </td>
-                                                                                                    {/* รวมค่าขนส่ง - คำนวณรวม shipping_cost + porterage_fee + other_fees + extra_delivery_stops */}
-                                                                                                    <td className="px-2 py-2 text-xs text-center bg-blue-50">
-                                                                                                        <div className="font-bold text-blue-700">
-                                                                                                            {(() => {
-                                                                                                                const baseShippingCost = Number(trip.shipping_cost) || 0;
-                                                                                                                const porterageFee = Number(trip.porterage_fee) || 0;
-                                                                                                                const otherFeesTotal = (trip.other_fees || []).reduce((sum: number, fee: any) => sum + (Number(fee.amount) || 0), 0);
-                                                                                                                const extraDeliveryStopsTotal = (trip.extra_delivery_stops || []).reduce((sum: number, stop: any) => sum + (Number(stop.cost) || 0), 0);
-                                                                                                                const totalShippingCost = baseShippingCost + porterageFee + otherFeesTotal + extraDeliveryStopsTotal;
-                                                                                                                return totalShippingCost > 0 ? `฿${totalShippingCost.toLocaleString('th-TH', { minimumFractionDigits: 0, maximumFractionDigits: 0 })}` : '-';
-                                                                                                            })()}
-                                                                                                        </div>
-                                                                                                    </td>
-                                                                                                    <td className="px-2 py-2 text-xs text-center">
-                                                                                                        <Badge
-                                                                                                            variant={
-                                                                                                                trip.trip_status === 'completed' ? 'success' :
-                                                                                                                trip.trip_status === 'in_transit' ? 'warning' :
-                                                                                                                trip.trip_status === 'planned' ? 'info' :
-                                                                                                                'default'
-                                                                                                            }
-                                                                                                        >
-                                                                                                            {trip.trip_status === 'planned' ? 'วางแผน' :
-                                                                                                             trip.trip_status === 'in_transit' ? 'กำลังส่ง' :
-                                                                                                             trip.trip_status === 'completed' ? 'เสร็จสิ้น' : trip.trip_status}
-                                                                                                        </Badge>
-                                                                                                        {trip.is_overweight && (
-                                                                                                            <div className="mt-1">
-                                                                                                                <Badge variant="danger" className="text-[9px]">น้ำหนักเกิน</Badge>
-                                                                                                            </div>
-                                                                                                        )}
-                                                                                                    </td>
-                                                                                                    <td className="px-2 py-2 text-xs text-center">
-                                                                                                        <span className="font-medium text-gray-600">
-                                                                                                            {trip.capacity_utilization ? `${trip.capacity_utilization.toFixed(0)}%` : '-'}
-                                                                                                        </span>
-                                                                                                    </td>
-                                                                                                </tr>
-                                                                                                );
-                                                                                            })}
-                                                                                        </tbody>
-                                                                                    </table>
-                                                                                </div>
-                                                                            ) : (
-                                                                                <div className="text-center py-8 text-gray-500 text-sm">
-                                                                                    ไม่พบข้อมูลเที่ยวรถ
-                                                                                </div>
-                                                                            )}
-                                                                        </div>
-                                                                    </div>
-                                                                </td>
-                                                            </tr>
-                                                        )}
-
-                                                        {isExpanded && trips.length === 0 && !isLoadingTrips && (
-                                                            <tr className="bg-blue-50/20">
-                                                                <td colSpan={14} className="px-4 py-3 text-center text-xs text-gray-500">
-                                                                    กำลังโหลดข้อมูล...
-                                                                </td>
-                                                            </tr>
-                                                        )}
-                                                    </React.Fragment>
-                                                );
-                                            })}
-                                        </tbody>
-                                    </table>
-                            )}
+                            <RoutesPlanTable
+                                plans={filteredPlans}
+                                isLoading={loading}
+                                expandedPlanIds={expandedPlanIds}
+                                planTripsData={planTripsData}
+                                loadingTrips={loadingTrips}
+                                editingStatusPlanId={editingStatusPlanId}
+                                onToggleExpand={toggleExpandPlan}
+                                onStatusChange={handleStatusChange}
+                                onPreviewPlan={handlePreviewPlan}
+                                onOpenEditor={handleOpenEditor}
+                                onEditShippingCost={handleEditShippingCost}
+                                onPrintPlan={handlePrintPlan}
+                                onExportTMS={handleExportTMS}
+                                onApprovePlan={handleApprovePlan}
+                                onDeletePlan={handleCheckDeletePlan}
+                                sortField={sortField}
+                                sortDirection={sortDirection}
+                                onSort={handleSort}
+                            />
                         </div>
                     </div>
                 </div>
@@ -2516,162 +2219,30 @@ const RoutesPage = () => {
                 />
             </div>
 
-            <Modal
+            <CreatePlanModal
                 isOpen={showCreateModal}
-                onClose={() => {
-                    setShowCreateModal(false);
-                    setSelectedOrders(new Set());
-                }}
-                title="สร้างแผนเส้นทางใหม่"
-                size="xl"
-            >
-                <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">รหัสแผน</label>
-                            <input
-                                type="text"
-                                value={planForm.planCode}
-                                readOnly
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600 font-mono"
-                                placeholder="RP-YYYYMMDD-XXX"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">วันที่แผน</label>
-                            <input
-                                type="date"
-                                value={planForm.planDate}
-                                onChange={event => {
-                                    const newDate = event.target.value;
-                                    setPlanForm(prev => ({ ...prev, planDate: newDate }));
-                                    fetchNextPlanCode(newDate);
-                                    if (planForm.warehouseId) {
-                                        fetchDraftOrders(planForm.warehouseId, newDate);
-                                    }
-                                }}
-                                className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                            />
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">ชื่อแผน</label>
-                        <input
-                            type="text"
-                            value={planForm.planName}
-                            readOnly
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg bg-gray-50 text-gray-600"
-                            placeholder="แผนจัดส่งประจำวัน รอบ X – DD/MM/YYYY"
-                        />
-                    </div>
-
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-2">เลือกคลัง</label>
-                        <select
-                            value={planForm.warehouseId}
-                            onChange={event => handleWarehouseChange(event.target.value)}
-                            className="w-full px-4 py-2 border border-gray-300 rounded-lg"
-                        >
-                            {warehouses.map(warehouse => (
-                                <option key={warehouse.warehouse_id} value={warehouse.warehouse_id}>
-                                    {warehouse.warehouse_name}
-                                </option>
-                            ))}
-                        </select>
-                    </div>
-
-                    <div className="border-t pt-4">
-                        <div className="flex justify-between items-center mb-4">
-                            <h3 className="font-medium text-gray-900">ออเดอร์รอจัดเส้นทาง ({filteredDraftOrders.length} รายการ)</h3>
-                            <Button variant="outline" size="sm" onClick={handleSelectAll}>
-                                {selectedOrders.size === filteredDraftOrders.length ? 'ยกเลิกเลือกทั้งหมด' : 'เลือกทั้งหมด'}
-                            </Button>
-                        </div>
-
-                        {/* ช่องกรองออเดอร์ */}
-                        <div className="mb-3">
-                            <input
-                                type="text"
-                                placeholder="ค้นหา จังหวัด, ชื่อร้าน หรือเลขออเดอร์ (คั่นด้วย , เช่น IV001,IV002)"
-                                value={draftOrderFilter}
-                                onChange={(e) => setDraftOrderFilter(e.target.value)}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                            />
-                        </div>
-
-                        <div className="max-h-96 overflow-y-auto border border-gray-200 rounded-lg">
-                            {filteredDraftOrders.length === 0 ? (
-                                <div className="p-8 text-center text-gray-500">
-                                    {draftOrderFilter ? 'ไม่พบออเดอร์ที่ตรงกับเงื่อนไข' : 'ไม่มีออเดอร์รอจัดเส้นทาง'}
-                                </div>
-                            ) : (
-                                <table className="w-full text-sm">
-                                    <thead className="bg-gray-50 sticky top-0">
-                                        <tr>
-                                            <th className="px-4 py-2 text-left">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedOrders.size > 0 && selectedOrders.size === filteredDraftOrders.length}
-                                                    onChange={handleSelectAll}
-                                                />
-                                            </th>
-                                            <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">เลขที่</th>
-                                            <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">ลูกค้า</th>
-                                            <th className="px-4 py-2 text-left text-xs font-semibold text-gray-600">จังหวัด</th>
-                                            <th className="px-4 py-2 text-right text-xs font-semibold text-gray-600">น้ำหนัก</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-gray-200">
-                                        {filteredDraftOrders.map(order => (
-                                            <tr key={order.order_id} className="hover:bg-gray-50">
-                                                <td className="px-4 py-2">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={selectedOrders.has(order.order_id)}
-                                                        onChange={() => handleSelectOrder(order.order_id)}
-                                                    />
-                                                </td>
-                                                <td className="px-4 py-2">{order.order_no}</td>
-                                                <td className="px-4 py-2">{order.shop_name || '-'}</td>
-                                                <td className="px-4 py-2">{order.province || '-'}</td>
-                                                <td className="px-4 py-2 text-right">{order.total_weight || 0} kg</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            )}
-                        </div>
-                    </div>
-
-                    {/* VRP Settings Section */}
-                    <div className="border-t pt-4">
-                        <OptimizationSidebar
-                            isOpen={true}
-                            settings={vrpSettings}
-                            onChange={(changes) => setVrpSettings(prev => ({ ...prev, ...changes }))}
-                            onSave={handleSaveSettings}
-                            disabled={isOptimizing}
-                            isSaving={isSavingSettings}
-                            statusMessage={statusMessage}
-                        />
-                    </div>
-
-                    <div className="flex justify-end gap-3 pt-4 border-t">
-                        <Button variant="outline" onClick={() => setShowCreateModal(false)}>
-                            ยกเลิก
-                        </Button>
-                        <Button
-                            variant="primary"
-                            icon={Play}
-                            onClick={handleOptimize}
-                            disabled={selectedOrders.size === 0 || isOptimizing}
-                        >
-                            {isOptimizing ? 'กำลังคำนวณ...' : `เริ่มจัดเส้นทาง (${selectedOrders.size} ออเดอร์)`}
-                        </Button>
-                    </div>
-                </div>
-            </Modal>
+                onClose={handleCloseCreateModal}
+                planCode={planForm.planCode}
+                planName={planForm.planName}
+                planDate={planForm.planDate}
+                warehouseId={planForm.warehouseId}
+                onPlanDateChange={handlePlanDateChange}
+                warehouses={warehouses}
+                onWarehouseChange={handleWarehouseChange}
+                draftOrders={filteredDraftOrders}
+                selectedOrders={selectedOrders}
+                draftOrderFilter={draftOrderFilter}
+                onDraftOrderFilterChange={setDraftOrderFilter}
+                onSelectOrder={handleSelectOrder}
+                onSelectAll={handleSelectAll}
+                vrpSettings={vrpSettings}
+                onVrpSettingsChange={(changes) => setVrpSettings(prev => ({ ...prev, ...changes }))}
+                onSaveSettings={handleSaveSettings}
+                isSavingSettings={isSavingSettings}
+                isOptimizing={isOptimizing}
+                statusMessage={statusMessage}
+                onOptimize={handleOptimize}
+            />
 
             <Modal
                 isOpen={isPreviewModalOpen}
@@ -3101,98 +2672,83 @@ const RoutesPage = () => {
             </Modal>
 
             {/* Excel-Style Route Editor Modal */}
-            <Modal
+            <ExcelEditor
                 isOpen={isEditorOpen}
                 onClose={handleCloseEditor}
-                title=""
-                size="3xl"
-                contentClassName="p-0 h-[85vh]"
-                hideCloseButton
-            >
-                {editorLoading && editorTrips.length === 0 ? (
-                    <div className="py-10 text-center text-gray-500">กำลังโหลดข้อมูล...</div>
-                ) : editorError && editorTrips.length === 0 ? (
-                    <div className="py-10 text-center text-red-500">{editorError}</div>
-                ) : editorPlan && editorPlanId ? (
-                    <ExcelStyleRouteEditor
-                        planId={editorPlanId}
-                        planName={editorPlan.plan_name || editorPlan.plan_code}
-                        trips={editorTrips}
-                        draftOrders={editorDraftOrders}
-                        draftOrdersLoading={editorDraftOrdersLoading}
-                        onRefreshDraftOrders={async () => {
-                            if (editorPlan?.warehouse_id) {
-                                setEditorDraftOrdersLoading(true);
-                                try {
-                                    const draftRes = await fetch(
-                                        `/api/route-plans/draft-orders?warehouseId=${editorPlan.warehouse_id}&forEditor=true`
-                                    );
-                                    const { data: draftData } = await draftRes.json();
-                                    setEditorDraftOrders(draftData || []);
-                                } catch (err) {
-                                    console.error('Error refreshing draft orders:', err);
-                                } finally {
-                                    setEditorDraftOrdersLoading(false);
-                                }
-                            }
-                        }}
-                        onSave={async (changes) => {
-                            try {
-                                setEditorLoading(true);
-                                setEditorError(null);
-                                
-                                const res = await fetch(`/api/route-plans/${editorPlanId}/batch-update`, {
-                                    method: 'POST',
-                                    headers: { 'Content-Type': 'application/json' },
-                                    body: JSON.stringify(changes)
-                                });
-                                
-                                const result = await res.json();
-                                
-                                if (result.error) {
-                                    throw new Error(result.error);
-                                }
-                                
-                                // Refresh data
-                                await fetchEditorData(editorPlanId);
-                                await fetchRoutePlans();
-                                setStatusMessage('บันทึกการแก้ไขเส้นทางเรียบร้อย');
-                            } catch (error: any) {
-                                console.error('Error saving changes:', error);
-                                setEditorError(error.message || 'ไม่สามารถบันทึกการเปลี่ยนแปลงได้');
-                                throw error;
-                            } finally {
-                                setEditorLoading(false);
-                            }
-                        }}
-                        onClose={handleCloseEditor}
-                        loading={editorLoading}
-                        onCrossPlanTransfer={(row, tripId) => {
-                            // แปลง OrderRow เป็น EditorStop
-                            const stop: EditorStop = {
-                                stop_id: row.stopId as number,
-                                order_id: row.orderId,
-                                order_no: row.orderNo,
-                                stop_name: row.customerName,
-                                load_weight_kg: row.weightKg,
-                                sequence_no: row.stopSequence,
-                                address: null,
-                                latitude: null,
-                                longitude: null,
-                                load_volume_cbm: null,
-                                load_units: row.totalQty,
-                                service_duration_minutes: null,
-                                tags: row.customerId ? { customer_id: row.customerId } : undefined,
-                                notes: row.note,
-                                orders: []
-                            };
-                            handleOpenCrossPlanTransfer(stop, Number(tripId));
-                        }}
-                    />
-                ) : (
-                    <div className="py-6 text-center text-gray-500">เลือกแผนเพื่อจัดการเส้นทาง</div>
-                )}
-            </Modal>
+                planId={editorPlanId}
+                planName={editorPlan?.plan_name || editorPlan?.plan_code || ''}
+                trips={editorTrips}
+                draftOrders={editorDraftOrders}
+                draftOrdersLoading={editorDraftOrdersLoading}
+                onRefreshDraftOrders={async () => {
+                    if (editorPlan?.warehouse_id) {
+                        setEditorDraftOrdersLoading(true);
+                        try {
+                            const draftRes = await fetch(
+                                `/api/route-plans/draft-orders?warehouseId=${editorPlan.warehouse_id}&forEditor=true`
+                            );
+                            const { data: draftData } = await draftRes.json();
+                            setEditorDraftOrders(draftData || []);
+                        } catch (err) {
+                            console.error('Error refreshing draft orders:', err);
+                        } finally {
+                            setEditorDraftOrdersLoading(false);
+                        }
+                    }
+                }}
+                loading={editorLoading}
+                error={editorError}
+                onSave={async (changes) => {
+                    try {
+                        setEditorLoading(true);
+                        setEditorError(null);
+                        
+                        const res = await fetch(`/api/route-plans/${editorPlanId}/batch-update`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(changes)
+                        });
+                        
+                        const result = await res.json();
+                        
+                        if (result.error) {
+                            throw new Error(result.error);
+                        }
+                        
+                        // Refresh data
+                        await fetchEditorData(editorPlanId);
+                        await fetchRoutePlans();
+                        setStatusMessage('บันทึกการแก้ไขเส้นทางเรียบร้อย');
+                    } catch (error: any) {
+                        console.error('Error saving changes:', error);
+                        setEditorError(error.message || 'ไม่สามารถบันทึกการเปลี่ยนแปลงได้');
+                        throw error;
+                    } finally {
+                        setEditorLoading(false);
+                    }
+                }}
+                onCrossPlanTransfer={(row, tripId) => {
+                    // แปลง OrderRow เป็น EditorStop
+                    const stop: EditorStop = {
+                        stop_id: row.stopId as number,
+                        order_id: row.orderId,
+                        order_no: row.orderNo,
+                        stop_name: row.customerName,
+                        load_weight_kg: row.weightKg,
+                        sequence_no: row.stopSequence,
+                        address: null,
+                        latitude: null,
+                        longitude: null,
+                        load_volume_cbm: null,
+                        load_units: row.totalQty,
+                        service_duration_minutes: null,
+                        tags: row.customerId ? { customer_id: row.customerId } : undefined,
+                        notes: row.note,
+                        orders: []
+                    };
+                    handleOpenCrossPlanTransfer(stop, Number(tripId));
+                }}
+            />
 
             <SplitStopModal
                 isOpen={isSplitModalOpen}
