@@ -12,6 +12,11 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
     const planDate = searchParams.get('plan_date'); // Optional: filter by plan_date
+    
+    // ✅ PAGINATION: เพิ่ม page parameter
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '100');
+    const offset = (page - 1) * limit;
 
     // Build query for route plans
     let plansQuery = supabase
@@ -21,17 +26,18 @@ export async function GET(request: NextRequest) {
         plan_code,
         plan_date,
         status
-      `)
+      `, { count: 'exact' })
       .eq('status', 'approved')
       .order('plan_date', { ascending: false })
-      .order('plan_code', { ascending: false });
+      .order('plan_code', { ascending: false })
+      .range(offset, offset + limit - 1);
 
     // Filter by plan_date if provided
     if (planDate) {
       plansQuery = plansQuery.eq('plan_date', planDate);
     }
 
-    const { data: plans, error: plansError } = await plansQuery;
+    const { data: plans, error: plansError, count } = await plansQuery;
 
     if (plansError) {
       console.error('Error fetching plans:', plansError);
@@ -109,7 +115,19 @@ export async function GET(request: NextRequest) {
     // Sort by daily_trip_number
     tripsWithPlanInfo.sort((a, b) => (a.daily_trip_number || 0) - (b.daily_trip_number || 0));
 
-    return NextResponse.json({ success: true, data: tripsWithPlanInfo });
+    // ✅ PAGINATION: Return with pagination metadata
+    const totalPages = count ? Math.ceil(count / limit) : 0;
+
+    return NextResponse.json({ 
+      success: true, 
+      data: tripsWithPlanInfo,
+      pagination: {
+        page,
+        limit,
+        total: count || 0,
+        totalPages
+      }
+    });
   } catch (error: any) {
     console.error('Error in all-trips API:', error);
     return NextResponse.json(

@@ -11,16 +11,21 @@ async function handleGet(request: NextRequest, context: any) {
     const supabase = await createClient();
     const searchParams = request.nextUrl.searchParams;
     
+    // ✅ PAGINATION: เพิ่ม page parameter
+    const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '100');
     const status = searchParams.get('status');
     const created_date = searchParams.get('created_date');
     
+    // Calculate offset
+    const offset = (page - 1) * limit;
+    
     let query = supabase
       .from('bonus_face_sheets')
-      .select('*')
+      .select('*', { count: 'exact' })
       .order('created_date', { ascending: false })
       .order('created_at', { ascending: false })
-      .limit(limit);
+      .range(offset, offset + limit - 1);
     
     if (status && status !== 'all') {
       query = query.eq('status', status);
@@ -30,7 +35,7 @@ async function handleGet(request: NextRequest, context: any) {
       query = query.eq('created_date', created_date);
     }
     
-    const { data, error } = await query;
+    const { data, error, count } = await query;
     
     if (error) {
       console.error('Error fetching bonus face sheets:', error);
@@ -110,9 +115,18 @@ async function handleGet(request: NextRequest, context: any) {
       };
     }) || [];
     
+    // ✅ PAGINATION: Return with pagination metadata
+    const totalPages = count ? Math.ceil(count / limit) : 0;
+    
     return NextResponse.json({
       success: true,
-      data: enrichedData
+      data: enrichedData,
+      pagination: {
+        page,
+        limit,
+        total: count || 0,
+        totalPages
+      }
     });
   } catch (error: any) {
     console.error('Error in GET /api/bonus-face-sheets:', error);

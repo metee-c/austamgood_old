@@ -142,16 +142,39 @@ export default function ExcelStyleRouteEditor({
       
       (trip.stops || []).forEach((stop: any, stopIndex: number) => {
         // Handle consolidated stops with multiple orders
-        const orders = stop.orders || [{
-          order_id: stop.order_id,
-          order_no: stop.order_no,
-          customer_id: stop.tags?.customer_id || '',
-          customer_name: stop.stop_name,
-          province: null,
-          allocated_weight_kg: stop.load_weight_kg,
-          total_qty: 0,
-          items: [] // fallback has no items
-        }];
+        // Priority: stop.orders array > stop.tags.order_ids > fallback to single order
+        let orders = stop.orders;
+        
+        if (!orders || orders.length === 0) {
+          // Fallback: Try to get order IDs from tags
+          const orderIds = stop.tags?.order_ids || (stop.order_id ? [stop.order_id] : []);
+          
+          if (orderIds.length > 1) {
+            // Multiple orders but no orders array - create placeholder orders
+            orders = orderIds.map((orderId: number) => ({
+              order_id: orderId,
+              order_no: `Order ${orderId}`, // Will be fetched from API
+              customer_id: stop.tags?.customer_id || '',
+              customer_name: stop.stop_name,
+              province: null,
+              allocated_weight_kg: stop.load_weight_kg / orderIds.length, // Distribute weight evenly
+              total_qty: 0,
+              items: []
+            }));
+          } else {
+            // Single order fallback
+            orders = [{
+              order_id: stop.order_id,
+              order_no: stop.order_no,
+              customer_id: stop.tags?.customer_id || '',
+              customer_name: stop.stop_name,
+              province: null,
+              allocated_weight_kg: stop.load_weight_kg,
+              total_qty: 0,
+              items: []
+            }];
+          }
+        }
         
         orders.forEach((order: any, orderIndex: number) => {
           if (!order || !order.order_id) return;
@@ -162,7 +185,8 @@ export default function ExcelStyleRouteEditor({
               order_id: order.order_id,
               order_no: order.order_no,
               items: order.items,
-              itemsCount: order.items?.length || 0
+              itemsCount: order.items?.length || 0,
+              stop_tags: stop.tags
             });
           }
           
@@ -958,10 +982,28 @@ export default function ExcelStyleRouteEditor({
                         </select>
                       </td>
                       <td className="border px-3 py-1 font-mono text-blue-600">
-                        {row.orderNo}
-                        {row.isSplit && (
-                          <span className="ml-1 text-xs text-orange-600">(แบ่ง)</span>
-                        )}
+                        <div className="flex items-center gap-2">
+                          <span>{row.orderNo}</span>
+                          {row.isSplit && (
+                            <span className="text-xs bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">แบ่ง</span>
+                          )}
+                          {(() => {
+                            // Check if this order is part of a consolidated stop
+                            const sameStopOrders = rows.filter(r => 
+                              r.stopId === row.stopId && 
+                              r.tripNumber === row.tripNumber &&
+                              !r.isSplit
+                            );
+                            if (sameStopOrders.length > 1) {
+                              return (
+                                <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
+                                  รวม {sameStopOrders.length}
+                                </span>
+                              );
+                            }
+                            return null;
+                          })()}
+                        </div>
                       </td>
                       <td className="border px-3 py-1 font-mono text-gray-600">
                         {row.customerId || '-'}

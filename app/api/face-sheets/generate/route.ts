@@ -262,12 +262,15 @@ async function handleGetGenerate(request: NextRequest, context: any) {
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
     const date = searchParams.get('date');
+    
+    // ✅ PAGINATION: แปลง offset เป็น page/limit
+    const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '50');
-    const offset = parseInt(searchParams.get('offset') || '0');
+    const offset = (page - 1) * limit;
 
     let query = supabase
       .from('face_sheet_summary')
-      .select('*')
+      .select('*', { count: 'exact' })
       .order('created_date', { ascending: false })
       .range(offset, offset + limit - 1);
 
@@ -279,7 +282,7 @@ async function handleGetGenerate(request: NextRequest, context: any) {
       query = query.eq('created_date', date);
     }
 
-    const { data, error } = await query;
+    const { data, error, count } = await query;
 
     if (error) {
       console.error('Error fetching face sheets:', error);
@@ -330,10 +333,19 @@ async function handleGetGenerate(request: NextRequest, context: any) {
       }
     }
 
+    // ✅ PAGINATION: Return with pagination metadata
+    const totalPages = count ? Math.ceil(count / limit) : 0;
+
     return NextResponse.json({
       success: true,
       data: data || [],
-      total: data?.length || 0
+      total: data?.length || 0,
+      pagination: {
+        page,
+        limit,
+        total: count || 0,
+        totalPages
+      }
     });
 
   } catch (error) {

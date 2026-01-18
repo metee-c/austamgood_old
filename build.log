@@ -3,14 +3,14 @@
 
    Creating an optimized production build ...
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
- ✓ Compiled successfully in 49s
+ ✓ Compiled successfully in 13.4s
    Running TypeScript ...
    Collecting page data using 13 workers ...
    Generating static pages using 13 workers (0/238) ...
    Generating static pages using 13 workers (59/238) 
    Generating static pages using 13 workers (118/238) 
    Generating static pages using 13 workers (178/238) 
- ✓ Generating static pages using 13 workers (238/238) in 2.6s
+ ✓ Generating static pages using 13 workers (238/238) in 1565.3ms
    Finalizing page optimization ...
 
 Route (app)
@@ -56,6 +56,7 @@ Route (app)
 ├ ƒ /api/bonus-face-sheets/confirm-pick-to-staging
 ├ ƒ /api/bonus-face-sheets/delivery-document
 ├ ƒ /api/bonus-face-sheets/[id]
+├ ƒ /api/bonus-face-sheets/[id]/delete
 ├ ƒ /api/bonus-face-sheets/loadlist-counts
 ├ ƒ /api/bonus-face-sheets/mapped-face-sheets
 ├ ƒ /api/bonus-face-sheets/orders
@@ -75,6 +76,7 @@ Route (app)
 ├ ƒ /api/face-sheets/delivery-document
 ├ ƒ /api/face-sheets/generate
 ├ ƒ /api/face-sheets/[id]
+├ ƒ /api/face-sheets/[id]/delete
 ├ ƒ /api/face-sheets/orders
 ├ ƒ /api/file-uploads
 ├ ƒ /api/freight-rates
@@ -159,6 +161,7 @@ Route (app)
 ├ ƒ /api/picklists/create-from-trips-batch
 ├ ƒ /api/picklists/[id]
 ├ ƒ /api/picklists/[id]/complete
+├ ƒ /api/picklists/[id]/delete
 ├ ƒ /api/picklists/[id]/items
 ├ ƒ /api/picklists/[id]/items/confirm
 ├ ƒ /api/picklists/[id]/print

@@ -1,5 +1,8 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
+  // ✅ Enable compression for better bandwidth usage
+  compress: true,
+  
   images: {
     remotePatterns: [
       {
@@ -9,6 +12,40 @@ const nextConfig = {
     ],
     qualities: [50, 75, 90, 100],
   },
+  
+  // ✅ Add cache headers for static assets
+  async headers() {
+    return [
+      {
+        source: '/:all*(svg|jpg|jpeg|png|gif|ico|webp)',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+      {
+        source: '/_next/static/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, max-age=31536000, immutable',
+          },
+        ],
+      },
+      {
+        source: '/api/:path*',
+        headers: [
+          {
+            key: 'Cache-Control',
+            value: 'public, s-maxage=60, stale-while-revalidate=120',
+          },
+        ],
+      },
+    ];
+  },
+  
   // Empty turbopack config to silence warning
   turbopack: {},
   // Strict mode for better error detection

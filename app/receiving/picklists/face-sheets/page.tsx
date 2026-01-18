@@ -10,17 +10,20 @@ import {
   AlertCircle,
   Loader2,
   ClipboardCheck,
-  AlertTriangle
+  AlertTriangle,
+  Trash2
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import { PageContainer, PageHeaderWithFilters, SearchInput, FilterSelect } from '@/components/ui/page-components';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
+import DeleteLoadingModal from '@/components/ui/DeleteLoadingModal';
 import FaceSheetDetailModal from '@/components/receiving/FaceSheetDetailModal';
 import FaceSheetLabelDocument from '@/components/receiving/FaceSheetLabelDocument';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 interface FaceSheet {
   id: number;
@@ -81,6 +84,7 @@ interface PreviewOrder {
 }
 
 const FaceSheetsPage = () => {
+  const { user } = useAuthContext();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('all');
@@ -102,8 +106,13 @@ const FaceSheetsPage = () => {
   const [printingId, setPrintingId] = useState<number | null>(null);
   const [editingStatusId, setEditingStatusId] = useState<number | null>(null);
   const [checklistingId, setChecklistingId] = useState<number | null>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deletingInfo, setDeletingInfo] = useState<{ id: number; code: string } | null>(null);
   const [warehouses, setWarehouses] = useState<Array<{ warehouse_id: string; warehouse_name: string }>>([]);
   const [selectedWarehouse, setSelectedWarehouse] = useState('WH01');
+  
+  // Check if current user can delete
+  const canDelete = user?.email === 'metee.c@buzzpetsfood.com';
 
   // Missing Hub Modal State
   const [showMissingHubModal, setShowMissingHubModal] = useState(false);
@@ -777,6 +786,36 @@ const FaceSheetsPage = () => {
     setMissingHubCustomers([]);
   };
 
+  // Handle delete face sheet
+  const handleDeleteFaceSheet = async (faceSheetId: number, faceSheetNo: string) => {
+    if (!confirm(`คุณแน่ใจหรือไม่ที่จะลบ Face Sheet ${faceSheetNo}?\n\nการลบจะปลดล็อคยอดจองในบ้านหยิบด้วย`)) {
+      return;
+    }
+
+    setDeletingId(faceSheetId);
+    setDeletingInfo({ id: faceSheetId, code: faceSheetNo });
+    try {
+      const response = await fetch(`/api/face-sheets/${faceSheetId}/delete`, {
+        method: 'DELETE'
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete face sheet');
+      }
+
+      alert(`ลบ Face Sheet สำเร็จ!\nปลดล็อคยอดจอง: ${result.released_reservations} รายการ`);
+      fetchFaceSheets(); // Refresh list
+    } catch (error: any) {
+      console.error('Error deleting face sheet:', error);
+      alert('เกิดข้อผิดพลาดในการลบ Face Sheet: ' + error.message);
+    } finally {
+      setDeletingId(null);
+      setDeletingInfo(null);
+    }
+  };
+
   return (
     <PageContainer>
       {/* Alerts - Show only when modal is closed */}
@@ -938,6 +977,20 @@ const FaceSheetsPage = () => {
                         >
                           {checklistingId === sheet.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardCheck className="w-4 h-4" />}
                         </button>
+                        {canDelete && (
+                          <button
+                            onClick={() => handleDeleteFaceSheet(sheet.id, sheet.face_sheet_no)}
+                            disabled={deletingId === sheet.id}
+                            className="p-1 rounded hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-60"
+                            title="ลบ Face Sheet"
+                          >
+                            {deletingId === sheet.id ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-4 h-4" />
+                            )}
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -1222,6 +1275,13 @@ const FaceSheetsPage = () => {
         onClose={() => setIsDetailModalOpen(false)}
         details={selectedSheetDetails}
         loading={detailLoading}
+      />
+
+      {/* Delete Loading Modal */}
+      <DeleteLoadingModal
+        isOpen={!!deletingInfo}
+        documentType="Face Sheet"
+        documentNo={deletingInfo?.code || ''}
       />
     </PageContainer>
   );

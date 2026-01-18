@@ -2068,12 +2068,29 @@ const RoutesPage = () => {
                     });
                     return acc;
                 }
+
+                // Extract all orders for this stop (consolidated or single)
+                const orderIds = stop.tags?.order_ids || (stop.order_id ? [stop.order_id] : []);
+                const orders = orderIds.map((orderId: number) => {
+                    // Try to find order details from stop_items or use stop-level data
+                    const orderNo = stop.order_no || `Order-${orderId}`;
+                    const allocatedWeight = Number(stop.load_weight_kg || 0) / orderIds.length; // Distribute weight evenly if not specified
+                    
+                    return {
+                        order_id: orderId,
+                        order_no: orderNo,
+                        allocated_weight_kg: allocatedWeight,
+                        total_order_weight_kg: allocatedWeight
+                    };
+                });
+
                 acc.push({
                     ...stop,
                     sequence_no: stop.sequence_no ?? idx + 1,
                     location_name: stop.stop_name || stop.location_name || `จุดที่ ${idx + 1}`,
                     latitude,
-                    longitude
+                    longitude,
+                    orders // Add orders array for StopDetailPopup
                 });
                 return acc;
             }, []);
@@ -2539,66 +2556,60 @@ const RoutesPage = () => {
                                                     </tr>
                                                 </thead>
                                                 <tbody className="divide-y divide-gray-100">
-                                                    {trip.stops.flatMap((stop: any, stopIndex: number) => {
+                                                    {trip.stops.map((stop: any, stopIndex: number) => {
                                                         // Check if stop has orders array with data
                                                         const hasOrders = Array.isArray(stop.orders) && stop.orders.length > 0;
+                                                        const isConsolidated = hasOrders && stop.orders.length > 1;
                                                         
-                                                        // Debug log for first stop
-                                                        if (stopIndex === 0) {
-                                                            console.log('🔍 Preview Stop Data:', {
-                                                                stop_id: stop.stop_id,
-                                                                stop_name: stop.stop_name,
-                                                                order_id: stop.order_id,
-                                                                order_no: stop.order_no,
-                                                                hasOrders,
-                                                                orders: stop.orders,
-                                                                load_weight_kg: stop.load_weight_kg
-                                                            });
-                                                        }
+                                                        // Get all order numbers for this stop
+                                                        const orderNumbers = hasOrders
+                                                            ? stop.orders.map((o: any) => o.order_no).filter(Boolean).join(', ')
+                                                            : (stop.order_no || '-');
                                                         
-                                                        const orderRows: StopOrderDetail[] = hasOrders
-                                                            ? stop.orders
-                                                            : [{
-                                                                order_id: stop.order_id ?? null,
-                                                                order_no: stop.order_no ?? null,
-                                                                customer_name: stop.stop_name ?? null,
-                                                                allocated_weight_kg: Number.isFinite(Number(stop.load_weight_kg)) ? Number(stop.load_weight_kg) : null,
-                                                                total_order_weight_kg: Number.isFinite(Number(stop.load_weight_kg)) ? Number(stop.load_weight_kg) : null
-                                                            }];
-
-                                                        return orderRows.map((order, index) => {
-                                                            const rowKey = `preview-stop-${stop.stop_id}-${order.order_id ?? index}`;
-                                                            const weightSource =
-                                                                (order.allocated_weight_kg != null && Number.isFinite(Number(order.allocated_weight_kg)))
+                                                        // Calculate total weight for this stop
+                                                        const totalWeight = hasOrders
+                                                            ? stop.orders.reduce((sum: number, order: any) => {
+                                                                const weight = (order.allocated_weight_kg != null && Number.isFinite(Number(order.allocated_weight_kg)))
                                                                     ? Number(order.allocated_weight_kg)
                                                                     : (order.total_order_weight_kg != null && Number.isFinite(Number(order.total_order_weight_kg)))
                                                                         ? Number(order.total_order_weight_kg)
-                                                                        : Number.isFinite(Number(stop.load_weight_kg))
-                                                                            ? Number(stop.load_weight_kg)
-                                                                            : null;
-                                                            const formattedWeight = weightSource != null
-                                                                ? weightSource.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+                                                                        : 0;
+                                                                return sum + weight;
+                                                            }, 0)
+                                                            : (Number.isFinite(Number(stop.load_weight_kg)) ? Number(stop.load_weight_kg) : 0);
+                                                        
+                                                        const formattedWeight = totalWeight > 0
+                                                            ? totalWeight.toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 })
+                                                            : '-';
+                                                        
+                                                        const serviceDurationDisplay =
+                                                            stop.service_duration_minutes != null
+                                                                ? stop.service_duration_minutes
                                                                 : '-';
-                                                            const serviceDurationDisplay =
-                                                                stop.service_duration_minutes != null
-                                                                    ? stop.service_duration_minutes
-                                                                    : '-';
 
-                                                            return (
-                                                                <tr key={rowKey} className="hover:bg-gray-50">
-                                                                    <td className="px-3 py-2 font-mono text-gray-600">{stop.sequence_no}</td>
-                                                                    <td className="px-3 py-2 font-mono text-blue-600">{order.order_no || '-'}</td>
-                                                                    <td className="px-3 py-2">
-                                                                        <div className="font-semibold text-gray-800">{stop.stop_name || '-'}</div>
-                                                                        <div className="text-xs text-gray-500 truncate" style={{ maxWidth: '260px' }}>
-                                                                            {stop.address || '-'}
-                                                                        </div>
-                                                                    </td>
-                                                                    <td className="px-3 py-2 text-right font-mono text-gray-600">{formattedWeight}</td>
-                                                                    <td className="px-3 py-2 text-right font-mono text-gray-600">{serviceDurationDisplay}</td>
-                                                                </tr>
-                                                            );
-                                                        });
+                                                        return (
+                                                            <tr key={`preview-stop-${stop.stop_id}`} className="hover:bg-gray-50">
+                                                                <td className="px-3 py-2 font-mono text-gray-600">{stop.sequence_no}</td>
+                                                                <td className="px-3 py-2">
+                                                                    <div className="flex items-center gap-2">
+                                                                        <span className="font-mono text-blue-600">{orderNumbers}</span>
+                                                                        {isConsolidated && (
+                                                                            <span className="text-xs bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded">
+                                                                                {stop.orders.length} ออเดอร์
+                                                                            </span>
+                                                                        )}
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-3 py-2">
+                                                                    <div className="font-semibold text-gray-800">{stop.stop_name || '-'}</div>
+                                                                    <div className="text-xs text-gray-500 truncate" style={{ maxWidth: '260px' }}>
+                                                                        {stop.address || '-'}
+                                                                    </div>
+                                                                </td>
+                                                                <td className="px-3 py-2 text-right font-mono text-gray-600">{formattedWeight}</td>
+                                                                <td className="px-3 py-2 text-right font-mono text-gray-600">{serviceDurationDisplay}</td>
+                                                            </tr>
+                                                        );
                                                     })}
                                                 </tbody>
                                                 <tfoot className="bg-thai-blue-50 border-t-2 border-thai-blue-200">

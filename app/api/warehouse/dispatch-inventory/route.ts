@@ -8,7 +8,13 @@ export async function GET(request: NextRequest) {
     const { searchParams } = new URL(request.url);
     const warehouseId = searchParams.get('warehouse_id') || 'WH001';
     const exportAll = searchParams.get('export') === 'true';
-    console.log(`🔵 [DISPATCH-INVENTORY] Warehouse: ${warehouseId}, Export: ${exportAll}`);
+    
+    // Pagination parameters (only for non-export mode)
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '100');
+    const offset = (page - 1) * limit;
+    
+    console.log(`🔵 [DISPATCH-INVENTORY] Warehouse: ${warehouseId}, Export: ${exportAll}, Page: ${page}, Limit: ${limit}`);
 
     // ดึงข้อมูล inventory ที่ Dispatch location พร้อมข้อมูลใบหยิบและออเดอร์
     let dispatchInventory: any[] = [];
@@ -58,7 +64,8 @@ export async function GET(request: NextRequest) {
         }
       }
     } else {
-      const { data, error } = await supabase
+      // For normal display, use pagination
+      const { data, error, count } = await supabase
         .from('wms_inventory_balances')
         .select(`
           balance_id,
@@ -80,13 +87,17 @@ export async function GET(request: NextRequest) {
           updated_at,
           master_location!location_id (location_name),
           master_sku!sku_id (sku_name, weight_per_piece_kg)
-        `)
+        `, { count: 'exact' })
         .eq('location_id', 'Dispatch')
         .eq('warehouse_id', warehouseId)
-        .order('updated_at', { ascending: false });
+        .order('updated_at', { ascending: false })
+        .range(offset, offset + limit - 1);
 
       if (error) throw error;
       dispatchInventory = data || [];
+      
+      // Store count for pagination response
+      (request as any).totalCount = count || 0;
     }
 
     // ✅ ไม่ดึง bonus_face_sheet_items แล้ว - BFS ควรแสดงเฉพาะในแท็บ "จัดสินค้าเสร็จ (BFS)" เท่านั้น
@@ -376,10 +387,22 @@ export async function GET(request: NextRequest) {
       console.log(`[DISPATCH-INVENTORY] ⚠️ NO items have related_documents!`);
     }
 
-    return NextResponse.json({
+    const response: any = {
       success: true,
       data: finalData
-    });
+    };
+
+    // Add pagination info for non-export mode
+    if (!exportAll) {
+      response.pagination = {
+        page,
+        limit,
+        total: (request as any).totalCount || 0,
+        totalPages: Math.ceil(((request as any).totalCount || 0) / limit)
+      };
+    }
+
+    return NextResponse.json(response);
   } catch (error: any) {
     console.error('Error fetching dispatch inventory:', error);
     return NextResponse.json(

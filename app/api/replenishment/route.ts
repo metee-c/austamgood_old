@@ -16,6 +16,7 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const warehouseId = searchParams.get('warehouse_id');
     const triggerSource = searchParams.get('trigger_source');
+    const page = parseInt(searchParams.get('page') || '1');
     const limit = parseInt(searchParams.get('limit') || '100');
 
     let query = supabase
@@ -43,10 +44,9 @@ export async function GET(request: NextRequest) {
           username,
           full_name
         )
-      `)
+      `, { count: 'exact' })
       .order('priority', { ascending: true })
-      .order('created_at', { ascending: false })
-      .limit(limit);
+      .order('created_at', { ascending: false });
 
     if (status && status !== 'all') {
       query = query.eq('status', status);
@@ -61,14 +61,27 @@ export async function GET(request: NextRequest) {
       query = query.eq('trigger_source', triggerSource);
     }
 
-    const { data, error } = await query;
+    // Apply pagination
+    const from = (page - 1) * limit;
+    const to = from + limit - 1;
+    query = query.range(from, to);
+
+    const { data, error, count } = await query;
 
     if (error) {
       console.error('Error fetching replenishment queue:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ data });
+    return NextResponse.json({ 
+      data,
+      pagination: {
+        page,
+        limit,
+        total: count || 0,
+        totalPages: Math.ceil((count || 0) / limit)
+      }
+    });
   } catch (error: any) {
     console.error('Error in GET /api/replenishment:', error);
     return NextResponse.json({ error: error.message }, { status: 500 });

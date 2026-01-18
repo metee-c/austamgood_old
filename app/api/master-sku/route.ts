@@ -8,14 +8,15 @@ async function handleGet(request: NextRequest, context: any) {
     const search = searchParams.get('search')
     const category = searchParams.get('category')
     const status = searchParams.get('status')
-    const limit = searchParams.get('limit')
-    const offset = searchParams.get('offset')
+    const page = parseInt(searchParams.get('page') || '1')
+    const limit = parseInt(searchParams.get('limit') || '100')
 
     const supabase = await createServerClient()
 
+    // Build query with count
     let query = supabase
       .from('master_sku')
-      .select('*')
+      .select('*', { count: 'exact' })
       .order('created_at', { ascending: false })
 
     // Apply filters
@@ -34,17 +35,12 @@ async function handleGet(request: NextRequest, context: any) {
       query = query.eq('status', status)
     }
 
-    if (limit) {
-      query = query.limit(parseInt(limit))
-    }
+    // Apply pagination
+    const from = (page - 1) * limit
+    const to = from + limit - 1
+    query = query.range(from, to)
 
-    if (offset) {
-      const offsetNum = parseInt(offset)
-      const limitNum = parseInt(limit || '10')
-      query = query.range(offsetNum, offsetNum + limitNum - 1)
-    }
-
-    const { data, error } = await query
+    const { data, error, count } = await query
 
     if (error) {
       console.error('Database error:', error)
@@ -54,7 +50,15 @@ async function handleGet(request: NextRequest, context: any) {
       )
     }
 
-    return NextResponse.json({ data: data || [] })
+    return NextResponse.json({ 
+      data: data || [],
+      pagination: {
+        page,
+        limit,
+        total: count || 0,
+        totalPages: Math.ceil((count || 0) / limit)
+      }
+    })
   } catch (error) {
     console.error('API error:', error)
     return NextResponse.json(

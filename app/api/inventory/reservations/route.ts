@@ -5,6 +5,8 @@ export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     const balanceId = searchParams.get('balance_id');
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '100');
 
     if (!balanceId) {
       return NextResponse.json(
@@ -214,10 +216,21 @@ export async function GET(request: Request) {
       return new Date(b.reserved_at).getTime() - new Date(a.reserved_at).getTime();
     });
 
+    // Apply pagination
+    const totalCount = reservations.length;
+    const from = (page - 1) * limit;
+    const to = from + limit;
+    const paginatedData = reservations.slice(from, to);
+
     return NextResponse.json({
       success: true,
-      data: reservations,
-      total: reservations.length,
+      data: paginatedData,
+      total: totalCount,
+      pagination: {
+        page,
+        limit,
+        totalPages: Math.ceil(totalCount / limit)
+      }
     });
   } catch (error: any) {
     console.error('Error in reservations API:', error);

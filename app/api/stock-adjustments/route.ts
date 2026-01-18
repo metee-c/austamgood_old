@@ -39,6 +39,9 @@ export async function GET(request: NextRequest) {
 
     // Parse query parameters
     const searchParams = request.nextUrl.searchParams;
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '100');
+    
     const rawFilters: any = {
       adjustment_type: searchParams.get('adjustment_type') || undefined,
       status: searchParams.get('status') || undefined,
@@ -52,12 +55,8 @@ export async function GET(request: NextRequest) {
       searchTerm: searchParams.get('searchTerm') || undefined,
       startDate: searchParams.get('startDate') || undefined,
       endDate: searchParams.get('endDate') || undefined,
-      limit: searchParams.get('limit')
-        ? parseInt(searchParams.get('limit')!)
-        : 50,
-      offset: searchParams.get('offset')
-        ? parseInt(searchParams.get('offset')!)
-        : 0,
+      limit,
+      offset: (page - 1) * limit,
     };
 
     // Remove undefined values
@@ -72,7 +71,17 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error }, { status: 400 });
     }
 
-    return NextResponse.json({ data: adjustments });
+    // Count total (approximation - service doesn't return count)
+    const hasMore = adjustments && adjustments.length === limit;
+    
+    return NextResponse.json({ 
+      data: adjustments,
+      pagination: {
+        page,
+        limit,
+        hasMore
+      }
+    });
   } catch (error: any) {
     console.error('Error fetching stock adjustments:', error);
     return NextResponse.json(

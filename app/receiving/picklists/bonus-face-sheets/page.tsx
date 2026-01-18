@@ -16,15 +16,18 @@ import {
   AlertTriangle,
   MapPin,
   FileText,
-  PackageSearch
+  PackageSearch,
+  Trash2
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
+import DeleteLoadingModal from '@/components/ui/DeleteLoadingModal';
 import BonusFaceSheetLabelDocument from '@/components/receiving/BonusFaceSheetLabelDocument';
 import BonusFaceSheetChecklistDocument from '@/components/receiving/BonusFaceSheetChecklistDocument';
 import { PageContainer, PageHeaderWithFilters, SearchInput, FilterSelect } from '@/components/ui/page-components';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 interface BonusFaceSheet {
   id: number;
@@ -111,6 +114,7 @@ interface PackageRow {
 
 const BonusFaceSheetsPage = () => {
   const router = useRouter();
+  const { user } = useAuthContext();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
   const [selectedStatus, setSelectedStatus] = useState('all');
@@ -133,11 +137,16 @@ const BonusFaceSheetsPage = () => {
   const [checkingUnloadedId, setCheckingUnloadedId] = useState<number | null>(null);
   const [showUnloadedModal, setShowUnloadedModal] = useState(false);
   const [unloadedData, setUnloadedData] = useState<any>(null);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deletingInfo, setDeletingInfo] = useState<{ id: number; code: string } | null>(null);
   
   // ✅ State สำหรับมุมมองแพ็ค (edit23)
   const [viewMode, setViewMode] = useState<'summary' | 'packages'>('summary');
   const [packagesData, setPackagesData] = useState<PackageRow[]>([]);
   const [loadingPackages, setLoadingPackages] = useState(false);
+  
+  // Check if current user can delete
+  const canDelete = user?.email === 'metee.c@buzzpetsfood.com';
 
   const statuses = [
     { value: 'all', label: 'ทั้งหมด' },
@@ -815,6 +824,36 @@ const BonusFaceSheetsPage = () => {
     }
   };
 
+  // Handle delete bonus face sheet
+  const handleDeleteBonusFaceSheet = async (bonusFaceSheetId: number, faceSheetNo: string) => {
+    if (!confirm(`คุณแน่ใจหรือไม่ที่จะลบ Bonus Face Sheet ${faceSheetNo}?\n\nการลบจะปลดล็อคยอดจองในบ้านหยิบด้วย`)) {
+      return;
+    }
+
+    setDeletingId(bonusFaceSheetId);
+    setDeletingInfo({ id: bonusFaceSheetId, code: faceSheetNo });
+    try {
+      const response = await fetch(`/api/bonus-face-sheets/${bonusFaceSheetId}/delete`, {
+        method: 'DELETE'
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete bonus face sheet');
+      }
+
+      alert(`ลบ Bonus Face Sheet สำเร็จ!\nปลดล็อคยอดจอง: ${result.released_reservations} รายการ`);
+      fetchBonusFaceSheets(); // Refresh list
+    } catch (error: any) {
+      console.error('Error deleting bonus face sheet:', error);
+      alert('เกิดข้อผิดพลาดในการลบ Bonus Face Sheet: ' + error.message);
+    } finally {
+      setDeletingId(null);
+      setDeletingInfo(null);
+    }
+  };
+
   return (
     <PageContainer>
       <PageHeaderWithFilters title="สร้างใบปะหน้าของแถม (Bonus Face Sheets)">
@@ -1078,6 +1117,20 @@ const BonusFaceSheetsPage = () => {
                               <PackageSearch className="w-4 h-4" />
                             )}
                           </button>
+                          {canDelete && (
+                            <button
+                              onClick={() => handleDeleteBonusFaceSheet(sheet.id, sheet.face_sheet_no)}
+                              disabled={deletingId === sheet.id}
+                              className="p-1 rounded hover:bg-red-50 hover:text-red-600 transition-colors disabled:opacity-60"
+                              title="ลบ Bonus Face Sheet"
+                            >
+                              {deletingId === sheet.id ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="w-4 h-4" />
+                              )}
+                            </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1712,6 +1765,13 @@ const BonusFaceSheetsPage = () => {
           </div>
         )}
       </Modal>
+
+      {/* Delete Loading Modal */}
+      <DeleteLoadingModal
+        isOpen={!!deletingInfo}
+        documentType="Bonus Face Sheet"
+        documentNo={deletingInfo?.code || ''}
+      />
     </PageContainer>
   );
 };

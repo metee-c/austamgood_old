@@ -12,10 +12,15 @@ export async function GET(request: NextRequest) {
     // Get search parameter
     const searchParams = request.nextUrl.searchParams;
     const search = searchParams.get('search');
+    
+    // ✅ PAGINATION: เพิ่ม page parameter
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '100');
+    const offset = (page - 1) * limit;
 
     let query = supabase
       .from('master_employee')
-      .select('employee_id, employee_code, first_name, last_name, nickname, position, department, wms_role');
+      .select('employee_id, employee_code, first_name, last_name, nickname, position, department, wms_role', { count: 'exact' });
 
     // Apply search filter if provided
     if (search) {
@@ -25,9 +30,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    query = query.order('first_name', { ascending: true });
+    query = query
+      .order('first_name', { ascending: true })
+      .range(offset, offset + limit - 1);
 
-    const { data, error } = await query;
+    const { data, error, count } = await query;
 
     if (error) {
       console.error('Error fetching employees:', error);
@@ -50,8 +57,19 @@ export async function GET(request: NextRequest) {
       wms_role: emp.wms_role
     })) || [];
 
+    // ✅ PAGINATION: Return with pagination metadata
+    const totalPages = count ? Math.ceil(count / limit) : 0;
+
     // Return array directly (not wrapped in object) to match expected format
-    return NextResponse.json(employees);
+    return NextResponse.json({
+      data: employees,
+      pagination: {
+        page,
+        limit,
+        total: count || 0,
+        totalPages
+      }
+    });
 
   } catch (error) {
     console.error('API Error in GET /api/employees:', error);

@@ -3,11 +3,19 @@ import { createClient } from '@/lib/supabase/server';
 
 export async function GET(request: NextRequest) {
   try {
+    console.log('🔍 [Published Plans API] Called at:', new Date().toISOString());
+    
     const supabase = await createClient();
+    const { searchParams } = new URL(request.url);
+    
+    // ✅ PAGINATION: เพิ่ม page parameter
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '100');
+    const offset = (page - 1) * limit;
 
     // Get route plans with status 'approved' only
     // approved = อนุมัติแล้ว (ผู้จัดการอนุมัติใบว่าจ้างแล้ว - พร้อมสร้าง Picklist)
-    const { data: plans, error } = await supabase
+    const { data: plans, error, count } = await supabase
       .from('receiving_route_plans')
       .select(`
         plan_id,
@@ -23,10 +31,11 @@ export async function GET(request: NextRequest) {
           warehouse_id,
           warehouse_name
         )
-      `)
+      `, { count: 'exact' })
       .eq('status', 'approved')
       .order('plan_date', { ascending: false })
-      .order('plan_code', { ascending: false });
+      .order('plan_code', { ascending: false })
+      .range(offset, offset + limit - 1);
 
     if (error) {
       console.error('Error fetching published plans:', error);
@@ -36,15 +45,58 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fetch all trip_ids that already have picklists
-    const { data: existingPicklists } = await supabase
-      .from('picklists')
-      .select('trip_id')
-      .not('trip_id', 'is', null);
+    // Fetch trip_ids where orders are already picked/loaded/in_transit/delivered
+    // Check directly from route stops and their order status
+    const { data: stopsWithProcessedOrders } = await supabase
+      .from('receiving_route_stops')
+      .select('trip_id, order_id, tags, wms_orders(status)')
+      .not('order_id', 'is', null);
 
-    const tripIdsWithPicklist = new Set(
-      (existingPicklists || []).map(p => p.trip_id)
-    );
+    // Also get all stops to check tags.order_ids
+    const { data: allStops } = await supabase
+      .from('receiving_route_stops')
+      .select('trip_id, tags');
+
+    const tripIdsWithPicklist = new Set<number>();
+
+    // Check stops with direct order_id
+    (stopsWithProcessedOrders || []).forEach((stop: any) => {
+      if (stop.wms_orders && ['picked', 'loaded', 'in_transit', 'delivered'].includes(stop.wms_orders.status)) {
+        tripIdsWithPicklist.add(stop.trip_id);
+      }
+    });
+
+    // Check stops with order_ids in tags
+    if (allStops) {
+      const orderIdsToCheck = new Set<number>();
+      const tripOrderMap = new Map<number, number>(); // order_id -> trip_id
+
+      allStops.forEach((stop: any) => {
+        if (stop.tags?.order_ids && Array.isArray(stop.tags.order_ids)) {
+          stop.tags.order_ids.forEach((orderId: number) => {
+            orderIdsToCheck.add(orderId);
+            tripOrderMap.set(orderId, stop.trip_id);
+          });
+        }
+      });
+
+      if (orderIdsToCheck.size > 0) {
+        const { data: ordersInTags } = await supabase
+          .from('wms_orders')
+          .select('order_id, status')
+          .in('order_id', Array.from(orderIdsToCheck))
+          .in('status', ['picked', 'loaded', 'in_transit', 'delivered']);
+
+        (ordersInTags || []).forEach((order: any) => {
+          const tripId = tripOrderMap.get(order.order_id);
+          if (tripId) {
+            tripIdsWithPicklist.add(tripId);
+          }
+        });
+      }
+    }
+
+    console.log('🚫 Filtered out trip IDs (picked/loaded/in_transit/delivered):', Array.from(tripIdsWithPicklist));
 
     // For each plan, fetch trips with their stops and orders
     const plansWithTrips = await Promise.all(
@@ -347,11 +399,36 @@ export async function GET(request: NextRequest) {
     );
 
     // Filter out plans that have no available trips (all trips already have picklists)
-    const plansWithAvailableTrips = plansWithTrips.filter(
-      plan => plan.trips && plan.trips.length > 0
-    );
+    // Also filter out plans where all trips are empty (no stops or no orders)
+    const plansWithAvailableTrips = plansWithTrips.filter(plan => {
+      if (!plan.trips || plan.trips.length === 0) return false;
+      
+      // Check if at least one trip has stops with orders
+      const hasValidTrips = plan.trips.some(trip => {
+        if (!trip.stops || trip.stops.length === 0) return false;
+        
+        // Check if any stop has orders
+        return trip.stops.some(stop => 
+          stop.orders && stop.orders.length > 0
+        );
+      });
+      
+      return hasValidTrips;
+    });
 
-    return NextResponse.json({ data: plansWithAvailableTrips || [], error: null });
+    // ✅ PAGINATION: Return with pagination metadata
+    const totalPages = count ? Math.ceil(count / limit) : 0;
+
+    return NextResponse.json({ 
+      data: plansWithAvailableTrips || [], 
+      error: null,
+      pagination: {
+        page,
+        limit,
+        total: count || 0,
+        totalPages
+      }
+    });
   } catch (error: any) {
     console.error('Error fetching published plans:', error);
     return NextResponse.json(

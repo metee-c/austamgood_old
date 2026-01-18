@@ -4,7 +4,13 @@ import { moveService, CreateMovePayload } from '@/lib/database/move';
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '100');
+    
     const filters = Object.fromEntries(searchParams.entries());
+    // Remove pagination params from filters
+    delete filters.page;
+    delete filters.limit;
 
     const { data, error } = await moveService.getMoves(filters);
 
@@ -12,7 +18,23 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ data: null, error }, { status: 500 });
     }
 
-    return NextResponse.json({ data, error: null });
+    // Apply pagination
+    const allData = data || [];
+    const totalCount = allData.length;
+    const from = (page - 1) * limit;
+    const to = from + limit;
+    const paginatedData = allData.slice(from, to);
+
+    return NextResponse.json({ 
+      data: paginatedData, 
+      error: null,
+      pagination: {
+        page,
+        limit,
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / limit)
+      }
+    });
   } catch (error) {
     console.error('API Error in GET /api/moves:', error);
     return NextResponse.json(

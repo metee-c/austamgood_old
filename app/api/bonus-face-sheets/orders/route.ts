@@ -24,8 +24,13 @@ export async function GET(request: NextRequest) {
       );
     }
     
+    // ✅ PAGINATION: เพิ่ม page parameter
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '100');
+    const offset = (page - 1) * limit;
+    
     // ดึงออเดอร์ที่มี order_type = 'special' และวันส่งของตรงกัน
-    const { data: orders, error: ordersError } = await supabase
+    const { data: orders, error: ordersError, count } = await supabase
       .from('wms_orders')
       .select(`
         order_id,
@@ -43,11 +48,12 @@ export async function GET(request: NextRequest) {
         notes_additional,
         sales_territory,
         matched_trip_id
-      `)
+      `, { count: 'exact' })
       .eq('order_type', 'special')
       .eq('delivery_date', delivery_date)
       .order('shop_name')
-      .order('order_no');
+      .order('order_no')
+      .range(offset, offset + limit - 1);
     
     if (ordersError) {
       console.error('Error fetching orders:', ordersError);
@@ -219,11 +225,20 @@ export async function GET(request: NextRequest) {
       })
     );
     
+    // ✅ PAGINATION: Return with pagination metadata
+    const totalPages = count ? Math.ceil(count / limit) : 0;
+    
     return NextResponse.json({
       success: true,
       data: ordersWithItems,
       total_orders: ordersWithItems.length,
-      message: `พบออเดอร์สินค้าของแถม ${ordersWithItems.length} ออเดอร์`
+      message: `พบออเดอร์สินค้าของแถม ${ordersWithItems.length} ออเดอร์`,
+      pagination: {
+        page,
+        limit,
+        total: count || 0,
+        totalPages
+      }
     });
   } catch (error: any) {
     console.error('Error in GET /api/bonus-face-sheets/orders:', error);

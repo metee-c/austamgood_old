@@ -13,13 +13,15 @@ import {
   ChevronDown,
   ChevronsUpDown,
   Plus,
-  Loader2
+  Loader2,
+  Trash2
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Table from '@/components/ui/Table';
 import Modal from '@/components/ui/Modal';
+import DeleteLoadingModal from '@/components/ui/DeleteLoadingModal';
 import {
   PageContainer,
   PageHeaderWithFilters,
@@ -29,6 +31,7 @@ import {
 } from '@/components/ui/page-components';
 import useSWR from 'swr';
 import Link from 'next/link';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 type PicklistStatus = 'pending' | 'assigned' | 'picking' | 'completed' | 'cancelled';
 
@@ -58,6 +61,7 @@ interface Picklist {
 }
 
 const PicklistsPage = () => {
+  const { user } = useAuthContext();
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<PicklistStatus | 'all'>('all');
   const [startDate, setStartDate] = useState('');
@@ -71,7 +75,12 @@ const PicklistsPage = () => {
   const [editingStatusPicklistId, setEditingStatusPicklistId] = useState<number | null>(null);
   const [selectedPicklists, setSelectedPicklists] = useState<number[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [deletingInfo, setDeletingInfo] = useState<{ id: number; code: string } | null>(null);
   const pageSize = 100;
+  
+  // Check if current user can delete
+  const canDelete = user?.email === 'metee.c@buzzpetsfood.com';
 
   // Result modal state
   const [showResultModal, setShowResultModal] = useState(false);
@@ -227,6 +236,36 @@ const PicklistsPage = () => {
         ? prev.filter(id => id !== tripId)
         : [...prev, tripId]
     );
+  };
+
+  // Handle delete picklist
+  const handleDeletePicklist = async (picklistId: number, picklistCode: string) => {
+    if (!confirm(`คุณแน่ใจหรือไม่ที่จะลบ Picklist ${picklistCode}?\n\nการลบจะปลดล็อคยอดจองในบ้านหยิบด้วย`)) {
+      return;
+    }
+
+    setDeletingId(picklistId);
+    setDeletingInfo({ id: picklistId, code: picklistCode });
+    try {
+      const response = await fetch(`/api/picklists/${picklistId}/delete`, {
+        method: 'DELETE'
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to delete picklist');
+      }
+
+      alert(`ลบ Picklist สำเร็จ!\nปลดล็อคยอดจอง: ${result.released_reservations} รายการ`);
+      mutate(); // Refresh list
+    } catch (error: any) {
+      console.error('Error deleting picklist:', error);
+      alert('เกิดข้อผิดพลาดในการลบ Picklist: ' + error.message);
+    } finally {
+      setDeletingId(null);
+      setDeletingInfo(null);
+    }
   };
 
   return (
@@ -455,6 +494,20 @@ const PicklistsPage = () => {
                         >
                           <Eye className="w-3.5 h-3.5" />
                         </Link>
+                        {canDelete && (
+                          <button
+                            onClick={() => handleDeletePicklist(picklist.id, picklist.picklist_code)}
+                            disabled={deletingId === picklist.id}
+                            className="p-1 text-red-600 hover:bg-red-50 rounded transition-colors disabled:opacity-50"
+                            title="ลบ Picklist"
+                          >
+                            {deletingId === picklist.id ? (
+                              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Trash2 className="w-3.5 h-3.5" />
+                            )}
+                          </button>
+                        )}
                       </div>
                     </Table.Cell>
                   </Table.Row>
@@ -919,6 +972,13 @@ const PicklistsPage = () => {
           </div>
         </Modal>
       )}
+
+      {/* Delete Loading Modal */}
+      <DeleteLoadingModal
+        isOpen={!!deletingInfo}
+        documentType="Picklist"
+        documentNo={deletingInfo?.code || ''}
+      />
     </PageContainer>
   );
 };

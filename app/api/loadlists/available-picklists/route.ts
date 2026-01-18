@@ -8,6 +8,12 @@ import { createClient } from '@/lib/supabase/server';
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
+    const searchParams = request.nextUrl.searchParams;
+    
+    // ✅ PAGINATION: เพิ่ม page parameter
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '100');
+    const offset = (page - 1) * limit;
 
     // Step 1: Get all picklist IDs that are already in loadlists
     const { data: loadlistPicklists, error: loadlistError } = await supabase
@@ -25,7 +31,7 @@ export async function GET(request: NextRequest) {
     const usedPicklistIds = (loadlistPicklists || []).map((lp: any) => lp.picklist_id);
 
     // Step 2: Fetch completed picklists that are NOT in the used list
-    const { data: picklists, error } = await supabase
+    const { data: picklists, error, count } = await supabase
       .from('picklists')
       .select(`
         id,
@@ -49,10 +55,11 @@ export async function GET(request: NextRequest) {
             last_name
           )
         )
-      `)
+      `, { count: 'exact' })
       .eq('status', 'completed')
       .not('id', 'in', `(${usedPicklistIds.length > 0 ? usedPicklistIds.join(',') : '0'})`)
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
     if (error) {
       console.error('Error fetching picklists:', error);
@@ -166,7 +173,18 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    return NextResponse.json(transformedPicklists);
+    // ✅ PAGINATION: Return with pagination metadata
+    const totalPages = count ? Math.ceil(count / limit) : 0;
+
+    return NextResponse.json({
+      data: transformedPicklists,
+      pagination: {
+        page,
+        limit,
+        total: count || 0,
+        totalPages
+      }
+    });
   } catch (error) {
     console.error('API error:', error);
     return NextResponse.json(

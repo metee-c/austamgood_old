@@ -11,7 +11,8 @@ export async function GET(request: NextRequest) {
     const supabase = createServiceRoleClient();
     const { searchParams } = new URL(request.url);
     const search = searchParams.get('search') || '';
-    const limit = parseInt(searchParams.get('limit') || '50', 10);
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '100');
 
     // ใช้ raw SQL เพื่อหลีกเลี่ยงปัญหา foreign key join
     let sql = `
@@ -88,9 +89,21 @@ export async function GET(request: NextRequest) {
           label: `${order.order_no} - ${customerMap[order.customer_id] || 'ไม่ระบุลูกค้า'}`,
         })) || [];
 
+      // Apply pagination
+      const totalCount = formattedOrders.length;
+      const from = (page - 1) * limit;
+      const to = from + limit;
+      const paginatedData = formattedOrders.slice(from, to);
+
       return NextResponse.json({
         success: true,
-        data: formattedOrders,
+        data: paginatedData,
+        pagination: {
+          page,
+          limit,
+          total: totalCount,
+          totalPages: Math.ceil(totalCount / limit)
+        }
       });
     }
 
@@ -107,9 +120,21 @@ export async function GET(request: NextRequest) {
         label: `${order.order_no} - ${order.customer_name || 'ไม่ระบุลูกค้า'}`,
       })) || [];
 
+    // Apply pagination
+    const totalCount = formattedOrders.length;
+    const from = (page - 1) * limit;
+    const to = from + limit;
+    const paginatedData = formattedOrders.slice(from, to);
+
     return NextResponse.json({
       success: true,
-      data: formattedOrders,
+      data: paginatedData,
+      pagination: {
+        page,
+        limit,
+        total: totalCount,
+        totalPages: Math.ceil(totalCount / limit)
+      }
     });
   } catch (error: any) {
     console.error('Error in GET /api/orders/returnable:', error);

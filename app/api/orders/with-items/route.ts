@@ -6,6 +6,11 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
 
+    // Pagination parameters
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '100');
+    const offset = (page - 1) * limit;
+
     // Build query - get all orders with items first
     let query = supabase
       .from('wms_orders')
@@ -14,7 +19,7 @@ export async function GET(request: NextRequest) {
         items:wms_order_items(*),
         created_by_user:master_system_user!created_by(user_id, username, full_name),
         updated_by_user:master_system_user!updated_by(user_id, username, full_name)
-      `)
+      `, { count: 'exact' })
       .order('order_date', { ascending: false });
 
     // Apply filters
@@ -60,7 +65,10 @@ export async function GET(request: NextRequest) {
       query = query.lte('order_date', endDate);
     }
 
-    const { data: ordersData, error } = await query;
+    // Apply pagination
+    query = query.range(offset, offset + limit - 1);
+
+    const { data: ordersData, error, count } = await query;
 
     if (error) {
       console.error('Error fetching orders with items:', error);
@@ -356,7 +364,16 @@ export async function GET(request: NextRequest) {
     console.log('[API] Orders with plan_code (route_planning):', ordersWithCustomer.filter(o => o.order_type === 'route_planning' && o.plan_code).length);
     console.log('[API] Orders with trip_code:', ordersWithCustomer.filter(o => o.trip_code).length);
 
-    return NextResponse.json({ data: ordersWithCustomer, error: null });
+    return NextResponse.json({ 
+      data: ordersWithCustomer, 
+      error: null,
+      pagination: {
+        page,
+        limit,
+        total: count || 0,
+        totalPages: Math.ceil((count || 0) / limit)
+      }
+    });
   } catch (error) {
     console.error('API Error in GET /api/orders/with-items:', error);
     return NextResponse.json(

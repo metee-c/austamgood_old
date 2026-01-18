@@ -6,9 +6,13 @@ import { withAuth, withAdminAuth } from '@/lib/api/with-auth';
 async function handleGet(request: NextRequest, context: any) {
   const { searchParams } = new URL(request.url);
   const search = searchParams.get('search');
+  const page = parseInt(searchParams.get('page') || '1');
+  const limit = parseInt(searchParams.get('limit') || '100');
+  
   const supabase = await createClient();
   
-  let query = supabase.from('master_customer').select('*');
+  // Build query with count
+  let query = supabase.from('master_customer').select('*', { count: 'exact' });
 
   if (search) {
     const hasSpecialChars = /[|,()\\]/.test(search);
@@ -17,13 +21,26 @@ async function handleGet(request: NextRequest, context: any) {
     }
   }
 
-  const { data: customers, error } = await query;
+  // Apply pagination
+  const from = (page - 1) * limit;
+  const to = from + limit - 1;
+  query = query.range(from, to);
+
+  const { data: customers, error, count } = await query;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json(customers);
+  return NextResponse.json({
+    data: customers,
+    pagination: {
+      page,
+      limit,
+      total: count || 0,
+      totalPages: Math.ceil((count || 0) / limit)
+    }
+  });
 }
 
 async function handlePost(request: NextRequest, context: any) {

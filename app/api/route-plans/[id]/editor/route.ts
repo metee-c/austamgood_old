@@ -165,6 +165,24 @@ export async function GET(
       }
     }
 
+    // ✅ Query 3.5: Fetch ALL order details in ONE batch query
+    let ordersMap: Record<number, any> = {};
+    
+    if (allOrderIds.size > 0) {
+      const { data: ordersData, error: ordersError } = await supabase
+        .from('wms_orders')
+        .select('order_id, order_no, customer_id, shop_name, province, total_weight, notes, text_field_long_1')
+        .in('order_id', Array.from(allOrderIds));
+
+      if (!ordersError && ordersData) {
+        ordersData.forEach((order: any) => {
+          ordersMap[order.order_id] = order;
+        });
+        
+        console.log('📝 Orders processed:', ordersData.length);
+      }
+    }
+
     // ✅ Query 4: Fetch ALL inputs in ONE batch query
     let inputsMap: Record<number, any> = {};
     
@@ -256,9 +274,9 @@ export async function GET(
         
         // Build orders array with items from maps (no queries!)
         const orders = orderIds.map((orderId: number, index: number) => {
-          const order = stop.order || {};
+          // Get order data from ordersMap
+          const order = ordersMap[orderId] || stop.order || {};
           if (!order.order_id && orderId) {
-            // If order not in nested data, we still have basic info
             order.order_id = orderId;
           }
           
@@ -369,7 +387,7 @@ export async function GET(
     console.log('✅ Data processing complete:', {
       tripsCount: processedTrips.length,
       totalStops: processedTrips.reduce((sum, t) => sum + (t.stops?.length || 0), 0),
-      totalQueries: 5, // plan + trips + order_items + inputs + stop_items
+      totalQueries: 6, // plan + trips + order_items + orders + inputs + stop_items
       estimatedOldQueries: 1 + 1 + (trips?.length || 0) + allOrderIds.size + allOrderIds.size
     });
 

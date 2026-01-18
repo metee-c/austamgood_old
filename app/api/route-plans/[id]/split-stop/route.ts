@@ -86,6 +86,19 @@ export async function POST(
 
     const orderId = Array.from(orderIds)[0];
 
+    // CRITICAL: Validate that items belong to the same order as the source stop
+    if (sourceStop.order_id && sourceStop.order_id !== orderId) {
+      console.error('Order ID mismatch:', {
+        sourceStopOrderId: sourceStop.order_id,
+        itemsOrderId: orderId,
+        sourceStopId
+      });
+      return NextResponse.json(
+        { error: `รายการที่เลือกไม่ตรงกับออเดอร์ของ stop ต้นทาง (Stop Order: ${sourceStop.order_id}, Items Order: ${orderId})` },
+        { status: 400 }
+      );
+    }
+
     // Calculate total weight and quantity being moved
     const totalMoveWeight = items.reduce((sum, item) => sum + item.moveWeightKg, 0);
     const totalMoveQty = items.reduce((sum, item) => sum + (item.moveQuantity || 0), 0);

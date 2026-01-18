@@ -50,6 +50,8 @@ export async function GET(request: Request) {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
     const warehouseId = searchParams.get('warehouse_id') || 'WH001';
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '100');
 
     const documents: PreparedDocument[] = [];
 
@@ -416,10 +418,21 @@ export async function GET(request: Request) {
       new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
 
+    // Apply pagination
+    const totalCount = documents.length;
+    const from = (page - 1) * limit;
+    const to = from + limit;
+    const paginatedData = documents.slice(from, to);
+
     return NextResponse.json({
       success: true,
-      data: documents,
-      total: documents.length
+      data: paginatedData,
+      total: totalCount,
+      pagination: {
+        page,
+        limit,
+        totalPages: Math.ceil(totalCount / limit)
+      }
     });
 
   } catch (error: any) {

@@ -14,7 +14,11 @@ async function handleGet(request: NextRequest) {
     const status = searchParams.get('status');
     const created_date = searchParams.get('created_date');
     const search = searchParams.get('search');
-    const limit = parseInt(searchParams.get('limit') || '500');
+    
+    // ✅ PAGINATION: เพิ่ม page parameter
+    const page = parseInt(searchParams.get('page') || '1');
+    const limit = parseInt(searchParams.get('limit') || '100');
+    const offset = (page - 1) * limit;
     
     // Query packages with face sheet info
     let query = supabase
@@ -44,9 +48,9 @@ async function handleGet(request: NextRequest) {
           created_at,
           warehouse_id
         )
-      `)
+      `, { count: 'exact' })
       .order('created_at', { ascending: false })
-      .limit(limit);
+      .range(offset, offset + limit - 1);
     
     // Filter by face sheet status
     if (status && status !== 'all') {
@@ -58,7 +62,7 @@ async function handleGet(request: NextRequest) {
       query = query.eq('bonus_face_sheets.created_date', created_date);
     }
     
-    const { data: packages, error } = await query;
+    const { data: packages, error, count } = await query;
     
     if (error) {
       console.error('Error fetching packages:', error);
@@ -191,10 +195,19 @@ async function handleGet(request: NextRequest) {
       );
     }
     
+    // ✅ PAGINATION: Return with pagination metadata
+    const totalPages = count ? Math.ceil(count / limit) : 0;
+    
     return NextResponse.json({
       success: true,
       data: transformedPackages,
-      total: transformedPackages.length
+      total: transformedPackages.length,
+      pagination: {
+        page,
+        limit,
+        total: count || 0,
+        totalPages
+      }
     });
   } catch (error: any) {
     console.error('Error in GET /api/bonus-face-sheets/packages:', error);
