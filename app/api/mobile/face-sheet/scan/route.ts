@@ -294,16 +294,52 @@ async function handlePost(request: NextRequest, context: any) {
         );
       }
 
-      // อัปเดตสถานะการจอง
+      // อัปเดตสถานะการจอง (ปล่อย reservation จาก Bulk/Rack)
       if (processedReservations.length > 0) {
         await supabase
           .from('face_sheet_item_reservations')
           .update({
-            status: 'picked',
+            status: 'released',
             picked_at: now,
             updated_at: now
           })
           .in('reservation_id', processedReservations);
+      }
+
+      // สร้าง staging reservation ที่ Dispatch
+      const { data: dispatchBalance, error: dispatchBalanceError } = await supabase
+        .from('wms_inventory_balances')
+        .select('balance_id')
+        .eq('warehouse_id', warehouseId)
+        .eq('location_id', dispatchLocation.location_id)
+        .eq('sku_id', item.sku_id)
+        .eq('production_date', sourceProductionDate || null)
+        .eq('expiry_date', sourceExpiryDate || null)
+        .eq('lot_no', sourceLotNo || null)
+        .maybeSingle();
+
+      if (dispatchBalance) {
+        const { data: stagingResult, error: stagingError } = await supabase.rpc(
+          'create_staging_reservation_after_pick',
+          {
+            p_document_type: 'face_sheet',
+            p_document_item_id: item_id,
+            p_sku_id: item.sku_id,
+            p_quantity_piece: quantity_picked,
+            p_staging_location_id: dispatchLocation.location_id,
+            p_balance_id: dispatchBalance.balance_id,
+            p_quantity_pack: packQty
+          }
+        );
+
+        if (stagingError || !stagingResult?.success) {
+          console.error('⚠️ Failed to create staging reservation:', stagingError || stagingResult?.message);
+          // Don't fail the whole operation, just log warning
+        } else {
+          console.log('✅ Staging reservation created:', stagingResult.reservation_id);
+        }
+      } else {
+        console.warn('⚠️ No dispatch balance found for staging reservation');
       }
     } else {
       // ไม่มี reservations - ต้องมีการจองก่อน

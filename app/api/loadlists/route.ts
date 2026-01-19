@@ -754,6 +754,58 @@ async function handlePost(request: NextRequest, context: any) {
       return NextResponse.json({ error: 'delivery_number is required' }, { status: 400 });
     }
 
+    // ✅ NEW (BUG010): ตรวจสอบว่า picklist ถูกแมพกับ loadlist อื่นแล้วหรือไม่
+    if (hasPicklists) {
+      const { data: existingPicklistMappings } = await supabase
+        .from('wms_loadlist_picklists')
+        .select(`
+          picklist_id,
+          loadlist_id,
+          loadlists!inner(loadlist_code, status)
+        `)
+        .in('picklist_id', picklist_ids);
+
+      if (existingPicklistMappings && existingPicklistMappings.length > 0) {
+        const mappedPicklists = existingPicklistMappings.map((m: any) => ({
+          picklist_id: m.picklist_id,
+          loadlist_code: m.loadlists?.loadlist_code,
+          loadlist_status: m.loadlists?.status
+        }));
+
+        return NextResponse.json({
+          error: 'Picklist ถูกแมพกับ loadlist อื่นแล้ว',
+          details: 'ไม่สามารถสร้าง loadlist ได้เพราะ picklist ถูกใช้ไปแล้ว',
+          existing_mappings: mappedPicklists
+        }, { status: 400 });
+      }
+    }
+
+    // ✅ NEW (BUG010): ตรวจสอบว่า face sheet ถูกแมพกับ loadlist อื่นแล้วหรือไม่
+    if (hasFaceSheets) {
+      const { data: existingFaceSheetMappings } = await supabase
+        .from('loadlist_face_sheets')
+        .select(`
+          face_sheet_id,
+          loadlist_id,
+          loadlists!inner(loadlist_code, status)
+        `)
+        .in('face_sheet_id', face_sheet_ids);
+
+      if (existingFaceSheetMappings && existingFaceSheetMappings.length > 0) {
+        const mappedFaceSheets = existingFaceSheetMappings.map((m: any) => ({
+          face_sheet_id: m.face_sheet_id,
+          loadlist_code: m.loadlists?.loadlist_code,
+          loadlist_status: m.loadlists?.status
+        }));
+
+        return NextResponse.json({
+          error: 'Face Sheet ถูกแมพกับ loadlist อื่นแล้ว',
+          details: 'ไม่สามารถสร้าง loadlist ได้เพราะ face sheet ถูกใช้ไปแล้ว',
+          existing_mappings: mappedFaceSheets
+        }, { status: 400 });
+      }
+    }
+
     // ✅ FIX (edit09): จัดกลุ่ม BFS ตามเอกสารที่แมพ และสร้าง loadlist ตามกลุ่ม
     if (hasBonusFaceSheets && bonus_face_sheet_mappings && bonus_face_sheet_mappings.length > 0) {
       // จัดกลุ่ม BFS ตามเอกสารที่แมพ

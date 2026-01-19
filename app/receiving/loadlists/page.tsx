@@ -312,8 +312,9 @@ const LoadlistsPage = () => {
       if (!response.ok) {
         throw new Error('Unable to load loadlists');
       }
-      const data = await response.json();
-      setLoadlists(data);
+      const result = await response.json();
+      // API returns { data: [], pagination: {} } format
+      setLoadlists(Array.isArray(result) ? result : (result.data || []));
     } catch (err: any) {
       setError(err.message ?? 'An unexpected error occurred');
     } finally {
@@ -363,7 +364,8 @@ const LoadlistsPage = () => {
         throw new Error('Unable to load available picklists');
       }
       const data = await response.json();
-      setAvailablePicklists(data);
+      // Ensure data is an array
+      setAvailablePicklists(Array.isArray(data) ? data : (data.data || []));
     } catch (err: any) {
       setCreateError('Unable to load picklists: ' + (err.message ?? 'unknown error'));
     }
@@ -377,10 +379,14 @@ const LoadlistsPage = () => {
       }
       const result = await response.json();
       if (result.success) {
-        setAvailableFaceSheets(result.data || []);
+        // Ensure data is an array
+        setAvailableFaceSheets(Array.isArray(result.data) ? result.data : []);
+      } else {
+        setAvailableFaceSheets([]);
       }
     } catch (err: any) {
       setCreateError('Unable to load face sheets: ' + (err.message ?? 'unknown error'));
+      setAvailableFaceSheets([]);
     }
   };
 
@@ -392,10 +398,14 @@ const LoadlistsPage = () => {
       }
       const result = await response.json();
       if (result.success) {
-        setAvailableBonusFaceSheets(result.data || []);
+        // Ensure data is an array
+        setAvailableBonusFaceSheets(Array.isArray(result.data) ? result.data : []);
+      } else {
+        setAvailableBonusFaceSheets([]);
       }
     } catch (err: any) {
       setCreateError('Unable to load bonus face sheets: ' + (err.message ?? 'unknown error'));
+      setAvailableBonusFaceSheets([]);
     }
   };
 
@@ -409,11 +419,15 @@ const LoadlistsPage = () => {
       }
       const result = await response.json();
       if (result.success) {
-        setUnmappedBonusFaceSheets(result.data || []);
+        // Ensure data is an array
+        setUnmappedBonusFaceSheets(Array.isArray(result.data) ? result.data : []);
+      } else {
+        setUnmappedBonusFaceSheets([]);
       }
     } catch (err: any) {
       console.error('Error fetching unmapped BFS:', err);
       setCreateError('Unable to load unmapped bonus face sheets: ' + (err.message ?? 'unknown error'));
+      setUnmappedBonusFaceSheets([]);
     } finally {
       setLoadingUnmappedBfs(false);
     }
@@ -612,6 +626,12 @@ const LoadlistsPage = () => {
   };
 
   const filteredLoadlists = useMemo(() => {
+    // Ensure loadlists is always an array
+    if (!Array.isArray(loadlists)) {
+      console.warn('loadlists is not an array:', loadlists);
+      return [];
+    }
+    
     const term = searchTerm.trim().toLowerCase();
     const filtered = loadlists.filter(l =>
       l.loadlist_code.toLowerCase().includes(term) ||
@@ -1857,7 +1877,7 @@ const LoadlistsPage = () => {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
-                  {availablePicklists.length === 0 ? (
+                  {!Array.isArray(availablePicklists) || availablePicklists.length === 0 ? (
                     <tr>
                       <td colSpan={14} className="px-4 py-8 text-center text-gray-500">
                         ไม่พบใบจัดสินค้าที่สถานะ "เสร็จสิ้น"
@@ -2055,8 +2075,9 @@ const LoadlistsPage = () => {
                 <label className="flex items-center space-x-2 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={selectedFaceSheets.length === availableFaceSheets.length && availableFaceSheets.length > 0}
+                    checked={Array.isArray(availableFaceSheets) && selectedFaceSheets.length === availableFaceSheets.length && availableFaceSheets.length > 0}
                     onChange={() => {
+                      if (!Array.isArray(availableFaceSheets)) return;
                       if (selectedFaceSheets.length === availableFaceSheets.length) {
                         setSelectedFaceSheets([]);
                       } else {
@@ -2066,7 +2087,7 @@ const LoadlistsPage = () => {
                     className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
                   />
                   <span className="text-sm font-medium text-gray-700">
-                    เลือกใบปะหน้าทั้งหมด ({selectedFaceSheets.length}/{availableFaceSheets.length})
+                    เลือกใบปะหน้าทั้งหมด ({selectedFaceSheets.length}/{Array.isArray(availableFaceSheets) ? availableFaceSheets.length : 0})
                   </span>
                 </label>
               </div>
@@ -2089,7 +2110,7 @@ const LoadlistsPage = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
-                    {availableFaceSheets.length === 0 ? (
+                    {!Array.isArray(availableFaceSheets) || availableFaceSheets.length === 0 ? (
                       <tr>
                         <td colSpan={9} className="px-4 py-8 text-center text-gray-500">
                           ไม่พบใบปะหน้าที่สถานะ "เสร็จสิ้น"
@@ -2222,8 +2243,9 @@ const LoadlistsPage = () => {
                           <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap w-12">
                             <input
                               type="checkbox"
-                              checked={unmappedBonusFaceSheets.length > 0 && selectedBonusFaceSheets.length === unmappedBonusFaceSheets.length}
+                              checked={Array.isArray(unmappedBonusFaceSheets) && unmappedBonusFaceSheets.length > 0 && selectedBonusFaceSheets.length === unmappedBonusFaceSheets.length}
                               onChange={(e) => {
+                                if (!Array.isArray(unmappedBonusFaceSheets)) return;
                                 if (e.target.checked) {
                                   setSelectedBonusFaceSheets(unmappedBonusFaceSheets.map(bfs => bfs.id));
                                 } else {
@@ -2242,7 +2264,7 @@ const LoadlistsPage = () => {
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
-                        {unmappedBonusFaceSheets.length === 0 ? (
+                        {!Array.isArray(unmappedBonusFaceSheets) || unmappedBonusFaceSheets.length === 0 ? (
                           <tr>
                             <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
                               {loadingUnmappedBfs 
@@ -2345,8 +2367,9 @@ const LoadlistsPage = () => {
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap w-12">
                         <input
                           type="checkbox"
-                          checked={availableBonusFaceSheets.length > 0 && selectedBonusFaceSheets.length === availableBonusFaceSheets.length}
+                          checked={Array.isArray(availableBonusFaceSheets) && availableBonusFaceSheets.length > 0 && selectedBonusFaceSheets.length === availableBonusFaceSheets.length}
                           onChange={(e) => {
+                            if (!Array.isArray(availableBonusFaceSheets)) return;
                             if (e.target.checked) {
                               setSelectedBonusFaceSheets(availableBonusFaceSheets.map(bfs => bfs.id));
                             } else {
@@ -2366,7 +2389,7 @@ const LoadlistsPage = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
-                    {availableBonusFaceSheets.length === 0 ? (
+                    {!Array.isArray(availableBonusFaceSheets) || availableBonusFaceSheets.length === 0 ? (
                       <tr>
                         <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
                           ไม่พบใบปะหน้าของแถมที่สถานะ "เสร็จสิ้น"
@@ -2499,7 +2522,7 @@ const LoadlistsPage = () => {
                                 title={mapping.selectedPicklistId ? 'ยกเลิกการเลือกใบหยิบก่อน' : ''}
                               >
                                 <option value="">-- เลือกใบปะหน้า --</option>
-                                {availableFaceSheets.map((fs) => (
+                                {Array.isArray(availableFaceSheets) && availableFaceSheets.map((fs) => (
                                   <option key={fs.id} value={fs.id}>
                                     {fs.face_sheet_no} ({fs.total_packages} แพ็ค)
                                     {fs.daily_trip_numbers_display && fs.daily_trip_numbers_display !== '-' 
