@@ -140,20 +140,49 @@ async function handleSkipMappingMode(
       packagesByBFS.set(pkg.face_sheet_id, existing);
     });
 
-    // 3. ดึง delivery_date จาก BFS แรก
-    const { data: firstBfs } = await supabase
-      .from('bonus_face_sheets')
-      .select('delivery_date')
-      .eq('id', bfs_ids[0])
+    // 3. ✅ FIX: ใช้ plan_date จาก picklist ที่แมพ (ถ้ามี) หรือ delivery_date จาก BFS
+    // เพราะ loadlist ควรใช้เลขตามวันที่กำหนดส่งของ ไม่ใช่วันที่สร้าง loadlist
+    let datePrefix: string;
+    
+    // ลองหา plan_date จาก picklist ที่แมพกับ BFS
+    const { data: mappedPicklist } = await supabase
+      .from('wms_loadlist_bonus_face_sheets')
+      .select(`
+        mapped_picklist_id,
+        picklists:mapped_picklist_id (
+          trip_id,
+          receiving_route_trips!inner (
+            plan_id,
+            receiving_route_plans!inner (
+              plan_date
+            )
+          )
+        )
+      `)
+      .in('bonus_face_sheet_id', bfs_ids)
+      .not('mapped_picklist_id', 'is', null)
+      .limit(1)
       .single();
 
-    // 4. Generate loadlist code
-    let datePrefix: string;
-    if (firstBfs?.delivery_date) {
-      datePrefix = firstBfs.delivery_date.replace(/-/g, '');
+    const picklists = mappedPicklist?.picklists as any;
+    if (picklists?.receiving_route_trips?.receiving_route_plans?.plan_date) {
+      // ใช้ plan_date จาก route plan
+      datePrefix = picklists.receiving_route_trips.receiving_route_plans.plan_date.replace(/-/g, '');
     } else {
-      const today = new Date();
-      datePrefix = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+      // ถ้าไม่มี picklist ให้ใช้ delivery_date จาก BFS แรก
+      const { data: firstBfs } = await supabase
+        .from('bonus_face_sheets')
+        .select('delivery_date')
+        .eq('id', bfs_ids[0])
+        .single();
+
+      if (firstBfs?.delivery_date) {
+        datePrefix = firstBfs.delivery_date.replace(/-/g, '');
+      } else {
+        // ถ้าไม่มีทั้ง 2 อย่าง ใช้วันที่ปัจจุบัน
+        const today = new Date();
+        datePrefix = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+      }
     }
 
     const { data: latestLoadlist } = await supabase
@@ -518,12 +547,22 @@ async function handleGet(request: NextRequest, context: any) {
       });
     }
 
-    // หา BFS loadlist ที่แมพกับ picklist เหล่านี้ และดึง order_no
+    // ✅ FIX (edit34): หา BFS loadlist ที่แมพกับ picklist เหล่านี้ และดึง order_no
+    // เฉพาะ loadlist ที่ status = 'pending' เท่านั้น
     if (allPicklistIds.length > 0) {
       const { data: bfsLoadlistMappings } = await supabase
         .from('wms_loadlist_bonus_face_sheets')
-        .select('loadlist_id, mapped_picklist_id, bonus_face_sheet_id, matched_package_ids')
-        .in('mapped_picklist_id', [...new Set(allPicklistIds)]);
+        .select(`
+          loadlist_id,
+          mapped_picklist_id,
+          bonus_face_sheet_id,
+          matched_package_ids,
+          loadlists!inner (
+            status
+          )
+        `)
+        .in('mapped_picklist_id', [...new Set(allPicklistIds)])
+        .eq('loadlists.status', 'pending'); // ✅ FIX: กรองเฉพาะ pending
 
       if (bfsLoadlistMappings && bfsLoadlistMappings.length > 0) {
         // รวบรวม bonus_face_sheet_ids
@@ -558,11 +597,17 @@ async function handleGet(request: NextRequest, context: any) {
             picklistToBfsOrders[m.mapped_picklist_id] = [];
           }
           
-          // หา packages ที่อยู่ใน BFS นี้
+          // ✅ FIX (edit34): หา packages ที่อยู่ใน matched_package_ids เท่านั้น
           const matchedPackageIds = m.matched_package_ids || [];
+          
+          // ถ้าไม่มี matched_package_ids ให้ข้าม (ไม่เอาทั้งหมด)
+          if (matchedPackageIds.length === 0) {
+            return;
+          }
+          
           const packagesInBfs = bfsPackages?.filter((p: any) => 
             p.face_sheet_id === m.bonus_face_sheet_id &&
-            (matchedPackageIds.length === 0 || matchedPackageIds.includes(p.id))
+            matchedPackageIds.includes(p.id) // ✅ FIX: เอาเฉพาะที่อยู่ใน matched_package_ids
           ) || [];
 
           // ดึง order_no จาก packages

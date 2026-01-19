@@ -1155,6 +1155,21 @@ const EditShippingCostModal: React.FC<EditShippingCostModalProps> = ({
       }
       
       // Set plan with trips data
+      // ✅ Sort trips ตาม daily_trip_number หรือ trip_sequence เหมือนกับ ExcelEditor
+      const sortedTrips = (data.trips || []).sort((a: any, b: any) => {
+        const aNum = a.daily_trip_number || a.trip_sequence || 0;
+        const bNum = b.daily_trip_number || b.trip_sequence || 0;
+        return aNum - bNum;
+      }).map((trip: any) => ({
+        ...trip,
+        // ✅ Sort stops within each trip by sequence_no
+        stops: (trip.stops || []).sort((a: any, b: any) => {
+          const aSeq = a.sequence_no || 0;
+          const bSeq = b.sequence_no || 0;
+          return aSeq - bSeq;
+        })
+      }));
+      
       setSelectedPlan({
         plan_id: id,
         plan_code: data.plan?.plan_code || '',
@@ -1162,7 +1177,7 @@ const EditShippingCostModal: React.FC<EditShippingCostModalProps> = ({
         plan_date: data.plan?.plan_date || '',
         status: data.plan?.status || '',
         warehouse_id: data.plan?.warehouse_id || '',
-        trips: data.trips || []
+        trips: sortedTrips
       });
       setStep('edit');
     } catch (err: any) {
@@ -1228,9 +1243,24 @@ const EditShippingCostModal: React.FC<EditShippingCostModalProps> = ({
       }
       
       // Set plan with trips data
+      // ✅ Sort trips ตาม daily_trip_number หรือ trip_sequence เหมือนกับ ExcelEditor
+      const sortedTrips = (data.trips || []).sort((a: any, b: any) => {
+        const aNum = a.daily_trip_number || a.trip_sequence || 0;
+        const bNum = b.daily_trip_number || b.trip_sequence || 0;
+        return aNum - bNum;
+      }).map((trip: any) => ({
+        ...trip,
+        // ✅ Sort stops within each trip by sequence_no
+        stops: (trip.stops || []).sort((a: any, b: any) => {
+          const aSeq = a.sequence_no || 0;
+          const bSeq = b.sequence_no || 0;
+          return aSeq - bSeq;
+        })
+      }));
+      
       setSelectedPlan({
         ...plan,
-        trips: data.trips || []
+        trips: sortedTrips
       });
       setStep('edit');
     } catch (err: any) {
@@ -1498,6 +1528,7 @@ const EditShippingCostModal: React.FC<EditShippingCostModalProps> = ({
 
               {selectedPlan.trips && selectedPlan.trips.length > 0 ? (
                 <div className="space-y-4">
+                  {/* ✅ ไม่ต้อง sort อีกรอบเพราะ sort ตอน fetch แล้ว */}
                   {selectedPlan.trips.map((trip, index) => (
                     <TripEditForm 
                       key={trip.trip_id} 

@@ -439,7 +439,26 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
   };
 
   const handleSelectSupplier = async (summary: SupplierSummary) => {
-    setSelectedSupplier(summary);
+    // ✅ Sort trips by daily_trip_number/trip_sequence and stops by sequence_no
+    const sortedSummary = {
+      ...summary,
+      trips: summary.trips
+        .sort((a, b) => {
+          const aNum = a.daily_trip_number || a.trip_sequence || 0;
+          const bNum = b.daily_trip_number || b.trip_sequence || 0;
+          return aNum - bNum;
+        })
+        .map(trip => ({
+          ...trip,
+          stops: (trip.stops || []).sort((a: any, b: any) => {
+            const aSeq = a.sequence_no || 0;
+            const bSeq = b.sequence_no || 0;
+            return aSeq - bSeq;
+          })
+        }))
+    };
+    
+    setSelectedSupplier(sortedSummary);
     
     // Get or create transport contract number
     if (selectedPlan) {
