@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
     const usedPicklistIds = (loadlistPicklists || []).map((lp: any) => lp.picklist_id);
 
     // Step 2: Fetch completed picklists that are NOT in the used list
+    // ✅ Also fetch picklist_items and reservations to filter by Dispatch staging
     const { data: picklists, error, count } = await supabase
       .from('picklists')
       .select(`
@@ -54,6 +55,16 @@ export async function GET(request: NextRequest) {
             first_name,
             last_name
           )
+        ),
+        picklist_items (
+          id,
+          voided_at,
+          status,
+          picklist_item_reservations (
+            reservation_id,
+            staging_location_id,
+            status
+          )
         )
       `, { count: 'exact' })
       .eq('status', 'completed')
@@ -69,10 +80,33 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Step 3: Get trip IDs to fetch provinces
-    const tripIds = picklists
-      ?.map((p: any) => p.trip?.trip_id)
-      .filter((id: any) => id != null) || [];
+    // ✅ Filter picklists to only include those with active Dispatch reservations
+    const filteredPicklists = (picklists || []).filter((picklist: any) => {
+      // Check if picklist has any items with active Dispatch reservations
+      const hasDispatchReservations = (picklist.picklist_items || []).some((item: any) => {
+        // Skip voided items
+        if (item.voided_at || item.status === 'voided') return false;
+        
+        // Check if item has active reservation at Dispatch
+        const reservations = Array.isArray(item.picklist_item_reservations) 
+          ? item.picklist_item_reservations 
+          : (item.picklist_item_reservations ? [item.picklist_item_reservations] : []);
+        
+        return reservations.some((res: any) => 
+          res.staging_location_id === 'Dispatch' && res.status === 'picked'
+        );
+      });
+      
+      return hasDispatchReservations;
+    });
+
+    console.log(`[available-picklists] Total completed picklists: ${picklists?.length || 0}`);
+    console.log(`[available-picklists] Filtered with Dispatch reservations: ${filteredPicklists.length}`);
+
+    // Step 3: Get trip IDs to fetch provinces (use filtered picklists)
+    const tripIds = filteredPicklists
+      .map((p: any) => p.trip?.trip_id)
+      .filter((id: any) => id != null);
 
     // Step 4: Fetch provinces from stops if we have trip IDs
     let provinceMap: Record<number, string> = {};
@@ -138,8 +172,8 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Transform to match expected format
-    const transformedPicklists = (picklists || []).map((picklist: any) => {
+    // Transform to match expected format (use filtered picklists)
+    const transformedPicklists = filteredPicklists.map((picklist: any) => {
       const tripId = picklist.trip?.trip_id;
       const province = tripId ? (provinceMap[tripId] || '-') : '-';
       const tripStats = tripId ? tripStatsMap[tripId] : null;
@@ -173,15 +207,16 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // ✅ PAGINATION: Return with pagination metadata
-    const totalPages = count ? Math.ceil(count / limit) : 0;
+    // ✅ PAGINATION: Return with pagination metadata (use filtered count)
+    const filteredCount = filteredPicklists.length;
+    const totalPages = Math.ceil(filteredCount / limit);
 
     return NextResponse.json({
       data: transformedPicklists,
       pagination: {
         page,
         limit,
-        total: count || 0,
+        total: filteredCount,
         totalPages
       }
     });

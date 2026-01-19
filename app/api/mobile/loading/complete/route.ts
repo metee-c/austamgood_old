@@ -789,7 +789,7 @@ async function handlePost(request: NextRequest, context: any) {
     }
 
     // ✅ สต็อคเพียงพอทุกรายการ → เริ่ม process
-    console.log(`✅ All stock sufficient. Starting to group items...`);
+    console.log(`✅ All stock sufficient. Starting to release reservations and group items...`);
 
     // Declare groupedItems outside try block so it's accessible in catch
     const groupedItems = new Map<string, any>();
@@ -797,294 +797,102 @@ async function handlePost(request: NextRequest, context: any) {
     let itemsProcessed = 0;
 
     try {
-      // Update loadlist status to 'loaded' FIRST to prevent double processing
-      console.log(`🔄 Updating loadlist status to loaded...`);
-      const updateData: any = {
-        status: 'loaded',
-        updated_at: now
-      };
-      
-      // Add checker_employee_id if provided
-      if (checker_employee_id) {
-        updateData.checker_employee_id = checker_employee_id;
-      }
-      
-      const { error: updateStatusError } = await supabase
-        .from('loadlists')
-        .update(updateData)
-        .eq('id', loadlist.id)
-        .eq('status', 'pending'); // Only update if still 'pending'
+      // ✅ FIX (Migration 243): Use new function that handles BOTH release AND deduct
+      // This ensures we deduct from the correct balance that has the reservation
+      console.log(`🔓 Processing loading complete for loadlist ${loadlist.id}...`);
+      const { data: processResult, error: processError } = await supabase
+        .rpc('process_loadlist_loading_complete', { 
+          p_loadlist_id: loadlist.id,
+          p_delivery_location_id: deliveryLocation.location_id
+        });
 
-      if (updateStatusError) {
-        console.error(`❌ Error updating loadlist status:`, updateStatusError);
+      if (processError) {
+        console.error(`❌ Error processing loading complete:`, processError);
         return NextResponse.json(
-          { error: 'ไม่สามารถอัปเดตสถานะใบโหลดได้', details: updateStatusError.message },
+          { error: 'ไม่สามารถดำเนินการโหลดสินค้าได้', details: processError.message },
           { status: 500 }
         );
       }
-      console.log(`✅ Loadlist status updated to loaded`);
 
-      // Update all picklists loaded_at
-      if (picklistIds.length > 0) {
-        console.log(`🔄 Updating ${picklistIds.length} picklists loaded_at...`);
-        await supabase
-          .from('wms_loadlist_picklists')
-          .update({ loaded_at: now })
-          .in('picklist_id', picklistIds)
-          .eq('loadlist_id', loadlist.id);
-      }
-
-      // Update all face sheets loaded_at
-      if (faceSheetIds.length > 0) {
-        console.log(`🔄 Updating ${faceSheetIds.length} face sheets loaded_at...`);
-        await supabase
-          .from('loadlist_face_sheets')
-          .update({ loaded_at: now })
-          .in('face_sheet_id', faceSheetIds)
-          .eq('loadlist_id', loadlist.id);
-      }
-
-      // Update all bonus face sheets loaded_at
-      if (bonusFaceSheetIds.length > 0) {
-        console.log(`🔄 Updating ${bonusFaceSheetIds.length} bonus face sheets loaded_at...`);
-        await supabase
-          .from('wms_loadlist_bonus_face_sheets')
-          .update({ loaded_at: now })
-          .in('bonus_face_sheet_id', bonusFaceSheetIds)
-          .eq('loadlist_id', loadlist.id);
-      }
-
-      // Group items by SKU + production_date + expiry_date + lot_no + sourceLocation to handle duplicates
-      // ✅ FIX: ต้อง group by sourceLocation ด้วยเพราะ bonus face sheet ใช้ PQTD/MRTD แทน Dispatch
-      console.log(`🔄 Grouping ${itemsToProcess.length} items...`);
+      const processedCount = processResult?.[0]?.processed_count || 0;
+      const totalQtyMoved = processResult?.[0]?.total_qty_moved || 0;
+      const errorMessage = processResult?.[0]?.error_message;
       
-      for (const itemData of itemsToProcess) {
-        const { sku_id, qty, qtyPack, picklist_code, face_sheet_no, bonus_face_sheet_no, sourceBalance, sourceLocation, sourceLocationName } = itemData;
-        const docCode = picklist_code || face_sheet_no || bonus_face_sheet_no;
-        
-        const key = `${sku_id}|${sourceBalance.production_date}|${sourceBalance.expiry_date}|${sourceBalance.lot_no}|${sourceLocation}`;
-        
-        if (groupedItems.has(key)) {
-          const existing = groupedItems.get(key);
-          existing.qty += qty;
-          existing.qtyPack += qtyPack;
-          existing.docCodes.push(docCode);
-        } else {
-          groupedItems.set(key, {
-            sku_id,
-            qty,
-            qtyPack,
-            sourceBalance,
-            sourceLocation,
-            sourceLocationName: sourceLocationName || 'Dispatch', // ✅ Store location name
-            docCodes: [docCode]
-          });
-        }
+      if (errorMessage) {
+        console.error(`⚠️ Function completed with errors: ${errorMessage}`);
       }
-    } catch (groupError: any) {
-      console.error(`❌ Error during grouping/status update:`, groupError);
-      throw groupError;
+      
+      console.log(`✅ Processed ${processedCount} reservations (${totalQtyMoved} pieces total)`);
+
+      // ✅ Function already handled:
+      // 1. Released reservations (status: picked → loaded)
+      // 2. Decremented reserved_piece_qty in source balance
+      // 3. Deducted total_piece_qty from source balance
+      // 4. Added stock to Delivery-In-Progress
+      // 5. Created ledger entries (OUT + IN)
+      
+      // No need to manually process items - function did everything!
+    } catch (processError: any) {
+      console.error(`❌ Error during loading complete:`, processError);
+      throw processError;
     }
 
-    console.log(`📦 Grouped ${itemsToProcess.length} items into ${groupedItems.size} unique SKU batches`);
-    console.log(`📋 Items to process:`, itemsToProcess.map(i => ({ sku: i.sku_id, qty: i.qty })));
+    // ✅ ALL STOCK DEDUCTION COMPLETED SUCCESSFULLY (by database function)
+    // Now update loadlist status to 'loaded'
+    console.log(`🔄 Updating loadlist status to loaded...`);
+    const updateData: any = {
+      status: 'loaded',
+      updated_at: now
+    };
+    
+    // Add checker_employee_id if provided
+    if (checker_employee_id) {
+      updateData.checker_employee_id = checker_employee_id;
+    }
+    
+    const { error: updateStatusError } = await supabase
+      .from('loadlists')
+      .update(updateData)
+      .eq('id', loadlist.id)
+      .eq('status', 'pending'); // Only update if still 'pending'
 
-    // Process each unique SKU batch
-    console.log(`🔄 Starting to process ${groupedItems.size} batches...`);
-    for (const [key, itemData] of groupedItems) {
-      console.log(`🔄 Processing batch: ${key}`);
-      const { sku_id, qty, qtyPack, sourceBalance, sourceLocation, sourceLocationName, docCodes } = itemData;
-      const docCode = docCodes.join(', ');
+    if (updateStatusError) {
+      console.error(`❌ Error updating loadlist status:`, updateStatusError);
+      throw new Error(`Failed to update loadlist status: ${updateStatusError.message}`);
+    }
+    console.log(`✅ Loadlist status updated to loaded`);
 
-      console.log(`📦 Processing item: SKU=${sku_id}, qty=${qty}, from=${sourceLocationName}, production_date=${sourceBalance.production_date}, expiry_date=${sourceBalance.expiry_date}`);
-
-      // ✅ FIX: Fetch current balance before updating to avoid stale data
-      const { data: currentBalance, error: fetchError } = await supabase
-        .from('wms_inventory_balances')
-        .select('total_pack_qty, total_piece_qty')
-        .eq('balance_id', sourceBalance.balance_id)
-        .single();
-
-      if (fetchError || !currentBalance) {
-        console.error(`❌ Error fetching current balance for balance_id ${sourceBalance.balance_id}:`, fetchError);
-        throw new Error(`Failed to fetch balance ${sourceBalance.balance_id}: ${fetchError?.message}`);
-      }
-
-      console.log(`📊 Current balance for ${sku_id} (balance_id: ${sourceBalance.balance_id}): ${currentBalance.total_piece_qty} pcs, deducting: ${qty} pcs`);
-
-      const newPackQty = Math.max(0, currentBalance.total_pack_qty - qtyPack);
-      const newPieceQty = Math.max(0, currentBalance.total_piece_qty - qty);
-
-      console.log(`🔄 Updating balance_id ${sourceBalance.balance_id}: ${currentBalance.total_piece_qty} → ${newPieceQty} pcs`);
-
-      // Update source balance (decrease) using current values
-      const { data: updateResult, error: updateError } = await supabase
-        .from('wms_inventory_balances')
-        .update({
-          total_pack_qty: newPackQty,
-          total_piece_qty: newPieceQty,
-          updated_at: now
-        })
-        .eq('balance_id', sourceBalance.balance_id)
-        .select();
-
-      if (updateError) {
-        console.error(`❌ Error updating source balance ${sourceBalance.balance_id}:`, updateError);
-        throw new Error(`Failed to update source balance ${sourceBalance.balance_id}: ${updateError.message}`);
-      }
-
-      if (!updateResult || updateResult.length === 0) {
-        console.error(`❌ No rows updated for balance_id ${sourceBalance.balance_id}`);
-        throw new Error(`Failed to update balance ${sourceBalance.balance_id}: No rows affected`);
-      }
-
-      console.log(`✅ Successfully updated balance_id ${sourceBalance.balance_id} to ${newPieceQty} pcs`);
-
-      // Create ledger: OUT from source location
-      ledgerEntries.push({
-        movement_at: now,
-        transaction_type: 'ship',
-        direction: 'out',
-        warehouse_id: 'WH001',
-        location_id: sourceLocation,
-        sku_id,
-        pack_qty: qtyPack,
-        piece_qty: qty,
-        reference_no: loadlist.loadlist_code,
-        reference_doc_type: 'loadlist',
-        reference_doc_id: loadlist.id,
-        remarks: `ออกจาก ${sourceLocationName} - ${docCode}`,
-        created_by: userId,
-        skip_balance_sync: true
-      });
-
-      // Update Delivery-In-Progress balance (increase)
-      // ✅ ต้องหา balance ที่ match ทั้ง sku_id, production_date, expiry_date, และ lot_no
-      const { data: deliveryBalances } = await supabase
-        .from('wms_inventory_balances')
-        .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
-        .eq('warehouse_id', 'WH001')
-        .eq('location_id', deliveryLocation.location_id)
-        .eq('sku_id', sku_id);
-
-      // Find exact match with proper NULL handling
-      const exactMatch = deliveryBalances?.find((b: any) => {
-        const prodMatch = sourceBalance.production_date 
-          ? b.production_date === sourceBalance.production_date
-          : !b.production_date;
-        const expMatch = sourceBalance.expiry_date
-          ? b.expiry_date === sourceBalance.expiry_date
-          : !b.expiry_date;
-        const lotMatch = sourceBalance.lot_no
-          ? b.lot_no === sourceBalance.lot_no
-          : !b.lot_no;
-        return prodMatch && expMatch && lotMatch;
-      });
-
-      if (exactMatch) {
-        console.log(`✅ Updating existing Delivery-In-Progress balance: ${exactMatch.balance_id}, current: ${exactMatch.total_piece_qty} pcs, adding: ${qty} pcs`);
-        const { error: updateError } = await supabase
-          .from('wms_inventory_balances')
-          .update({
-            total_pack_qty: exactMatch.total_pack_qty + qtyPack,
-            total_piece_qty: exactMatch.total_piece_qty + qty,
-            last_movement_at: now
-          })
-          .eq('balance_id', exactMatch.balance_id);
-        
-        if (updateError) {
-          console.error(`❌ Error updating Delivery-In-Progress balance:`, updateError);
-          throw new Error(`Failed to update delivery balance: ${updateError.message}`);
-        }
-      } else {
-        console.log(`🆕 Creating/Updating Delivery-In-Progress balance: SKU=${sku_id}, prod=${sourceBalance.production_date}, exp=${sourceBalance.expiry_date}, lot=${sourceBalance.lot_no}`);
-        
-        // ✅ FIX: Use upsert to handle duplicate key constraint
-        // First try to find existing balance by exact match on unique constraint columns
-        const { data: existingBalance } = await supabase
-          .from('wms_inventory_balances')
-          .select('balance_id, total_piece_qty, total_pack_qty')
-          .eq('warehouse_id', 'WH001')
-          .eq('location_id', deliveryLocation.location_id)
-          .eq('sku_id', sku_id)
-          .is('pallet_id', null)
-          .maybeSingle();
-        
-        if (existingBalance) {
-          // Update existing balance
-          console.log(`✅ Found existing balance by unique constraint, updating: ${existingBalance.balance_id}`);
-          const { error: updateError } = await supabase
-            .from('wms_inventory_balances')
-            .update({
-              total_pack_qty: existingBalance.total_pack_qty + qtyPack,
-              total_piece_qty: existingBalance.total_piece_qty + qty,
-              last_movement_at: now
-            })
-            .eq('balance_id', existingBalance.balance_id);
-          
-          if (updateError) {
-            console.error(`❌ Error updating Delivery-In-Progress balance:`, updateError);
-            throw new Error(`Failed to update delivery balance: ${updateError.message}`);
-          }
-        } else {
-          // Insert new balance
-          const { error: insertError } = await supabase
-            .from('wms_inventory_balances')
-            .insert({
-              warehouse_id: 'WH001',
-              location_id: deliveryLocation.location_id,
-              sku_id,
-              production_date: sourceBalance.production_date || null,
-              expiry_date: sourceBalance.expiry_date || null,
-              lot_no: sourceBalance.lot_no || null,
-              pallet_id: null,
-              pallet_id_external: null,
-              total_pack_qty: qtyPack,
-              total_piece_qty: qty,
-              reserved_pack_qty: 0,
-              reserved_piece_qty: 0,
-              last_movement_at: now
-            });
-          
-          if (insertError) {
-            console.error(`❌ Error creating Delivery-In-Progress balance:`, insertError);
-            throw new Error(`Failed to create delivery balance: ${insertError.message}`);
-          }
-        }
-      }
-
-      // Create ledger: IN to Delivery-In-Progress
-      ledgerEntries.push({
-        movement_at: now,
-        transaction_type: 'ship',
-        direction: 'in',
-        warehouse_id: 'WH001',
-        location_id: deliveryLocation.location_id,
-        sku_id,
-        pack_qty: qtyPack,
-        piece_qty: qty,
-        reference_no: loadlist.loadlist_code,
-        reference_doc_type: 'loadlist',
-        reference_doc_id: loadlist.id,
-        remarks: `เข้า Delivery-In-Progress - ${docCode}`,
-        created_by: userId,
-        skip_balance_sync: true
-      });
-
-      itemsProcessed++;
+    // Update all picklists loaded_at
+    if (picklistIds.length > 0) {
+      console.log(`🔄 Updating ${picklistIds.length} picklists loaded_at...`);
+      await supabase
+        .from('wms_loadlist_picklists')
+        .update({ loaded_at: now })
+        .in('picklist_id', picklistIds)
+        .eq('loadlist_id', loadlist.id);
     }
 
-    // Insert ledger entries
-    if (ledgerEntries.length > 0) {
-      const { error: ledgerError } = await supabase
-        .from('wms_inventory_ledger')
-        .insert(ledgerEntries);
-
-      if (ledgerError) {
-        console.error('Ledger error:', ledgerError);
-        // Continue anyway, don't fail
-      }
+    // Update all face sheets loaded_at
+    if (faceSheetIds.length > 0) {
+      console.log(`🔄 Updating ${faceSheetIds.length} face sheets loaded_at...`);
+      await supabase
+        .from('loadlist_face_sheets')
+        .update({ loaded_at: now })
+        .in('face_sheet_id', faceSheetIds)
+        .eq('loadlist_id', loadlist.id);
     }
+
+    // Update all bonus face sheets loaded_at
+    if (bonusFaceSheetIds.length > 0) {
+      console.log(`🔄 Updating ${bonusFaceSheetIds.length} bonus face sheets loaded_at...`);
+      await supabase
+        .from('wms_loadlist_bonus_face_sheets')
+        .update({ loaded_at: now })
+        .in('bonus_face_sheet_id', bonusFaceSheetIds)
+        .eq('loadlist_id', loadlist.id);
+    }
+
+    // ✅ Ledger entries already created by database function - no need to insert here
 
     // Insert loadlist_items for tracking
     if (orderDetails.length > 0) {

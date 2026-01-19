@@ -56,6 +56,7 @@ export async function GET(request: Request) {
     const documents: PreparedDocument[] = [];
 
     // 1. ดึงข้อมูล Picklists ที่จัดเสร็จแล้ว แต่ยังไม่ได้เพิ่มเข้า loadlist หรือยังไม่ loaded
+    // ✅ Query picklists directly and filter by completed status
     const { data: picklists, error: picklistError } = await supabase
       .from('picklists')
       .select(`
@@ -67,6 +68,13 @@ export async function GET(request: Request) {
         created_at,
         plan_id,
         trip_id,
+        wms_loadlist_picklists (
+          loadlist_id,
+          loadlists (
+            loadlist_code,
+            status
+          )
+        ),
         picklist_items (
           id,
           sku_id,
@@ -76,17 +84,16 @@ export async function GET(request: Request) {
           order_id,
           order_no,
           voided_at,
-          status
-        ),
-        wms_loadlist_picklists (
-          loadlist_id,
-          loadlists (
-            loadlist_code,
-            status
+          status,
+          picklist_item_reservations (
+            reservation_id,
+            staging_location_id,
+            status,
+            reserved_piece_qty
           )
         )
       `)
-      .eq('status', 'completed')  // ✅ เฉพาะที่จัดเสร็จแล้ว
+      .eq('status', 'completed')
       .order('created_at', { ascending: false });
 
     console.log('[prepared-documents] Picklists query result:', { 
@@ -97,9 +104,9 @@ export async function GET(request: Request) {
     if (!picklistError && picklists) {
       const dispatchLocationId = 'Dispatch';
       
-      // Get all unique plan_ids and trip_ids to fetch plan_code and trip_code
-      const planIds = [...new Set(picklists.map(pl => pl.plan_id).filter(Boolean))];
-      const tripIds = [...new Set(picklists.map(pl => pl.trip_id).filter(Boolean))];
+      // Get all unique plan_ids and trip_ids
+      const planIds = [...new Set(picklists.map(p => p.plan_id).filter(Boolean))];
+      const tripIds = [...new Set(picklists.map(p => p.trip_id).filter(Boolean))];
       
       // Fetch plan codes
       let planCodeMap: Record<number, string> = {};
@@ -128,9 +135,8 @@ export async function GET(request: Request) {
       }
       
       // Fetch order info for shop_name
-      const orderIds = [...new Set(picklists.flatMap(pl => 
-        (pl.picklist_items || []).map((item: any) => item.order_id).filter(Boolean)
-      ))];
+      const allPicklistItems = picklists.flatMap(pl => pl.picklist_items || []);
+      const orderIds = [...new Set(allPicklistItems.map(item => item.order_id).filter(Boolean))];
       let orderInfoMap: Record<number, { order_no: string; shop_name: string }> = {};
       if (orderIds.length > 0) {
         const { data: orders } = await supabase
@@ -143,10 +149,26 @@ export async function GET(request: Request) {
       }
       
       for (const pl of picklists) {
+        // Filter items that have active reservations at Dispatch
+        const picklistItems = (pl.picklist_items || []).filter(item => {
+          // Skip voided items
+          if (item.voided_at || item.status === 'voided') return false;
+          
+          // Check if item has active reservation at Dispatch
+          const reservations = Array.isArray(item.picklist_item_reservations) 
+            ? item.picklist_item_reservations 
+            : [item.picklist_item_reservations];
+          
+          return reservations.some(res => 
+            res.staging_location_id === 'Dispatch' && res.status === 'picked'
+          );
+        });
+        
         // ✅ ตรวจสอบว่ายังไม่ได้เพิ่มเข้า loadlist หรืออยู่ใน loadlist ที่ยังไม่ loaded/voided
-        const loadlistData = (pl as any).wms_loadlist_picklists?.[0];
-        const loadlistCode = loadlistData?.loadlists?.loadlist_code;
-        const loadlistStatus = loadlistData?.loadlists?.status;
+        const loadlistData = pl.wms_loadlist_picklists?.[0];
+        const loadlist = Array.isArray(loadlistData?.loadlists) ? loadlistData.loadlists[0] : loadlistData?.loadlists;
+        const loadlistCode = loadlist?.loadlist_code;
+        const loadlistStatus = loadlist?.status;
         
         // ✅ ข้ามถ้าอยู่ใน loadlist ที่ loaded หรือ voided แล้ว
         if (loadlistCode && (loadlistStatus === 'loaded' || loadlistStatus === 'voided')) {
@@ -161,13 +183,7 @@ export async function GET(request: Request) {
         
         const items = [];
         
-        for (const item of (pl.picklist_items || [])) {
-          // ✅ ข้าม items ที่ถูก voided
-          if (item.voided_at || item.status === 'voided') {
-            console.log(`⏭️ Skip voided picklist item ${item.id} for SKU ${item.sku_id}`);
-            continue;
-          }
-          
+        for (const item of picklistItems) {
           // ดึงข้อมูล balance จาก Dispatch location
           const { data: balances } = await supabase
             .from('wms_inventory_balances')
@@ -219,9 +235,8 @@ export async function GET(request: Request) {
           });
         }
         
-        // ✅ ข้าม picklist ที่ไม่มี items ที่ยังใช้งานได้ (ทั้งหมดถูก voided)
         if (items.length === 0) {
-          console.log(`⏭️ Skip picklist ${pl.picklist_code} - all items voided`);
+          console.log(`⏭️ Skip picklist ${pl.picklist_code} - no items`);
           continue;
         }
         

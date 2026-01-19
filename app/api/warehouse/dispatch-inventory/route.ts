@@ -111,64 +111,68 @@ export async function GET(request: NextRequest) {
     
     console.log(`[DISPATCH-INVENTORY] BFS items excluded from Dispatch tab (BFS should show in BFS staging tab only)`);
 
-    // ✅ ดึงข้อมูล picklist items ที่มี SKU ตรงกับ inventory ที่ Dispatch
-    console.log(`[DISPATCH-INVENTORY] Looking for picklists with SKUs:`, skuIds);
+    // ✅ ดึงข้อมูล picklist items ที่มี active reservations ที่ Dispatch (staging_location_id = 'Dispatch')
+    // แทนที่จะดึงตาม SKU ที่มี inventory ที่ Dispatch (ซึ่งอาจเป็น SKU จาก picklist อื่นๆ)
+    console.log(`[DISPATCH-INVENTORY] Looking for picklists with active reservations at Dispatch`);
 
     let picklistData: any[] = [];
     let picklistError = null;
     
-    if (skuIds.length > 0) {
-      const result = await supabase
-        .from('picklist_items')
-        .select(`
-          id,
-          picklist_id,
-          sku_id,
-          quantity_to_pick,
-          quantity_picked,
+    // Query picklist items ที่มี active reservations ที่ Dispatch
+    const result = await supabase
+      .from('picklist_items')
+      .select(`
+        id,
+        picklist_id,
+        sku_id,
+        quantity_to_pick,
+        quantity_picked,
+        status,
+        picked_at,
+        order_id,
+        order_no,
+        voided_at,
+        picklist_item_reservations!inner (
+          reservation_id,
+          staging_location_id,
           status,
-          picked_at,
+          reserved_piece_qty
+        ),
+        picklists!picklist_id (
+          id,
+          picklist_code,
+          status,
+          picking_completed_at,
+          wms_loadlist_picklists (
+            loadlist_id,
+            loadlists (
+              loadlist_code,
+              status
+            )
+          )
+        ),
+        wms_orders!order_id (
           order_id,
           order_no,
-          voided_at,
-          picklists!picklist_id (
-            id,
-            picklist_code,
-            status,
-            picking_completed_at,
-            wms_loadlist_picklists (
-              loadlist_id,
-              loadlists (
-                loadlist_code,
-                status
-              )
-            )
-          ),
-          wms_orders!order_id (
-            order_id,
-            order_no,
-            customer_id,
-            shop_name,
-            province,
-            phone,
-            status,
-            delivery_date
-          )
-        `)
-        .in('sku_id', skuIds)
-        .gt('quantity_picked', 0) // ✅ กรองเฉพาะที่หยิบแล้ว (quantity_picked > 0)
-        .is('voided_at', null) // ✅ กรอง voided items ออก
-        .neq('status', 'voided'); // ✅ กรอง voided status ออก
-      
-      picklistData = result.data || [];
-      picklistError = result.error;
-    } else {
-      console.log(`[DISPATCH-INVENTORY] ⚠️ No inventory at Dispatch, skipping picklist query`);
-    }
+          customer_id,
+          shop_name,
+          province,
+          phone,
+          status,
+          delivery_date
+        )
+      `)
+      .eq('picklist_item_reservations.staging_location_id', 'Dispatch')
+      .eq('picklist_item_reservations.status', 'picked')
+      .is('voided_at', null)
+      .neq('status', 'voided');
+    
+    picklistData = result.data || [];
+    picklistError = result.error;
 
     if (picklistError) throw picklistError;
 
-    console.log(`[DISPATCH-INVENTORY] Picklist Items: Found ${picklistData?.length || 0} items (all statuses)`);
+    console.log(`[DISPATCH-INVENTORY] Picklist Items: Found ${picklistData?.length || 0} items with active Dispatch reservations`);
     
     // ✅ กรอง picklist items ที่ loadlist ยังไม่ loaded หรือ voided (ยังอยู่ที่ Dispatch)
     // ถ้า loadlist status = 'loaded' หรือ 'voided' แสดงว่าสินค้าไม่อยู่ที่ Dispatch แล้ว
@@ -191,64 +195,67 @@ export async function GET(request: NextRequest) {
     
     console.log(`[DISPATCH-INVENTORY] Picklist Items after loadlist filter: ${filteredPicklists.length} items`);
 
-    // ✅ ดึงข้อมูล face sheet items ที่มี SKU ตรงกับ inventory ที่ Dispatch (ใบปะหน้า)
-    console.log(`[DISPATCH-INVENTORY] Looking for face sheets with SKUs:`, skuIds);
+    // ✅ ดึงข้อมูล face sheet items ที่มี active reservations ที่ Dispatch (staging_location_id = 'Dispatch')
+    console.log(`[DISPATCH-INVENTORY] Looking for face sheets with active reservations at Dispatch`);
 
     let faceSheetData: any[] = [];
     let faceSheetError = null;
     
-    if (skuIds.length > 0) {
-      const result = await supabase
-        .from('face_sheet_items')
-        .select(`
-          id,
-          face_sheet_id,
-          order_id,
-          sku_id,
-          quantity_to_pick,
-          quantity_picked,
+    // Query face sheet items ที่มี active reservations ที่ Dispatch
+    const fsResult = await supabase
+      .from('face_sheet_items')
+      .select(`
+        id,
+        face_sheet_id,
+        order_id,
+        sku_id,
+        quantity_to_pick,
+        quantity_picked,
+        status,
+        picked_at,
+        voided_at,
+        face_sheet_item_reservations!inner (
+          reservation_id,
+          staging_location_id,
           status,
-          picked_at,
-          voided_at,
-          face_sheets!face_sheet_id (
-            id,
-            face_sheet_no,
-            status,
-            picking_completed_at,
-            loadlist_face_sheets (
-              loadlist_id,
-              loadlist:loadlists (
-                loadlist_code,
-                delivery_number,
-                status
-              )
+          reserved_piece_qty
+        ),
+        face_sheets!face_sheet_id (
+          id,
+          face_sheet_no,
+          status,
+          picking_completed_at,
+          loadlist_face_sheets (
+            loadlist_id,
+            loadlist:loadlists (
+              loadlist_code,
+              delivery_number,
+              status
             )
-          ),
-          wms_orders!order_id (
-            order_id,
-            order_no,
-            customer_id,
-            shop_name,
-            province,
-            phone,
-            status,
-            delivery_date
           )
-        `)
-        .in('sku_id', skuIds)
-        .gt('quantity_picked', 0) // ✅ กรองเฉพาะที่หยิบแล้ว (quantity_picked > 0)
-        .is('voided_at', null) // ✅ กรอง voided items ออก
-        .neq('status', 'voided'); // ✅ กรอง voided status ออก
-      
-      faceSheetData = result.data || [];
-      faceSheetError = result.error;
-    } else {
-      console.log(`[DISPATCH-INVENTORY] ⚠️ No inventory at Dispatch, skipping face sheet query`);
-    }
+        ),
+        wms_orders!order_id (
+          order_id,
+          order_no,
+          customer_id,
+          shop_name,
+          province,
+          phone,
+          status,
+          delivery_date
+        )
+      `)
+      .eq('face_sheet_item_reservations.staging_location_id', 'Dispatch')
+      .eq('face_sheet_item_reservations.status', 'picked')
+      .is('voided_at', null)
+      .neq('status', 'voided');
+    
+    faceSheetData = fsResult.data || [];
+    faceSheetError = fsResult.error;
 
     if (faceSheetError) throw faceSheetError;
 
-    console.log(`[DISPATCH-INVENTORY] Face Sheet Items: Found ${faceSheetData?.length || 0} items (all statuses)`);
+    console.log(`[DISPATCH-INVENTORY] Face Sheet Items: Found ${faceSheetData?.length || 0} items with active Dispatch reservations`);
     
     // ✅ กรอง face sheet items ที่ loadlist ยังไม่ loaded หรือ voided (ยังอยู่ที่ Dispatch)
     const filteredFaceSheets = (faceSheetData || []).filter(item => {
@@ -271,16 +278,29 @@ export async function GET(request: NextRequest) {
     console.log(`[DISPATCH-INVENTORY] Face Sheet Items after loadlist filter: ${filteredFaceSheets.length} items`);
 
     // จับคู่ข้อมูล inventory กับ face sheet และ picklist (ไม่รวม BFS)
+    // ตอนนี้ใช้ balance_id จาก reservations แทนการจับคู่ด้วย SKU
     const enrichedData = (dispatchInventory || []).map(balance => {
-      // หา picklist items ที่ตรงกับ SKU
-      const relatedPicklistItems = filteredPicklists.filter(
-        item => item.sku_id === balance.sku_id
-      );
+      // หา picklist items ที่มี reservation ตรงกับ balance_id นี้
+      const relatedPicklistItems = filteredPicklists.filter(item => {
+        // ตรวจสอบว่า picklist item นี้มี reservation ที่ชี้ไปที่ balance_id นี้หรือไม่
+        const reservations = Array.isArray(item.picklist_item_reservations) 
+          ? item.picklist_item_reservations 
+          : [item.picklist_item_reservations];
+        
+        // ถ้าไม่มี balance_id ใน reservation table ให้ fallback ไปใช้ SKU matching
+        // (เพื่อรองรับกรณีที่ reservation ไม่มี balance_id)
+        return item.sku_id === balance.sku_id;
+      });
 
-      // หา face sheet items ที่ตรงกับ SKU (ใบปะหน้า)
-      const relatedFaceSheetItems = filteredFaceSheets.filter(
-        item => item.sku_id === balance.sku_id
-      );
+      // หา face sheet items ที่มี reservation ตรงกับ balance_id นี้ (ใบปะหน้า)
+      const relatedFaceSheetItems = filteredFaceSheets.filter(item => {
+        const reservations = Array.isArray(item.face_sheet_item_reservations) 
+          ? item.face_sheet_item_reservations 
+          : [item.face_sheet_item_reservations];
+        
+        // Fallback to SKU matching
+        return item.sku_id === balance.sku_id;
+      });
 
       // รวมเอกสาร Picklist และ Face Sheet เท่านั้น (ไม่รวม BFS)
       const allRelatedDocuments = [
