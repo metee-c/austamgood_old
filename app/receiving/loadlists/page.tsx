@@ -275,6 +275,13 @@ const LoadlistsPage = () => {
   const [skipMapping, setSkipMapping] = useState(false);
   const [unmappedBonusFaceSheets, setUnmappedBonusFaceSheets] = useState<AvailableBonusFaceSheet[]>([]);
   const [loadingUnmappedBfs, setLoadingUnmappedBfs] = useState(false);
+  
+  // ✅ NEW: สำหรับเลือกเฉพาะบางออเดอร์จาก BFS
+  const [selectPartialOrders, setSelectPartialOrders] = useState(false);
+  const [selectedBfsOrders, setSelectedBfsOrders] = useState<Record<number, string[]>>({}); // bfs_id -> order_no[]
+  const [bfsOrdersData, setBfsOrdersData] = useState<Record<number, any[]>>({}); // bfs_id -> orders[]
+  const [loadingBfsOrders, setLoadingBfsOrders] = useState<Record<number, boolean>>({});
+  const [expandedBfsRows, setExpandedBfsRows] = useState<Record<number, boolean>>({}); // bfs_id -> isExpanded
 
   // Form fields (ใช้สำหรับ face sheets และ bonus face sheets)
   const [checkerEmployeeId, setCheckerEmployeeId] = useState<number | ''>('');
@@ -687,6 +694,82 @@ const LoadlistsPage = () => {
     }
   }, [skipMapping, activeTab]);
 
+  // ✅ NEW: ฟังก์ชันดึงออเดอร์ของ BFS
+  const fetchBfsOrders = async (bfsId: number) => {
+    setLoadingBfsOrders(prev => ({ ...prev, [bfsId]: true }));
+    try {
+      // หา delivery_date จาก BFS
+      const bfs = unmappedBonusFaceSheets.find(b => b.id === bfsId);
+      if (!bfs?.delivery_date) {
+        console.error('BFS ไม่มี delivery_date');
+        return;
+      }
+
+      const response = await fetch(`/api/bonus-face-sheets/orders?delivery_date=${bfs.delivery_date}`);
+      const result = await response.json();
+
+      if (result.success && result.data) {
+        // กรองเฉพาะออเดอร์ที่อยู่ใน BFS นี้ (ตรวจสอบจาก packages)
+        const bfsPackagesResponse = await fetch(`/api/bonus-face-sheets/${bfsId}`);
+        const bfsPackagesResult = await bfsPackagesResponse.json();
+        
+        if (bfsPackagesResult.success && bfsPackagesResult.data?.packages) {
+          const orderIdsInBfs = new Set(
+            bfsPackagesResult.data.packages.map((pkg: any) => pkg.order_id)
+          );
+          
+          const ordersInBfs = result.data.filter((order: any) => 
+            orderIdsInBfs.has(order.order_id)
+          );
+
+          setBfsOrdersData(prev => ({
+            ...prev,
+            [bfsId]: ordersInBfs
+          }));
+        }
+      }
+    } catch (err) {
+      console.error('Error fetching BFS orders:', err);
+    } finally {
+      setLoadingBfsOrders(prev => ({ ...prev, [bfsId]: false }));
+    }
+  };
+
+  // ✅ NEW: Toggle การเลือกออเดอร์
+  const toggleBfsOrder = (bfsId: number, orderNo: string) => {
+    setSelectedBfsOrders(prev => {
+      const currentOrders = prev[bfsId] || [];
+      const newOrders = currentOrders.includes(orderNo)
+        ? currentOrders.filter(o => o !== orderNo)
+        : [...currentOrders, orderNo];
+      
+      return {
+        ...prev,
+        [bfsId]: newOrders
+      };
+    });
+  };
+
+  // ✅ NEW: Toggle เลือกทั้งหมดของ BFS
+  const toggleAllBfsOrders = (bfsId: number) => {
+    const orders = bfsOrdersData[bfsId] || [];
+    const currentSelected = selectedBfsOrders[bfsId] || [];
+    
+    if (currentSelected.length === orders.length) {
+      // Deselect all
+      setSelectedBfsOrders(prev => ({
+        ...prev,
+        [bfsId]: []
+      }));
+    } else {
+      // Select all
+      setSelectedBfsOrders(prev => ({
+        ...prev,
+        [bfsId]: orders.map(o => o.order_no)
+      }));
+    }
+  };
+
   // ✅ Helper function สำหรับอัปเดตค่าแต่ละ picklist
   const updatePicklistFormData = (picklistId: number, field: keyof PicklistFormData, value: any) => {
     setPicklistFormData(prev => ({
@@ -750,7 +833,18 @@ const LoadlistsPage = () => {
       return;
     }
 
-    // ✅ FIX: ไม่บังคับ vehicleType และ deliveryNumber - ใช้ค่า default แทน
+    // ✅ NEW: Validate ถ้าเลือกโหมดเลือกบางออเดอร์ ต้องมีการเลือกออเดอร์อย่างน้อย 1 รายการ
+    if (selectPartialOrders) {
+      const hasSelectedOrders = selectedBonusFaceSheets.some(bfsId => {
+        const orders = selectedBfsOrders[bfsId] || [];
+        return orders.length > 0;
+      });
+
+      if (!hasSelectedOrders) {
+        setCreateError('กรุณาเลือกออเดอร์อย่างน้อย 1 รายการ');
+        return;
+      }
+    }
 
     setIsCreating(true);
     setCreateError(null);
@@ -764,7 +858,7 @@ const LoadlistsPage = () => {
         ? selectedBfsNos.join(', ')
         : `BFS-${Date.now()}`;
 
-      const requestBody = {
+      const requestBody: any = {
         skip_mapping: true,
         bfs_ids: selectedBonusFaceSheets,
         checker_employee_id: checkerId,
@@ -775,6 +869,11 @@ const LoadlistsPage = () => {
         loading_queue_number: loadingQueueNumber || null,
         loading_door_number: loadingDoorNumber || null
       };
+
+      // ✅ NEW: ถ้าเลือกโหมดเลือกบางออเดอร์ ส่ง selected_orders ไปด้วย
+      if (selectPartialOrders) {
+        requestBody.selected_orders = selectedBfsOrders;
+      }
 
       const response = await fetch('/api/loadlists', {
         method: 'POST',
@@ -793,6 +892,9 @@ const LoadlistsPage = () => {
       setSelectedBonusFaceSheets([]);
       setBonusFaceSheetCheckers({});
       setSkipMapping(false);
+      setSelectPartialOrders(false);
+      setSelectedBfsOrders({});
+      setBfsOrdersData({});
       setUnmappedBonusFaceSheets([]);
       await fetchLoadlists();
 
@@ -2198,7 +2300,7 @@ const LoadlistsPage = () => {
           {activeTab === 'bonus-face-sheets' && (
             <div className="space-y-2">
               {/* ✅ NEW (edit28): Checkbox สำหรับโหมดไม่แมพ */}
-              <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+              <div className="p-3 bg-blue-50 rounded-lg border border-blue-200 space-y-2">
                 <label className="flex items-center gap-2 cursor-pointer">
                   <input
                     type="checkbox"
@@ -2208,6 +2310,9 @@ const LoadlistsPage = () => {
                       setSelectedBonusFaceSheets([]); // Clear selection เมื่อสลับโหมด
                       setBonusFaceSheetMappings({});
                       setMatchingPreviews({});
+                      setSelectPartialOrders(false); // Reset partial orders mode
+                      setSelectedBfsOrders({});
+                      setBfsOrdersData({});
                     }}
                     className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
                   />
@@ -2217,9 +2322,36 @@ const LoadlistsPage = () => {
                 </label>
                 
                 {skipMapping && (
-                  <p className="mt-2 text-xs text-blue-600 ml-6">
-                    💡 เลือก BFS ที่ต้องการสร้าง Loadlist โดยตรง โดยไม่ต้องเลือกใบหยิบก่อน
-                  </p>
+                  <>
+                    <p className="text-xs text-blue-600 ml-6">
+                      💡 เลือก BFS ที่ต้องการสร้าง Loadlist โดยตรง โดยไม่ต้องเลือกใบหยิบก่อน
+                    </p>
+                    
+                    {/* ✅ NEW: Checkbox สำหรับเลือกเฉพาะบางออเดอร์ */}
+                    <label className="flex items-center gap-2 cursor-pointer ml-6">
+                      <input
+                        type="checkbox"
+                        checked={selectPartialOrders}
+                        onChange={(e) => {
+                          setSelectPartialOrders(e.target.checked);
+                          if (!e.target.checked) {
+                            setSelectedBfsOrders({});
+                            setBfsOrdersData({});
+                          }
+                        }}
+                        className="w-4 h-4 rounded border-gray-300 text-green-600 focus:ring-green-500"
+                      />
+                      <span className="text-sm font-medium text-green-800">
+                        เลือกเฉพาะบางออเดอร์
+                      </span>
+                    </label>
+                    
+                    {selectPartialOrders && (
+                      <p className="text-xs text-green-600 ml-12">
+                        ✓ คลิกที่ BFS เพื่อดูและเลือกออเดอร์ที่ต้องการ
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -2256,6 +2388,11 @@ const LoadlistsPage = () => {
                               title="เลือกทั้งหมด"
                             />
                           </th>
+                          {selectPartialOrders && (
+                            <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap w-12">
+                              ดูออเดอร์
+                            </th>
+                          )}
                           <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัส BFS</th>
                           <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">แพ็คที่เหลือ</th>
                           <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันส่ง</th>
@@ -2266,7 +2403,7 @@ const LoadlistsPage = () => {
                       <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
                         {!Array.isArray(unmappedBonusFaceSheets) || unmappedBonusFaceSheets.length === 0 ? (
                           <tr>
-                            <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                            <td colSpan={selectPartialOrders ? 7 : 6} className="px-4 py-8 text-center text-gray-500">
                               {loadingUnmappedBfs 
                                 ? 'กำลังโหลด...' 
                                 : 'ไม่มี BFS ที่ยังไม่ได้สร้าง Loadlist'
@@ -2276,74 +2413,187 @@ const LoadlistsPage = () => {
                         ) : (
                           unmappedBonusFaceSheets.map((bfs) => {
                             const isSelected = selectedBonusFaceSheets.includes(bfs.id);
+                            const showOrders = expandedBfsRows[bfs.id] || false;
+                            const orders = bfsOrdersData[bfs.id] || [];
+                            const selectedOrders = selectedBfsOrders[bfs.id] || [];
+                            const isLoadingOrders = loadingBfsOrders[bfs.id] || false;
+                            
                             return (
-                              <tr
-                                key={bfs.id}
-                                className={`hover:bg-blue-50/30 transition-colors duration-150 cursor-pointer ${
-                                  isSelected ? 'bg-green-50' : ''
-                                }`}
-                                onClick={() => {
-                                  if (isSelected) {
-                                    setSelectedBonusFaceSheets(selectedBonusFaceSheets.filter(id => id !== bfs.id));
-                                  } else {
-                                    setSelectedBonusFaceSheets([...selectedBonusFaceSheets, bfs.id]);
-                                  }
-                                }}
-                              >
-                                <td className="px-2 py-1 border-r border-gray-100 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                                  <input
-                                    type="checkbox"
-                                    checked={isSelected}
-                                    onChange={() => {
-                                      if (isSelected) {
-                                        setSelectedBonusFaceSheets(selectedBonusFaceSheets.filter(id => id !== bfs.id));
-                                      } else {
-                                        setSelectedBonusFaceSheets([...selectedBonusFaceSheets, bfs.id]);
-                                      }
-                                    }}
-                                    className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
-                                  />
-                                </td>
-                                <td className="px-2 py-1 border-r border-gray-100 whitespace-nowrap">
-                                  <span className="font-mono text-purple-600 font-semibold">{bfs.face_sheet_no}</span>
-                                </td>
-                                <td className="px-2 py-1 text-center border-r border-gray-100 whitespace-nowrap">
-                                  <span className="font-semibold text-blue-600">
-                                    {bfs.unmapped_packages ?? bfs.total_packages}
-                                  </span>
-                                  {bfs.original_total_packages && bfs.unmapped_packages !== bfs.original_total_packages && (
-                                    <span className="text-[10px] text-gray-500 ml-1">
-                                      (จาก {bfs.original_total_packages})
-                                    </span>
+                              <React.Fragment key={bfs.id}>
+                                <tr
+                                  className={`hover:bg-blue-50/30 transition-colors duration-150 ${
+                                    isSelected ? 'bg-green-50' : ''
+                                  }`}
+                                >
+                                  <td className="px-2 py-1 border-r border-gray-100 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                    <input
+                                      type="checkbox"
+                                      checked={isSelected}
+                                      onChange={() => {
+                                        if (isSelected) {
+                                          setSelectedBonusFaceSheets(selectedBonusFaceSheets.filter(id => id !== bfs.id));
+                                        } else {
+                                          setSelectedBonusFaceSheets([...selectedBonusFaceSheets, bfs.id]);
+                                        }
+                                      }}
+                                      className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                                    />
+                                  </td>
+                                  {selectPartialOrders && (
+                                    <td className="px-2 py-1 border-r border-gray-100 text-center" onClick={(e) => e.stopPropagation()}>
+                                      <button
+                                        onClick={() => {
+                                          if (!showOrders && orders.length === 0) {
+                                            fetchBfsOrders(bfs.id);
+                                          }
+                                          setExpandedBfsRows(prev => ({
+                                            ...prev,
+                                            [bfs.id]: !showOrders
+                                          }));
+                                        }}
+                                        className="p-1 rounded hover:bg-blue-100 text-blue-600"
+                                        title={showOrders ? 'ซ่อนออเดอร์' : 'แสดงออเดอร์'}
+                                      >
+                                        {isLoadingOrders ? (
+                                          <Loader2 className="w-4 h-4 animate-spin" />
+                                        ) : showOrders ? (
+                                          <ChevronUp className="w-4 h-4" />
+                                        ) : (
+                                          <ChevronDown className="w-4 h-4" />
+                                        )}
+                                      </button>
+                                    </td>
                                   )}
-                                </td>
-                                <td className="px-2 py-1 border-r border-gray-100 whitespace-nowrap text-gray-600">
-                                  {bfs.delivery_date || '-'}
-                                </td>
-                                <td className="px-2 py-1 border-r border-gray-100 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                                  <select
-                                    value={bonusFaceSheetCheckers[bfs.id] || ''}
-                                    onChange={(e) => {
-                                      const value = e.target.value ? Number(e.target.value) : '';
-                                      setBonusFaceSheetCheckers(prev => ({
-                                        ...prev,
-                                        [bfs.id]: value
-                                      }));
-                                    }}
-                                    className="w-full px-1 py-0.5 text-[10px] border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-                                  >
-                                    <option value="">-- เลือกผู้เช็ค --</option>
-                                    {employees.map((emp) => (
-                                      <option key={emp.employee_id} value={emp.employee_id}>
-                                        {emp.first_name} {emp.last_name}
-                                      </option>
-                                    ))}
-                                  </select>
-                                </td>
-                                <td className="px-2 py-1 text-center whitespace-nowrap">
-                                  <Badge variant="success" size="sm">เสร็จสิ้น</Badge>
-                                </td>
-                              </tr>
+                                  <td className="px-2 py-1 border-r border-gray-100 whitespace-nowrap">
+                                    <span className="font-mono text-purple-600 font-semibold">{bfs.face_sheet_no}</span>
+                                    {selectPartialOrders && selectedOrders.length > 0 && (
+                                      <span className="ml-2 text-[10px] text-green-600">
+                                        ({selectedOrders.length} ออเดอร์)
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="px-2 py-1 text-center border-r border-gray-100 whitespace-nowrap">
+                                    <span className="font-semibold text-blue-600">
+                                      {bfs.unmapped_packages ?? bfs.total_packages}
+                                    </span>
+                                    {bfs.original_total_packages && bfs.unmapped_packages !== bfs.original_total_packages && (
+                                      <span className="text-[10px] text-gray-500 ml-1">
+                                        (จาก {bfs.original_total_packages})
+                                      </span>
+                                    )}
+                                  </td>
+                                  <td className="px-2 py-1 border-r border-gray-100 whitespace-nowrap text-gray-600">
+                                    {bfs.delivery_date || '-'}
+                                  </td>
+                                  <td className="px-2 py-1 border-r border-gray-100 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
+                                    <select
+                                      value={bonusFaceSheetCheckers[bfs.id] || ''}
+                                      onChange={(e) => {
+                                        const value = e.target.value ? Number(e.target.value) : '';
+                                        setBonusFaceSheetCheckers(prev => ({
+                                          ...prev,
+                                          [bfs.id]: value
+                                        }));
+                                      }}
+                                      className="w-full px-1 py-0.5 text-[10px] border border-gray-300 rounded focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+                                    >
+                                      <option value="">-- เลือกผู้เช็ค --</option>
+                                      {employees.map((emp) => (
+                                        <option key={emp.employee_id} value={emp.employee_id}>
+                                          {emp.first_name} {emp.last_name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </td>
+                                  <td className="px-2 py-1 text-center whitespace-nowrap">
+                                    <Badge variant="success" size="sm">เสร็จสิ้น</Badge>
+                                  </td>
+                                </tr>
+                                
+                                {/* ✅ NEW: แสดงรายการออเดอร์เมื่อคลิกดู */}
+                                {selectPartialOrders && showOrders && (
+                                  <tr>
+                                    <td colSpan={7} className="px-0 py-0 bg-gray-50">
+                                      <div className="p-3 border-t border-gray-200">
+                                        <div className="flex items-center justify-between mb-2">
+                                          <span className="text-xs font-semibold text-gray-700">
+                                            รายการออเดอร์ ({selectedOrders.length}/{orders.length})
+                                          </span>
+                                          {orders.length > 0 && (
+                                            <button
+                                              onClick={() => toggleAllBfsOrders(bfs.id)}
+                                              className="text-xs text-blue-600 hover:text-blue-800"
+                                            >
+                                              {selectedOrders.length === orders.length ? 'ยกเลิกทั้งหมด' : 'เลือกทั้งหมด'}
+                                            </button>
+                                          )}
+                                        </div>
+                                        
+                                        {isLoadingOrders ? (
+                                          <div className="flex items-center justify-center py-4">
+                                            <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
+                                            <span className="ml-2 text-sm text-gray-600">กำลังโหลดออเดอร์...</span>
+                                          </div>
+                                        ) : orders.length === 0 ? (
+                                          <div className="text-center py-4 text-sm text-gray-500">
+                                            ไม่พบออเดอร์
+                                          </div>
+                                        ) : (
+                                          <div className="max-h-60 overflow-y-auto border rounded">
+                                            <table className="w-full text-[10px]">
+                                              <thead className="bg-gray-100 sticky top-0">
+                                                <tr>
+                                                  <th className="px-2 py-1 text-left border-b w-8"></th>
+                                                  <th className="px-2 py-1 text-left border-b">เลขออเดอร์</th>
+                                                  <th className="px-2 py-1 text-left border-b">ชื่อร้าน</th>
+                                                  <th className="px-2 py-1 text-left border-b">จังหวัด</th>
+                                                  <th className="px-2 py-1 text-center border-b">จำนวนรายการ</th>
+                                                </tr>
+                                              </thead>
+                                              <tbody className="bg-white">
+                                                {orders.map((order: any) => {
+                                                  const isOrderSelected = selectedOrders.includes(order.order_no);
+                                                  return (
+                                                    <tr
+                                                      key={order.order_no}
+                                                      className={`hover:bg-blue-50 cursor-pointer ${
+                                                        isOrderSelected ? 'bg-green-50' : ''
+                                                      }`}
+                                                      onClick={() => toggleBfsOrder(bfs.id, order.order_no)}
+                                                    >
+                                                      <td className="px-2 py-1 border-b">
+                                                        <input
+                                                          type="checkbox"
+                                                          checked={isOrderSelected}
+                                                          onChange={() => toggleBfsOrder(bfs.id, order.order_no)}
+                                                          className="w-3 h-3 text-green-600 rounded"
+                                                          onClick={(e) => e.stopPropagation()}
+                                                        />
+                                                      </td>
+                                                      <td className="px-2 py-1 border-b font-mono text-blue-600">
+                                                        {order.order_no}
+                                                      </td>
+                                                      <td className="px-2 py-1 border-b text-gray-700">
+                                                        {order.shop_name}
+                                                      </td>
+                                                      <td className="px-2 py-1 border-b text-gray-600">
+                                                        {order.province || '-'}
+                                                      </td>
+                                                      <td className="px-2 py-1 border-b text-center text-gray-700">
+                                                        {order.total_items || 0}
+                                                      </td>
+                                                    </tr>
+                                                  );
+                                                })}
+                                              </tbody>
+                                            </table>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </td>
+                                  </tr>
+                                )}
+                              </React.Fragment>
                             );
                           })
                         )}

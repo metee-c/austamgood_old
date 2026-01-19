@@ -19,7 +19,8 @@ import {
   Search,
   X,
   ScanLine,
-  Upload
+  Upload,
+  Info
 } from 'lucide-react';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
@@ -27,6 +28,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useCreateReceive, useGeneratePalletId } from '@/hooks/useReceive';
 import { useSuppliers, useSkus, useWarehouses, useLocations, useCustomers, useSystemUsers } from '@/hooks/useFormOptions';
 import { PalletScanStatus } from '@/lib/database/receive';
+import SkuMasterInfoModal from '@/components/mobile/SkuMasterInfoModal';
 
 // Validation schema matching desktop form
 const itemSchema = z.object({
@@ -95,6 +97,10 @@ export default function MobileReceiveNewPage() {
   const [skuSearch, setSkuSearch] = useState('');
   const [locationSearch, setLocationSearch] = useState('');
   const [currentItemIndex, setCurrentItemIndex] = useState<number | null>(null);
+  
+  // SKU Master Info Modal
+  const [showSkuMasterInfo, setShowSkuMasterInfo] = useState(false);
+  const [selectedSkuForInfo, setSelectedSkuForInfo] = useState<any>(null);
 
   // Hooks
   const { createReceive, loading: creating } = useCreateReceive();
@@ -291,6 +297,22 @@ export default function MobileReceiveNewPage() {
     setShowSkuSearch(false);
     setSkuSearch('');
     setCurrentItemIndex(null);
+
+    // Auto-show SKU master info modal after selection
+    setTimeout(() => {
+      handleShowSkuInfo(sku);
+    }, 100);
+  };
+
+  const handleShowSkuInfo = (sku: any) => {
+    setSelectedSkuForInfo(sku);
+    setShowSkuMasterInfo(true);
+  };
+
+  const handleSkuInfoUpdate = () => {
+    // Refresh SKU list to get updated data
+    // The useSkus hook should handle this automatically
+    console.log('SKU updated, data will refresh on next load');
   };
 
   const handleSelectLocation = (index: number, location: any) => {
@@ -836,11 +858,29 @@ export default function MobileReceiveNewPage() {
               ) : (
                 <>
                   {filteredSkus.slice(0, 50).map(sku => (
-                    <button key={sku.sku_id} onClick={() => handleSelectSKU(currentItemIndex, sku)}
-                      className="w-full px-3 py-2 text-left hover:bg-gray-50 border-b font-thai">
-                      <div className="font-semibold text-sm truncate">{sku.sku_name}</div>
-                      <div className="text-[10px] text-gray-500">{sku.sku_id} {sku.barcode && `| ${sku.barcode}`}</div>
-                    </button>
+                    <div key={sku.sku_id} className="border-b hover:bg-gray-50">
+                      <div className="flex items-center">
+                        <button
+                          type="button"
+                          onClick={() => handleSelectSKU(currentItemIndex, sku)}
+                          className="flex-1 px-3 py-2 text-left font-thai"
+                        >
+                          <div className="font-semibold text-sm truncate">{sku.sku_name}</div>
+                          <div className="text-[10px] text-gray-500">{sku.sku_id} {sku.barcode && `| ${sku.barcode}`}</div>
+                          <div className="text-[10px] text-blue-600 mt-0.5">
+                            {sku.qty_per_pallet ? `${sku.qty_per_pallet} ชิ้น/พาเลท` : 'ยังไม่กำหนดจำนวน/พาเลท'}
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleShowSkuInfo(sku)}
+                          className="px-3 py-2 text-blue-600 hover:bg-blue-50 border-l"
+                          title="ดูข้อมูลมาสเตอร์"
+                        >
+                          <Info className="w-5 h-5" />
+                        </button>
+                      </div>
+                    </div>
                   ))}
                   {filteredSkus.length > 50 && (
                     <div className="p-2 text-center text-xs text-gray-500 font-thai">
@@ -879,6 +919,17 @@ export default function MobileReceiveNewPage() {
           </div>
         </div>
       )}
+
+      {/* SKU Master Info Modal */}
+      <SkuMasterInfoModal
+        sku={selectedSkuForInfo}
+        isOpen={showSkuMasterInfo}
+        onClose={() => {
+          setShowSkuMasterInfo(false);
+          setSelectedSkuForInfo(null);
+        }}
+        onUpdate={handleSkuInfoUpdate}
+      />
     </div>
   );
 }

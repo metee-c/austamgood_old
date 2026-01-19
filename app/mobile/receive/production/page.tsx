@@ -29,6 +29,7 @@ import { useAuth } from '@/hooks/useAuth';
 import { useCreateReceive, useGeneratePalletId } from '@/hooks/useReceive';
 import { useSkus, useWarehouses, useLocations, useEmployees } from '@/hooks/useFormOptions';
 import { PalletScanStatus } from '@/lib/database/receive';
+import SkuMasterInfoModal from '@/components/mobile/SkuMasterInfoModal';
 
 // Validation schema for production receive
 const itemSchema = z.object({
@@ -137,6 +138,10 @@ function MobileReceiveProductionContent() {
   const [skuSearch, setSkuSearch] = useState('');
   const [locationSearch, setLocationSearch] = useState('');
   const [currentItemIndex, setCurrentItemIndex] = useState<number | null>(null);
+
+  // SKU Master Info Modal states
+  const [showSkuMasterInfo, setShowSkuMasterInfo] = useState(false);
+  const [selectedSkuForInfo, setSelectedSkuForInfo] = useState<any>(null);
 
   // Hooks
   const { createReceive, loading: creating } = useCreateReceive();
@@ -333,6 +338,24 @@ function MobileReceiveProductionContent() {
     setShowSkuSearch(false);
     setSkuSearch('');
     setCurrentItemIndex(null);
+
+    // Auto-show SKU master info modal after selection
+    setTimeout(() => {
+      handleShowSkuInfo(sku);
+    }, 100);
+  };
+
+  // Show SKU master info
+  const handleShowSkuInfo = (sku: any) => {
+    setSelectedSkuForInfo(sku);
+    setShowSkuMasterInfo(true);
+  };
+
+  // Handle SKU info update callback
+  const handleSkuInfoUpdate = () => {
+    // Refresh SKU list or update local state if needed
+    // The modal already handles the API update
+    console.log('SKU updated');
   };
 
   const handleSelectLocation = (index: number, location: any) => {
@@ -824,11 +847,31 @@ function MobileReceiveProductionContent() {
             </div>
             <div className="flex-1 overflow-auto">
               {filteredSkus.slice(0, 50).map(sku => (
-                <button key={sku.sku_id} onClick={() => handleSelectSKU(currentItemIndex, sku)}
-                  className="w-full px-4 py-3 text-left hover:bg-gray-50 border-b font-thai">
-                  <div className="font-semibold">{sku.sku_name}</div>
-                  <div className="text-xs text-gray-500">{sku.sku_id} {sku.barcode && `| ${sku.barcode}`}</div>
-                </button>
+                <div key={sku.sku_id} className="border-b">
+                  <button onClick={() => handleSelectSKU(currentItemIndex, sku)}
+                    className="w-full px-4 py-3 text-left hover:bg-gray-50 font-thai flex items-start justify-between gap-2">
+                    <div className="flex-1">
+                      <div className="font-semibold">{sku.sku_name}</div>
+                      <div className="text-xs text-gray-500">{sku.sku_id} {sku.barcode && `| ${sku.barcode}`}</div>
+                      {sku.qty_per_pallet && (
+                        <div className="text-xs text-emerald-600 mt-1">
+                          {sku.qty_per_pallet} ชิ้น/พาเลท
+                        </div>
+                      )}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleShowSkuInfo(sku);
+                      }}
+                      className="p-2 text-blue-500 hover:bg-blue-50 rounded-lg flex-shrink-0"
+                      title="ดูข้อมูลมาสเตอร์"
+                    >
+                      <Info className="w-5 h-5" />
+                    </button>
+                  </button>
+                </div>
               ))}
             </div>
           </div>
@@ -860,6 +903,17 @@ function MobileReceiveProductionContent() {
           </div>
         </div>
       )}
+
+      {/* SKU Master Info Modal */}
+      <SkuMasterInfoModal
+        isOpen={showSkuMasterInfo}
+        onClose={() => {
+          setShowSkuMasterInfo(false);
+          setSelectedSkuForInfo(null);
+        }}
+        sku={selectedSkuForInfo}
+        onUpdate={handleSkuInfoUpdate}
+      />
     </div>
   );
 }

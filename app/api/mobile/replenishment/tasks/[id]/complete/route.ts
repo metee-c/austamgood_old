@@ -80,26 +80,34 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // Verify pallet exists and has stock at from_location
-    const { data: palletStock, error: stockError } = await supabase
+    // Verify pallet exists and has stock
+    // Note: A pallet may have stock in multiple locations, so we need to find the right one
+    const { data: palletStocks, error: stockError } = await supabase
       .from('wms_inventory_balances')
       .select('*, master_location:location_id(location_id, location_code)')
       .eq('pallet_id', pallet_id)
       .eq('sku_id', task.sku_id)
-      .gt('total_piece_qty', 0)
-      .single();
+      .gt('total_piece_qty', 0);
 
-    if (stockError || !palletStock) {
+    if (stockError || !palletStocks || palletStocks.length === 0) {
       return NextResponse.json({ 
         error: `ไม่พบสต็อกของ Pallet: ${pallet_id} สำหรับ SKU: ${task.sku_id}` 
       }, { status: 400 });
     }
 
-    // Verify pallet is at from_location (if specified)
-    if (task.from_location_id && palletStock.location_id !== task.from_location_id) {
-      return NextResponse.json({ 
-        error: `Pallet อยู่ที่ ${palletStock.master_location?.location_code || palletStock.location_id}\nไม่ใช่ตำแหน่งต้นทาง: ${task.from_location?.location_code || task.from_location_id}` 
-      }, { status: 400 });
+    // Find stock at the from_location (if specified)
+    let palletStock;
+    if (task.from_location_id) {
+      palletStock = palletStocks.find(s => s.location_id === task.from_location_id);
+      if (!palletStock) {
+        const locations = palletStocks.map(s => s.master_location?.location_code || s.location_id).join(', ');
+        return NextResponse.json({ 
+          error: `Pallet อยู่ที่: ${locations}\nไม่ใช่ตำแหน่งต้นทาง: ${task.from_location?.location_code || task.from_location_id}` 
+        }, { status: 400 });
+      }
+    } else {
+      // If no from_location specified, use the first stock record
+      palletStock = palletStocks[0];
     }
 
     // ===== NEW: Validate SKU can be transferred to this Prep Area =====

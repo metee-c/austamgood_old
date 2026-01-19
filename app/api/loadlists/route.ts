@@ -5,7 +5,9 @@ import { SupabaseClient } from '@supabase/supabase-js';
 
 /**
  * ✅ NEW (edit28): Helper function สำหรับสร้าง loadlist จาก BFS โดยไม่ต้องแมพกับ picklist
+ * ✅ NEW: รองรับการเลือกเฉพาะบางออเดอร์จาก BFS
  * - ดึง packages ทั้งหมดของ BFS ที่เลือก (ที่ยังไม่ถูกแมพ)
+ * - ถ้ามี selected_orders จะกรองเฉพาะ packages ของออเดอร์ที่เลือก
  * - สร้าง loadlist 1 ใบ
  * - บันทึก mapping ใน wms_loadlist_bonus_face_sheets พร้อม matched_package_ids
  */
@@ -22,6 +24,7 @@ async function handleSkipMappingMode(
     helper_employee_id?: number | null;
     loading_queue_number?: string | null;
     loading_door_number?: string | null;
+    selected_orders?: Record<number, string[]>; // ✅ NEW: bfs_id -> order_no[]
   }
 ) {
   const {
@@ -34,7 +37,8 @@ async function handleSkipMappingMode(
     driver_phone,
     helper_employee_id,
     loading_queue_number,
-    loading_door_number
+    loading_door_number,
+    selected_orders
   } = params;
 
   try {
@@ -66,7 +70,7 @@ async function handleSkipMappingMode(
     // 2. ดึง packages ทั้งหมดของ BFS ที่เลือก (ที่ยังไม่ถูกแมพ)
     const { data: allPackages, error: pkgError } = await supabase
       .from('bonus_face_sheet_packages')
-      .select('id, face_sheet_id')
+      .select('id, face_sheet_id, order_id')
       .in('face_sheet_id', bfs_ids)
       .not('storage_location', 'is', null);
 
@@ -77,15 +81,53 @@ async function handleSkipMappingMode(
       );
     }
 
+    // ✅ NEW: ถ้ามี selected_orders ให้ดึง order_no จาก wms_orders เพื่อกรอง packages
+    let orderIdsByOrderNo = new Map<string, number>();
+    if (selected_orders && Object.keys(selected_orders).length > 0) {
+      // รวบรวม order_no ทั้งหมดที่เลือก
+      const allSelectedOrderNos = Object.values(selected_orders).flat();
+      
+      if (allSelectedOrderNos.length > 0) {
+        const { data: orders } = await supabase
+          .from('wms_orders')
+          .select('order_id, order_no')
+          .in('order_no', allSelectedOrderNos);
+
+        orders?.forEach(order => {
+          orderIdsByOrderNo.set(order.order_no, order.order_id);
+        });
+      }
+    }
+
     // กรองเฉพาะ packages ที่ยังไม่ถูกใช้
-    const availablePackages = (allPackages || []).filter(pkg => {
+    let availablePackages = (allPackages || []).filter(pkg => {
       const usedPackages = usedPackagesByBFS.get(pkg.face_sheet_id);
       return !usedPackages || !usedPackages.has(pkg.id);
     });
 
+    // ✅ NEW: กรองเฉพาะ packages ของออเดอร์ที่เลือก (ถ้ามี selected_orders)
+    if (selected_orders && Object.keys(selected_orders).length > 0) {
+      availablePackages = availablePackages.filter(pkg => {
+        const bfsId = pkg.face_sheet_id;
+        const selectedOrderNos = selected_orders[bfsId] || [];
+        
+        // ถ้าไม่มีการเลือกออเดอร์สำหรับ BFS นี้ ให้เอาทั้งหมด
+        if (selectedOrderNos.length === 0) {
+          return true;
+        }
+        
+        // กรองเฉพาะ packages ที่อยู่ในออเดอร์ที่เลือก
+        const selectedOrderIds = selectedOrderNos
+          .map(orderNo => orderIdsByOrderNo.get(orderNo))
+          .filter(Boolean);
+        
+        return selectedOrderIds.includes(pkg.order_id);
+      });
+    }
+
     if (availablePackages.length === 0) {
       return NextResponse.json(
-        { error: 'ไม่มี packages ที่พร้อมใช้งาน', details: 'BFS ที่เลือกไม่มี packages ที่ยังไม่ถูกแมพ' },
+        { error: 'ไม่มี packages ที่พร้อมใช้งาน', details: 'BFS ที่เลือกไม่มี packages ที่ยังไม่ถูกแมพ หรือไม่มีออเดอร์ที่เลือก' },
         { status: 400 }
       );
     }
@@ -704,6 +746,7 @@ async function handlePost(request: NextRequest, context: any) {
       bonus_face_sheet_mappings, // ✅ NEW: รับ mapping ของ bonus face sheet กับ picklist และ face sheet
       skip_mapping, // ✅ NEW (edit28): สร้าง loadlist จาก BFS โดยไม่ต้องแมพกับ picklist
       bfs_ids, // ✅ NEW (edit28): รายการ BFS IDs เมื่อ skip_mapping = true
+      selected_orders, // ✅ NEW: รายการออเดอร์ที่เลือกสำหรับแต่ละ BFS (bfs_id -> order_no[])
       checker_employee_id,
       vehicle_type,
       delivery_number,
@@ -727,7 +770,8 @@ async function handlePost(request: NextRequest, context: any) {
         driver_phone,
         helper_employee_id,
         loading_queue_number,
-        loading_door_number
+        loading_door_number,
+        selected_orders // ✅ NEW: ส่ง selected_orders ไปด้วย
       });
     }
 
