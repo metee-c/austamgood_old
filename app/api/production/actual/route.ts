@@ -227,13 +227,13 @@ export async function GET(request: NextRequest) {
       // คำนวณอาหารที่ใช้จริง (กก.)
       // สมมติว่าวัตถุดิบอาหาร 1 ถุง = 20 กก. (ตาม BOM ratio)
       const foodActualQty = foodMaterials.reduce((sum: number, m: any) => 
-        sum + (parseFloat(m.actual_qty) || 0), 0
+        sum + (Math.round(parseFloat(m.actual_qty)) || 0), 0
       );
       const foodActualKg = foodActualQty * 20; // 20 กก./ถุง
 
       // คำนวณถุง/สติ๊กเกอร์ที่ใช้จริง
       const packagingActualQty = packagingMaterials.reduce((sum: number, m: any) => 
-        sum + (parseFloat(m.actual_qty) || 0), 0
+        sum + (Math.round(parseFloat(m.actual_qty)) || 0), 0
       );
 
       // FG ที่ผลิตได้จริง
@@ -285,7 +285,7 @@ export async function GET(request: NextRequest) {
           sku_id: m.material_sku_id,
           sku_name: m.material_sku?.sku_name,
           issued_qty: parseFloat(m.issued_qty) || 0,
-          actual_qty: parseFloat(m.actual_qty) || 0,
+          actual_qty: Math.round(parseFloat(m.actual_qty)) || 0,
           variance_qty: parseFloat(m.variance_qty) || 0,
           variance_type: m.variance_type,
           uom: m.uom,
@@ -318,7 +318,7 @@ export async function GET(request: NextRequest) {
             sku_id: m.material_sku_id,
             sku_name: m.material_sku?.sku_name,
             issued_qty: parseFloat(m.issued_qty) || 0,
-            actual_qty: parseFloat(m.actual_qty) || 0,
+            actual_qty: Math.round(parseFloat(m.actual_qty)) || 0,
             variance_qty: parseFloat(m.variance_qty) || 0,
             variance_type: m.variance_type,
             uom: m.uom

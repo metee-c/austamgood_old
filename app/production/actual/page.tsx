@@ -1480,7 +1480,7 @@ const ActualProductionPage = () => {
                                 placeholder={item.issued_qty.toString()}
                                 className="w-20 px-2 py-1 border border-gray-300 rounded text-center text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                 min="0"
-                                step="0.01"
+                                step="1"
                               />
                             </td>
                           </tr>
@@ -1513,7 +1513,7 @@ const ActualProductionPage = () => {
                           placeholder={`กรอกจำนวน (คงเหลือ: ${selectedOrder.remaining_qty.toLocaleString()})`}
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500 text-base font-bold"
                           min="0"
-                          step="0.01"
+                          step="1"
                           autoFocus
                         />
                       </td>
@@ -1713,7 +1713,7 @@ const ActualProductionPage = () => {
                                 placeholder={item.issued_qty.toString()}
                                 className="w-20 px-2 py-1 border border-gray-300 rounded text-center text-sm focus:ring-2 focus:ring-amber-500 focus:border-amber-500"
                                 min="0"
-                                step="0.01"
+                                step="1"
                               />
                             </td>
                           </tr>
@@ -1743,7 +1743,7 @@ const ActualProductionPage = () => {
                           placeholder="กรอกจำนวน"
                           className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-amber-500 focus:border-amber-500 text-base font-bold"
                           min="0"
-                          step="0.01"
+                          step="1"
                           autoFocus
                         />
                       </td>
