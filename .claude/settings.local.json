@@ -85,7 +85,8 @@
       "Bash(node scripts/generate-password-hash.js:*)",
       "Bash(timeout 30 npm run build:*)",
       "Bash(cp:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(node:*)"
     ],
     "deny": [],
     "ask": []
