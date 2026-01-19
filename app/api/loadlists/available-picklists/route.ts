@@ -31,7 +31,6 @@ export async function GET(request: NextRequest) {
     const usedPicklistIds = (loadlistPicklists || []).map((lp: any) => lp.picklist_id);
 
     // Step 2: Fetch completed picklists that are NOT in the used list
-    // ✅ Also fetch picklist_items and reservations to filter by Dispatch staging
     const { data: picklists, error, count } = await supabase
       .from('picklists')
       .select(`
@@ -55,16 +54,6 @@ export async function GET(request: NextRequest) {
             first_name,
             last_name
           )
-        ),
-        picklist_items (
-          id,
-          voided_at,
-          status,
-          picklist_item_reservations (
-            reservation_id,
-            staging_location_id,
-            status
-          )
         )
       `, { count: 'exact' })
       .eq('status', 'completed')
@@ -80,28 +69,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // ✅ Filter picklists to only include those with active Dispatch reservations
-    const filteredPicklists = (picklists || []).filter((picklist: any) => {
-      // Check if picklist has any items with active Dispatch reservations
-      const hasDispatchReservations = (picklist.picklist_items || []).some((item: any) => {
-        // Skip voided items
-        if (item.voided_at || item.status === 'voided') return false;
-        
-        // Check if item has active reservation at Dispatch
-        const reservations = Array.isArray(item.picklist_item_reservations) 
-          ? item.picklist_item_reservations 
-          : (item.picklist_item_reservations ? [item.picklist_item_reservations] : []);
-        
-        return reservations.some((res: any) => 
-          res.staging_location_id === 'Dispatch' && res.status === 'picked'
-        );
-      });
-      
-      return hasDispatchReservations;
-    });
+    // ✅ FIX: Don't filter - return all completed picklists that aren't in loadlists yet
+    // The old filter was too strict (required Dispatch reservations which may not exist)
+    const filteredPicklists = picklists || [];
 
-    console.log(`[available-picklists] Total completed picklists: ${picklists?.length || 0}`);
-    console.log(`[available-picklists] Filtered with Dispatch reservations: ${filteredPicklists.length}`);
+    console.log(`[available-picklists] Total completed picklists available: ${filteredPicklists.length}`);
 
     // Step 3: Get trip IDs to fetch provinces (use filtered picklists)
     const tripIds = filteredPicklists

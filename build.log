@@ -10,7 +10,7 @@
    Generating static pages using 13 workers (59/238) 
    Generating static pages using 13 workers (118/238) 
    Generating static pages using 13 workers (178/238) 
- ✓ Generating static pages using 13 workers (238/238) in 1573.3ms
+ ✓ Generating static pages using 13 workers (238/238) in 3.0s
    Finalizing page optimization ...
 
 Route (app)
