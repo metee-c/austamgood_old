@@ -39,6 +39,9 @@ async function handleGet(request: NextRequest, context: any) {
     // Apply filters
     if (status && status !== 'all') {
       query = query.eq('status', status);
+    } else {
+      // ✅ FIX: เมื่อไม่ระบุ status หรือเลือก 'all' ให้กรอง voided ออก
+      query = query.neq('status', 'voided');
     }
 
     if (startDate) {

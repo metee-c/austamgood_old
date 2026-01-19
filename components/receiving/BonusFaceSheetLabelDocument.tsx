@@ -130,19 +130,17 @@ const BonusFaceSheetLabelDocument: React.FC<BonusFaceSheetLabelDocumentProps> = 
               {/* Header - Company Info + HUB */}
               <div
                 style={{
-                  background: 'linear-gradient(to bottom, #05314a, #0d5277)',
-                  color: 'white',
                   padding: '10px 12px',
                   margin: '-8mm -8mm 6mm -8mm',
-                  borderBottom: '3px solid #f39c12'
+                  borderBottom: '3px solid #000'
                 }}
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '15px' }}>
                   <div style={{ flex: 1 }}>
-                    <h2 style={{ margin: 0, fontSize: '14px', fontWeight: 'bold' }}>
+                    <h2 style={{ margin: 0, fontSize: '14px', fontWeight: 'bold', color: '#000' }}>
                       บริษัท ออสแทม กู๊ดส์ จำกัด
                     </h2>
-                    <p style={{ margin: '2px 0 0 0', fontSize: '9px', lineHeight: 1.3 }}>
+                    <p style={{ margin: '2px 0 0 0', fontSize: '9px', lineHeight: 1.3, color: '#000' }}>
                       350,352 ถนนอุดมสุข แขวงบางนาเหนือ เขตบางนา กทม. 10260
                       <br />
                       โทร: 02 749 4667-72 | แฟ็กซ์: 02 743 2057
@@ -152,22 +150,22 @@ const BonusFaceSheetLabelDocument: React.FC<BonusFaceSheetLabelDocumentProps> = 
                     style={{
                       background: '#ffeb3b',
                       color: '#000',
-                      padding: '12px 20px',
-                      borderRadius: '8px',
+                      padding: '6px 12px',
+                      borderRadius: '6px',
                       textAlign: 'center',
-                      border: '3px solid #f57c00',
-                      boxShadow: '0 3px 8px rgba(0,0,0,0.3)'
+                      border: '2px solid #f57c00',
+                      boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
                     }}
                   >
-                    <p style={{ margin: 0, fontSize: '11px', fontWeight: 'bold', letterSpacing: '0.5px' }}>HUB:</p>
+                    <p style={{ margin: 0, fontSize: '9px', fontWeight: 'bold', letterSpacing: '0.5px' }}>HUB:</p>
                     <p
                       style={{
-                        margin: '3px 0 0 0',
-                        fontSize: '28px',
+                        margin: '2px 0 0 0',
+                        fontSize: '18px',
                         fontWeight: 900,
                         color: '#d32f2f',
                         textTransform: 'uppercase',
-                        letterSpacing: '1px',
+                        letterSpacing: '0.5px',
                         lineHeight: 1
                       }}
                     >
@@ -231,53 +229,43 @@ const BonusFaceSheetLabelDocument: React.FC<BonusFaceSheetLabelDocumentProps> = 
                 <div
                   style={{
                     border: '2px solid #000',
-                    padding: '8px',
+                    padding: '6px',
                     background: 'linear-gradient(to bottom, #f9f9f9 0%, #fff8dc 100%)'
                   }}
                 >
-                  {/* Top Row: Customer Code + Order Number */}
+                  {/* Top Row: Customer Code */}
                   <div
                     style={{
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      marginBottom: '6px',
-                      paddingBottom: '6px',
+                      marginBottom: '4px',
+                      paddingBottom: '4px',
                       borderBottom: '1px solid #ddd'
                     }}
                   >
-                    <div style={{ flex: 1 }}>
-                      <p style={{ fontSize: '12px', margin: 0 }}>
-                        <strong>รหัสลูกค้า:</strong>{' '}
-                        <span style={{ fontSize: '13px', color: '#0066cc', fontWeight: 'bold' }}>
-                          {pkg.customer_id}
-                        </span>
-                      </p>
-                    </div>
-                    <div style={{ flex: 1, textAlign: 'right' }}>
-                      <p style={{ fontSize: '12px', margin: 0 }}>
-                        <strong>เลขที่ใบสั่งส่ง:</strong>{' '}
-                        <span style={{ fontSize: '13px', color: '#0066cc', fontWeight: 'bold' }}>{pkg.order_no}</span>
-                      </p>
-                    </div>
+                    <p style={{ fontSize: '10px', margin: 0 }}>
+                      <strong>รหัสลูกค้า:</strong>{' '}
+                      <span style={{ fontSize: '12px', color: '#0066cc', fontWeight: 'bold' }}>
+                        {pkg.customer_id}
+                      </span>
+                    </p>
                   </div>
 
                   {/* Middle Row: Address + Delivery Type + Remark */}
-                  <div style={{ marginBottom: '6px', paddingBottom: '6px', borderBottom: '1px solid #ddd' }}>
-                    <p style={{ fontSize: '11px', margin: '2px 0' }}>
+                  <div style={{ marginBottom: '4px', paddingBottom: '4px', borderBottom: '1px solid #ddd' }}>
+                    <p style={{ fontSize: '9px', margin: '1px 0', lineHeight: 1.3 }}>
                       <strong>ที่อยู่:</strong> {pkg.address}
                     </p>
-                    <p style={{ fontSize: '11px', margin: '2px 0' }}>
+                    <p style={{ fontSize: '9px', margin: '1px 0' }}>
                       <strong>ประเภทจัดส่ง:</strong>{' '}
                       <span style={{ color: '#d32f2f', fontWeight: 'bold' }}>{pkg.delivery_type || ''}</span>
                     </p>
                     {pkg.remark && (
-                      <p style={{ fontSize: '11px', margin: '2px 0' }}>
+                      <p style={{ fontSize: '9px', margin: '1px 0' }}>
                         <strong>หมายเหตุ:</strong>{' '}
                         <span style={{ color: '#d32f2f', fontWeight: 'bold' }}>{pkg.remark}</span>
                       </p>
                     )}
                     {pkg.trip_number && (
-                      <p style={{ fontSize: '11px', margin: '2px 0' }}>
+                      <p style={{ fontSize: '9px', margin: '1px 0' }}>
                         <strong>สายรถ/คันที่:</strong>{' '}
                         <span style={{ color: '#0066cc', fontWeight: 'bold' }}>{pkg.trip_number}</span>
                       </p>
@@ -285,17 +273,17 @@ const BonusFaceSheetLabelDocument: React.FC<BonusFaceSheetLabelDocumentProps> = 
                   </div>
 
                   {/* Bottom Row: Package Info */}
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 0' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '2px 0' }}>
                     <div style={{ flex: 1 }}>
-                      <p style={{ fontSize: '10px', margin: 0, color: '#555' }}>แพ็คจัดเตรียม(คลัง)</p>
+                      <p style={{ fontSize: '8px', margin: 0, color: '#555' }}>แพ็คจัดเตรียม(คลัง)</p>
                       <p
                         style={{
-                          fontSize: '22px',
+                          fontSize: '18px',
                           margin: 0,
                           fontWeight: 'bold',
                           color: '#000',
                           background: '#ffeb3b',
-                          padding: '2px 8px',
+                          padding: '2px 6px',
                           display: 'inline-block',
                           borderRadius: '4px'
                         }}
@@ -306,17 +294,17 @@ const BonusFaceSheetLabelDocument: React.FC<BonusFaceSheetLabelDocumentProps> = 
                     {/* Storage Location - แสดงโลเคชั่นจัดวาง */}
                     {pkg.storage_location && (
                       <div style={{ flex: 1, textAlign: 'center' }}>
-                        <p style={{ fontSize: '10px', margin: 0, color: '#555' }}>โลเคชั่นจัดวาง</p>
+                        <p style={{ fontSize: '8px', margin: 0, color: '#555' }}>โลเคชั่นจัดวาง</p>
                         <p
                           style={{
-                            fontSize: '20px',
+                            fontSize: '16px',
                             margin: 0,
                             fontWeight: 'bold',
                             color: '#fff',
                             background: pkg.storage_location.startsWith('PQ') ? '#2563eb' : '#db2777',
-                            padding: '4px 12px',
+                            padding: '3px 10px',
                             display: 'inline-block',
-                            borderRadius: '6px',
+                            borderRadius: '4px',
                             border: '2px solid #000',
                             letterSpacing: '1px'
                           }}
@@ -326,15 +314,15 @@ const BonusFaceSheetLabelDocument: React.FC<BonusFaceSheetLabelDocumentProps> = 
                       </div>
                     )}
                     <div style={{ flex: 1, textAlign: 'center' }}>
-                      <p style={{ fontSize: '10px', margin: 0, color: '#555' }}>แพ็คต่อเลขออเดอร์</p>
+                      <p style={{ fontSize: '8px', margin: 0, color: '#555' }}>แพ็คต่อเลขออเดอร์</p>
                       <p
                         style={{
-                          fontSize: '18px',
+                          fontSize: '14px',
                           margin: 0,
                           fontWeight: 'bold',
                           color: '#d32f2f',
                           background: '#ffebee',
-                          padding: '2px 8px',
+                          padding: '2px 6px',
                           display: 'inline-block',
                           borderRadius: '4px',
                           border: '2px solid #d32f2f'
@@ -344,8 +332,8 @@ const BonusFaceSheetLabelDocument: React.FC<BonusFaceSheetLabelDocumentProps> = 
                       </p>
                     </div>
                     <div style={{ flex: 1, textAlign: 'right' }}>
-                      <p style={{ fontSize: '10px', margin: 0, color: '#555' }}>Barcode ID</p>
-                      <p style={{ fontSize: '12px', margin: 0, fontWeight: 'bold', fontFamily: 'monospace' }}>
+                      <p style={{ fontSize: '8px', margin: 0, color: '#555' }}>Barcode ID</p>
+                      <p style={{ fontSize: '10px', margin: 0, fontWeight: 'bold', fontFamily: 'monospace' }}>
                         {pkg.barcode_id}
                       </p>
                     </div>
@@ -445,14 +433,40 @@ const BonusFaceSheetLabelDocument: React.FC<BonusFaceSheetLabelDocumentProps> = 
                 <Barcode
                   value={pkg.barcode_id}
                   format="CODE128"
-                  width={1.5}
-                  height={40}
+                  width={1.2}
+                  height={30}
                   displayValue={true}
-                  fontSize={10}
+                  fontSize={9}
                   margin={0}
                   background="#ffffff"
                   lineColor="#000000"
                 />
+
+                {/* Order Number - ใต้บาร์โค้ด */}
+                <div
+                  style={{
+                    width: '100%',
+                    textAlign: 'center',
+                    marginTop: '8px'
+                  }}
+                >
+                  <p style={{ fontSize: '11px', margin: '0 0 2px 0', fontWeight: 'bold', color: '#555' }}>
+                    เลขที่ใบสั่งส่ง
+                  </p>
+                  <p
+                    style={{
+                      fontSize: '32px',
+                      margin: 0,
+                      fontWeight: 900,
+                      color: '#d32f2f',
+                      letterSpacing: '2px',
+                      lineHeight: 1,
+                      fontFamily: 'monospace'
+                    }}
+                  >
+                    {pkg.order_no}
+                  </p>
+                </div>
               </div>
             </div>
           );

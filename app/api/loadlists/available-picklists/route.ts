@@ -31,6 +31,7 @@ export async function GET(request: NextRequest) {
     const usedPicklistIds = (loadlistPicklists || []).map((lp: any) => lp.picklist_id);
 
     // Step 2: Fetch completed picklists that are NOT in the used list
+    // Note: voided picklists are already excluded by status='completed' filter
     const { data: picklists, error, count } = await supabase
       .from('picklists')
       .select(`
