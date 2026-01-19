@@ -164,9 +164,9 @@ async function handlePost(request: NextRequest, context: any) {
     console.log('📦 Creating bonus face sheet with atomic transaction...');
     
     const { data, error } = await supabase.rpc('create_bonus_face_sheet_with_reservation', {
-      p_warehouse_id: warehouse_id,
       p_delivery_date: delivery_date,
       p_packages: packages,
+      p_warehouse_id: warehouse_id,
       p_created_by: created_by
     });
 
