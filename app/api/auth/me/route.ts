@@ -8,10 +8,24 @@ import { getCurrentSession } from '@/lib/auth/session';
  */
 export async function GET(request: NextRequest) {
   try {
+    // Get session token from cookie
+    const sessionToken = request.cookies.get('session_token')?.value;
+    
+    if (!sessionToken) {
+      console.log('❌ [/api/auth/me] No session token in cookie');
+      return NextResponse.json(
+        { error: 'ไม่ได้เข้าสู่ระบบ' },
+        { status: 401 }
+      );
+    }
+
+    console.log('🔍 [/api/auth/me] Session token found:', sessionToken.substring(0, 20) + '...');
+
     // Get current session
     const sessionResult = await getCurrentSession();
     
     if (!sessionResult.success || !sessionResult.session) {
+      console.log('❌ [/api/auth/me] Session validation failed:', sessionResult.error);
       return NextResponse.json(
         { error: 'ไม่ได้เข้าสู่ระบบ' },
         { status: 401 }
@@ -19,6 +33,7 @@ export async function GET(request: NextRequest) {
     }
 
     const session = sessionResult.session;
+    console.log('✅ [/api/auth/me] Session valid for user:', session.email, 'user_id:', session.user_id);
 
     return NextResponse.json({
       success: true,
@@ -26,6 +41,7 @@ export async function GET(request: NextRequest) {
         user_id: session.user_id,
         username: session.username,
         email: session.email,
+        full_name: session.full_name,
         first_name: session.full_name.split(' ')[0] || '',
         last_name: session.full_name.split(' ').slice(1).join(' ') || '',
         role_id: session.role_id,
@@ -40,7 +56,7 @@ export async function GET(request: NextRequest) {
       }
     });
   } catch (error) {
-    console.error('Get current user API error:', error);
+    console.error('💥 [/api/auth/me] Error:', error);
     return NextResponse.json(
       { error: 'เกิดข้อผิดพลาดภายในระบบ' },
       { status: 500 }

@@ -252,7 +252,7 @@ export async function setSessionCookie(token: string, maxAge: number = 24 * 60 *
   cookieStore.set('session_token', token, {
     httpOnly: true,
     secure: process.env.NODE_ENV === 'production',
-    sameSite: 'lax',
+    sameSite: 'strict', // เปลี่ยนเป็น 'strict' เพื่อป้องกัน session mixing
     maxAge,
     path: '/'
   });

@@ -69,8 +69,9 @@ export async function POST(request: NextRequest) {
       const cookieOptions: any = {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax',
-        path: '/'
+        sameSite: 'strict', // เปลี่ยนจาก 'lax' เป็น 'strict' เพื่อป้องกัน CSRF
+        path: '/',
+        // ไม่ระบุ domain เพื่อให้ cookie ทำงานกับ hostname ปัจจุบันเท่านั้น
       };
 
       if (remember_me) {
@@ -83,7 +84,8 @@ export async function POST(request: NextRequest) {
       console.log('🍪 Session cookie set:', {
         remember_me,
         type: remember_me ? 'persistent (30 days)' : 'session (until browser closes)',
-        secure: process.env.NODE_ENV === 'production'
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict'
       });
     }
 
