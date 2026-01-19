@@ -223,10 +223,9 @@ const InventoryBalancesPage = () => {
       setLoading(true);
       const supabase = createClient();
 
-      // Locations to exclude
+      // Locations to exclude (removed Dispatch from exclusion list)
       const excludeLocations = [
         ...preparationAreaCodes,
-        'Dispatch',
         'Delivery-In-Progress',
         'RCV',
         'SHIP',
@@ -423,19 +422,18 @@ const InventoryBalancesPage = () => {
 
   // Filter and group data by zone and location
   const groupedByZone = useMemo(() => {
-    // Locations to exclude
+    // Locations to exclude (removed Dispatch from exclusion list)
     const excludeLocations = new Set([
       ...preparationAreaCodes,
-      'Dispatch',
       'Delivery-In-Progress',
       'RCV',
       'SHIP',
     ]);
 
-    // Filter master locations
+    // Filter master locations (allow dispatch but exclude delivery)
     let filteredLocations = masterLocations.filter(loc => {
       if (excludeLocations.has(loc.location_id)) return false;
-      if (loc.location_type === 'dispatch' || loc.location_type === 'delivery') return false;
+      if (loc.location_type === 'delivery') return false;
       if (selectedWarehouse !== 'all' && loc.warehouse_id !== selectedWarehouse) return false;
       if (selectedZone !== 'all' && loc.zone !== selectedZone) return false;
       

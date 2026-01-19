@@ -100,7 +100,8 @@ export const useSkus = () => {
   useEffect(() => {
     const fetchSkus = async () => {
       try {
-        const response = await fetch('/api/master-sku');
+        // Fetch ALL SKUs by setting a very high limit (no pagination for form options)
+        const response = await fetch('/api/master-sku?limit=99999');
         if (!response.ok) {
           throw new Error('Failed to fetch SKUs');
         }
@@ -110,10 +111,25 @@ export const useSkus = () => {
           throw new Error(result.error);
         }
         
-        // API returns { data: [...] }, filter for active SKUs
-        const activeSkus = (result.data || []).filter((s: Sku) => s.status === 'active');
-        setSkus(activeSkus);
+        // API returns { data: [...] }, show all SKUs (including inactive) for receive page
+        const allSkus = result.data || [];
+        setSkus(allSkus);
         setError(null);
+        
+        // Debug: log total SKUs and sample barcodes
+        console.log('📦 SKUs loaded:', {
+          total: allSkus.length,
+          active: allSkus.filter((s: Sku) => s.status === 'active').length,
+          inactive: allSkus.filter((s: Sku) => s.status !== 'active').length,
+          sampleWithBarcodes: allSkus.slice(0, 5).map((s: Sku) => ({ 
+            id: s.sku_id, 
+            name: s.sku_name, 
+            barcode: s.barcode, 
+            status: s.status 
+          })),
+          skusWithBarcode: allSkus.filter((s: Sku) => s.barcode).length,
+          skusWithoutBarcode: allSkus.filter((s: Sku) => !s.barcode).length
+        });
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';
         console.error("Error fetching SKUs:", errorMessage);
@@ -182,8 +198,12 @@ export const useCustomers = () => {
         }
         const result = await response.json();
         
-        // API returns array directly, filter for active customers
-        const activeCustomers = (result || []).filter((c: Customer) => c.status === 'active');
+        if (result.error) {
+          throw new Error(result.error);
+        }
+        
+        // API returns { data: [...] }, filter for active customers
+        const activeCustomers = (result.data || []).filter((c: Customer) => c.status === 'active');
         setCustomers(activeCustomers);
         setError(null);
       } catch (err) {

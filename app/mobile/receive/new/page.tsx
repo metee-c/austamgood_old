@@ -425,12 +425,28 @@ export default function MobileReceiveNewPage() {
       c.customer_id.toLowerCase().includes(customerSearch.toLowerCase())
     ), [customers, customerSearch]);
 
-  const filteredSkus = useMemo(() => 
-    skus.filter(s =>
-      s.sku_name.toLowerCase().includes(skuSearch.toLowerCase()) ||
-      s.sku_id.toLowerCase().includes(skuSearch.toLowerCase()) ||
-      (s.barcode && s.barcode.toLowerCase().includes(skuSearch.toLowerCase()))
-    ), [skus, skuSearch]);
+  const filteredSkus = useMemo(() => {
+    if (!skuSearch.trim()) return skus;
+    
+    const searchLower = skuSearch.toLowerCase().trim();
+    const filtered = skus.filter(s => {
+      const skuNameMatch = s.sku_name?.toLowerCase().includes(searchLower);
+      const skuIdMatch = s.sku_id?.toLowerCase().includes(searchLower);
+      const barcodeMatch = s.barcode?.toLowerCase().includes(searchLower);
+      
+      return skuNameMatch || skuIdMatch || barcodeMatch;
+    });
+    
+    // Debug: log search results
+    console.log('🔍 SKU Search:', {
+      query: skuSearch,
+      totalSkus: skus.length,
+      filteredCount: filtered.length,
+      sample: filtered.slice(0, 3).map(s => ({ id: s.sku_id, name: s.sku_name, barcode: s.barcode }))
+    });
+    
+    return filtered;
+  }, [skus, skuSearch]);
 
   const filteredLocations = useMemo(() => 
     locations.filter(l =>
@@ -802,13 +818,37 @@ export default function MobileReceiveNewPage() {
                 placeholder="ค้นหา SKU, ชื่อสินค้า, บาร์โค้ด..." className="w-full px-3 py-2 border border-gray-300 rounded font-thai text-sm" autoFocus />
             </div>
             <div className="flex-1 overflow-auto">
-              {filteredSkus.slice(0, 50).map(sku => (
-                <button key={sku.sku_id} onClick={() => handleSelectSKU(currentItemIndex, sku)}
-                  className="w-full px-3 py-2 text-left hover:bg-gray-50 border-b font-thai">
-                  <div className="font-semibold text-sm truncate">{sku.sku_name}</div>
-                  <div className="text-[10px] text-gray-500">{sku.sku_id} {sku.barcode && `| ${sku.barcode}`}</div>
-                </button>
-              ))}
+              {skusLoading ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-6 h-6 text-blue-500 animate-spin" />
+                  <span className="ml-2 text-sm text-gray-500 font-thai">กำลังโหลด...</span>
+                </div>
+              ) : filteredSkus.length === 0 ? (
+                <div className="text-center py-8">
+                  <Package className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                  <p className="text-sm text-gray-500 font-thai">
+                    {skuSearch ? `ไม่พบสินค้า "${skuSearch}"` : 'ไม่มีสินค้าในระบบ'}
+                  </p>
+                  {skuSearch && (
+                    <p className="text-xs text-gray-400 font-thai mt-1">ลองค้นหาด้วยคำอื่น</p>
+                  )}
+                </div>
+              ) : (
+                <>
+                  {filteredSkus.slice(0, 50).map(sku => (
+                    <button key={sku.sku_id} onClick={() => handleSelectSKU(currentItemIndex, sku)}
+                      className="w-full px-3 py-2 text-left hover:bg-gray-50 border-b font-thai">
+                      <div className="font-semibold text-sm truncate">{sku.sku_name}</div>
+                      <div className="text-[10px] text-gray-500">{sku.sku_id} {sku.barcode && `| ${sku.barcode}`}</div>
+                    </button>
+                  ))}
+                  {filteredSkus.length > 50 && (
+                    <div className="p-2 text-center text-xs text-gray-500 font-thai">
+                      แสดง 50 จาก {filteredSkus.length} รายการ - ค้นหาเพื่อกรองเพิ่มเติม
+                    </div>
+                  )}
+                </>
+              )}
             </div>
           </div>
         </div>
