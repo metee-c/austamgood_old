@@ -87,7 +87,8 @@
       "Bash(cp:*)",
       "Bash(ls:*)",
       "Bash(node:*)",
-      "Bash(del test-forecast-calc.js)"
+      "Bash(del test-forecast-calc.js)",
+      "Bash(grep:*)"
     ],
     "deny": [],
     "ask": []
