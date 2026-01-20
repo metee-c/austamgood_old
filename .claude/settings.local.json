@@ -86,7 +86,8 @@
       "Bash(timeout 30 npm run build:*)",
       "Bash(cp:*)",
       "Bash(ls:*)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(del test-forecast-calc.js)"
     ],
     "deny": [],
     "ask": []

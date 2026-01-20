@@ -85,12 +85,12 @@ function calculateAdvancedAvgDailyShip(dailyShips: number[]): AvgDailyShipResult
     median: 0,
     method: 'no_data'
   };
-  
+
   if (dailyShips.length === 0) return defaultResult;
-  
+
   // กรองเฉพาะวันที่มีการจ่าย (ไม่รวมวันที่ = 0) สำหรับบางการคำนวณ
   const nonZeroDays = dailyShips.filter(v => v > 0);
-  
+
   // 1. คำนวณ EWMA (Exponential Weighted Moving Average)
   // Alpha = 0.3 ให้น้ำหนักกับข้อมูลล่าสุดมากขึ้น
   const alpha = 0.3;
@@ -98,7 +98,7 @@ function calculateAdvancedAvgDailyShip(dailyShips: number[]): AvgDailyShipResult
   for (let i = 1; i < dailyShips.length; i++) {
     ewma = alpha * dailyShips[i] + (1 - alpha) * ewma;
   }
-  
+
   // 2. คำนวณ Trimmed Mean (ตัด 10% บน-ล่าง)
   // ใช้ข้อมูลทั้งหมด (รวมวันที่ = 0) เพื่อสะท้อนความถี่การจ่ายจริง
   const sortedAll = [...dailyShips].sort((a, b) => a - b);
@@ -108,25 +108,25 @@ function calculateAdvancedAvgDailyShip(dailyShips: number[]): AvgDailyShipResult
   const trimmedMean = trimmedData.length > 0
     ? trimmedData.reduce((a, b) => a + b, 0) / trimmedData.length
     : sortedAll.reduce((a, b) => a + b, 0) / sortedAll.length;
-  
+
   // 3. คำนวณ Median
   const medianIndex = Math.floor(sortedAll.length / 2);
   const median = sortedAll.length % 2 === 0
     ? (sortedAll[medianIndex - 1] + sortedAll[medianIndex]) / 2
     : sortedAll[medianIndex];
-  
+
   // 4. คำนวณ Coefficient of Variation (CV) เพื่อปรับน้ำหนัก
   const mean = dailyShips.reduce((a, b) => a + b, 0) / dailyShips.length;
   const variance = dailyShips.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / dailyShips.length;
   const stdDev = Math.sqrt(variance);
   const cv = mean > 0 ? stdDev / mean : 0;
-  
+
   // 5. ปรับน้ำหนักตาม CV
   // ถ้า CV สูง (ข้อมูลแปรปรวนมาก) ให้น้ำหนัก Median และ Trimmed Mean มากขึ้น
   let ewmaWeight = 0.5;
   let trimmedWeight = 0.3;
   let medianWeight = 0.2;
-  
+
   if (cv > 1.5) {
     // ข้อมูลแปรปรวนมาก - ใช้ robust methods มากขึ้น
     ewmaWeight = 0.3;
@@ -138,15 +138,15 @@ function calculateAdvancedAvgDailyShip(dailyShips: number[]): AvgDailyShipResult
     trimmedWeight = 0.35;
     medianWeight = 0.25;
   }
-  
+
   // 6. คำนวณค่าเฉลี่ยถ่วงน้ำหนัก
   const hybridAvg = (ewma * ewmaWeight) + (trimmedMean * trimmedWeight) + (median * medianWeight);
-  
+
   // กำหนด method ที่ใช้
   let method = 'hybrid';
   if (cv > 1.5) method = 'hybrid_robust';
   else if (dailyShips.length < 14) method = 'hybrid_limited_data';
-  
+
   return {
     value: hybridAvg,
     ewma,
@@ -184,15 +184,15 @@ interface TrendAnalysisResult {
 
 function analyzeTrendAdvanced(dailyShips: number[]): TrendAnalysisResult {
   const defaultResult: TrendAnalysisResult = { trend: 'stable', slope: 0, significance: 1 };
-  
+
   if (dailyShips.length < 10) return defaultResult;
-  
+
   // ใช้ข้อมูล 30 วันล่าสุด (หรือทั้งหมดถ้าน้อยกว่า)
   const recentData = dailyShips.slice(-30);
   const n = recentData.length;
-  
+
   if (n < 10) return defaultResult;
-  
+
   // === Mann-Kendall Test ===
   // คำนวณ S statistic
   let S = 0;
@@ -204,23 +204,23 @@ function analyzeTrendAdvanced(dailyShips: number[]): TrendAnalysisResult {
       // diff === 0 ไม่นับ
     }
   }
-  
+
   // คำนวณ Variance ของ S
   // สำหรับกรณีที่มี ties (ค่าซ้ำ)
   const tieGroups: Record<number, number> = {};
   recentData.forEach(val => {
     tieGroups[val] = (tieGroups[val] || 0) + 1;
   });
-  
+
   let tieCorrection = 0;
   Object.values(tieGroups).forEach(t => {
     if (t > 1) {
       tieCorrection += t * (t - 1) * (2 * t + 5);
     }
   });
-  
+
   const varS = (n * (n - 1) * (2 * n + 5) - tieCorrection) / 18;
-  
+
   // คำนวณ Z-score
   let Z: number;
   if (S > 0) {
@@ -230,13 +230,13 @@ function analyzeTrendAdvanced(dailyShips: number[]): TrendAnalysisResult {
   } else {
     Z = 0;
   }
-  
+
   // คำนวณ p-value (two-tailed) โดยใช้ approximation
   // P(Z) ≈ 1 - Φ(|Z|) สำหรับ standard normal
   const absZ = Math.abs(Z);
   // Approximation ของ CDF ของ standard normal
   const pValue = 2 * (1 - normalCDF(absZ));
-  
+
   // === Sen's Slope ===
   // คำนวณ slopes ทั้งหมดระหว่างทุกคู่ของจุด
   const slopes: number[] = [];
@@ -246,22 +246,22 @@ function analyzeTrendAdvanced(dailyShips: number[]): TrendAnalysisResult {
       slopes.push(slope);
     }
   }
-  
+
   // Sen's Slope = median ของ slopes ทั้งหมด
   slopes.sort((a, b) => a - b);
   const medianIndex = Math.floor(slopes.length / 2);
   const sensSlope = slopes.length % 2 === 0
     ? (slopes[medianIndex - 1] + slopes[medianIndex]) / 2
     : slopes[medianIndex];
-  
+
   // === กำหนดแนวโน้ม ===
   // ใช้ significance level α = 0.05
   // และ slope ต้องมีนัยสำคัญทางปฏิบัติ (> 1% ของค่าเฉลี่ย)
   const mean = recentData.reduce((a, b) => a + b, 0) / n;
   const practicalThreshold = mean * 0.01; // 1% ของค่าเฉลี่ย
-  
+
   let trend: 'increasing' | 'stable' | 'decreasing' = 'stable';
-  
+
   if (pValue < 0.05) {
     // Statistically significant
     if (sensSlope > practicalThreshold) {
@@ -270,7 +270,7 @@ function analyzeTrendAdvanced(dailyShips: number[]): TrendAnalysisResult {
       trend = 'decreasing';
     }
   }
-  
+
   return {
     trend,
     slope: Math.round(sensSlope * 100) / 100,
@@ -284,20 +284,20 @@ function analyzeTrendAdvanced(dailyShips: number[]): TrendAnalysisResult {
  */
 function normalCDF(x: number): number {
   if (x < 0) return 1 - normalCDF(-x);
-  
+
   const a1 = 0.254829592;
   const a2 = -0.284496736;
   const a3 = 1.421413741;
   const a4 = -1.453152027;
   const a5 = 1.061405429;
   const p = 0.3275911;
-  
+
   const t = 1 / (1 + p * x);
   const t2 = t * t;
   const t3 = t2 * t;
   const t4 = t3 * t;
   const t5 = t4 * t;
-  
+
   return 1 - (a1 * t + a2 * t2 + a3 * t3 + a4 * t4 + a5 * t5) * Math.exp(-x * x / 2);
 }
 
@@ -316,17 +316,17 @@ function analyzeTrend(dailyShips: number[]): 'increasing' | 'stable' | 'decreasi
 function calculateConfidence(dailyShips: number[], dataDays: number): 'high' | 'medium' | 'low' {
   if (dataDays < 7) return 'low';
   if (dataDays < 14) return 'medium';
-  
+
   // คำนวณ Coefficient of Variation (CV)
   if (dailyShips.length === 0) return 'low';
-  
+
   const mean = dailyShips.reduce((a, b) => a + b, 0) / dailyShips.length;
   if (mean === 0) return 'low';
-  
+
   const variance = dailyShips.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / dailyShips.length;
   const stdDev = Math.sqrt(variance);
   const cv = stdDev / mean;
-  
+
   // CV < 0.5 = high confidence, CV < 1.0 = medium, else low
   if (cv < 0.5) return 'high';
   if (cv < 1.0) return 'medium';
@@ -378,38 +378,38 @@ function calculatePriorityScore(
   trendSlope: number,
   pendingByDate: { date: string; qty: number }[]
 ): PriorityScoreResult {
-  
+
   // 1. คำนวณ Days Until Stockout (รวม pending orders ตาม delivery date)
   // จำลองการจ่ายสินค้าตาม delivery date
   let remainingStock = availableStock;
   let daysUntilStockout = 999;
-  
+
   // เรียงลำดับ pending orders ตาม delivery date
   const sortedPending = [...pendingByDate].sort((a, b) => a.date.localeCompare(b.date));
-  
+
   const priorityToday = new Date();
   priorityToday.setHours(0, 0, 0, 0);
-  
+
   // จำลองการจ่ายสินค้าทีละวัน
   for (let day = 0; day <= 90; day++) {
     const checkDate = new Date(priorityToday);
     checkDate.setDate(checkDate.getDate() + day);
     const checkDateStr = checkDate.toISOString().split('T')[0];
-    
+
     // หักยอด pending orders ที่ต้องส่งในวันนี้
     const todayPending = sortedPending
       .filter(p => p.date === checkDateStr)
       .reduce((sum, p) => sum + p.qty, 0);
-    
+
     // หักยอดจ่ายเฉลี่ยต่อวัน
     remainingStock -= (todayPending + avgDailyShip);
-    
+
     if (remainingStock <= 0) {
       daysUntilStockout = day;
       break;
     }
   }
-  
+
   // 2. คำนวณ Stockout Score (40%)
   // 0 วัน = 10, 7 วัน = 8, 14 วัน = 6, 30 วัน = 4, 60 วัน = 2, 90+ วัน = 1
   let stockoutScore: number;
@@ -428,7 +428,7 @@ function calculatePriorityScore(
   } else {
     stockoutScore = 1;
   }
-  
+
   // 3. คำนวณ Urgent Order Score (25%)
   // สัดส่วนออเดอร์เร่งด่วนต่อสต็อกที่มี
   let urgentScore = 1;
@@ -450,7 +450,7 @@ function calculatePriorityScore(
   } else if (availableStock <= 0 && urgentOrderQty > 0) {
     urgentScore = 10; // ไม่มีสต็อกแต่มีออเดอร์เร่งด่วน
   }
-  
+
   // 4. คำนวณ Safety Stock Gap Score (20%)
   // ช่องว่างระหว่างสต็อกปัจจุบันกับ Safety Stock
   let safetyGapScore = 1;
@@ -467,7 +467,7 @@ function calculatePriorityScore(
       safetyGapScore = Math.max(1, 2 + gapRatio * 2);
     }
   }
-  
+
   // 5. คำนวณ Trend Score (15%)
   // แนวโน้มเพิ่มขึ้น = คะแนนสูง, ลดลง = คะแนนต่ำ
   let trendScore = 5; // คงที่ = 5
@@ -487,17 +487,17 @@ function calculatePriorityScore(
       trendScore = 4;
     }
   }
-  
+
   // 6. คำนวณคะแนนรวม (Weighted Average)
-  const finalScore = 
+  const finalScore =
     (stockoutScore * 0.40) +
     (urgentScore * 0.25) +
     (safetyGapScore * 0.20) +
     (trendScore * 0.15);
-  
+
   // ปัดเศษเป็นทศนิยม 1 ตำแหน่ง
   const roundedScore = Math.round(finalScore * 10) / 10;
-  
+
   return {
     score: Math.min(10, Math.max(1, roundedScore)),
     daysUntilStockout,
@@ -534,25 +534,25 @@ function calculateDynamicSafetyStock(
 
   // คำนวณค่าเฉลี่ย
   const mean = dailyShips.reduce((a, b) => a + b, 0) / dailyShips.length;
-  
+
   if (mean === 0) {
     return { safetyStock: 0, stdDev: 0 };
   }
 
   // คำนวณ MAD (Mean Absolute Deviation) - robust กว่า standard deviation
   const mad = dailyShips.reduce((sum, val) => sum + Math.abs(val - mean), 0) / dailyShips.length;
-  
+
   // แปลง MAD เป็น Standard Deviation (สำหรับ normal distribution)
   // σ ≈ 1.4826 × MAD
   const stdDev = 1.4826 * mad;
-  
+
   // หรือใช้ Standard Deviation แบบปกติ
   const variance = dailyShips.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / dailyShips.length;
   const classicStdDev = Math.sqrt(variance);
-  
+
   // ใช้ค่าที่มากกว่าระหว่าง MAD-based และ classic (conservative approach)
   const finalStdDev = Math.max(stdDev, classicStdDev);
-  
+
   // Z-score ตาม Service Level
   // 90% = 1.28, 95% = 1.65, 97.5% = 1.96, 99% = 2.33
   let zScore: number;
@@ -565,13 +565,13 @@ function calculateDynamicSafetyStock(
   } else {
     zScore = 1.28;
   }
-  
+
   // Safety Stock = Z × σ_d × √L
   const safetyStock = Math.ceil(zScore * finalStdDev * Math.sqrt(leadTimeDays));
-  
-  return { 
-    safetyStock, 
-    stdDev: Math.round(finalStdDev * 100) / 100 
+
+  return {
+    safetyStock,
+    stdDev: Math.round(finalStdDev * 100) / 100
   };
 }
 
@@ -610,11 +610,11 @@ function calculateAdvancedProductionRecommendation(
   leadTimeDays: number = 7,
   bufferPercent: number = 0.002  // 0.2%
 ): ProductionRecommendation {
-  
+
   // 1. คำนวณ Forecast Demand พื้นฐาน
   // ใช้ EWMA เป็นฐาน
   let forecastDemand = avgDailyShip * planningHorizonDays;
-  
+
   // 2. Trend Adjustment
   // ถ้าแนวโน้มเพิ่มขึ้นอย่างมีนัยสำคัญ (p < 0.05) ให้เพิ่ม demand projection
   let trendAdjustment = 0;
@@ -625,25 +625,25 @@ function calculateAdvancedProductionRecommendation(
     trendAdjustment = trendSlope * planningHorizonDays * (planningHorizonDays / 2);
     forecastDemand += trendAdjustment;
   }
-  
+
   // 3. Upper Prediction Interval
   // เพิ่ม uncertainty buffer โดยใช้ standard deviation
   // Upper bound = Forecast + Z × σ × √n
   // ใช้ Z = 1.28 (90% confidence) สำหรับ conservative estimate
   const predictionUncertainty = 1.28 * demandStdDev * Math.sqrt(planningHorizonDays);
   forecastDemand += predictionUncertainty;
-  
+
   // 4. คำนวณ Target Stock
   // Target = Forecast Demand + Safety Stock + Lead Time Buffer
   const leadTimeBuffer = avgDailyShip * leadTimeDays;
   const targetStock = forecastDemand + safetyStock + leadTimeBuffer;
-  
+
   // 5. Buffer 0.2% กันพลาด
   const bufferQty = Math.ceil(targetStock * bufferPercent);
-  
+
   // 6. คำนวณจำนวนแนะนำผลิต
   const suggestedQty = Math.max(0, Math.ceil(targetStock + bufferQty - currentStock));
-  
+
   return {
     suggestedQty,
     targetStock: Math.round(targetStock),
@@ -660,18 +660,18 @@ function calculateAdvancedProductionRecommendation(
 export async function getForecastData(filters: ForecastFilters = {}): Promise<ForecastResult> {
   const supabase = await createClient();
   const { search, priority, subCategory, page = 1, pageSize = 100 } = filters;
-  
+
   // 1. ดึง SKU ทั้งหมดที่เป็นสินค้าสำเร็จรูป (category = 'สินค้าสำเร็จรูป')
   let skuQuery = supabase
     .from('master_sku')
     .select('sku_id, sku_name, category, sub_category, brand, qty_per_pack, safety_stock, reorder_point')
     .eq('category', 'สินค้าสำเร็จรูป')
     .eq('status', 'active');
-  
+
   if (search) {
     skuQuery = skuQuery.or(`sku_id.ilike.%${search}%,sku_name.ilike.%${search}%`);
   }
-  
+
   if (subCategory && subCategory !== 'all') {
     // กรองตาม sub_category หรือ product_type
     if (subCategory === 'แมว') {
@@ -680,14 +680,14 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
       skuQuery = skuQuery.or('sub_category.eq.อาหารสุนัข,product_type.eq.อาหารสุนัข');
     }
   }
-  
+
   const { data: skus, error: skuError } = await skuQuery.order('sku_name');
-  
+
   if (skuError) {
     console.error('Error fetching SKUs:', skuError);
     throw new Error('Failed to fetch SKU data');
   }
-  
+
   if (!skus || skus.length === 0) {
     return {
       data: [],
@@ -702,29 +702,37 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
       }
     };
   }
-  
+
   const skuIds = skus.map(s => s.sku_id);
-  
-  // 2. ดึงยอดสต็อกรวมจากทุก location
+
+  // 2. ดึงยอดสต็อกรวมจากทุก location (แยก total และ available)
   const { data: balances, error: balanceError } = await supabase
     .from('wms_inventory_balances')
-    .select('sku_id, total_piece_qty')
+    .select('sku_id, total_piece_qty, reserved_piece_qty')
     .in('sku_id', skuIds);
-  
+
   if (balanceError) {
     console.error('Error fetching balances:', balanceError);
   }
-  
-  // รวมยอดสต็อกตาม SKU
-  const stockBySkuId: Record<string, number> = {};
+
+  // รวมยอดสต็อกตาม SKU (แยก total และ available)
+  const stockBySkuId: Record<string, { total: number; available: number }> = {};
   (balances || []).forEach(b => {
-    stockBySkuId[b.sku_id] = (stockBySkuId[b.sku_id] || 0) + Number(b.total_piece_qty || 0);
+    const totalQty = Number(b.total_piece_qty || 0);
+    const reservedQty = Number(b.reserved_piece_qty || 0);
+    const availableQty = totalQty - reservedQty;
+    
+    if (!stockBySkuId[b.sku_id]) {
+      stockBySkuId[b.sku_id] = { total: 0, available: 0 };
+    }
+    stockBySkuId[b.sku_id].total += totalQty;
+    stockBySkuId[b.sku_id].available += availableQty;
   });
-  
+
   // 3. ดึงข้อมูลการจ่ายสินค้า (ship) ย้อนหลัง 90 วัน
   const ninetyDaysAgo = new Date();
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
-  
+
   const { data: shipments, error: shipError } = await supabase
     .from('wms_inventory_ledger')
     .select('sku_id, piece_qty, movement_at')
@@ -733,18 +741,18 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
     .eq('direction', 'out')
     .gte('movement_at', ninetyDaysAgo.toISOString())
     .order('movement_at', { ascending: true });
-  
+
   if (shipError) {
     console.error('Error fetching shipments:', shipError);
   }
-  
+
   // จัดกลุ่มข้อมูลการจ่ายตาม SKU และวัน
   const shipDataBySkuId: Record<string, { dailyShips: number[], lastShipDate: string | null, totalDays: number }> = {};
-  
+
   skuIds.forEach(skuId => {
     shipDataBySkuId[skuId] = { dailyShips: [], lastShipDate: null, totalDays: 0 };
   });
-  
+
   // จัดกลุ่มตามวัน
   const shipBySkuAndDate: Record<string, Record<string, number>> = {};
   (shipments || []).forEach(s => {
@@ -754,34 +762,34 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
     }
     shipBySkuAndDate[s.sku_id][date] = (shipBySkuAndDate[s.sku_id][date] || 0) + Number(s.piece_qty || 0);
   });
-  
+
   // สร้าง array ของยอดจ่ายรายวัน (รวมวันที่ไม่มีการจ่าย = 0)
   const shipToday = new Date();
   skuIds.forEach(skuId => {
     const skuShips = shipBySkuAndDate[skuId] || {};
     const dates = Object.keys(skuShips).sort();
-    
+
     if (dates.length > 0) {
       shipDataBySkuId[skuId].lastShipDate = dates[dates.length - 1];
-      
+
       // สร้าง array รายวันตั้งแต่วันแรกที่มีการจ่ายจนถึงวันนี้
       const firstDate = new Date(dates[0]);
       const dailyShips: number[] = [];
-      
+
       for (let d = new Date(firstDate); d <= shipToday; d.setDate(d.getDate() + 1)) {
         const dateStr = d.toISOString().split('T')[0];
         dailyShips.push(skuShips[dateStr] || 0);
       }
-      
+
       shipDataBySkuId[skuId].dailyShips = dailyShips;
       shipDataBySkuId[skuId].totalDays = dailyShips.length;
     }
   });
-  
+
   // 4. ดึงยอดรอส่งจาก Pending Orders (สถานะที่ยังไม่ loaded) พร้อม delivery_date
   // สถานะที่ถือว่ายังไม่ส่ง: draft, confirmed, in_picking, picked
   const pendingStatuses = ['draft', 'confirmed', 'in_picking', 'picked'];
-  
+
   const { data: pendingOrderItems, error: pendingError } = await supabase
     .from('wms_order_items')
     .select(`
@@ -795,28 +803,28 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
     `)
     .in('sku_id', skuIds)
     .in('wms_orders.status', pendingStatuses);
-  
+
   if (pendingError) {
     console.error('Error fetching pending orders:', pendingError);
   }
-  
+
   // รวมยอดรอส่งตาม SKU และแยกยอดเร่งด่วน (ต้องส่งใน 3 วัน)
   const currentDate = new Date();
   currentDate.setHours(0, 0, 0, 0);
   const threeDaysLater = new Date(currentDate);
   threeDaysLater.setDate(threeDaysLater.getDate() + 3);
-  
+
   const pendingQtyBySkuId: Record<string, number> = {};
   const urgentQtyBySkuId: Record<string, number> = {};
   const pendingByDeliveryDate: Record<string, { date: string; qty: number }[]> = {};
-  
+
   (pendingOrderItems || []).forEach((item: any) => {
     const qty = Number(item.order_qty || 0);
     const deliveryDate = item.wms_orders?.delivery_date;
-    
+
     // รวมยอดรอส่งทั้งหมด
     pendingQtyBySkuId[item.sku_id] = (pendingQtyBySkuId[item.sku_id] || 0) + qty;
-    
+
     // เก็บข้อมูลตาม delivery_date สำหรับคำนวณ stockout
     if (!pendingByDeliveryDate[item.sku_id]) {
       pendingByDeliveryDate[item.sku_id] = [];
@@ -825,7 +833,7 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
       date: deliveryDate || '9999-12-31',
       qty
     });
-    
+
     // นับยอดเร่งด่วน (ต้องส่งใน 3 วัน)
     if (deliveryDate) {
       const deliveryDateObj = new Date(deliveryDate);
@@ -834,49 +842,51 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
       }
     }
   });
-  
+
   // 5. คำนวณ Forecast สำหรับแต่ละ SKU
   const forecastData: ForecastSKU[] = skus.map(sku => {
-    const totalStock = stockBySkuId[sku.sku_id] || 0;
+    const stockData = stockBySkuId[sku.sku_id] || { total: 0, available: 0 };
+    const totalStock = stockData.total;
+    const availableStockFromBalance = stockData.available;
     const pendingOrderQty = pendingQtyBySkuId[sku.sku_id] || 0;
     const shipData = shipDataBySkuId[sku.sku_id];
     const dailyShips = shipData.dailyShips;
-    
+
     // คำนวณค่าเฉลี่ยการจ่ายต่อวันโดยใช้ EWMA
     const avgDailyShip = calculateWeightedMovingAverage(dailyShips);
-    
+
     // คำนวณ Safety Stock แบบ Dynamic (Lead Time = 7 วัน, Service Level = 95%)
     const { safetyStock: calculatedSafetyStock, stdDev: demandStdDev } = calculateDynamicSafetyStock(dailyShips, 7, 0.95);
-    
+
     // ใช้ค่า Safety Stock ที่คำนวณได้ หรือค่าจาก master ถ้าไม่มีข้อมูลเพียงพอ
     const effectiveSafetyStock = calculatedSafetyStock > 0 ? calculatedSafetyStock : (sku.safety_stock || 0);
-    
-    // คำนวณ Days of Supply (จากสต็อกปัจจุบัน)
+
+    // คำนวณ Days of Supply (จากสต็อกที่พร้อมใช้งาน - หลังหักยอดจอง)
     let daysOfSupply = 0;
     if (avgDailyShip > 0) {
-      daysOfSupply = Math.round(totalStock / avgDailyShip);
-    } else if (totalStock > 0) {
+      daysOfSupply = Math.round(availableStockFromBalance / avgDailyShip);
+    } else if (availableStockFromBalance > 0) {
       daysOfSupply = 999; // มีสต็อกแต่ไม่มีการจ่าย
     }
-    
-    // คำนวณ Adjusted Days of Supply (หลังหักยอดรอส่ง)
-    const availableStock = Math.max(0, totalStock - pendingOrderQty);
+
+    // คำนวณ Adjusted Days of Supply (หลังหักยอดรอส่งเพิ่มเติม)
+    const availableStock = Math.max(0, availableStockFromBalance - pendingOrderQty);
     let adjustedDaysOfSupply = 0;
     if (avgDailyShip > 0) {
       adjustedDaysOfSupply = Math.round(availableStock / avgDailyShip);
     } else if (availableStock > 0) {
       adjustedDaysOfSupply = 999;
     }
-    
+
     // วิเคราะห์แนวโน้ม (ใช้ Mann-Kendall Test + Sen's Slope)
     const trendAnalysis = analyzeTrendAdvanced(dailyShips);
-    
+
     // คำนวณความเชื่อมั่น
     const confidenceLevel = calculateConfidence(dailyShips, shipData.totalDays);
-    
+
     // กำหนดระดับความสำคัญ (ใช้ adjusted days of supply และ calculated safety stock)
     const priorityLevel = determinePriority(adjustedDaysOfSupply, effectiveSafetyStock, availableStock);
-    
+
     // คำนวณคะแนนความสำคัญ (Priority Score 1-10)
     const urgentOrderQty = urgentQtyBySkuId[sku.sku_id] || 0;
     const skuPendingByDate = pendingByDeliveryDate[sku.sku_id] || [];
@@ -889,7 +899,7 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
       trendAnalysis.slope,
       skuPendingByDate
     );
-    
+
     // คำนวณจำนวนที่แนะนำให้ผลิต (ใช้วิธีขั้นสูง) - ใช้ available stock แทน total stock
     const productionRec = calculateAdvancedProductionRecommendation(
       availableStock,  // ใช้สต็อกหลังหักยอดรอส่ง
@@ -902,7 +912,7 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
       7,   // Lead Time = 7 วัน
       0.002 // Buffer = 0.2%
     );
-    
+
     return {
       sku_id: sku.sku_id,
       sku_name: sku.sku_name,
@@ -914,7 +924,7 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
       calculated_safety_stock: calculatedSafetyStock,
       demand_std_dev: demandStdDev,
       reorder_point: sku.reorder_point || 0,
-      total_stock: totalStock,
+      total_stock: availableStockFromBalance,  // แสดงสต็อกที่พร้อมใช้งาน (หลังหักยอดจอง)
       avg_daily_ship: Math.round(avgDailyShip * 100) / 100,
       days_of_supply: daysOfSupply,
       pending_order_qty: pendingOrderQty,
@@ -932,13 +942,13 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
       days_until_stockout: priorityScoreResult.daysUntilStockout
     };
   });
-  
+
   // 5. กรองตาม priority ถ้ามี
   let filteredData = forecastData;
   if (priority && priority !== 'all') {
     filteredData = forecastData.filter(d => d.priority === priority);
   }
-  
+
   // 6. เรียงลำดับตามความสำคัญ (ใช้ priority_score แทน)
   filteredData.sort((a, b) => {
     // เรียงตาม priority_score จากมากไปน้อย (10 = วิกฤตที่สุด)
@@ -947,12 +957,12 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
     // ถ้าคะแนนใกล้เคียงกัน เรียงตาม days_until_stockout
     return a.days_until_stockout - b.days_until_stockout;
   });
-  
+
   // 7. Pagination
   const totalCount = filteredData.length;
   const startIndex = (page - 1) * pageSize;
   const paginatedData = filteredData.slice(startIndex, startIndex + pageSize);
-  
+
   // 8. สรุปข้อมูล
   const summary = {
     totalSKUs: forecastData.length,
@@ -960,11 +970,11 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
     highCount: forecastData.filter(d => d.priority === 'high').length,
     mediumCount: forecastData.filter(d => d.priority === 'medium').length,
     lowCount: forecastData.filter(d => d.priority === 'low').length,
-    avgDaysOfSupply: forecastData.length > 0 
+    avgDaysOfSupply: forecastData.length > 0
       ? Math.round(forecastData.reduce((sum, d) => sum + Math.min(d.days_of_supply, 365), 0) / forecastData.length)
       : 0
   };
-  
+
   return {
     data: paginatedData,
     totalCount,

@@ -122,8 +122,14 @@ const ForecastPage = () => {
       if (selectedSubCategory !== 'all') params.set('subCategory', selectedSubCategory);
       params.set('page', page.toString());
       params.set('pageSize', pageSize.toString());
+      params.set('_t', Date.now().toString()); // Cache busting
 
-      const response = await fetch(`/api/production/forecast?${params.toString()}`);
+      const response = await fetch(`/api/production/forecast?${params.toString()}`, {
+        cache: 'no-store',
+        headers: {
+          'Cache-Control': 'no-cache'
+        }
+      });
 
       if (!response.ok) {
         throw new Error('Failed to fetch forecast data');
