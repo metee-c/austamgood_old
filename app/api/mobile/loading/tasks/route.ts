@@ -5,7 +5,7 @@ import { withAuth } from '@/lib/api/with-auth';
 async function handleGet(request: NextRequest, context: any) {
   try {
     const supabase = await createClient();
-    
+
     // Get status filter from query params
     const { searchParams } = new URL(request.url);
     const statusFilter = searchParams.get('status');
@@ -60,27 +60,59 @@ async function handleGet(request: NextRequest, context: any) {
           )
         )
       `);
-    
+
     // Apply status filter if provided
     if (statusFilter && statusFilter !== 'all') {
       query = query.eq('status', statusFilter);
     }
-    
+
     // Execute query
     const { data: allLoadlists, error } = await query.order('loadlist_code', { ascending: false });
 
     // ✅ กฎการแสดง Loadlist:
-    // 1. LD ที่มี Picklist หรือ Face Sheet → แสดงเสมอ
+    // 1. LD ที่มี Picklist หรือ Face Sheet → แสดงเสมอ (แต่ต้องยังไม่ถูกโหลดโดย LD อื่น)
     // 2. LD ที่มีเฉพาะ BFS → แสดงเฉพาะถ้า BFS นั้นไม่ได้แมพกับ LD อื่นที่มี picklist/face sheet
     //    (ถ้า BFS แมพกับ LD ที่มี picklist/face sheet แล้ว จะโหลดพร้อมกัน ไม่ต้องแสดง LD BFS แยก)
-    // 3. LD ว่าง (ไม่มี document) → แสดง เพื่อรอแมพ document
-    
+    // 3. LD ว่าง (ไม่มี document) → ไม่แสดง
+    // 4. ✅ NEW: LD ที่มี Picklist/Face Sheet ซึ่งถูกโหลดไปแล้วโดย LD อื่น → ซ่อน
+
+    // ✅ FIX: Query แยกเพื่อหา Picklist/Face Sheet ที่ถูกโหลดไปแล้ว
+    // เพราะ query หลักมี status filter ทำให้ไม่เห็น loaded loadlists
+    const loadedPicklistIds = new Set<number>();
+    const loadedFaceSheetIds = new Set<number>();
+
+    // Query picklist mappings ที่ถูกโหลดแล้ว (loaded_at != null)
+    const { data: loadedPicklistMappings } = await supabase
+      .from('wms_loadlist_picklists')
+      .select('picklist_id')
+      .not('loaded_at', 'is', null);
+
+    loadedPicklistMappings?.forEach((pl: any) => {
+      if (pl.picklist_id) {
+        loadedPicklistIds.add(pl.picklist_id);
+      }
+    });
+
+    // Query face sheet mappings ที่ถูกโหลดแล้ว (loaded_at != null)
+    const { data: loadedFaceSheetMappings } = await supabase
+      .from('loadlist_face_sheets')
+      .select('face_sheet_id')
+      .not('loaded_at', 'is', null);
+
+    loadedFaceSheetMappings?.forEach((fs: any) => {
+      if (fs.face_sheet_id) {
+        loadedFaceSheetIds.add(fs.face_sheet_id);
+      }
+    });
+
+    console.log(`📋 Found ${loadedPicklistIds.size} loaded picklists, ${loadedFaceSheetIds.size} loaded face sheets`);
+
     // หา BFS IDs ที่แมพกับ loadlist ที่มี picklist/face sheet
     const bfsIdsWithMainLoadlist = new Set<number>();
     allLoadlists?.forEach((loadlist: any) => {
       const hasPicklist = (loadlist.wms_loadlist_picklists || []).length > 0;
       const hasFaceSheet = (loadlist.loadlist_face_sheets || []).length > 0;
-      
+
       if (hasPicklist || hasFaceSheet) {
         // LD นี้มี picklist/face sheet - เก็บ BFS IDs ที่แมพกับ LD นี้
         (loadlist.wms_loadlist_bonus_face_sheets || []).forEach((bfs: any) => {
@@ -90,31 +122,60 @@ async function handleGet(request: NextRequest, context: any) {
         });
       }
     });
-    
+
     // Filter loadlists
     const loadlists = allLoadlists?.filter((loadlist: any) => {
-      const hasPicklist = (loadlist.wms_loadlist_picklists || []).length > 0;
-      const hasFaceSheet = (loadlist.loadlist_face_sheets || []).length > 0;
+      const picklistLinks = loadlist.wms_loadlist_picklists || [];
+      const faceSheetLinks = loadlist.loadlist_face_sheets || [];
       const bfsList = loadlist.wms_loadlist_bonus_face_sheets || [];
+
+      const hasPicklist = picklistLinks.length > 0;
+      const hasFaceSheet = faceSheetLinks.length > 0;
       const hasBFS = bfsList.length > 0;
-      
-      // ถ้ามี picklist หรือ face sheet → แสดงเสมอ
+
+      // ✅ NEW: ตรวจสอบว่า Picklist ทั้งหมดใน LD นี้ ถูกโหลดไปแล้วโดย LD อื่นหรือไม่
+      if (hasPicklist) {
+        const allPicklistsLoaded = picklistLinks.every((pl: any) =>
+          loadedPicklistIds.has(pl.picklist_id)
+        );
+
+        if (allPicklistsLoaded) {
+          // Picklist ทั้งหมดถูกโหลดไปแล้ว
+          // ❌ ยกเลิกการซ่อน: เพื่อให้ User เห็นและกด Complete ได้ (ระบบจะ Auto-Complete ให้)
+          // return false; 
+        }
+      }
+
+      // ✅ NEW: ตรวจสอบว่า Face Sheet ทั้งหมดใน LD นี้ ถูกโหลดไปแล้วโดย LD อื่นหรือไม่
+      if (hasFaceSheet) {
+        const allFaceSheetsLoaded = faceSheetLinks.every((fs: any) =>
+          loadedFaceSheetIds.has(fs.face_sheet_id)
+        );
+
+        if (allFaceSheetsLoaded && !hasPicklist) {
+          // Face Sheet ทั้งหมดถูกโหลดไปแล้ว
+          // ❌ ยกเลิกการซ่อน: เพื่อให้ User เห็นและกด Complete ได้
+          // return false;
+        }
+      }
+
+      // ถ้ามี picklist หรือ face sheet → แสดง (เพราะยังไม่ถูกโหลดหมด)
       if (hasPicklist || hasFaceSheet) {
         return true;
       }
-      
+
       // ถ้ามีเฉพาะ BFS → ตรวจสอบว่า BFS นั้นแมพกับ LD อื่นที่มี picklist/face sheet หรือไม่
       if (hasBFS && !hasPicklist && !hasFaceSheet) {
         // ตรวจสอบว่า BFS ทั้งหมดใน LD นี้ แมพกับ LD อื่นที่มี picklist/face sheet หรือไม่
-        const allBfsHaveMainLoadlist = bfsList.every((bfs: any) => 
+        const allBfsHaveMainLoadlist = bfsList.every((bfs: any) =>
           bfsIdsWithMainLoadlist.has(bfs.bonus_face_sheet_id)
         );
-        
+
         // ถ้า BFS ทั้งหมดแมพกับ LD อื่นแล้ว → ซ่อน LD นี้
         // ถ้ามี BFS บางตัวที่ยังไม่แมพกับ LD อื่น → แสดง LD นี้
         return !allBfsHaveMainLoadlist;
       }
-      
+
       // LD ว่าง (ไม่มี document) → ไม่แสดง
       return false;
     }) || [];
@@ -176,17 +237,17 @@ async function handleGet(request: NextRequest, context: any) {
       const picklists = loadlist.wms_loadlist_picklists || [];
       const faceSheets = loadlist.loadlist_face_sheets || [];
       const bonusFaceSheets = loadlist.wms_loadlist_bonus_face_sheets || [];
-      
+
       // Get picklist IDs, face sheet IDs, and bonus face sheet IDs
       const picklistIds = picklists.map((p: any) => p.picklist_id).filter(Boolean);
       const faceSheetIds = faceSheets.map((fs: any) => fs.face_sheet_id).filter(Boolean);
       const bonusFaceSheetIds = bonusFaceSheets.map((bfs: any) => bfs.bonus_face_sheet_id).filter(Boolean);
-      
+
       let totalItems = 0;
       let totalPieces = 0;
       let totalPacks = 0;
       let totalWeight = 0;
-      
+
       // Calculate from picklists
       if (picklistIds.length > 0) {
         const { data: picklistItems } = await supabase
@@ -200,19 +261,19 @@ async function handleGet(request: NextRequest, context: any) {
             )
           `)
           .in('picklist_id', picklistIds);
-        
+
         picklistItems?.forEach((item: any) => {
           const qty = parseFloat(item.quantity_picked) || 0;
           const qtyPerPack = item.master_sku?.qty_per_pack || 1;
           const weightPerPiece = item.master_sku?.weight_per_piece_kg || 0;
-          
+
           totalItems += 1;
           totalPieces += qty;
           totalPacks += Math.ceil(qty / qtyPerPack);
           totalWeight += qty * weightPerPiece;
         });
       }
-      
+
       // Calculate from face sheets
       // ✅ FIX: นับ face_sheet_items เสมอ ไม่ว่าจะมี BFS หรือไม่
       // เพราะ Face Sheet และ BFS เป็นคนละ document - ต้องนับทั้งสองอย่าง
@@ -229,19 +290,19 @@ async function handleGet(request: NextRequest, context: any) {
             )
           `)
           .in('face_sheet_id', faceSheetIds);
-        
+
         faceSheetItems?.forEach((item: any) => {
           const qty = parseFloat(item.quantity_picked) || 0;
           const qtyPerPack = item.master_sku?.qty_per_pack || 1;
           const weightPerPiece = item.master_sku?.weight_per_piece_kg || 0;
-          
+
           totalItems += 1;
           totalPieces += qty;
           totalPacks += Math.ceil(qty / qtyPerPack);
           totalWeight += qty * weightPerPiece;
         });
       }
-      
+
       // Calculate from bonus face sheets
       // ✅ FIX: กรองเฉพาะ items ที่อยู่ใน matched_package_ids (แมพกับ loadlist นี้)
       if (bonusFaceSheetIds.length > 0) {
@@ -252,53 +313,53 @@ async function handleGet(request: NextRequest, context: any) {
             return [];
           })
         );
-        
+
         // Query matched_package_ids separately
         const { data: bfsLinks } = await supabase
           .from('wms_loadlist_bonus_face_sheets')
           .select('matched_package_ids')
           .eq('loadlist_id', loadlist.id);
-        
+
         const allMatchedPackageIds = new Set<number>(
           bfsLinks?.flatMap((link: any) => link.matched_package_ids || []) || []
         );
-        
+
         // Fetch bonus face sheet items with package_id
         const { data: bonusFaceSheetItems } = await supabase
           .from('bonus_face_sheet_items')
           .select('quantity_picked, sku_id, package_id')
           .in('face_sheet_id', bonusFaceSheetIds);
-        
+
         if (bonusFaceSheetItems && bonusFaceSheetItems.length > 0) {
           // Filter items by matched_package_ids (if any)
           const filteredItems = allMatchedPackageIds.size > 0
-            ? bonusFaceSheetItems.filter((item: any) => 
-                item.package_id && allMatchedPackageIds.has(item.package_id)
-              )
+            ? bonusFaceSheetItems.filter((item: any) =>
+              item.package_id && allMatchedPackageIds.has(item.package_id)
+            )
             : bonusFaceSheetItems;
-          
+
           // Get unique SKU IDs
           const skuIds = [...new Set(filteredItems.map((item: any) => item.sku_id))];
-          
+
           // Fetch SKU data
           const { data: skuData } = await supabase
             .from('master_sku')
             .select('sku_id, qty_per_pack, weight_per_piece_kg')
             .in('sku_id', skuIds);
-          
+
           // Create SKU map
           const skuMap: Record<string, any> = {};
           skuData?.forEach((sku: any) => {
             skuMap[sku.sku_id] = sku;
           });
-          
+
           // Calculate totals
           filteredItems.forEach((item: any) => {
             const qty = parseFloat(item.quantity_picked) || 0;
             const sku = skuMap[item.sku_id];
             const qtyPerPack = sku?.qty_per_pack || 1;
             const weightPerPiece = parseFloat(sku?.weight_per_piece_kg) || 0;
-            
+
             totalItems += 1;
             totalPieces += qty;
             totalPacks += Math.ceil(qty / qtyPerPack);

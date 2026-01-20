@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect, Fragment } from 'react';
 import {
   Package,
   Search,
@@ -100,10 +100,23 @@ const InventoryBalancesPage = () => {
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'preparation' | 'premium' | 'dispatch' | 'bfs_staging' | 'delivery'>('preparation');
 
+  // Expandable row state
+  const [expandedSkus, setExpandedSkus] = useState<Set<string>>(new Set());
+
+  const toggleSkuExpand = (skuId: string) => {
+    const newExpanded = new Set(expandedSkus);
+    if (newExpanded.has(skuId)) {
+      newExpanded.delete(skuId);
+    } else {
+      newExpanded.add(skuId);
+    }
+    setExpandedSkus(newExpanded);
+  };
+
   // Modal states
   const [viewModalOpen, setViewModalOpen] = useState(false);
   const [selectedBalance, setSelectedBalance] = useState<InventoryBalance | null>(null);
-  
+
   // Reservation modal states
   const [reservationModalOpen, setReservationModalOpen] = useState(false);
   const [selectedReservationBalance, setSelectedReservationBalance] = useState<InventoryBalance | null>(null);
@@ -118,7 +131,7 @@ const InventoryBalancesPage = () => {
 
   // Advanced filter panel state
   const [showFilters, setShowFilters] = useState(false);
-  
+
   // Advanced filters
   interface AdvancedFilters {
     sku_id?: string;
@@ -135,8 +148,8 @@ const InventoryBalancesPage = () => {
   const [tempAdvancedFilters, setTempAdvancedFilters] = useState<AdvancedFilters>({});
 
   // SKU options for filter dropdown
-  const [skuOptions, setSkuOptions] = useState<{sku_id: string; sku_name: string}[]>([]);
-  const [locationOptions, setLocationOptions] = useState<{location_id: string; location_name: string}[]>([]);
+  const [skuOptions, setSkuOptions] = useState<{ sku_id: string; sku_name: string }[]>([]);
+  const [locationOptions, setLocationOptions] = useState<{ location_id: string; location_name: string }[]>([]);
 
   // Sorting state
   const [sortColumn, setSortColumn] = useState<'picklist_code' | 'location_id'>('picklist_code');
@@ -149,7 +162,7 @@ const InventoryBalancesPage = () => {
   const [warehouses, setWarehouses] = useState<any[]>([]);
 
   const [preparationAreaCodes, setPreparationAreaCodes] = useState<string[]>([]);
-  
+
   // Premium zone location (PK002)
   const premiumZoneLocations = ['PK002'];
 
@@ -263,7 +276,7 @@ const InventoryBalancesPage = () => {
         .from('preparation_area')
         .select('area_code')
         .eq('status', 'active');
-      
+
       const prepAreaCodes = prepAreas?.map(p => p.area_code) || [];
 
       // Fetch only inventory in preparation areas
@@ -399,15 +412,15 @@ const InventoryBalancesPage = () => {
     try {
       setExporting(true);
       const supabase = createClient();
-      
+
       let allData: any[] = [];
       const batchSize = 1000;
-      
+
       if (activeTab === 'preparation') {
         // Fetch all preparation area data with pagination
         let offset = 0;
         let hasMore = true;
-        
+
         while (hasMore) {
           const { data, error } = await supabase
             .from('wms_inventory_balances')
@@ -420,7 +433,7 @@ const InventoryBalancesPage = () => {
             .in('location_id', preparationAreaCodes.filter(code => !premiumZoneLocations.includes(code)))
             .order('updated_at', { ascending: false })
             .range(offset, offset + batchSize - 1);
-          
+
           if (error) throw error;
           if (data && data.length > 0) {
             allData.push(...data);
@@ -434,7 +447,7 @@ const InventoryBalancesPage = () => {
         // Fetch all premium zone data with pagination
         let offset = 0;
         let hasMore = true;
-        
+
         while (hasMore) {
           const { data, error } = await supabase
             .from('wms_inventory_balances')
@@ -447,7 +460,7 @@ const InventoryBalancesPage = () => {
             .in('location_id', premiumZoneLocations)
             .order('updated_at', { ascending: false })
             .range(offset, offset + batchSize - 1);
-          
+
           if (error) throw error;
           if (data && data.length > 0) {
             allData.push(...data);
@@ -535,9 +548,9 @@ const InventoryBalancesPage = () => {
         // Add document info for dispatch/bfs_staging/delivery tabs (from expanded _document)
         if ((activeTab === 'dispatch' || activeTab === 'bfs_staging' || activeTab === 'delivery') && item._document) {
           const doc = item._document;
-          baseData['ประเภทเอกสาร'] = doc.document_type === 'picklist' ? 'ใบหยิบ' : 
-                                      doc.document_type === 'face_sheet' ? 'ใบปะหน้า' : 
-                                      doc.document_type === 'bonus_face_sheet' ? 'ใบปะหน้าโบนัส' : '-';
+          baseData['ประเภทเอกสาร'] = doc.document_type === 'picklist' ? 'ใบหยิบ' :
+            doc.document_type === 'face_sheet' ? 'ใบปะหน้า' :
+              doc.document_type === 'bonus_face_sheet' ? 'ใบปะหน้าโบนัส' : '-';
           baseData['รหัสใบหยิบ'] = doc.picklist_code || doc.face_sheet_code || doc.bonus_face_sheet_code || '-';
           baseData['Loadlist'] = doc.loadlist_code || '-';
           baseData['เลขออเดอร์'] = doc.order_no || '-';
@@ -598,7 +611,7 @@ const InventoryBalancesPage = () => {
   // Aggregate data by SKU for preparation tab
   const aggregateDataBySku = (data: InventoryBalance[]): InventoryBalance[] => {
     const skuMap = new Map<string, InventoryBalance>();
-    
+
     for (const item of data) {
       const existing = skuMap.get(item.sku_id);
       if (existing) {
@@ -607,6 +620,10 @@ const InventoryBalancesPage = () => {
         existing.total_piece_qty += item.total_piece_qty || 0;
         existing.reserved_pack_qty += item.reserved_pack_qty || 0;
         existing.reserved_piece_qty += item.reserved_piece_qty || 0;
+
+        // Append to sub-items
+        if (!(existing as any).subItems) (existing as any).subItems = [];
+        (existing as any).subItems.push(item);
       } else {
         // Create new aggregated entry
         skuMap.set(item.sku_id, {
@@ -624,10 +641,12 @@ const InventoryBalancesPage = () => {
           total_piece_qty: item.total_piece_qty || 0,
           reserved_pack_qty: item.reserved_pack_qty || 0,
           reserved_piece_qty: item.reserved_piece_qty || 0,
-        });
+          // Store sub-items for expansion
+          subItems: [item]
+        } as any);
       }
     }
-    
+
     return Array.from(skuMap.values()).sort((a, b) => a.sku_id.localeCompare(b.sku_id));
   };
 
@@ -637,37 +656,37 @@ const InventoryBalancesPage = () => {
     if (activeTab === 'dispatch') {
       return dispatchData;
     }
-    
+
     // ถ้าเป็น bfs_staging tab ให้ใช้ข้อมูลจาก API ที่มีบริบท
     if (activeTab === 'bfs_staging') {
       return bfsStagingData;
     }
-    
+
     // ถ้าเป็น delivery tab ให้ใช้ข้อมูลจาก API ที่มีบริบท
     if (activeTab === 'delivery') {
       return deliveryData;
     }
-    
+
     // ถ้าเป็น premium tab ให้ใช้ข้อมูลจาก premiumData
     if (activeTab === 'premium') {
       return premiumData;
     }
-    
+
     // บ้านหยิบ - preparation area codes ยกเว้น PK002 (premium zone)
     const filtered = balanceData.filter(item => {
       if (activeTab === 'preparation') {
-        return item.location_id 
+        return item.location_id
           ? preparationAreaCodes.includes(item.location_id) && !premiumZoneLocations.includes(item.location_id)
           : false;
       }
       return false;
     });
-    
+
     // Aggregate by SKU for preparation tab
     if (activeTab === 'preparation') {
       return aggregateDataBySku(filtered);
     }
-    
+
     return filtered;
   };
 
@@ -677,18 +696,18 @@ const InventoryBalancesPage = () => {
   const currentTab: FlowStage = activeTab;
   const expandedData: InventoryBalance[] = (currentTab === 'dispatch' || currentTab === 'bfs_staging' || currentTab === 'delivery')
     ? tabFilteredData.flatMap(item => {
-        if (item.related_documents && item.related_documents.length > 0) {
-          // แยกแต่ละ document ออกมาเป็นแถวแยก
-          return item.related_documents.map((doc: any) => ({
-            ...item,
-            related_documents: [doc], // เก็บแค่ document เดียวต่อแถว
-            _document: doc // เก็บ reference ไว้ใช้งาน
-          }));
-        } else {
-          // ถ้าไม่มี document ให้แสดงแถวเดียว
-          return [item];
-        }
-      })
+      if (item.related_documents && item.related_documents.length > 0) {
+        // แยกแต่ละ document ออกมาเป็นแถวแยก
+        return item.related_documents.map((doc: any) => ({
+          ...item,
+          related_documents: [doc], // เก็บแค่ document เดียวต่อแถว
+          _document: doc // เก็บ reference ไว้ใช้งาน
+        }));
+      } else {
+        // ถ้าไม่มี document ให้แสดงแถวเดียว
+        return [item];
+      }
+    })
     : tabFilteredData;
 
   const filteredData = expandedData.filter(item => {
@@ -697,7 +716,7 @@ const InventoryBalancesPage = () => {
     const skuName = item.sku_name || (item as any).master_sku?.sku_name || '';
     const locationName = item.location_name || (item as any).master_location?.location_name || '';
     const warehouseName = item.warehouse_name || (item as any).master_warehouse?.warehouse_name || '';
-    
+
     const matchesSearch = !searchTerm || (
       (item.sku_id?.toLowerCase().includes(searchLower)) ||
       (skuName?.toLowerCase().includes(searchLower)) ||
@@ -725,25 +744,25 @@ const InventoryBalancesPage = () => {
     // Advanced filters
     const matchesSku = !advancedFilters.sku_id || item.sku_id === advancedFilters.sku_id;
     const matchesLocation = !advancedFilters.location_id || item.location_id === advancedFilters.location_id;
-    const matchesPallet = !advancedFilters.pallet_id || 
+    const matchesPallet = !advancedFilters.pallet_id ||
       item.pallet_id?.toLowerCase().includes(advancedFilters.pallet_id.toLowerCase()) ||
       item.pallet_id_external?.toLowerCase().includes(advancedFilters.pallet_id.toLowerCase());
-    const matchesLotNo = !advancedFilters.lot_no || 
+    const matchesLotNo = !advancedFilters.lot_no ||
       item.lot_no?.toLowerCase().includes(advancedFilters.lot_no.toLowerCase());
-    
+
     // Date filters
-    const matchesDateFrom = !advancedFilters.date_from || 
+    const matchesDateFrom = !advancedFilters.date_from ||
       (item.production_date && item.production_date >= advancedFilters.date_from);
-    const matchesDateTo = !advancedFilters.date_to || 
+    const matchesDateTo = !advancedFilters.date_to ||
       (item.production_date && item.production_date <= advancedFilters.date_to);
 
     // Document filters (for dispatch/bfs_staging/delivery tabs)
     const relatedDoc = item.related_documents?.[0];
-    const matchesDocType = !advancedFilters.document_type || 
+    const matchesDocType = !advancedFilters.document_type ||
       relatedDoc?.document_type === advancedFilters.document_type;
-    const matchesOrderNo = !advancedFilters.order_no || 
+    const matchesOrderNo = !advancedFilters.order_no ||
       relatedDoc?.order_no?.toLowerCase().includes(advancedFilters.order_no.toLowerCase());
-    const matchesShopName = !advancedFilters.shop_name || 
+    const matchesShopName = !advancedFilters.shop_name ||
       relatedDoc?.shop_name?.toLowerCase().includes(advancedFilters.shop_name.toLowerCase());
 
     return matchesSearch && matchesWarehouse && matchesLowStock && matchesExpiring && matchesZeroBalance &&
@@ -753,25 +772,25 @@ const InventoryBalancesPage = () => {
     // เรียงตามคอลัมน์ที่เลือก
     if (sortColumn === 'picklist_code') {
       // เรียงตามรหัสใบหยิบ (picklist_code, face_sheet_code, หรือ bonus_face_sheet_code)
-      const picklistA = a.related_documents?.[0]?.picklist_code || 
-                        a.related_documents?.[0]?.face_sheet_code || 
-                        a.related_documents?.[0]?.bonus_face_sheet_code || '';
-      const picklistB = b.related_documents?.[0]?.picklist_code || 
-                        b.related_documents?.[0]?.face_sheet_code || 
-                        b.related_documents?.[0]?.bonus_face_sheet_code || '';
-      return sortDirection === 'desc' 
+      const picklistA = a.related_documents?.[0]?.picklist_code ||
+        a.related_documents?.[0]?.face_sheet_code ||
+        a.related_documents?.[0]?.bonus_face_sheet_code || '';
+      const picklistB = b.related_documents?.[0]?.picklist_code ||
+        b.related_documents?.[0]?.face_sheet_code ||
+        b.related_documents?.[0]?.bonus_face_sheet_code || '';
+      return sortDirection === 'desc'
         ? picklistB.localeCompare(picklistA)
         : picklistA.localeCompare(picklistB);
     } else {
       // เรียงตาม location_id
       const locationA = a.location_id || '';
       const locationB = b.location_id || '';
-      return sortDirection === 'desc' 
+      return sortDirection === 'desc'
         ? locationB.localeCompare(locationA)
         : locationA.localeCompare(locationB);
     }
   });
-  
+
   // Debug log final result
   if (activeTab === 'dispatch') {
     console.log('✅ Final filtered data for dispatch:', {
@@ -787,7 +806,7 @@ const InventoryBalancesPage = () => {
 
   // นับจำนวนสินค้าในแต่ละ Tab (นับจากข้อมูลต้นฉบับก่อนแยกแถว)
   const preparationCount = balanceData.filter(item =>
-    item.location_id 
+    item.location_id
       ? preparationAreaCodes.includes(item.location_id) && !premiumZoneLocations.includes(item.location_id)
       : false
   ).reduce((sum, item) => sum + item.total_piece_qty, 0);
@@ -862,10 +881,10 @@ const InventoryBalancesPage = () => {
               />
               ยอด 0
             </label>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              icon={Filter} 
+            <Button
+              variant="outline"
+              size="sm"
+              icon={Filter}
               onClick={() => {
                 setTempAdvancedFilters(advancedFilters);
                 setShowFilters(!showFilters);
@@ -879,27 +898,27 @@ const InventoryBalancesPage = () => {
                 </span>
               )}
             </Button>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              icon={exporting ? Loader2 : Download} 
+            <Button
+              variant="outline"
+              size="sm"
+              icon={exporting ? Loader2 : Download}
               onClick={handleExportExcel}
               disabled={exporting || loading}
               className={`text-xs py-1 px-2 ${exporting ? 'animate-pulse' : ''}`}
             >
               {exporting ? 'กำลังส่งออก...' : 'Excel'}
             </Button>
-            <Button 
-              variant="primary" 
-              size="sm" 
-              icon={RefreshCw} 
+            <Button
+              variant="primary"
+              size="sm"
+              icon={RefreshCw}
               onClick={() => {
                 fetchBalanceData();
                 fetchPremiumData();
                 fetchDispatchData();
                 fetchBfsStagingData();
                 fetchDeliveryData();
-              }} 
+              }}
               disabled={loading}
               className="text-xs py-1 px-2"
             >
@@ -1059,11 +1078,10 @@ const InventoryBalancesPage = () => {
         <div className="flex gap-1 flex-shrink-0">
           <button
             onClick={() => setActiveTab('preparation')}
-            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded font-thai font-medium transition-all text-xs ${
-              activeTab === 'preparation'
-                ? 'bg-blue-500 text-white shadow-sm'
-                : 'bg-white text-thai-gray-600 hover:bg-blue-50 border border-thai-gray-200'
-            }`}
+            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded font-thai font-medium transition-all text-xs ${activeTab === 'preparation'
+              ? 'bg-blue-500 text-white shadow-sm'
+              : 'bg-white text-thai-gray-600 hover:bg-blue-50 border border-thai-gray-200'
+              }`}
           >
             <PackageSearch className="w-3.5 h-3.5" />
             <span>บ้านหยิบ</span>
@@ -1073,11 +1091,10 @@ const InventoryBalancesPage = () => {
           </button>
           <button
             onClick={() => setActiveTab('premium')}
-            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded font-thai font-medium transition-all text-xs ${
-              activeTab === 'premium'
-                ? 'bg-amber-500 text-white shadow-sm'
-                : 'bg-white text-thai-gray-600 hover:bg-amber-50 border border-thai-gray-200'
-            }`}
+            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded font-thai font-medium transition-all text-xs ${activeTab === 'premium'
+              ? 'bg-amber-500 text-white shadow-sm'
+              : 'bg-white text-thai-gray-600 hover:bg-amber-50 border border-thai-gray-200'
+              }`}
           >
             <Package className="w-3.5 h-3.5" />
             <span>บ้านหยิบพรีเมี่ยม</span>
@@ -1087,11 +1104,10 @@ const InventoryBalancesPage = () => {
           </button>
           <button
             onClick={() => setActiveTab('dispatch')}
-            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded font-thai font-medium transition-all text-xs ${
-              activeTab === 'dispatch'
-                ? 'bg-green-500 text-white shadow-sm'
-                : 'bg-white text-thai-gray-600 hover:bg-green-50 border border-thai-gray-200'
-            }`}
+            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded font-thai font-medium transition-all text-xs ${activeTab === 'dispatch'
+              ? 'bg-green-500 text-white shadow-sm'
+              : 'bg-white text-thai-gray-600 hover:bg-green-50 border border-thai-gray-200'
+              }`}
           >
             <CheckCircle2 className="w-3.5 h-3.5" />
             <span>จัดสินค้าเสร็จ (PK,FS)</span>
@@ -1101,11 +1117,10 @@ const InventoryBalancesPage = () => {
           </button>
           <button
             onClick={() => setActiveTab('bfs_staging')}
-            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded font-thai font-medium transition-all text-xs ${
-              activeTab === 'bfs_staging'
-                ? 'bg-teal-500 text-white shadow-sm'
-                : 'bg-white text-thai-gray-600 hover:bg-teal-50 border border-thai-gray-200'
-            }`}
+            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded font-thai font-medium transition-all text-xs ${activeTab === 'bfs_staging'
+              ? 'bg-teal-500 text-white shadow-sm'
+              : 'bg-white text-thai-gray-600 hover:bg-teal-50 border border-thai-gray-200'
+              }`}
           >
             <Package className="w-3.5 h-3.5" />
             <span>จัดสินค้าเสร็จ (BFS)</span>
@@ -1115,11 +1130,10 @@ const InventoryBalancesPage = () => {
           </button>
           <button
             onClick={() => setActiveTab('delivery')}
-            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded font-thai font-medium transition-all text-xs ${
-              activeTab === 'delivery'
-                ? 'bg-purple-500 text-white shadow-sm'
-                : 'bg-white text-thai-gray-600 hover:bg-purple-50 border border-thai-gray-200'
-            }`}
+            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded font-thai font-medium transition-all text-xs ${activeTab === 'delivery'
+              ? 'bg-purple-500 text-white shadow-sm'
+              : 'bg-white text-thai-gray-600 hover:bg-purple-50 border border-thai-gray-200'
+              }`}
           >
             <Truck className="w-3.5 h-3.5" />
             <span>โหลดสินค้าเสร็จ</span>
@@ -1138,183 +1152,230 @@ const InventoryBalancesPage = () => {
           ) : activeTab === 'bfs_staging' ? (
             <PreparedDocumentsTable warehouseId={selectedWarehouse === 'all' ? 'WH001' : selectedWarehouse} isBfsStaging={true} />
           ) : (
-          <div className="w-full flex-1 bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col overflow-hidden">
-            {loading ? (
-              <div className="h-full flex flex-col items-center justify-center text-thai-gray-500 gap-2">
-                <Loader2 className="w-6 h-6 animate-spin" />
-                <p className="text-sm font-thai">กำลังโหลดข้อมูลสต็อก...</p>
-              </div>
-            ) : error ? (
-              <div className="h-full flex flex-col items-center justify-center text-red-500 gap-2">
-                <p className="text-sm font-thai">{error}</p>
-              </div>
-            ) : filteredData.length === 0 ? (
-              <div className="h-full flex flex-col items-center justify-center text-thai-gray-500 gap-4">
-                <Package className="w-12 h-12" />
-                <div className="text-center">
-                  <p className="text-sm font-medium font-thai">ไม่พบข้อมูลสต็อก</p>
-                  <p className="text-xs text-thai-gray-400 mt-1 font-thai">ลองปรับเปลี่ยนตัวกรองหรือค้นหาใหม่</p>
+            <div className="w-full flex-1 bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col overflow-hidden">
+              {loading ? (
+                <div className="h-full flex flex-col items-center justify-center text-thai-gray-500 gap-2">
+                  <Loader2 className="w-6 h-6 animate-spin" />
+                  <p className="text-sm font-thai">กำลังโหลดข้อมูลสต็อก...</p>
                 </div>
-              </div>
-            ) : activeTab === 'preparation' ? (
-              /* Aggregated SKU view for preparation tab */
-              <div className="flex-1 overflow-auto thin-scrollbar">
-                <table className="w-full border-collapse text-sm">
-                  <thead className="sticky top-0 z-10 bg-gray-100">
-                    <tr>
-                      <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">#</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสสินค้า</th>
-                      <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap min-w-[250px]">ชื่อสินค้า</th>
-                      <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-green-50">ชิ้นรวม</th>
-                      <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-green-50">แพ็ครวม</th>
-                      <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-orange-50">ชิ้นจอง</th>
-                      <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-orange-50">แพ็คจอง</th>
-                      <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">คงเหลือ (ชิ้น)</th>
-                      <th className="px-3 py-2 text-center text-xs font-semibold border-b border-gray-200 whitespace-nowrap bg-blue-50">คงเหลือ (แพ็ค)</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
-                    {filteredData.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((balance, idx) => {
-                      const availablePiece = (balance.total_piece_qty || 0) - (balance.reserved_piece_qty || 0);
-                      const availablePack = (balance.total_pack_qty || 0) - (balance.reserved_pack_qty || 0);
-                      return (
-                        <tr
-                          key={`${balance.sku_id}-${idx}`}
-                          className="hover:bg-blue-50/30 transition-colors duration-150"
-                        >
-                          <td className="px-3 py-1.5 border-r border-gray-100 whitespace-nowrap text-thai-gray-500">
-                            {(currentPage - 1) * pageSize + idx + 1}
-                          </td>
-                          <td className="px-3 py-1.5 border-r border-gray-100 whitespace-nowrap">
-                            <span className="font-mono font-semibold text-thai-gray-700">{balance.sku_id}</span>
-                          </td>
-                          <td className="px-3 py-1.5 border-r border-gray-100">
-                            <span className="text-thai-gray-700 font-thai text-[11px]">
-                              {(balance as any).master_sku?.sku_name || balance.sku_name || '-'}
-                            </span>
-                          </td>
-                          <td className="px-3 py-1.5 text-center border-r border-gray-100 whitespace-nowrap bg-green-50/30">
-                            <span className="font-bold text-green-600 text-sm">
-                              {balance.total_piece_qty?.toLocaleString() || 0}
-                            </span>
-                          </td>
-                          <td className="px-3 py-1.5 text-center border-r border-gray-100 whitespace-nowrap bg-green-50/30">
-                            <span className="font-bold text-green-600">
-                              {balance.total_pack_qty?.toLocaleString() || 0}
-                            </span>
-                          </td>
-                          <td className="px-3 py-1.5 text-center border-r border-gray-100 whitespace-nowrap bg-orange-50/30">
-                            <span className={`font-bold ${balance.reserved_piece_qty > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
-                              {balance.reserved_piece_qty?.toLocaleString() || 0}
-                            </span>
-                          </td>
-                          <td className="px-3 py-1.5 text-center border-r border-gray-100 whitespace-nowrap bg-orange-50/30">
-                            <span className={`font-bold ${balance.reserved_pack_qty > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
-                              {balance.reserved_pack_qty?.toLocaleString() || 0}
-                            </span>
-                          </td>
-                          <td className="px-3 py-1.5 text-center border-r border-gray-100 whitespace-nowrap bg-blue-50/30">
-                            <span className={`font-bold text-sm ${availablePiece <= 0 ? 'text-red-600' : 'text-blue-600'}`}>
-                              {availablePiece.toLocaleString()}
-                            </span>
-                          </td>
-                          <td className="px-3 py-1.5 text-center whitespace-nowrap bg-blue-50/30">
-                            <span className={`font-bold ${availablePack <= 0 ? 'text-red-600' : 'text-blue-600'}`}>
-                              {availablePack.toLocaleString()}
-                            </span>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="flex-1 overflow-auto thin-scrollbar">
-                <table className="w-full border-collapse text-sm">
-                  <thead className="sticky top-0 z-10 bg-gray-100">
-                    <tr>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ID</th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสสินค้า</th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชื่อสินค้า</th>
-                      {(activeTab as string) === 'dispatch' && (
-                        <>
-                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">ประเภท</th>
-                          <th 
-                            className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50 cursor-pointer hover:bg-blue-100 transition-colors select-none"
-                            onClick={() => handleSort('picklist_code')}
-                          >
-                            <div className="flex items-center gap-1">
-                              <span>ใบหยิบ</span>
-                              {sortColumn === 'picklist_code' ? (
-                                sortDirection === 'desc' ? (
-                                  <ArrowDown className="w-3 h-3 text-blue-600" />
+              ) : error ? (
+                <div className="h-full flex flex-col items-center justify-center text-red-500 gap-2">
+                  <p className="text-sm font-thai">{error}</p>
+                </div>
+              ) : filteredData.length === 0 ? (
+                <div className="h-full flex flex-col items-center justify-center text-thai-gray-500 gap-4">
+                  <Package className="w-12 h-12" />
+                  <div className="text-center">
+                    <p className="text-sm font-medium font-thai">ไม่พบข้อมูลสต็อก</p>
+                    <p className="text-xs text-thai-gray-400 mt-1 font-thai">ลองปรับเปลี่ยนตัวกรองหรือค้นหาใหม่</p>
+                  </div>
+                </div>
+              ) : activeTab === 'preparation' ? (
+                /* Aggregated SKU view with EXPANDABLE rows for preparation tab */
+                <div className="flex-1 overflow-auto thin-scrollbar">
+                  <table className="w-full border-collapse text-sm">
+                    <thead className="sticky top-0 z-10 bg-gray-100">
+                      <tr>
+                        <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 w-10"></th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสสินค้า</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap min-w-[250px]">ชื่อสินค้า</th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-green-50">ชิ้นรวม</th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-green-50">แพ็ครวม</th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-orange-50">ชิ้นจอง</th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-orange-50">แพ็คจอง</th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">คงเหลือ (ชิ้น)</th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold border-b border-gray-200 whitespace-nowrap bg-blue-50">คงเหลือ (แพ็ค)</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-100">
+                      {filteredData.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((balance, idx) => {
+                        const availablePiece = balance.total_piece_qty - balance.reserved_piece_qty;
+                        const availablePack = balance.total_pack_qty - balance.reserved_pack_qty;
+                        const isExpanded = expandedSkus.has(balance.sku_id);
+
+                        return (
+                          <Fragment key={`agg-${balance.sku_id}-${idx}`}>
+                            <tr
+                              className={`hover:bg-blue-50/30 transition-colors duration-150 cursor-pointer ${isExpanded ? 'bg-blue-50/50' : ''}`}
+                              onClick={() => toggleSkuExpand(balance.sku_id)}
+                            >
+                              <td className="px-3 py-1.5 text-center border-r border-gray-100">
+                                {isExpanded ? <ArrowUp className="w-4 h-4 text-blue-500" /> : <ArrowDown className="w-4 h-4 text-gray-400" />}
+                              </td>
+                              <td className="px-3 py-1.5 border-r border-gray-100 whitespace-nowrap">
+                                <span className="font-mono font-semibold text-thai-gray-700">{balance.sku_id}</span>
+                              </td>
+                              <td className="px-3 py-1.5 border-r border-gray-100">
+                                <span className="text-thai-gray-700 font-thai text-[11px]">
+                                  {(balance as any).master_sku?.sku_name || '-'}
+                                </span>
+                              </td>
+                              <td className="px-3 py-1.5 text-center border-r border-gray-100 whitespace-nowrap bg-green-50/30">
+                                <span className="font-bold text-green-600">
+                                  {balance.total_piece_qty?.toLocaleString() || 0}
+                                </span>
+                              </td>
+                              <td className="px-3 py-1.5 text-center border-r border-gray-100 whitespace-nowrap bg-green-50/30">
+                                <span className="font-bold text-green-600">
+                                  {balance.total_pack_qty?.toLocaleString() || 0}
+                                </span>
+                              </td>
+                              <td className="px-3 py-1.5 text-center border-r border-gray-100 whitespace-nowrap bg-orange-50/30">
+                                <span className={`font-bold ${balance.reserved_piece_qty > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
+                                  {balance.reserved_piece_qty?.toLocaleString() || 0}
+                                </span>
+                              </td>
+                              <td className="px-3 py-1.5 text-center border-r border-gray-100 whitespace-nowrap bg-orange-50/30">
+                                <span className={`font-bold ${balance.reserved_pack_qty > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
+                                  {balance.reserved_pack_qty?.toLocaleString() || 0}
+                                </span>
+                              </td>
+                              <td className="px-3 py-1.5 text-center border-r border-gray-100 whitespace-nowrap bg-blue-50/30">
+                                <span className={`font-bold text-sm ${availablePiece <= 0 ? 'text-red-600' : 'text-blue-600'}`}>
+                                  {availablePiece.toLocaleString()}
+                                </span>
+                              </td>
+                              <td className="px-3 py-1.5 text-center border-r border-gray-100 whitespace-nowrap bg-blue-50/30">
+                                <span className={`font-bold ${availablePack <= 0 ? 'text-red-600' : 'text-blue-600'}`}>
+                                  {availablePack.toLocaleString()}
+                                </span>
+                              </td>
+                            </tr>
+                            {isExpanded && (balance as any).subItems && (
+                              <tr>
+                                <td colSpan={9} className="bg-gray-50/50 p-2 border-b border-gray-200 shadow-inner">
+                                  <div className="ml-8 bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
+                                    <table className="w-full text-xs">
+                                      <thead className="bg-gray-100 text-gray-700">
+                                        <tr>
+                                          <th className="px-3 py-2 text-left font-semibold">Location</th>
+                                          <th className="px-3 py-2 text-left font-semibold">Pallet ID</th>
+                                          <th className="px-3 py-2 text-left font-semibold">Lot No</th>
+                                          <th className="px-3 py-2 text-left font-semibold">วันผลิต</th>
+                                          <th className="px-3 py-2 text-left font-semibold">วันหมดอายุ</th>
+                                          <th className="px-3 py-2 text-center font-semibold">ชิ้น</th>
+                                          <th className="px-3 py-2 text-center font-semibold">แพ็ค</th>
+                                          <th className="px-3 py-2 text-center font-semibold">อัปเดต</th>
+                                        </tr>
+                                      </thead>
+                                      <tbody className="divide-y divide-gray-100">
+                                        {((balance as any).subItems as InventoryBalance[]).map((subItem, subIdx) => (
+                                          <tr key={`sub-${subItem.balance_id}-${subIdx}`} className="hover:bg-gray-50">
+                                            <td className="px-3 py-2 font-mono">{subItem.location_id}</td>
+                                            <td className="px-3 py-2 font-mono text-gray-500">{subItem.pallet_id_external || subItem.pallet_id || '-'}</td>
+                                            <td className="px-3 py-2 font-mono">{subItem.lot_no || '-'}</td>
+                                            <td className="px-3 py-2">{subItem.production_date ? new Date(subItem.production_date).toLocaleDateString('th-TH') : '-'}</td>
+                                            <td className="px-3 py-2">
+                                              {subItem.expiry_date ? (
+                                                <span className={`${isExpired(subItem.expiry_date) ? 'text-red-600 font-bold' : isExpiringSoon(subItem.expiry_date) ? 'text-orange-600' : ''}`}>
+                                                  {new Date(subItem.expiry_date).toLocaleDateString('th-TH')}
+                                                </span>
+                                              ) : '-'}
+                                            </td>
+                                            <td className="px-3 py-2 text-center font-medium">{subItem.total_piece_qty.toLocaleString()}</td>
+                                            <td className="px-3 py-2 text-center font-medium">{subItem.total_pack_qty.toLocaleString()}</td>
+                                            <td className="px-3 py-2 text-center text-gray-500 text-[10px]">
+                                              {subItem.updated_at ? new Date(subItem.updated_at).toLocaleString('th-TH') : '-'}
+                                            </td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                </td>
+                              </tr>
+                            )}
+                          </Fragment>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="flex-1 overflow-auto thin-scrollbar">
+                  <table className="w-full border-collapse text-sm">
+                    <thead className="sticky top-0 z-10 bg-gray-100">
+                      <tr>
+                        <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ID</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสสินค้า</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชื่อสินค้า</th>
+                        {(activeTab as string) === 'dispatch' && (
+                          <>
+                            <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">ประเภท</th>
+                            <th
+                              className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50 cursor-pointer hover:bg-blue-100 transition-colors select-none"
+                              onClick={() => handleSort('picklist_code')}
+                            >
+                              <div className="flex items-center gap-1">
+                                <span>ใบหยิบ</span>
+                                {sortColumn === 'picklist_code' ? (
+                                  sortDirection === 'desc' ? (
+                                    <ArrowDown className="w-3 h-3 text-blue-600" />
+                                  ) : (
+                                    <ArrowUp className="w-3 h-3 text-blue-600" />
+                                  )
                                 ) : (
-                                  <ArrowUp className="w-3 h-3 text-blue-600" />
-                                )
-                              ) : (
-                                <ArrowUpDown className="w-3 h-3 text-gray-400" />
-                              )}
-                            </div>
-                          </th>
-                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">เลขออเดอร์</th>
-                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">ร้านค้า</th>
-                        </>
-                      )}
-                      {(activeTab as string) === 'delivery' && (
-                        <>
-                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">เลขแผนส่ง</th>
-                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">คันที่</th>
-                          <th 
-                            className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50 cursor-pointer hover:bg-purple-100 transition-colors select-none"
-                            onClick={() => handleSort('picklist_code')}
-                          >
-                            <div className="flex items-center gap-1">
-                              <span>ใบหยิบ</span>
-                              {sortColumn === 'picklist_code' ? (
-                                sortDirection === 'desc' ? (
-                                  <ArrowDown className="w-3 h-3 text-purple-600" />
+                                  <ArrowUpDown className="w-3 h-3 text-gray-400" />
+                                )}
+                              </div>
+                            </th>
+                            <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">เลขออเดอร์</th>
+                            <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">ร้านค้า</th>
+                          </>
+                        )}
+                        {(activeTab as string) === 'delivery' && (
+                          <>
+                            <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">เลขแผนส่ง</th>
+                            <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">คันที่</th>
+                            <th
+                              className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50 cursor-pointer hover:bg-purple-100 transition-colors select-none"
+                              onClick={() => handleSort('picklist_code')}
+                            >
+                              <div className="flex items-center gap-1">
+                                <span>ใบหยิบ</span>
+                                {sortColumn === 'picklist_code' ? (
+                                  sortDirection === 'desc' ? (
+                                    <ArrowDown className="w-3 h-3 text-purple-600" />
+                                  ) : (
+                                    <ArrowUp className="w-3 h-3 text-purple-600" />
+                                  )
                                 ) : (
-                                  <ArrowUp className="w-3 h-3 text-purple-600" />
-                                )
-                              ) : (
-                                <ArrowUpDown className="w-3 h-3 text-gray-400" />
-                              )}
-                            </div>
-                          </th>
-                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">ใบโหลด</th>
-                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">เลขออเดอร์</th>
-                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">ร้านค้า</th>
-                        </>
-                      )}
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสพาเลท</th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">คลัง</th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">Location ID</th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ตำแหน่ง</th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">Lot No</th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">แพ็ครวม</th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชิ้นรวม</th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">น้ำหนัก (กก.)</th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">แพ็คจอง</th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชิ้นจอง</th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันผลิต</th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันหมดอายุ</th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">Last Move ID</th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">เคลื่อนไหวล่าสุด</th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">สร้างเมื่อ</th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">อัปเดตเมื่อ</th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap">จัดการ</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
-                    {filteredData.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((balance, idx) => (
+                                  <ArrowUpDown className="w-3 h-3 text-gray-400" />
+                                )}
+                              </div>
+                            </th>
+                            <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">ใบโหลด</th>
+                            <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">เลขออเดอร์</th>
+                            <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">ร้านค้า</th>
+                          </>
+                        )}
+                        <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสพาเลท</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">คลัง</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">Location ID</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ตำแหน่ง</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">Lot No</th>
+                        <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">แพ็ครวม</th>
+                        <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชิ้นรวม</th>
+                        <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">น้ำหนัก (กก.)</th>
+                        <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">แพ็คจอง</th>
+                        <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชิ้นจอง</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันผลิต</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันหมดอายุ</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">Last Move ID</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">เคลื่อนไหวล่าสุด</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">สร้างเมื่อ</th>
+                        <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">อัปเดตเมื่อ</th>
+                        <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap">จัดการ</th>
+                      </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
+                      {filteredData.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((balance, idx) => (
                         <tr
                           key={`${balance.balance_id}-${idx}`}
-                          className={`hover:bg-blue-50/30 transition-colors duration-150 ${
-                            isExpired(balance.expiry_date) ? 'bg-red-50' :
+                          className={`hover:bg-blue-50/30 transition-colors duration-150 ${isExpired(balance.expiry_date) ? 'bg-red-50' :
                             isExpiringSoon(balance.expiry_date) ? 'bg-orange-50' :
-                            (balance.total_piece_qty - balance.reserved_piece_qty) <= 10 ? 'bg-yellow-50' : ''
-                          }`}
+                              (balance.total_piece_qty - balance.reserved_piece_qty) <= 10 ? 'bg-yellow-50' : ''
+                            }`}
                         >
                           <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                             <span className="font-mono text-thai-gray-700">{balance.balance_id}</span>
@@ -1331,16 +1392,15 @@ const InventoryBalancesPage = () => {
                             <>
                               <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-blue-50/30">
                                 {balance.related_documents && balance.related_documents.length > 0 && balance.related_documents[0].document_type ? (
-                                  <span className={`text-[10px] font-thai font-medium ${
-                                    balance.related_documents[0].document_type === 'picklist' ? 'text-green-600' :
+                                  <span className={`text-[10px] font-thai font-medium ${balance.related_documents[0].document_type === 'picklist' ? 'text-green-600' :
                                     balance.related_documents[0].document_type === 'face_sheet' ? 'text-purple-600' :
-                                    balance.related_documents[0].document_type === 'bonus_face_sheet' ? 'text-orange-600' :
-                                    'text-gray-500'
-                                  }`}>
+                                      balance.related_documents[0].document_type === 'bonus_face_sheet' ? 'text-orange-600' :
+                                        'text-gray-500'
+                                    }`}>
                                     {balance.related_documents[0].document_type === 'picklist' ? 'ใบหยิบ' :
-                                     balance.related_documents[0].document_type === 'face_sheet' ? 'ใบปะหน้า' :
-                                     balance.related_documents[0].document_type === 'bonus_face_sheet' ? 'ใบปะหน้าโบนัส' :
-                                     '-'}
+                                      balance.related_documents[0].document_type === 'face_sheet' ? 'ใบปะหน้า' :
+                                        balance.related_documents[0].document_type === 'bonus_face_sheet' ? 'ใบปะหน้าโบนัส' :
+                                          '-'}
                                   </span>
                                 ) : (
                                   <span className="text-gray-400 text-[10px]">-</span>
@@ -1527,10 +1587,9 @@ const InventoryBalancesPage = () => {
                           <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                             {balance.expiry_date ? (
                               <div className="flex items-center gap-1">
-                                <span className={`font-thai ${
-                                  isExpired(balance.expiry_date) ? 'text-red-600 font-bold' :
+                                <span className={`font-thai ${isExpired(balance.expiry_date) ? 'text-red-600 font-bold' :
                                   isExpiringSoon(balance.expiry_date) ? 'text-orange-600 font-medium' : 'text-gray-900'
-                                }`}>
+                                  }`}>
                                   {new Date(balance.expiry_date).toLocaleDateString('th-TH')}
                                 </span>
                                 {isExpired(balance.expiry_date) && (
@@ -1581,7 +1640,7 @@ const InventoryBalancesPage = () => {
                             </span>
                           </td>
                           <td className="px-2 py-0.5 text-center whitespace-nowrap">
-                            <button 
+                            <button
                               className="p-1 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors"
                               title="ดูรายละเอียด"
                               onClick={() => handleViewBalance(balance)}
@@ -1591,56 +1650,56 @@ const InventoryBalancesPage = () => {
                           </td>
                         </tr>
                       ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            {/* Pagination Bar */}
-            {!loading && !error && filteredData.length > 0 && (
-              <div className="flex-shrink-0 flex items-center justify-between px-3 py-1 border-t border-gray-200 bg-gray-50 rounded-b-lg text-xs">
-                <div className="text-sm text-thai-gray-600 font-thai">
-                  แสดง {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, filteredData.length)} จาก {filteredData.length.toLocaleString()} รายการ
+                    </tbody>
+                  </table>
                 </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => setCurrentPage(1)}
-                    disabled={currentPage === 1}
-                    className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="หน้าแรก"
-                  >
-                    <ChevronsLeft className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setCurrentPage(currentPage - 1)}
-                    disabled={currentPage === 1}
-                    className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="หน้าก่อนหน้า"
-                  >
-                    <ChevronLeft className="w-4 h-4" />
-                  </button>
-                  <span className="px-3 py-1 text-sm font-thai">
-                    หน้า {currentPage} / {Math.ceil(filteredData.length / pageSize)}
-                  </span>
-                  <button
-                    onClick={() => setCurrentPage(currentPage + 1)}
-                    disabled={currentPage >= Math.ceil(filteredData.length / pageSize)}
-                    className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="หน้าถัดไป"
-                  >
-                    <ChevronRight className="w-4 h-4" />
-                  </button>
-                  <button
-                    onClick={() => setCurrentPage(Math.ceil(filteredData.length / pageSize))}
-                    disabled={currentPage >= Math.ceil(filteredData.length / pageSize)}
-                    className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
-                    title="หน้าสุดท้าย"
-                  >
-                    <ChevronsRight className="w-4 h-4" />
-                  </button>
+              )}
+              {/* Pagination Bar */}
+              {!loading && !error && filteredData.length > 0 && (
+                <div className="flex-shrink-0 flex items-center justify-between px-3 py-1 border-t border-gray-200 bg-gray-50 rounded-b-lg text-xs">
+                  <div className="text-sm text-thai-gray-600 font-thai">
+                    แสดง {((currentPage - 1) * pageSize) + 1} - {Math.min(currentPage * pageSize, filteredData.length)} จาก {filteredData.length.toLocaleString()} รายการ
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => setCurrentPage(1)}
+                      disabled={currentPage === 1}
+                      className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="หน้าแรก"
+                    >
+                      <ChevronsLeft className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage(currentPage - 1)}
+                      disabled={currentPage === 1}
+                      className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="หน้าก่อนหน้า"
+                    >
+                      <ChevronLeft className="w-4 h-4" />
+                    </button>
+                    <span className="px-3 py-1 text-sm font-thai">
+                      หน้า {currentPage} / {Math.ceil(filteredData.length / pageSize)}
+                    </span>
+                    <button
+                      onClick={() => setCurrentPage(currentPage + 1)}
+                      disabled={currentPage >= Math.ceil(filteredData.length / pageSize)}
+                      className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="หน้าถัดไป"
+                    >
+                      <ChevronRight className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setCurrentPage(Math.ceil(filteredData.length / pageSize))}
+                      disabled={currentPage >= Math.ceil(filteredData.length / pageSize)}
+                      className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                      title="หน้าสุดท้าย"
+                    >
+                      <ChevronsRight className="w-4 h-4" />
+                    </button>
+                  </div>
                 </div>
-              </div>
-            )}
-          </div>
+              )}
+            </div>
           )}
         </div>
       </div>
@@ -1684,10 +1743,9 @@ const InventoryBalancesPage = () => {
                 </div>
                 <div>
                   <span className="text-sm text-thai-gray-600 font-thai">วันหมดอายุ:</span>
-                  <p className={`text-sm font-thai font-medium ${
-                    isExpired(selectedBalance.expiry_date) ? 'text-red-600' :
+                  <p className={`text-sm font-thai font-medium ${isExpired(selectedBalance.expiry_date) ? 'text-red-600' :
                     isExpiringSoon(selectedBalance.expiry_date) ? 'text-orange-600' : ''
-                  }`}>
+                    }`}>
                     {selectedBalance.expiry_date ? new Date(selectedBalance.expiry_date).toLocaleDateString('th-TH') : '-'}
                   </p>
                 </div>
@@ -1822,7 +1880,7 @@ const InventoryBalancesPage = () => {
 
 export default function PreparationAreaInventoryPageWithPermission() {
   return (
-    <PermissionGuard 
+    <PermissionGuard
       permission="warehouse.inventory.view"
       fallback={
         <div className="flex items-center justify-center min-h-[400px]">

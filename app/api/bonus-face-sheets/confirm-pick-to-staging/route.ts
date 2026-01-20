@@ -432,16 +432,36 @@ async function handlePost(request: NextRequest, context: any) {
           });
 
           // Add to destination (PQTD/MRTD)
-          const { data: destBalance } = await supabase
+          // ✅ FIX: Handle null values properly - use .is() for null comparisons
+          let destBalanceQuery = supabase
             .from('wms_inventory_balances')
             .select('balance_id, total_piece_qty, total_pack_qty')
             .eq('warehouse_id', warehouseId)
             .eq('location_id', destLocation.location_id)
-            .eq('sku_id', skuId)
-            .eq('production_date', sourceBalance.production_date || null)
-            .eq('expiry_date', sourceBalance.expiry_date || null)
-            .eq('lot_no', sourceBalance.lot_no || null)
-            .maybeSingle();
+            .eq('sku_id', skuId);
+
+          // Handle production_date - use .is() for null, .eq() for values
+          if (sourceBalance.production_date === null) {
+            destBalanceQuery = destBalanceQuery.is('production_date', null);
+          } else {
+            destBalanceQuery = destBalanceQuery.eq('production_date', sourceBalance.production_date);
+          }
+
+          // Handle expiry_date
+          if (sourceBalance.expiry_date === null) {
+            destBalanceQuery = destBalanceQuery.is('expiry_date', null);
+          } else {
+            destBalanceQuery = destBalanceQuery.eq('expiry_date', sourceBalance.expiry_date);
+          }
+
+          // Handle lot_no
+          if (sourceBalance.lot_no === null) {
+            destBalanceQuery = destBalanceQuery.is('lot_no', null);
+          } else {
+            destBalanceQuery = destBalanceQuery.eq('lot_no', sourceBalance.lot_no);
+          }
+
+          const { data: destBalance } = await destBalanceQuery.maybeSingle();
 
           if (destBalance) {
             await supabase

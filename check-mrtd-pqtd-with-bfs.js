@@ -52,18 +52,18 @@ async function checkMRTDandPQTDwithBFS() {
   console.log(`📦 PQTD: ${Object.keys(pqtdBySku).length} SKUs`);
 
   // ========================================
-  // 2. ดึงรายการ inventory ledger ที่ย้ายเข้า MRTD/PQTD วันนี้
+  // 2. ดึงรายการ inventory ledger ที่ย้ายเข้า MRTD/PQTD วันนี้ (direction = 'IN')
   // ========================================
   const { data: ledgerIn, error: ledgerError } = await supabase
     .from('wms_inventory_ledger')
-    .select('sku_id, location_id, qty_in, reference_doc_type, reference_doc_no, created_at')
+    .select('sku_id, location_id, piece_qty, direction, reference_doc_type, reference_no, created_at')
     .in('location_id', ['MRTD', 'PQTD'])
-    .gt('qty_in', 0)
+    .eq('direction', 'in')
     .gte('created_at', today + 'T00:00:00')
     .lt('created_at', today + 'T23:59:59');
 
   if (ledgerError) {
-    console.log('❌ Error loading ledger:', ledgerError.message);
+    console.log('❌ Error loading ledger IN:', ledgerError.message);
     return;
   }
 
@@ -74,10 +74,10 @@ async function checkMRTDandPQTDwithBFS() {
   (ledgerIn || []).forEach(entry => {
     if (entry.location_id === 'MRTD') {
       if (!ledgerToMRTD[entry.sku_id]) ledgerToMRTD[entry.sku_id] = 0;
-      ledgerToMRTD[entry.sku_id] += entry.qty_in || 0;
+      ledgerToMRTD[entry.sku_id] += entry.piece_qty || 0;
     } else if (entry.location_id === 'PQTD') {
       if (!ledgerToPQTD[entry.sku_id]) ledgerToPQTD[entry.sku_id] = 0;
-      ledgerToPQTD[entry.sku_id] += entry.qty_in || 0;
+      ledgerToPQTD[entry.sku_id] += entry.piece_qty || 0;
     }
   });
 
@@ -85,18 +85,18 @@ async function checkMRTDandPQTDwithBFS() {
   console.log(`📥 Ledger IN เข้า PQTD วันนี้: ${Object.keys(ledgerToPQTD).length} SKUs`);
 
   // ========================================
-  // 3. ดึงรายการ inventory ledger ที่ย้ายออกจาก MRTD/PQTD วันนี้
+  // 3. ดึงรายการ inventory ledger ที่ย้ายออกจาก MRTD/PQTD วันนี้ (direction = 'OUT')
   // ========================================
   const { data: ledgerOut, error: ledgerOutError } = await supabase
     .from('wms_inventory_ledger')
-    .select('sku_id, location_id, qty_out, reference_doc_type, reference_doc_no, created_at')
+    .select('sku_id, location_id, piece_qty, direction, reference_doc_type, reference_no, created_at')
     .in('location_id', ['MRTD', 'PQTD'])
-    .gt('qty_out', 0)
+    .eq('direction', 'out')
     .gte('created_at', today + 'T00:00:00')
     .lt('created_at', today + 'T23:59:59');
 
   if (ledgerOutError) {
-    console.log('❌ Error loading ledger out:', ledgerOutError.message);
+    console.log('❌ Error loading ledger OUT:', ledgerOutError.message);
     return;
   }
 
@@ -107,10 +107,10 @@ async function checkMRTDandPQTDwithBFS() {
   (ledgerOut || []).forEach(entry => {
     if (entry.location_id === 'MRTD') {
       if (!ledgerFromMRTD[entry.sku_id]) ledgerFromMRTD[entry.sku_id] = 0;
-      ledgerFromMRTD[entry.sku_id] += entry.qty_out || 0;
+      ledgerFromMRTD[entry.sku_id] += entry.piece_qty || 0;
     } else if (entry.location_id === 'PQTD') {
       if (!ledgerFromPQTD[entry.sku_id]) ledgerFromPQTD[entry.sku_id] = 0;
-      ledgerFromPQTD[entry.sku_id] += entry.qty_out || 0;
+      ledgerFromPQTD[entry.sku_id] += entry.piece_qty || 0;
     }
   });
 
@@ -146,9 +146,9 @@ async function checkMRTDandPQTDwithBFS() {
 
     Array.from(allMRTDSkus).sort().forEach(sku => {
       const balance = mrtdBySku[sku]?.total_piece_qty || 0;
-      const ledgerIn = ledgerToMRTD[sku] || 0;
-      const ledgerOut = ledgerFromMRTD[sku] || 0;
-      const netToday = ledgerIn - ledgerOut;
+      const inQty = ledgerToMRTD[sku] || 0;
+      const outQty = ledgerFromMRTD[sku] || 0;
+      const netToday = inQty - outQty;
       // Balance ควรเท่ากับ Net Today (ถ้าเริ่มต้นวันนี้ที่ 0)
       const isMatch = balance === netToday;
 
@@ -159,8 +159,8 @@ async function checkMRTDandPQTDwithBFS() {
         console.log(
           sku.substring(0, 28).padEnd(30) +
           String(balance).padEnd(12) +
-          String(ledgerIn).padEnd(12) +
-          String(ledgerOut).padEnd(12) +
+          String(inQty).padEnd(12) +
+          String(outQty).padEnd(12) +
           String(netToday).padEnd(14) +
           (isMatch ? '✅' : '❌')
         );
@@ -202,9 +202,9 @@ async function checkMRTDandPQTDwithBFS() {
 
     Array.from(allPQTDSkus).sort().forEach(sku => {
       const balance = pqtdBySku[sku]?.total_piece_qty || 0;
-      const ledgerIn = ledgerToPQTD[sku] || 0;
-      const ledgerOut = ledgerFromPQTD[sku] || 0;
-      const netToday = ledgerIn - ledgerOut;
+      const inQty = ledgerToPQTD[sku] || 0;
+      const outQty = ledgerFromPQTD[sku] || 0;
+      const netToday = inQty - outQty;
       const isMatch = balance === netToday;
 
       if (isMatch) pqtdMatchCount++;
@@ -214,8 +214,8 @@ async function checkMRTDandPQTDwithBFS() {
         console.log(
           sku.substring(0, 28).padEnd(30) +
           String(balance).padEnd(12) +
-          String(ledgerIn).padEnd(12) +
-          String(ledgerOut).padEnd(12) +
+          String(inQty).padEnd(12) +
+          String(outQty).padEnd(12) +
           String(netToday).padEnd(14) +
           (isMatch ? '✅' : '❌')
         );
@@ -240,10 +240,10 @@ async function checkMRTDandPQTDwithBFS() {
     console.log(
       'Location'.padEnd(10) +
       'SKU'.padEnd(25) +
-      'IN'.padEnd(10) +
-      'OUT'.padEnd(10) +
+      'Dir'.padEnd(6) +
+      'Qty'.padEnd(10) +
       'Doc Type'.padEnd(15) +
-      'Doc No'
+      'Ref No'
     );
     console.log('-'.repeat(100));
 
@@ -251,10 +251,10 @@ async function checkMRTDandPQTDwithBFS() {
       console.log(
         String(entry.location_id).padEnd(10) +
         String(entry.sku_id).substring(0, 23).padEnd(25) +
-        String(entry.qty_in || 0).padEnd(10) +
-        String(entry.qty_out || 0).padEnd(10) +
+        String(entry.direction).padEnd(6) +
+        String(entry.piece_qty || 0).padEnd(10) +
         String(entry.reference_doc_type || '-').padEnd(15) +
-        String(entry.reference_doc_no || '-')
+        String(entry.reference_no || '-')
       );
     });
 

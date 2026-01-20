@@ -19,11 +19,11 @@ import { withAuth } from '@/lib/api/with-auth';
 async function handlePost(request: NextRequest, context: any) {
   try {
     const supabase = await createClient();
-    
+
     // ✅ Get userId from auth context (provided by withAuth wrapper)
     const userId = context.user.user_id;
     await setDatabaseUserContext(supabase, userId);
-    
+
     const body = await request.json();
     const { loadlist_id, loadlist_code, scanned_code, checker_employee_id } = body;
 
@@ -108,8 +108,12 @@ async function handlePost(request: NextRequest, context: any) {
     const faceSheetIds = faceSheetLinks?.map(fs => fs.face_sheet_id) || [];
     const bonusFaceSheetIds = bonusFaceSheetLinks?.map(bfs => bfs.bonus_face_sheet_id) || [];
 
-    // ✅ FIX: ตรวจสอบว่า picklists ถูกโหลดไปแล้วโดย loadlist อื่นหรือไม่
-    // ป้องกันกรณี picklist เดียวกันถูกแมพกับหลาย loadlists
+    // ✅ FIX: ตรวจสอบสถานะการโหลดของ Picklists และ Face Sheets
+    let allPicklistsLoaded = true;
+    let allFaceSheetsLoaded = true;
+    let loadedByLoadlists = new Set<string>();
+
+    // 1. Check Picklists
     if (picklistIds.length > 0) {
       const { data: alreadyLoadedPicklists } = await supabase
         .from('wms_loadlist_picklists')
@@ -123,26 +127,35 @@ async function handlePost(request: NextRequest, context: any) {
         .not('loaded_at', 'is', null)
         .neq('loadlist_id', loadlist.id);
 
-      if (alreadyLoadedPicklists && alreadyLoadedPicklists.length > 0) {
-        const loadedInfo = alreadyLoadedPicklists.map((lp: any) => ({
-          picklist_id: lp.picklist_id,
-          loaded_by: (lp.loadlists as any)?.loadlist_code,
-          loaded_at: lp.loaded_at
-        }));
-        
-        console.error('❌ Picklists already loaded by another loadlist:', loadedInfo);
-        return NextResponse.json(
-          {
-            error: 'ใบจัดสินค้าถูกโหลดไปแล้วโดยใบโหลดอื่น',
-            already_loaded_picklists: loadedInfo,
-            message: `Picklist ถูกโหลดไปแล้วโดย ${loadedInfo.map((l: any) => l.loaded_by).join(', ')}`
-          },
-          { status: 400 }
-        );
+      // ถ้าจำนวนที่โหลดแล้ว ไม่เท่ากับจำนวนทั้งหมด -> แปลว่าบางอันยังไม่โหลด
+      if (!alreadyLoadedPicklists || alreadyLoadedPicklists.length !== picklistIds.length) {
+        allPicklistsLoaded = false;
+
+        // ถ้ามีบางอันโหลดไปแล้ว แต่ไม่ครบ -> Error (Partial overlap)
+        if (alreadyLoadedPicklists && alreadyLoadedPicklists.length > 0) {
+          const loadedInfo = alreadyLoadedPicklists.map((lp: any) => ({
+            picklist_id: lp.picklist_id,
+            loaded_by: (lp.loadlists as any)?.loadlist_code,
+            loaded_at: lp.loaded_at
+          }));
+
+          console.error('❌ Partial picklists already loaded by another loadlist:', loadedInfo);
+          return NextResponse.json(
+            {
+              error: 'ใบจัดสินค้าบางรายการถูกโหลดไปแล้วโดยใบโหลดอื่น (ซ้ำซ้อน)',
+              already_loaded_picklists: loadedInfo,
+              message: `มีบาง Picklist ถูกโหลดไปแล้วโดย ${loadedInfo.map((l: any) => l.loaded_by).join(', ')}`
+            },
+            { status: 400 }
+          );
+        }
+      } else {
+        // ครบถ้วน! ถูกโหลดไปหมดแล้ว
+        alreadyLoadedPicklists.forEach((p: any) => loadedByLoadlists.add((p.loadlists as any)?.loadlist_code));
       }
     }
 
-    // ✅ FIX: ตรวจสอบว่า face sheets ถูกโหลดไปแล้วโดย loadlist อื่นหรือไม่
+    // 2. Check Face Sheets
     if (faceSheetIds.length > 0) {
       const { data: alreadyLoadedFaceSheets } = await supabase
         .from('loadlist_face_sheets')
@@ -156,49 +169,76 @@ async function handlePost(request: NextRequest, context: any) {
         .not('loaded_at', 'is', null)
         .neq('loadlist_id', loadlist.id);
 
-      if (alreadyLoadedFaceSheets && alreadyLoadedFaceSheets.length > 0) {
-        const loadedInfo = alreadyLoadedFaceSheets.map((fs: any) => ({
-          face_sheet_id: fs.face_sheet_id,
-          loaded_by: (fs.loadlists as any)?.loadlist_code,
-          loaded_at: fs.loaded_at
-        }));
-        
-        console.error('❌ Face sheets already loaded by another loadlist:', loadedInfo);
-        return NextResponse.json(
-          {
-            error: 'ใบปะหน้าถูกโหลดไปแล้วโดยใบโหลดอื่น',
-            already_loaded_face_sheets: loadedInfo,
-            message: `Face Sheet ถูกโหลดไปแล้วโดย ${loadedInfo.map((l: any) => l.loaded_by).join(', ')}`
-          },
-          { status: 400 }
-        );
+      if (!alreadyLoadedFaceSheets || alreadyLoadedFaceSheets.length !== faceSheetIds.length) {
+        allFaceSheetsLoaded = false;
+
+        if (alreadyLoadedFaceSheets && alreadyLoadedFaceSheets.length > 0) {
+          const loadedInfo = alreadyLoadedFaceSheets.map((fs: any) => ({
+            face_sheet_id: fs.face_sheet_id,
+            loaded_by: (fs.loadlists as any)?.loadlist_code,
+            loaded_at: fs.loaded_at
+          }));
+
+          console.error('❌ Partial face sheets already loaded by another loadlist:', loadedInfo);
+          return NextResponse.json(
+            {
+              error: 'ใบปะหน้าบางรายการถูกโหลดไปแล้วโดยใบโหลดอื่น (ซ้ำซ้อน)',
+              already_loaded_face_sheets: loadedInfo,
+              message: `มีบาง Face Sheet ถูกโหลดไปแล้วโดย ${loadedInfo.map((l: any) => l.loaded_by).join(', ')}`
+            },
+            { status: 400 }
+          );
+        }
+      } else {
+        alreadyLoadedFaceSheets.forEach((f: any) => loadedByLoadlists.add((f.loadlists as any)?.loadlist_code));
       }
     }
-    
+
+    // ✅ AUTO-COMPLETE: ถ้าทุกรายการถูกโหลดไปหมดแล้ว -> อัปเดตสถานะใบนี้ให้จบตามไปด้วย
+    if (picklistIds.length > 0 && allPicklistsLoaded && (faceSheetIds.length === 0 || allFaceSheetsLoaded)) {
+      console.log(`✅ All items in ${loadlist.loadlist_code} are ALREADY LOADED by ${[...loadedByLoadlists].join(', ')}`);
+
+      // อัปเดตสถานะของ Loadlist นี้ให้เป็น loaded
+      await supabase
+        .from('loadlists')
+        .update({
+          status: 'loaded'
+          // completed_at: new Date().toISOString() // loadlists ไม่มี completed_at
+        })
+        .eq('id', loadlist.id);
+
+      return NextResponse.json({
+        success: true,
+        message: `โหลดเสร็จสิ้น (รายการทั้งหมดถูกโหลดไปแล้วโดย ${[...loadedByLoadlists].join(', ')})`,
+        loadlist_code: loadlist.loadlist_code,
+        auto_completed: true
+      });
+    }
+
     // ✅ FIX (edit11): ตรวจสอบว่า BFS ถูกใช้หมดแล้วหรือไม่ (legacy_exhausted)
     const hasExhaustedBFS = bonusFaceSheetLinks?.some(bfs => bfs.mapping_type === 'legacy_exhausted');
-    
+
     // ✅ FIX: ใช้ matched_package_ids จาก wms_loadlist_bonus_face_sheets แทนการใช้ trip_number
     // เพื่อให้แสดงเฉพาะ packages ที่ถูกแมพกับ loadlist นี้จริงๆ
     let matchedPackageIds = new Set<number>(
       bonusFaceSheetLinks?.flatMap(bfs => bfs.matched_package_ids || []) || []
     );
-    
+
     // ✅ FIX (edit10): Fallback สำหรับ loadlist เก่าที่ไม่มี matched_package_ids
     // ให้ดึงทุก packages จาก BFS แทน
     // ✅ FIX (edit11): ไม่ทำ fallback ถ้า mapping_type = 'legacy_exhausted' (packages ถูกใช้หมดแล้ว)
     if (matchedPackageIds.size === 0 && bonusFaceSheetIds.length > 0 && !hasExhaustedBFS) {
       console.log('⚠️ No matched_package_ids found, using fallback: all packages from BFS');
-      
+
       const { data: allPackages } = await supabase
         .from('bonus_face_sheet_packages')
         .select('id')
         .in('face_sheet_id', bonusFaceSheetIds);
-      
+
       matchedPackageIds = new Set<number>(allPackages?.map(p => p.id) || []);
       console.log(`📦 Fallback: found ${matchedPackageIds.size} packages from ${bonusFaceSheetIds.length} BFS`);
     }
-    
+
     console.log('📦 Matched package IDs from loadlist mapping:', [...matchedPackageIds]);
 
     console.log('📋 Document IDs:', { picklistIds, faceSheetIds, bonusFaceSheetIds });
@@ -275,11 +315,11 @@ async function handlePost(request: NextRequest, context: any) {
     // Fetch bonus face sheets with items (including package_id)
     // ✅ FIX: ใช้ matchedPackageIds จาก wms_loadlist_bonus_face_sheets แทนการใช้ trip_number
     let bonusFaceSheets: any[] = [];
-    
+
     if (bonusFaceSheetIds.length > 0) {
       console.log('🔍 Fetching bonus face sheets:', bonusFaceSheetIds);
       console.log('📦 Using matched package IDs:', [...matchedPackageIds]);
-      
+
       const { data: bonusFaceSheetData, error: bonusFaceSheetsError } = await supabase
         .from('bonus_face_sheets')
         .select(`
@@ -304,7 +344,7 @@ async function handlePost(request: NextRequest, context: any) {
           { status: 404 }
         );
       }
-      
+
       // ✅ AUTO-MOVE: ถ้า packages ยังมี storage_location อยู่ ให้ย้ายไป staging อัตโนมัติ
       // (กรณีโหลดพร้อมของแถมจาก popup)
       if (matchedPackageIds.size > 0) {
@@ -312,22 +352,22 @@ async function handlePost(request: NextRequest, context: any) {
           .from('bonus_face_sheet_packages')
           .select('id, storage_location')
           .in('id', [...matchedPackageIds]);
-        
-        const packagesNotMovedToStaging = packageData?.filter((pkg: any) => 
-          pkg.storage_location && 
+
+        const packagesNotMovedToStaging = packageData?.filter((pkg: any) =>
+          pkg.storage_location &&
           pkg.storage_location.trim() !== ''
         ) || [];
-        
+
         if (packagesNotMovedToStaging.length > 0) {
           console.log(`📦 Auto-moving ${packagesNotMovedToStaging.length} packages to staging...`);
-          
+
           // Clear storage_location สำหรับ packages เหล่านี้
           const packageIdsToMove = packagesNotMovedToStaging.map((p: any) => p.id);
           const { error: clearStorageError } = await supabase
             .from('bonus_face_sheet_packages')
             .update({ storage_location: null })
             .in('id', packageIdsToMove);
-          
+
           if (clearStorageError) {
             console.error('❌ Error clearing storage_location:', clearStorageError);
             return NextResponse.json(
@@ -335,11 +375,11 @@ async function handlePost(request: NextRequest, context: any) {
               { status: 500 }
             );
           }
-          
+
           console.log(`✅ Cleared storage_location for ${packageIdsToMove.length} packages`);
         }
       }
-      
+
       bonusFaceSheets = bonusFaceSheetData || [];
     }
 
@@ -359,10 +399,10 @@ async function handlePost(request: NextRequest, context: any) {
 
     // Get unique order IDs from both picklist items and face sheet items
     const orderIds = [...new Set([
-      ...picklists.flatMap(p => 
+      ...picklists.flatMap(p =>
         p.picklist_items?.map((item: any) => item.order_id).filter(Boolean) || []
       ),
-      ...faceSheets.flatMap(fs => 
+      ...faceSheets.flatMap(fs =>
         fs.face_sheet_items?.map((item: any) => item.order_id).filter(Boolean) || []
       )
     ])];
@@ -374,7 +414,7 @@ async function handlePost(request: NextRequest, context: any) {
         .from('wms_orders')
         .select('order_id, order_no, total_weight, total_volume')
         .in('order_id', orderIds);
-      
+
       orderDetails = orders || [];
     }
 
@@ -460,7 +500,7 @@ async function handlePost(request: NextRequest, context: any) {
 
     // Step 3: เช็คสต็อกแบบรวม (ต่อ SKU)
     const skuBalanceCache = new Map<string, { availableQty: number; balance: any }>();
-    
+
     for (const [skuId, totalQtyNeeded] of skuTotalQtyMap) {
       // Get SKU info
       const { data: skuInfo, error: skuError } = await supabase
@@ -541,7 +581,7 @@ async function handlePost(request: NextRequest, context: any) {
     // Process bonus face sheet items
     // ✅ FIX: กรองเฉพาะ items ที่อยู่ใน packages ที่มี trip_number (ถูกแมพเข้าสายรถแล้ว)
     // ✅ BACKWARD COMPATIBLE: ตรวจสอบสต็อกจาก prep area (MR01-MR10, PQ01-PQ10) หรือ PQTD/MRTD หรือ Dispatch
-    
+
     // Get PQTD and MRTD locations
     const { data: pqtdLocation } = await supabase
       .from('master_location')
@@ -561,7 +601,7 @@ async function handlePost(request: NextRequest, context: any) {
       .select('location_id, location_code')
       .or('location_code.like.MR%,location_code.like.PQ%')
       .not('location_code', 'in', '(MRTD,PQTD)');
-    
+
     const prepAreaLocationMap = new Map<string, number>();
     prepAreaLocations?.forEach((loc: any) => {
       prepAreaLocationMap.set(loc.location_code, loc.location_id);
@@ -576,11 +616,11 @@ async function handlePost(request: NextRequest, context: any) {
           .from('bonus_face_sheet_packages')
           .select('id, hub, storage_location')
           .in('id', allBonusPackageIds);
-        
+
         packageInfos?.forEach((pkg: any) => {
-          packageInfoMap.set(pkg.id, { 
-            hub: pkg.hub || '', 
-            storage_location: pkg.storage_location 
+          packageInfoMap.set(pkg.id, {
+            hub: pkg.hub || '',
+            storage_location: pkg.storage_location
           });
         });
       }
@@ -593,7 +633,7 @@ async function handlePost(request: NextRequest, context: any) {
       const filteredItems = bonusFaceSheet.bonus_face_sheet_items.filter(
         (item: any) => item.package_id && matchedPackageIds.has(item.package_id)
       );
-      
+
       console.log(`🔍 Processing bonus face sheet ${bonusFaceSheet.face_sheet_no}: total items=${bonusFaceSheet.bonus_face_sheet_items.length}, filtered (with trip)=${filteredItems.length}`);
 
       for (const item of filteredItems) {
@@ -650,7 +690,7 @@ async function handlePost(request: NextRequest, context: any) {
         if (packageStorageLocation && prepAreaLocationMap.has(packageStorageLocation)) {
           const prepAreaLocationId = prepAreaLocationMap.get(packageStorageLocation)!;
           console.log(`🔍 Checking prep area ${packageStorageLocation} balance for ${item.sku_id}`);
-          
+
           const { data: prepAreaBalances, error: prepAreaError } = await supabase
             .from('wms_inventory_balances')
             .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
@@ -728,7 +768,7 @@ async function handlePost(request: NextRequest, context: any) {
           const dispatchAvailableQty = (dispatchBonusBalances || []).reduce((sum, b) => sum + Number(b.total_piece_qty || 0), 0);
           const dispatchBonusBalance = dispatchBonusBalances?.[0] || null;
 
-          console.log(`📊 Dispatch query result:`, { 
+          console.log(`📊 Dispatch query result:`, {
             rows: dispatchBonusBalances?.length || 0,
             error: dispatchError,
             availableQty: dispatchAvailableQty,
@@ -774,7 +814,7 @@ async function handlePost(request: NextRequest, context: any) {
 
     // ✅ FAIL EARLY: ถ้ามีรายการใดที่สต็อคไม่พอ ให้ fail ทั้งหมด
     console.log(`✅ Stock check complete. Insufficient items: ${insufficientStockItems.length}, Items to process: ${itemsToProcess.length}`);
-    
+
     if (insufficientStockItems.length > 0) {
       console.error(`❌ Insufficient stock for ${insufficientStockItems.length} items`);
       return NextResponse.json(
@@ -801,7 +841,7 @@ async function handlePost(request: NextRequest, context: any) {
       // This ensures we deduct from the correct balance that has the reservation
       console.log(`🔓 Processing loading complete for loadlist ${loadlist.id}...`);
       const { data: processResult, error: processError } = await supabase
-        .rpc('process_loadlist_loading_complete', { 
+        .rpc('process_loadlist_loading_complete', {
           p_loadlist_id: loadlist.id,
           p_delivery_location_id: deliveryLocation.location_id
         });
@@ -817,11 +857,11 @@ async function handlePost(request: NextRequest, context: any) {
       const processedCount = processResult?.[0]?.processed_count || 0;
       const totalQtyMoved = processResult?.[0]?.total_qty_moved || 0;
       const errorMessage = processResult?.[0]?.error_message;
-      
+
       if (errorMessage) {
         console.error(`⚠️ Function completed with errors: ${errorMessage}`);
       }
-      
+
       console.log(`✅ Processed ${processedCount} reservations (${totalQtyMoved} pieces total)`);
 
       // ✅ Function already handled:
@@ -830,7 +870,7 @@ async function handlePost(request: NextRequest, context: any) {
       // 3. Deducted total_piece_qty from source balance
       // 4. Added stock to Delivery-In-Progress
       // 5. Created ledger entries (OUT + IN)
-      
+
       // No need to manually process items - function did everything!
     } catch (processError: any) {
       console.error(`❌ Error during loading complete:`, processError);
@@ -844,12 +884,12 @@ async function handlePost(request: NextRequest, context: any) {
       status: 'loaded',
       updated_at: now
     };
-    
+
     // Add checker_employee_id if provided
     if (checker_employee_id) {
       updateData.checker_employee_id = checker_employee_id;
     }
-    
+
     const { error: updateStatusError } = await supabase
       .from('loadlists')
       .update(updateData)
@@ -917,6 +957,8 @@ async function handlePost(request: NextRequest, context: any) {
     // ✅ FIX: อัพเดท loadlist ของแถมที่แมพพ่วงกับ picklist เดียวกันให้เป็น "loaded" ด้วย
     // เพื่อไม่ให้แสดงซ้ำในหน้า loading list
     let relatedBonusLoadlistsUpdated = 0;
+
+    // 1. หา BFS loadlist ที่แมพกับ Picklist เดียวกัน
     if (picklistIds.length > 0) {
       // หา loadlist ของแถมที่แมพกับ picklist เดียวกัน (ยกเว้น loadlist ปัจจุบัน)
       const { data: relatedBfsMappings } = await supabase
@@ -927,7 +969,7 @@ async function handlePost(request: NextRequest, context: any) {
 
       if (relatedBfsMappings && relatedBfsMappings.length > 0) {
         const relatedLoadlistIds = [...new Set(relatedBfsMappings.map((m: any) => m.loadlist_id))];
-        
+
         // ตรวจสอบว่า loadlist เหล่านี้เป็น "ของแถมอย่างเดียว" (ไม่มี picklist/face_sheet)
         const { data: relatedLoadlists } = await supabase
           .from('loadlists')
@@ -943,15 +985,15 @@ async function handlePost(request: NextRequest, context: any) {
 
         // กรองเฉพาะ loadlist ที่เป็นของแถมอย่างเดียว (ไม่มี picklist/face_sheet)
         const bonusOnlyLoadlistIds = relatedLoadlists
-          ?.filter((l: any) => 
+          ?.filter((l: any) =>
             (!l.wms_loadlist_picklists || l.wms_loadlist_picklists.length === 0) &&
             (!l.loadlist_face_sheets || l.loadlist_face_sheets.length === 0)
           )
           .map((l: any) => l.id) || [];
 
         if (bonusOnlyLoadlistIds.length > 0) {
-          console.log(`🔄 Updating ${bonusOnlyLoadlistIds.length} related bonus-only loadlists to loaded...`);
-          
+          console.log(`🔄 Updating ${bonusOnlyLoadlistIds.length} related bonus-only loadlists (mapped to picklist) to loaded...`);
+
           const { error: updateRelatedError } = await supabase
             .from('loadlists')
             .update({
@@ -962,17 +1004,79 @@ async function handlePost(request: NextRequest, context: any) {
             .in('id', bonusOnlyLoadlistIds);
 
           if (updateRelatedError) {
-            console.error('Error updating related bonus loadlists:', updateRelatedError);
+            console.error('Error updating related bonus loadlists (picklist):', updateRelatedError);
             // Continue anyway, don't fail
           } else {
-            relatedBonusLoadlistsUpdated = bonusOnlyLoadlistIds.length;
-            console.log(`✅ Updated ${bonusOnlyLoadlistIds.length} related bonus-only loadlists to loaded`);
-            
+            relatedBonusLoadlistsUpdated += bonusOnlyLoadlistIds.length;
+            console.log(`✅ Updated ${bonusOnlyLoadlistIds.length} related bonus-only loadlists (from picklist) to loaded`);
+
             // อัพเดท loaded_at สำหรับ BFS ใน loadlist เหล่านี้ด้วย
             await supabase
               .from('wms_loadlist_bonus_face_sheets')
               .update({ loaded_at: now })
               .in('loadlist_id', bonusOnlyLoadlistIds);
+          }
+        }
+      }
+    }
+
+    // 2. ✅ NEW: หา BFS loadlist ที่แมพกับ Face Sheet เดียวกัน
+    if (faceSheetIds.length > 0) {
+      // หา loadlist ของแถมที่แมพกับ face sheet เดียวกัน (ยกเว้น loadlist ปัจจุบัน)
+      const { data: relatedBfsMappingsFromFS } = await supabase
+        .from('wms_loadlist_bonus_face_sheets')
+        .select('loadlist_id')
+        .in('mapped_face_sheet_id', faceSheetIds)
+        .neq('loadlist_id', loadlist.id);
+
+      if (relatedBfsMappingsFromFS && relatedBfsMappingsFromFS.length > 0) {
+        const relatedLoadlistIdsFromFS = [...new Set(relatedBfsMappingsFromFS.map((m: any) => m.loadlist_id))];
+
+        // ตรวจสอบว่า loadlist เหล่านี้เป็น "ของแถมอย่างเดียว" (ไม่มี picklist/face_sheet)
+        const { data: relatedLoadlistsFromFS } = await supabase
+          .from('loadlists')
+          .select(`
+            id,
+            loadlist_code,
+            status,
+            wms_loadlist_picklists (picklist_id),
+            loadlist_face_sheets (face_sheet_id)
+          `)
+          .in('id', relatedLoadlistIdsFromFS)
+          .eq('status', 'pending');
+
+        // กรองเฉพาะ loadlist ที่เป็นของแถมอย่างเดียว (ไม่มี picklist/face_sheet)
+        const bonusOnlyLoadlistIdsFromFS = relatedLoadlistsFromFS
+          ?.filter((l: any) =>
+            (!l.wms_loadlist_picklists || l.wms_loadlist_picklists.length === 0) &&
+            (!l.loadlist_face_sheets || l.loadlist_face_sheets.length === 0)
+          )
+          .map((l: any) => l.id) || [];
+
+        if (bonusOnlyLoadlistIdsFromFS.length > 0) {
+          console.log(`🔄 Updating ${bonusOnlyLoadlistIdsFromFS.length} related bonus-only loadlists (mapped to face sheet) to loaded...`);
+
+          const { error: updateRelatedFSError } = await supabase
+            .from('loadlists')
+            .update({
+              status: 'loaded',
+              updated_at: now,
+              checker_employee_id: checker_employee_id || null
+            })
+            .in('id', bonusOnlyLoadlistIdsFromFS);
+
+          if (updateRelatedFSError) {
+            console.error('Error updating related bonus loadlists (face sheet):', updateRelatedFSError);
+            // Continue anyway, don't fail
+          } else {
+            relatedBonusLoadlistsUpdated += bonusOnlyLoadlistIdsFromFS.length;
+            console.log(`✅ Updated ${bonusOnlyLoadlistIdsFromFS.length} related bonus-only loadlists (from face sheet) to loaded`);
+
+            // อัพเดท loaded_at สำหรับ BFS ใน loadlist เหล่านี้ด้วย
+            await supabase
+              .from('wms_loadlist_bonus_face_sheets')
+              .update({ loaded_at: now })
+              .in('loadlist_id', bonusOnlyLoadlistIdsFromFS);
           }
         }
       }
@@ -992,7 +1096,7 @@ async function handlePost(request: NextRequest, context: any) {
     console.error('❌ API error:', error);
     console.error('Error stack:', error.stack);
     return NextResponse.json(
-      { 
+      {
         error: 'เกิดข้อผิดพลาดภายในระบบ',
         details: error.message,
         stack: process.env.NODE_ENV === 'development' ? error.stack : undefined

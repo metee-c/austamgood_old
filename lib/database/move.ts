@@ -6,7 +6,7 @@ const supabase = createServiceRoleClient();
 
 export type MoveType = 'putaway' | 'transfer' | 'replenishment' | 'adjustment';
 export type MoveStatus = 'draft' | 'pending' | 'in_progress' | 'completed' | 'cancelled';
-export type MoveItemStatus = 'pending' | 'assigned' | 'in_progress' | 'completed' | 'cancelled';
+export type MoveItemStatus = 'draft' | 'pending' | 'assigned' | 'in_progress' | 'completed' | 'cancelled';
 export type MoveMethod = 'pallet' | 'sku';
 
 export interface MoveHeader {
@@ -374,13 +374,14 @@ class MoveService {
 
       // Auto-complete items without pallet_id (SKU-based moves)
       // These don't require scanning, so complete them immediately
+      /*
       const itemsToAutoComplete = (insertedItems || []).filter(
         (item: any) => !item.pallet_id && item.from_location_id && item.to_location_id
       );
 
       if (itemsToAutoComplete.length > 0) {
         const now = new Date().toISOString();
-        
+
         // Get the move header for inventory recording
         const moveHeader: MoveHeader = {
           move_id: moveData.move_id,
@@ -425,13 +426,14 @@ class MoveService {
             confirmed_pack_qty: item.planned_pack_qty,
             confirmed_piece_qty: item.planned_piece_qty,
           };
-          
+
           await this.recordInventoryMovement(moveItem, moveHeader);
         }
 
         // Recalculate header status after auto-completing items
         await this.recalculateMoveHeaderStatus(moveData.move_id);
       }
+      */
 
       // Finally, fetch the complete move record with items
       return await this.getMoveById(moveData.move_id);
@@ -470,7 +472,7 @@ class MoveService {
     try {
       const { data, error } = await this.supabase
         .from('wms_move_items')
-        .update({ 
+        .update({
           status,
           updated_at: new Date().toISOString()
         })
@@ -580,7 +582,7 @@ class MoveService {
       if (moveItem.from_location_id && !productionDate && !expiryDate) {
         // For partial pallet moves, use parent_pallet_id to find source balance
         const sourcePalletId = (moveItem as any).parent_pallet_id || moveItem.pallet_id;
-        
+
         let query = this.supabase
           .from('wms_inventory_balances')
           .select('production_date, expiry_date, lot_no, pallet_id')
@@ -707,13 +709,13 @@ class MoveService {
       // ตรวจสอบความจุจำนวนชิ้น
       const currentQty = location.current_qty || 0;
       const maxCapacityQty = location.max_capacity_qty || 0;
-      
+
       if (maxCapacityQty > 0) {
         const newQty = currentQty + additionalPieceQty;
         if (newQty > maxCapacityQty) {
-          return { 
-            data: null, 
-            error: `โลเคชั่น ${location.location_code} เกินความจุ (จำนวนชิ้น): ความจุ ${maxCapacityQty.toLocaleString()} ชิ้น, ปัจจุบัน ${currentQty.toLocaleString()} ชิ้น, จะเพิ่ม ${additionalPieceQty.toLocaleString()} ชิ้น` 
+          return {
+            data: null,
+            error: `โลเคชั่น ${location.location_code} เกินความจุ (จำนวนชิ้น): ความจุ ${maxCapacityQty.toLocaleString()} ชิ้น, ปัจจุบัน ${currentQty.toLocaleString()} ชิ้น, จะเพิ่ม ${additionalPieceQty.toLocaleString()} ชิ้น`
           };
         }
       }
@@ -722,17 +724,17 @@ class MoveService {
       // Note: ในอนาคตควรดึงข้อมูลน้ำหนักสินค้าจากตาราง master_sku เพื่อคำนวณ
       const currentWeight = location.current_weight_kg || 0;
       const maxCapacityWeight = location.max_capacity_weight_kg || 0;
-      
+
       if (maxCapacityWeight > 0) {
         // ประมาณการน้ำหนักเพิ่มเติม (สมมติว่าน้ำหนักเฉลี่ยต่อชิ้นประมาณ 0.5 กก.)
         // ควรปรับปรุงให้ดึงข้อมูลจริงจาก master_sku.weight_kg
         const estimatedAdditionalWeight = additionalPieceQty * 0.5;
         const newWeight = currentWeight + estimatedAdditionalWeight;
-        
+
         if (newWeight > maxCapacityWeight) {
-          return { 
-            data: null, 
-            error: `โลเคชั่น ${location.location_code} เกินความจุ (น้ำหนัก): ความจุ ${maxCapacityWeight.toLocaleString()} กก., ปัจจุบัน ${currentWeight.toLocaleString()} กก., จะเพิ่มประมาณ ${estimatedAdditionalWeight.toLocaleString()} กก.` 
+          return {
+            data: null,
+            error: `โลเคชั่น ${location.location_code} เกินความจุ (น้ำหนัก): ความจุ ${maxCapacityWeight.toLocaleString()} กก., ปัจจุบัน ${currentWeight.toLocaleString()} กก., จะเพิ่มประมาณ ${estimatedAdditionalWeight.toLocaleString()} กก.`
           };
         }
       }
@@ -758,7 +760,7 @@ class MoveService {
       }
 
       const newCurrentQty = Math.max(0, (currentData.current_qty || 0) + pieceQtyDelta);
-      
+
       // ประมาณการน้ำหนักเพิ่มเติม (สมมติว่าน้ำหนักเฉลี่ยต่อชิ้นประมาณ 0.5 กก.)
       // ควรปรับปรุงให้ดึงข้อมูลจริงจาก master_sku.weight_kg
       const estimatedWeightDelta = pieceQtyDelta * 0.5;
@@ -979,7 +981,7 @@ class MoveService {
 
       const hasItemsInRCV = balances?.some(
         balance => balance.master_location?.location_type === 'receiving' &&
-        (balance.total_pack_qty > 0 || balance.total_piece_qty > 0)
+          (balance.total_pack_qty > 0 || balance.total_piece_qty > 0)
       );
 
       if (!hasItemsInRCV) {

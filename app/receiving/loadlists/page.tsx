@@ -14,7 +14,8 @@ import {
   ChevronsUpDown,
   Layers,
   AlertTriangle,
-  FileText
+  FileText,
+  Trash2
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
@@ -275,7 +276,7 @@ const LoadlistsPage = () => {
   const [skipMapping, setSkipMapping] = useState(false);
   const [unmappedBonusFaceSheets, setUnmappedBonusFaceSheets] = useState<AvailableBonusFaceSheet[]>([]);
   const [loadingUnmappedBfs, setLoadingUnmappedBfs] = useState(false);
-  
+
   // ✅ NEW: สำหรับเลือกเฉพาะบางออเดอร์จาก BFS
   const [selectPartialOrders, setSelectPartialOrders] = useState(false);
   const [selectedBfsOrders, setSelectedBfsOrders] = useState<Record<number, string[]>>({}); // bfs_id -> order_no[]
@@ -298,7 +299,7 @@ const LoadlistsPage = () => {
 
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [printLoadlist, setPrintLoadlist] = useState<Loadlist | null>(null);
-  
+
   const [showDeliveryDocModal, setShowDeliveryDocModal] = useState(false);
   const [createdLoadlistId, setCreatedLoadlistId] = useState<number | null>(null);
 
@@ -310,7 +311,7 @@ const LoadlistsPage = () => {
   const [selectedFaceSheetsForPrint, setSelectedFaceSheetsForPrint] = useState<number[]>([]); // เก็บ face_sheet_id สำหรับ filter
   const [printingPickListId, setPrintingPickListId] = useState<number | null>(null);
   const [confirmingPickId, setConfirmingPickId] = useState<number | null>(null); // สำหรับปุ่มยืนยันหยิบ
-  
+
   const fetchLoadlists = async () => {
     setLoading(true);
     setError(null);
@@ -340,13 +341,13 @@ const LoadlistsPage = () => {
     if (selectedPicklists.length > 0 && availablePicklists.length > 0) {
       // Get the first selected picklist
       const firstSelectedPicklist = availablePicklists.find(p => p.id === selectedPicklists[0]);
-      
+
       if (firstSelectedPicklist) {
         // Set loading door number from picklist (always override)
         if (firstSelectedPicklist.loading_door_number) {
           setLoadingDoorNumber(firstSelectedPicklist.loading_door_number);
         }
-        
+
         // Set vehicle and driver from trip
         if (firstSelectedPicklist.trip) {
           // Set vehicle if available (always override)
@@ -354,7 +355,7 @@ const LoadlistsPage = () => {
             const vehicleIdStr = String(firstSelectedPicklist.trip.vehicle_id);
             setVehicleId(vehicleIdStr);
           }
-          
+
           // Set driver if available (always override)
           if (firstSelectedPicklist.trip.driver_id) {
             setDriverEmployeeId(firstSelectedPicklist.trip.driver_id);
@@ -546,7 +547,7 @@ const LoadlistsPage = () => {
         throw new Error('Unable to load picklists');
       }
       const result = await response.json();
-      
+
       if (result.data) {
         // แปลงข้อมูลเป็น format ที่ต้องการ
         const picklists = result.data.map((p: any) => ({
@@ -557,7 +558,7 @@ const LoadlistsPage = () => {
           plan_code: p.receiving_route_trips?.receiving_route_plans?.plan_code || '',
           vehicle_plate: null // จะดึงเพิ่มถ้าต้องการ
         }));
-        
+
         // Sort by picklist_code (มากไปน้อย - เรียงตาม string descending)
         picklists.sort((a: any, b: any) => b.picklist_code.localeCompare(a.picklist_code));
         setAllPicklistsForDropdown(picklists);
@@ -638,7 +639,7 @@ const LoadlistsPage = () => {
       console.warn('loadlists is not an array:', loadlists);
       return [];
     }
-    
+
     const term = searchTerm.trim().toLowerCase();
     const filtered = loadlists.filter(l =>
       l.loadlist_code.toLowerCase().includes(term) ||
@@ -712,13 +713,13 @@ const LoadlistsPage = () => {
         // กรองเฉพาะออเดอร์ที่อยู่ใน BFS นี้ (ตรวจสอบจาก packages)
         const bfsPackagesResponse = await fetch(`/api/bonus-face-sheets/${bfsId}`);
         const bfsPackagesResult = await bfsPackagesResponse.json();
-        
+
         if (bfsPackagesResult.success && bfsPackagesResult.data?.packages) {
           const orderIdsInBfs = new Set(
             bfsPackagesResult.data.packages.map((pkg: any) => pkg.order_id)
           );
-          
-          const ordersInBfs = result.data.filter((order: any) => 
+
+          const ordersInBfs = result.data.filter((order: any) =>
             orderIdsInBfs.has(order.order_id)
           );
 
@@ -742,7 +743,7 @@ const LoadlistsPage = () => {
       const newOrders = currentOrders.includes(orderNo)
         ? currentOrders.filter(o => o !== orderNo)
         : [...currentOrders, orderNo];
-      
+
       return {
         ...prev,
         [bfsId]: newOrders
@@ -754,7 +755,7 @@ const LoadlistsPage = () => {
   const toggleAllBfsOrders = (bfsId: number) => {
     const orders = bfsOrdersData[bfsId] || [];
     const currentSelected = selectedBfsOrders[bfsId] || [];
-    
+
     if (currentSelected.length === orders.length) {
       // Deselect all
       setSelectedBfsOrders(prev => ({
@@ -827,7 +828,7 @@ const LoadlistsPage = () => {
     // Validate: ต้องมี checker
     const firstBfsId = selectedBonusFaceSheets[0];
     const checkerId = bonusFaceSheetCheckers[firstBfsId] || checkerEmployeeId;
-    
+
     if (!checkerId) {
       setCreateError('กรุณาเลือกผู้เช็คโหลดสินค้า');
       return;
@@ -854,7 +855,7 @@ const LoadlistsPage = () => {
       const selectedBfsNos = selectedBonusFaceSheets
         .map(bfsId => unmappedBonusFaceSheets.find(b => b.id === bfsId)?.face_sheet_no)
         .filter(Boolean);
-      const bfsDeliveryNumber = selectedBfsNos.length > 0 
+      const bfsDeliveryNumber = selectedBfsNos.length > 0
         ? selectedBfsNos.join(', ')
         : `BFS-${Date.now()}`;
 
@@ -910,12 +911,12 @@ const LoadlistsPage = () => {
     const hasPicklists = selectedPicklists.length > 0;
     const hasFaceSheets = selectedFaceSheets.length > 0;
     const hasBonusFaceSheets = selectedBonusFaceSheets.length > 0;
-    
+
     // ✅ NEW (edit28): โหมดไม่แมพ - สร้าง loadlist จาก BFS โดยตรง
     if (skipMapping && hasBonusFaceSheets) {
       return await handleCreateLoadlistSkipMapping();
     }
-    
+
     if (!hasPicklists && !hasFaceSheets && !hasBonusFaceSheets) {
       setCreateError('กรุณาเลือกใบจัดสินค้า, ใบปะหน้า หรือใบปะหน้าของแถมอย่างน้อย 1 รายการ');
       return;
@@ -936,7 +937,7 @@ const LoadlistsPage = () => {
           deliveryNumber: ''
         };
         const picklistCode = picklist?.picklist_code || `ID:${picklistId}`;
-        
+
         // Check checker employee
         if (!formData.checkerEmployeeId) {
           setCreateError(`กรุณาเลือกผู้เช็คโหลดสินค้าสำหรับ ${picklistCode}`);
@@ -994,7 +995,7 @@ const LoadlistsPage = () => {
             loadingQueueNumber: '',
             deliveryNumber: ''
           };
-          
+
           const requestBody: any = {
             checker_employee_id: formData.checkerEmployeeId,
             vehicle_type: formData.vehicleType || 'N/A',
@@ -1017,7 +1018,7 @@ const LoadlistsPage = () => {
           }
           results.push(result);
         }
-        
+
         setIsCreateModalOpen(false);
         setSelectedPicklists([]);
         setPicklistFormData({});
@@ -1032,7 +1033,7 @@ const LoadlistsPage = () => {
           const bfs = availableBonusFaceSheets.find(b => b.id === bfsId);
           const checkerId = bonusFaceSheetCheckers[bfsId];
           const mapping = bonusFaceSheetMappings[bfsId] || { selectedPicklistId: null, selectedFaceSheetId: null };
-          
+
           // ✅ Validate: ต้องมี checker
           if (!checkerId) {
             throw new Error(`กรุณาเลือกผู้เช็คโหลดสำหรับ ${bfs?.face_sheet_no}`);
@@ -1054,7 +1055,7 @@ const LoadlistsPage = () => {
             })
           });
           const checkResult = await checkResponse.json();
-          
+
           if (!checkResponse.ok || !checkResult.matched) {
             throw new Error(
               `${bfs?.face_sheet_no}: ${checkResult.message || 'ไม่พบรหัสลูกค้าที่ตรงกัน ไม่สามารถสร้างใบโหลดได้'}`
@@ -1081,7 +1082,7 @@ const LoadlistsPage = () => {
         const selectedBfsNos = selectedBonusFaceSheets
           .map(bfsId => availableBonusFaceSheets.find(b => b.id === bfsId)?.face_sheet_no)
           .filter(Boolean);
-        const bfsDeliveryNumber = selectedBfsNos.length > 0 
+        const bfsDeliveryNumber = selectedBfsNos.length > 0
           ? selectedBfsNos.join(', ')
           : `BFS-${Date.now()}`;
 
@@ -1106,7 +1107,7 @@ const LoadlistsPage = () => {
         if (!response.ok) {
           throw new Error(result.error || 'ไม่สามารถสร้างใบโหลดได้');
         }
-        
+
         setIsCreateModalOpen(false);
         setSelectedBonusFaceSheets([]);
         setBonusFaceSheetCheckers({});
@@ -1125,7 +1126,7 @@ const LoadlistsPage = () => {
         loading_queue_number: loadingQueueNumber || null,
         loading_door_number: loadingDoorNumber || null
       };
-      
+
       if (hasFaceSheets) {
         requestBody.face_sheet_ids = selectedFaceSheets;
       }
@@ -1143,13 +1144,13 @@ const LoadlistsPage = () => {
       if (!response.ok) {
         throw new Error(result.error || 'Unable to create loadlist');
       }
-      
+
       setIsCreateModalOpen(false);
       setSelectedFaceSheets([]);
       setSelectedBonusFaceSheets([]);
       setBonusFaceSheetCheckers({});
       await fetchLoadlists();
-      
+
       // If created from face sheets or bonus face sheets, show delivery document option
       if ((hasFaceSheets || hasBonusFaceSheets) && result.id) {
         setCreatedLoadlistId(result.id);
@@ -1183,12 +1184,12 @@ const LoadlistsPage = () => {
         id: allBonusFaceSheets[0]?.id || 0,
         face_sheet_no: allBfsNos.join(', ') // รวมทุก BFS เป็น string
       });
-      
+
       // ดึงรายการใบปะหน้าที่แมพกับ loadlist นี้
       setSelectedFaceSheetsForPrint([]);
       setMappedFaceSheets([]);
       setCurrentLoadlistIdForPrint(loadlist.id);
-      
+
       // ✅ FIX: ไม่ส่ง bonus_face_sheet_id เพื่อให้ API return ทุก BFS ที่แมพกับ loadlist นี้
       fetch(`/api/bonus-face-sheets/mapped-face-sheets?loadlist_id=${loadlist.id}`)
         .then(res => res.json())
@@ -1198,7 +1199,7 @@ const LoadlistsPage = () => {
           }
         })
         .catch(err => console.error('Failed to fetch mapped face sheets:', err));
-      
+
       setIsBonusPrintModalOpen(true);
       return;
     }
@@ -1212,7 +1213,7 @@ const LoadlistsPage = () => {
       );
       return;
     }
-    
+
     // Original print logic for picklists
     setPrintLoadlist(loadlist);
     setIsPrintModalOpen(true);
@@ -1297,6 +1298,47 @@ const LoadlistsPage = () => {
     setCurrentLoadlistIdForPrint(null);
   };
 
+  // ฟังก์ชันลบใบโหลดสินค้า
+  const handleDeleteLoadlist = async (loadlist: Loadlist) => {
+    if (loadlist.status === 'loaded') {
+      alert('ไม่สามารถลบใบโหลดที่เสร็จสิ้นแล้วได้');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `คุณต้องการลบใบโหลด ${loadlist.loadlist_code} ใช่หรือไม่?\n\n` +
+      `การกระทำนี้ไม่สามารถเรียกคืนได้ และจะลบการเชื่อมโยงกับใบหยิบ/ใบปะหน้าทั้งหมด`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/loadlists/${loadlist.id}`, {
+        method: 'DELETE'
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'ลบใบโหลดไม่สำเร็จ');
+      }
+
+      // Refresh list
+      await fetchLoadlists();
+      // Also refresh available picklists/facesheets as they are now free
+      fetchAvailablePicklists();
+      fetchAvailableFaceSheets();
+      fetchAvailableBonusFaceSheets();
+
+    } catch (err: any) {
+      console.error('Failed to delete loadlist:', err);
+      alert(`Delete Failed: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // ฟังก์ชันปริ้นใบหยิบสินค้า (Pick List) สำหรับ bonus face sheet
   const handlePrintPickList = async (loadlist: Loadlist) => {
     const hasBonusFaceSheets = (loadlist as any).bonus_face_sheets && (loadlist as any).bonus_face_sheets.length > 0;
@@ -1335,7 +1377,7 @@ const LoadlistsPage = () => {
 
       const { createRoot } = await import('react-dom/client');
       const BonusPickListDocument = (await import('@/components/receiving/BonusPickListDocument')).default;
-      
+
       const root = createRoot(tempContainer);
       root.render(
         <BonusPickListDocument
@@ -1405,7 +1447,7 @@ const LoadlistsPage = () => {
     const allBonusFaceSheets = (loadlist as any).bonus_face_sheets || [];
     const allBfsIds = allBonusFaceSheets.map((bfs: any) => bfs.id);
     const allBfsNos = allBonusFaceSheets.map((bfs: any) => bfs.face_sheet_no).filter(Boolean);
-    
+
     // ดึงจำนวน packages ที่มี trip_number (แมพสายรถแล้ว) จากทุก BFS
     let mappedPackagesCount = 0;
     try {
@@ -1421,12 +1463,12 @@ const LoadlistsPage = () => {
     } catch (err) {
       console.error('Error fetching mapped packages count:', err);
     }
-    
+
     if (mappedPackagesCount === 0) {
       alert('ไม่พบแพ็คที่แมพสายรถแล้ว กรุณาสร้างใบโหลดก่อน');
       return;
     }
-    
+
     // Confirm before proceeding
     const confirmed = window.confirm(
       `ยืนยันหยิบของแถมไปจุดพักรอโหลด?\n\n` +
@@ -1457,7 +1499,7 @@ const LoadlistsPage = () => {
       }
 
       alert(`✅ ${result.message}`);
-      
+
       // Refresh loadlists (จะดึงค่า bfs_confirmed_to_staging = 'yes' มาใหม่)
       await fetchLoadlists();
     } catch (err: any) {
@@ -1510,95 +1552,95 @@ const LoadlistsPage = () => {
           ) : (
             <div className="flex-1 overflow-auto thin-scrollbar">
               <table className="min-w-full border-collapse text-sm table-fixed">
-                  <thead className="sticky top-0 z-10 bg-gray-100">
-                    <tr>
-                      <th className="w-[10%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 cursor-pointer hover:bg-gray-200" onClick={() => handleSort('loadlist_code')}>
-                        รหัสใบโหลด{getSortIcon('loadlist_code')}
-                      </th>
-                      <th className="w-[8%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
-                        รหัสแผนส่ง
-                      </th>
-                      <th className="w-[8%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
-                        คันที่
-                      </th>
-                      <th className="w-[8%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
-                        เอกสารจัดสินค้า
-                      </th>
-                      <th className="w-[10%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
-                        เอกสารที่แมพ
-                      </th>
-                      <th className="w-[8%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
-                        OA
-                      </th>
-                      <th className="w-[6%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
-                        ประตูโหลด
-                      </th>
-                      <th className="w-[5%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
-                        คิว
-                      </th>
-                      <th className="w-[10%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
-                        ผู้เช็คโหลด
-                      </th>
-                      <th className="w-[7%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
-                        ประเภทรถ
-                      </th>
-                      <th className="w-[8%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
-                        ทะเบียนรถ
-                      </th>
-                      <th className="w-[10%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
-                        คนขับ
-                      </th>
-                      <th className="w-[11%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 cursor-pointer hover:bg-gray-200" onClick={() => handleSort('created_at')}>
-                        วันที่สร้าง{getSortIcon('created_at')}
-                      </th>
-                      <th className="w-[6%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
-                        สถานะ
-                      </th>
-                      <th className="w-[3%] px-2 py-2 text-center text-xs font-semibold border-b">
-                        ดำเนินการ
-                      </th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
-                    {filteredLoadlists.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((loadlist) => {
-                      // ตรวจสอบประเภทเอกสารและแสดงเลขงานจัดส่งที่เหมาะสม
-                      const hasPicklists = loadlist.picklists && loadlist.picklists.length > 0;
-                      const hasFaceSheets = (loadlist as any).face_sheets && (loadlist as any).face_sheets.length > 0;
-                      const hasBonusFaceSheets = (loadlist as any).bonus_face_sheets && (loadlist as any).bonus_face_sheets.length > 0;
-                      
-                      // ✅ FIX: คอลัม "เลขงานจัดส่ง" - ตรวจสอบ BFS ก่อน เพราะถ้าสร้างจาก BFS แมพ FS ควรแสดงเลข BFS
-                      let deliveryNumbers: string[] = [];
-                      let deliveryNumberStyle = 'text-gray-700 font-medium';
-                      
-                      if (hasBonusFaceSheets) {
-                        // Bonus Face Sheet: แสดงเลข BFS ทั้งหมดที่นำไปแมพ (ใช้ face_sheet_no ไม่ใช่ delivery_number)
-                        const bfsList = (loadlist as any).bonus_face_sheets || [];
-                        // ดึง face_sheet_no จากทุก BFS และ deduplicate
-                        const bfsNos = bfsList.map((bfs: any) => bfs.face_sheet_no).filter(Boolean);
-                        deliveryNumbers = [...new Set(bfsNos)] as string[];
-                        // ถ้าไม่มี face_sheet_no ให้ fallback ไป delivery_number
-                        if (deliveryNumbers.length === 0) {
-                          deliveryNumbers = [loadlist.delivery_number || '-'];
-                        }
-                        deliveryNumberStyle = 'text-pink-600 font-medium';
-                      } else if (hasPicklists) {
-                        // Picklist: แสดงเลขใบหยิบ (picklist_code) แทน delivery_number
-                        const picklistCodes = loadlist.picklists.map((pl: any) => pl.picklist_code).filter(Boolean);
-                        deliveryNumbers = picklistCodes.length > 0 ? picklistCodes : [loadlist.delivery_number || '-'];
-                        deliveryNumberStyle = 'text-blue-600 font-medium';
-                      } else if (hasFaceSheets) {
-                        // Face Sheet (ไม่มี BFS): แสดง face_sheet_no
-                        const faceSheet = (loadlist as any).face_sheets[0];
-                        deliveryNumbers = [faceSheet?.face_sheet_no || loadlist.delivery_number || '-'];
-                        deliveryNumberStyle = 'text-orange-600 font-medium';
+                <thead className="sticky top-0 z-10 bg-gray-100">
+                  <tr>
+                    <th className="w-[10%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 cursor-pointer hover:bg-gray-200" onClick={() => handleSort('loadlist_code')}>
+                      รหัสใบโหลด{getSortIcon('loadlist_code')}
+                    </th>
+                    <th className="w-[8%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
+                      รหัสแผนส่ง
+                    </th>
+                    <th className="w-[8%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
+                      คันที่
+                    </th>
+                    <th className="w-[8%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
+                      เอกสารจัดสินค้า
+                    </th>
+                    <th className="w-[10%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
+                      เอกสารที่แมพ
+                    </th>
+                    <th className="w-[8%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
+                      OA
+                    </th>
+                    <th className="w-[6%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
+                      ประตูโหลด
+                    </th>
+                    <th className="w-[5%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
+                      คิว
+                    </th>
+                    <th className="w-[10%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
+                      ผู้เช็คโหลด
+                    </th>
+                    <th className="w-[7%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
+                      ประเภทรถ
+                    </th>
+                    <th className="w-[8%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
+                      ทะเบียนรถ
+                    </th>
+                    <th className="w-[10%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
+                      คนขับ
+                    </th>
+                    <th className="w-[11%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 cursor-pointer hover:bg-gray-200" onClick={() => handleSort('created_at')}>
+                      วันที่สร้าง{getSortIcon('created_at')}
+                    </th>
+                    <th className="w-[6%] px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200">
+                      สถานะ
+                    </th>
+                    <th className="w-[3%] px-2 py-2 text-center text-xs font-semibold border-b">
+                      ดำเนินการ
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
+                  {filteredLoadlists.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((loadlist) => {
+                    // ตรวจสอบประเภทเอกสารและแสดงเลขงานจัดส่งที่เหมาะสม
+                    const hasPicklists = loadlist.picklists && loadlist.picklists.length > 0;
+                    const hasFaceSheets = (loadlist as any).face_sheets && (loadlist as any).face_sheets.length > 0;
+                    const hasBonusFaceSheets = (loadlist as any).bonus_face_sheets && (loadlist as any).bonus_face_sheets.length > 0;
+
+                    // ✅ FIX: คอลัม "เลขงานจัดส่ง" - ตรวจสอบ BFS ก่อน เพราะถ้าสร้างจาก BFS แมพ FS ควรแสดงเลข BFS
+                    let deliveryNumbers: string[] = [];
+                    let deliveryNumberStyle = 'text-gray-700 font-medium';
+
+                    if (hasBonusFaceSheets) {
+                      // Bonus Face Sheet: แสดงเลข BFS ทั้งหมดที่นำไปแมพ (ใช้ face_sheet_no ไม่ใช่ delivery_number)
+                      const bfsList = (loadlist as any).bonus_face_sheets || [];
+                      // ดึง face_sheet_no จากทุก BFS และ deduplicate
+                      const bfsNos = bfsList.map((bfs: any) => bfs.face_sheet_no).filter(Boolean);
+                      deliveryNumbers = [...new Set(bfsNos)] as string[];
+                      // ถ้าไม่มี face_sheet_no ให้ fallback ไป delivery_number
+                      if (deliveryNumbers.length === 0) {
+                        deliveryNumbers = [loadlist.delivery_number || '-'];
                       }
-                      
-                      // ✅ FIX: คอลัม "เอกสารที่แมพ" แสดงเลขเอกสารไม่ซ้ำ
-                      const uniqueMappedDocs = loadlist.mapped_documents 
-                        ? [...new Map(loadlist.mapped_documents.map(doc => [doc.code, doc])).values()]
-                        : [];
-                      
-                      return (
+                      deliveryNumberStyle = 'text-pink-600 font-medium';
+                    } else if (hasPicklists) {
+                      // Picklist: แสดงเลขใบหยิบ (picklist_code) แทน delivery_number
+                      const picklistCodes = loadlist.picklists.map((pl: any) => pl.picklist_code).filter(Boolean);
+                      deliveryNumbers = picklistCodes.length > 0 ? picklistCodes : [loadlist.delivery_number || '-'];
+                      deliveryNumberStyle = 'text-blue-600 font-medium';
+                    } else if (hasFaceSheets) {
+                      // Face Sheet (ไม่มี BFS): แสดง face_sheet_no
+                      const faceSheet = (loadlist as any).face_sheets[0];
+                      deliveryNumbers = [faceSheet?.face_sheet_no || loadlist.delivery_number || '-'];
+                      deliveryNumberStyle = 'text-orange-600 font-medium';
+                    }
+
+                    // ✅ FIX: คอลัม "เอกสารที่แมพ" แสดงเลขเอกสารไม่ซ้ำ
+                    const uniqueMappedDocs = loadlist.mapped_documents
+                      ? [...new Map(loadlist.mapped_documents.map(doc => [doc.code, doc])).values()]
+                      : [];
+
+                    return (
                       <tr key={loadlist.id} className="hover:bg-blue-50/30 transition-colors duration-150">
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap font-semibold text-green-600">
                           {loadlist.loadlist_code}
@@ -1635,8 +1677,8 @@ const LoadlistsPage = () => {
                         </td>
                         {/* คอลัม "OA" - แสดงเลขที่ขึ้นต้นด้วย S */}
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700 font-medium">
-                          {loadlist.delivery_number && loadlist.delivery_number.startsWith('S') 
-                            ? loadlist.delivery_number 
+                          {loadlist.delivery_number && loadlist.delivery_number.startsWith('S')
+                            ? loadlist.delivery_number
                             : '-'}
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
@@ -1794,7 +1836,7 @@ const LoadlistsPage = () => {
                             title={`Drivers available: ${drivers.length}, Current: ${loadlist.driver?.employee_id || 'none'}`}
                           >
                             <option value="">
-                              {loadlist.driver 
+                              {loadlist.driver
                                 ? `${loadlist.driver.first_name} ${loadlist.driver.last_name}`.trim()
                                 : (loadlist.vehicle?.model || '-- เลือก --')
                               }
@@ -1844,19 +1886,18 @@ const LoadlistsPage = () => {
                               // ✅ FIX: ใช้ bfs_confirmed_to_staging จากฐานข้อมูลแทน
                               const isConfirmed = loadlist.bfs_confirmed_to_staging === 'yes';
                               const isProcessing = confirmingPickId === loadlist.id;
-                              
+
                               return (
                                 <button
                                   onClick={() => handleConfirmPickToStaging(loadlist)}
-                                  className={`p-1 rounded transition-colors ${
-                                    isConfirmed
+                                  className={`p-1 rounded transition-colors ${isConfirmed
                                       ? 'opacity-30 cursor-not-allowed text-gray-400 bg-gray-100'
                                       : isProcessing
                                         ? 'cursor-wait text-gray-400 opacity-50'
                                         : 'hover:bg-emerald-50 hover:text-emerald-600'
-                                  }`}
-                                  title={isConfirmed 
-                                    ? 'ย้ายไปจุดพักรอโหลดครบแล้ว' 
+                                    }`}
+                                  title={isConfirmed
+                                    ? 'ย้ายไปจุดพักรอโหลดครบแล้ว'
                                     : 'ยืนยันหยิบไปจุดพักรอโหลด'}
                                   disabled={isConfirmed || isProcessing}
                                 >
@@ -1868,13 +1909,24 @@ const LoadlistsPage = () => {
                                 </button>
                               );
                             })()}
+
+                            {/* ปุ่มลบใบโหลด - แสดงเฉพาะ pending/cancelled */}
+                            {loadlist.status !== 'loaded' && (
+                              <button
+                                onClick={() => handleDeleteLoadlist(loadlist)}
+                                className="p-1 rounded hover:bg-red-50 hover:text-red-600 transition-colors"
+                                title="ลบใบโหลด"
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
                     );
-                    })}
-                  </tbody>
-                </table>
+                  })}
+                </tbody>
+              </table>
             </div>
           )}
           <PaginationBar
@@ -1905,33 +1957,30 @@ const LoadlistsPage = () => {
             <div className="flex space-x-4">
               <button
                 onClick={() => setActiveTab('picklists')}
-                className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
-                  activeTab === 'picklists'
+                className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${activeTab === 'picklists'
                     ? 'border-green-500 text-green-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
+                  }`}
               >
                 <Package className="w-4 h-4 inline-block mr-2" />
                 ใบจัดสินค้า ({selectedPicklists.length})
               </button>
               <button
                 onClick={() => setActiveTab('face-sheets')}
-                className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
-                  activeTab === 'face-sheets'
+                className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${activeTab === 'face-sheets'
                     ? 'border-green-500 text-green-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
+                  }`}
               >
                 <Layers className="w-4 h-4 inline-block mr-2" />
                 ใบปะหน้า ({selectedFaceSheets.length})
               </button>
               <button
                 onClick={() => setActiveTab('bonus-face-sheets')}
-                className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${
-                  activeTab === 'bonus-face-sheets'
+                className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${activeTab === 'bonus-face-sheets'
                     ? 'border-green-500 text-green-600'
                     : 'border-transparent text-gray-500 hover:text-gray-700'
-                }`}
+                  }`}
               >
                 <Layers className="w-4 h-4 inline-block mr-2" />
                 ใบปะหน้าของแถม ({selectedBonusFaceSheets.length})
@@ -1956,217 +2005,216 @@ const LoadlistsPage = () => {
                 </label>
               </div>
 
-            <div className="max-h-64 overflow-y-auto border rounded-lg">
-              <table className="w-full border-collapse text-sm">
-                <thead className="sticky top-0 z-10 bg-gray-100">
-                  <tr>
-                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap w-12">
-                      <span className="sr-only">เลือก</span>
-                    </th>
-                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสใบจัด</th>
-                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">เที่ยวรถ</th>
-                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">จังหวัด</th>
-                    <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">จุดส่ง</th>
-                    <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">น้ำหนักรวม (kg)</th>
-                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ผู้เช็ค</th>
-                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ประเภทรถ</th>
-                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ทะเบียนรถ</th>
-                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">คนขับ</th>
-                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ประตูโหลด</th>
-                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">คิว</th>
-                    <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">เอกสารจัดสินค้า</th>
-                    <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap">สถานะ</th>
-                  </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
-                  {!Array.isArray(availablePicklists) || availablePicklists.length === 0 ? (
+              <div className="max-h-64 overflow-y-auto border rounded-lg">
+                <table className="w-full border-collapse text-sm">
+                  <thead className="sticky top-0 z-10 bg-gray-100">
                     <tr>
-                      <td colSpan={14} className="px-4 py-8 text-center text-gray-500">
-                        ไม่พบใบจัดสินค้าที่สถานะ "เสร็จสิ้น"
-                      </td>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap w-12">
+                        <span className="sr-only">เลือก</span>
+                      </th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสใบจัด</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">เที่ยวรถ</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">จังหวัด</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">จุดส่ง</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">น้ำหนักรวม (kg)</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ผู้เช็ค</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ประเภทรถ</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ทะเบียนรถ</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">คนขับ</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ประตูโหลด</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">คิว</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">เอกสารจัดสินค้า</th>
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap">สถานะ</th>
                     </tr>
-                  ) : (
-                    availablePicklists.map((picklist) => (
-                      <tr
-                        key={picklist.id}
-                        className={`hover:bg-blue-50/30 transition-colors duration-150 ${
-                          selectedPicklists.includes(picklist.id) ? 'bg-green-50' : ''
-                        }`}
-                      >
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          <input
-                            type="checkbox"
-                            checked={selectedPicklists.includes(picklist.id)}
-                            onChange={() => handleTogglePicklist(picklist.id)}
-                            className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
-                          />
+                  </thead>
+                  <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
+                    {!Array.isArray(availablePicklists) || availablePicklists.length === 0 ? (
+                      <tr>
+                        <td colSpan={14} className="px-4 py-8 text-center text-gray-500">
+                          ไม่พบใบจัดสินค้าที่สถานะ "เสร็จสิ้น"
                         </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap font-mono text-blue-600">{picklist.picklist_code}</td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700">{picklist.trip.trip_code}</td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700 font-medium">
-                          {picklist.province || '-'}
-                        </td>
-                        <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap font-semibold text-blue-600">
-                          {picklist.total_stops?.toLocaleString('en-US') || '-'}
-                        </td>
-                        <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap font-semibold text-purple-600">
-                          {picklist.total_weight ? picklist.total_weight.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
-                        </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          <select
-                            value={getPicklistFormValue(picklist, 'checkerEmployeeId')}
-                            onChange={(e) => updatePicklistFormData(picklist.id, 'checkerEmployeeId', e.target.value ? Number(e.target.value) : '')}
-                            className="w-32 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
-                          >
-                            <option value="">-- เลือก --</option>
-                            {employees.map((emp) => (
-                              <option key={emp.employee_id} value={emp.employee_id}>
-                                {emp.first_name} {emp.last_name}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          <select
-                            value={getPicklistFormValue(picklist, 'vehicleType')}
-                            onChange={(e) => updatePicklistFormData(picklist.id, 'vehicleType', e.target.value)}
-                            className="w-24 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
-                          >
-                            <option value="">-- เลือก --</option>
-                            <option value="4 ล้อ">4 ล้อ</option>
-                            <option value="6 ล้อ">6 ล้อ</option>
-                            <option value="10 ล้อ">10 ล้อ</option>
-                            <option value="กระบะ">กระบะ</option>
-                            <option value="ตู้">ตู้</option>
-                            <option value="เทรลเลอร์">เทรลเลอร์</option>
-                          </select>
-                        </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          <select
-                            value={getPicklistFormValue(picklist, 'vehicleId')}
-                            onChange={(e) => {
-                              const selectedVehicleId = e.target.value;
-                              updatePicklistFormData(picklist.id, 'vehicleId', selectedVehicleId);
-                              // Auto-update driver name from vehicle.model when vehicle is selected
-                              if (selectedVehicleId) {
-                                const selectedVehicle = vehicles.find(v => String(v.vehicle_id) === selectedVehicleId);
-                                if (selectedVehicle) {
-                                  const driverNameFromVehicle = selectedVehicle.model || '';
-                                  updatePicklistFormData(picklist.id, 'driverName', driverNameFromVehicle);
-                                  
-                                  // Try to find matching employee by name
-                                  if (driverNameFromVehicle) {
-                                    const matchingEmployee = employees.find(emp => {
-                                      const fullName = `${emp.first_name} ${emp.last_name}`.trim();
-                                      return fullName.includes(driverNameFromVehicle) || driverNameFromVehicle.includes(emp.first_name);
-                                    });
-                                    if (matchingEmployee) {
-                                      updatePicklistFormData(picklist.id, 'driverEmployeeId', matchingEmployee.employee_id);
+                      </tr>
+                    ) : (
+                      availablePicklists.map((picklist) => (
+                        <tr
+                          key={picklist.id}
+                          className={`hover:bg-blue-50/30 transition-colors duration-150 ${selectedPicklists.includes(picklist.id) ? 'bg-green-50' : ''
+                            }`}
+                        >
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                            <input
+                              type="checkbox"
+                              checked={selectedPicklists.includes(picklist.id)}
+                              onChange={() => handleTogglePicklist(picklist.id)}
+                              className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                            />
+                          </td>
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap font-mono text-blue-600">{picklist.picklist_code}</td>
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700">{picklist.trip.trip_code}</td>
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap text-gray-700 font-medium">
+                            {picklist.province || '-'}
+                          </td>
+                          <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap font-semibold text-blue-600">
+                            {picklist.total_stops?.toLocaleString('en-US') || '-'}
+                          </td>
+                          <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap font-semibold text-purple-600">
+                            {picklist.total_weight ? picklist.total_weight.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '-'}
+                          </td>
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                            <select
+                              value={getPicklistFormValue(picklist, 'checkerEmployeeId')}
+                              onChange={(e) => updatePicklistFormData(picklist.id, 'checkerEmployeeId', e.target.value ? Number(e.target.value) : '')}
+                              className="w-32 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                            >
+                              <option value="">-- เลือก --</option>
+                              {employees.map((emp) => (
+                                <option key={emp.employee_id} value={emp.employee_id}>
+                                  {emp.first_name} {emp.last_name}
+                                </option>
+                              ))}
+                            </select>
+                          </td>
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                            <select
+                              value={getPicklistFormValue(picklist, 'vehicleType')}
+                              onChange={(e) => updatePicklistFormData(picklist.id, 'vehicleType', e.target.value)}
+                              className="w-24 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                            >
+                              <option value="">-- เลือก --</option>
+                              <option value="4 ล้อ">4 ล้อ</option>
+                              <option value="6 ล้อ">6 ล้อ</option>
+                              <option value="10 ล้อ">10 ล้อ</option>
+                              <option value="กระบะ">กระบะ</option>
+                              <option value="ตู้">ตู้</option>
+                              <option value="เทรลเลอร์">เทรลเลอร์</option>
+                            </select>
+                          </td>
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                            <select
+                              value={getPicklistFormValue(picklist, 'vehicleId')}
+                              onChange={(e) => {
+                                const selectedVehicleId = e.target.value;
+                                updatePicklistFormData(picklist.id, 'vehicleId', selectedVehicleId);
+                                // Auto-update driver name from vehicle.model when vehicle is selected
+                                if (selectedVehicleId) {
+                                  const selectedVehicle = vehicles.find(v => String(v.vehicle_id) === selectedVehicleId);
+                                  if (selectedVehicle) {
+                                    const driverNameFromVehicle = selectedVehicle.model || '';
+                                    updatePicklistFormData(picklist.id, 'driverName', driverNameFromVehicle);
+
+                                    // Try to find matching employee by name
+                                    if (driverNameFromVehicle) {
+                                      const matchingEmployee = employees.find(emp => {
+                                        const fullName = `${emp.first_name} ${emp.last_name}`.trim();
+                                        return fullName.includes(driverNameFromVehicle) || driverNameFromVehicle.includes(emp.first_name);
+                                      });
+                                      if (matchingEmployee) {
+                                        updatePicklistFormData(picklist.id, 'driverEmployeeId', matchingEmployee.employee_id);
+                                      } else {
+                                        updatePicklistFormData(picklist.id, 'driverEmployeeId', '');
+                                      }
                                     } else {
                                       updatePicklistFormData(picklist.id, 'driverEmployeeId', '');
                                     }
-                                  } else {
-                                    updatePicklistFormData(picklist.id, 'driverEmployeeId', '');
                                   }
+                                } else {
+                                  updatePicklistFormData(picklist.id, 'driverName', '');
+                                  updatePicklistFormData(picklist.id, 'driverEmployeeId', '');
                                 }
-                              } else {
-                                updatePicklistFormData(picklist.id, 'driverName', '');
-                                updatePicklistFormData(picklist.id, 'driverEmployeeId', '');
-                              }
-                            }}
-                            className="w-28 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
-                          >
-                            <option value="">-- เลือก --</option>
-                            {vehicles.map((vehicle) => (
-                              <option key={vehicle.vehicle_id} value={String(vehicle.vehicle_id)}>
-                                {vehicle.plate_number}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          <select
-                            value={getPicklistFormValue(picklist, 'driverEmployeeId')}
-                            onChange={(e) => {
-                              const selectedDriverId = e.target.value ? parseInt(e.target.value, 10) : '';
-                              updatePicklistFormData(picklist.id, 'driverEmployeeId', selectedDriverId);
-                              if (selectedDriverId) {
-                                const selectedEmployee = employees.find(emp => emp.employee_id === selectedDriverId);
-                                if (selectedEmployee) {
-                                  updatePicklistFormData(picklist.id, 'driverName', `${selectedEmployee.first_name} ${selectedEmployee.last_name}`.trim());
-                                }
-                              }
-                            }}
-                            className="w-32 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
-                          >
-                            <option value="">
-                              {getPicklistFormValue(picklist, 'driverName') || picklist.trip?.driver_name || '-- เลือก --'}
-                            </option>
-                            {employees
-                              .filter(emp => emp.position?.includes('ขับ') || emp.position?.toLowerCase().includes('driver'))
-                              .map((employee) => (
-                                <option key={employee.employee_id} value={employee.employee_id}>
-                                  {`${employee.first_name} ${employee.last_name}`.trim()}
+                              }}
+                              className="w-28 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                            >
+                              <option value="">-- เลือก --</option>
+                              {vehicles.map((vehicle) => (
+                                <option key={vehicle.vehicle_id} value={String(vehicle.vehicle_id)}>
+                                  {vehicle.plate_number}
                                 </option>
                               ))}
-                          </select>
-                        </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          <select
-                            value={getPicklistFormValue(picklist, 'loadingDoorNumber')}
-                            onChange={(e) => updatePicklistFormData(picklist.id, 'loadingDoorNumber', e.target.value)}
-                            className="w-20 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
-                          >
-                            <option value="">-- เลือก --</option>
-                            <option value="D01">D01</option>
-                            <option value="D02">D02</option>
-                            <option value="D03">D03</option>
-                            <option value="D04">D04</option>
-                            <option value="D05">D05</option>
-                            <option value="D06">D06</option>
-                            <option value="D07">D07</option>
-                            <option value="D08">D08</option>
-                            <option value="D09">D09</option>
-                            <option value="D10">D10</option>
-                          </select>
-                        </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          <select
-                            value={getPicklistFormValue(picklist, 'loadingQueueNumber')}
-                            onChange={(e) => updatePicklistFormData(picklist.id, 'loadingQueueNumber', e.target.value)}
-                            className="w-20 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
-                          >
-                            <option value="">-- เลือก --</option>
-                            <option value="Q-01">Q-01</option>
-                            <option value="Q-02">Q-02</option>
-                            <option value="Q-03">Q-03</option>
-                            <option value="Q-04">Q-04</option>
-                            <option value="Q-05">Q-05</option>
-                            <option value="Q-06">Q-06</option>
-                            <option value="Q-07">Q-07</option>
-                            <option value="Q-08">Q-08</option>
-                            <option value="Q-09">Q-09</option>
-                            <option value="Q-10">Q-10</option>
-                          </select>
-                        </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          <input
-                            type="text"
-                            value={getPicklistFormValue(picklist, 'deliveryNumber')}
-                            onChange={(e) => updatePicklistFormData(picklist.id, 'deliveryNumber', e.target.value)}
-                            placeholder="S002855"
-                            className="w-24 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
-                          />
-                        </td>
-                        <td className="px-3 py-2 text-gray-700">
-                          <Badge variant="success" size="sm">เสร็จสิ้น</Badge>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                            </select>
+                          </td>
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                            <select
+                              value={getPicklistFormValue(picklist, 'driverEmployeeId')}
+                              onChange={(e) => {
+                                const selectedDriverId = e.target.value ? parseInt(e.target.value, 10) : '';
+                                updatePicklistFormData(picklist.id, 'driverEmployeeId', selectedDriverId);
+                                if (selectedDriverId) {
+                                  const selectedEmployee = employees.find(emp => emp.employee_id === selectedDriverId);
+                                  if (selectedEmployee) {
+                                    updatePicklistFormData(picklist.id, 'driverName', `${selectedEmployee.first_name} ${selectedEmployee.last_name}`.trim());
+                                  }
+                                }
+                              }}
+                              className="w-32 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                            >
+                              <option value="">
+                                {getPicklistFormValue(picklist, 'driverName') || picklist.trip?.driver_name || '-- เลือก --'}
+                              </option>
+                              {employees
+                                .filter(emp => emp.position?.includes('ขับ') || emp.position?.toLowerCase().includes('driver'))
+                                .map((employee) => (
+                                  <option key={employee.employee_id} value={employee.employee_id}>
+                                    {`${employee.first_name} ${employee.last_name}`.trim()}
+                                  </option>
+                                ))}
+                            </select>
+                          </td>
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                            <select
+                              value={getPicklistFormValue(picklist, 'loadingDoorNumber')}
+                              onChange={(e) => updatePicklistFormData(picklist.id, 'loadingDoorNumber', e.target.value)}
+                              className="w-20 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                            >
+                              <option value="">-- เลือก --</option>
+                              <option value="D01">D01</option>
+                              <option value="D02">D02</option>
+                              <option value="D03">D03</option>
+                              <option value="D04">D04</option>
+                              <option value="D05">D05</option>
+                              <option value="D06">D06</option>
+                              <option value="D07">D07</option>
+                              <option value="D08">D08</option>
+                              <option value="D09">D09</option>
+                              <option value="D10">D10</option>
+                            </select>
+                          </td>
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                            <select
+                              value={getPicklistFormValue(picklist, 'loadingQueueNumber')}
+                              onChange={(e) => updatePicklistFormData(picklist.id, 'loadingQueueNumber', e.target.value)}
+                              className="w-20 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                            >
+                              <option value="">-- เลือก --</option>
+                              <option value="Q-01">Q-01</option>
+                              <option value="Q-02">Q-02</option>
+                              <option value="Q-03">Q-03</option>
+                              <option value="Q-04">Q-04</option>
+                              <option value="Q-05">Q-05</option>
+                              <option value="Q-06">Q-06</option>
+                              <option value="Q-07">Q-07</option>
+                              <option value="Q-08">Q-08</option>
+                              <option value="Q-09">Q-09</option>
+                              <option value="Q-10">Q-10</option>
+                            </select>
+                          </td>
+                          <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
+                            <input
+                              type="text"
+                              value={getPicklistFormValue(picklist, 'deliveryNumber')}
+                              onChange={(e) => updatePicklistFormData(picklist.id, 'deliveryNumber', e.target.value)}
+                              placeholder="S002855"
+                              className="w-24 px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                            />
+                          </td>
+                          <td className="px-3 py-2 text-gray-700">
+                            <Badge variant="success" size="sm">เสร็จสิ้น</Badge>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
 
@@ -2222,9 +2270,8 @@ const LoadlistsPage = () => {
                       availableFaceSheets.map((faceSheet, index) => (
                         <tr
                           key={faceSheet.id}
-                          className={`hover:bg-blue-50/30 transition-colors duration-150 ${
-                            selectedFaceSheets.includes(faceSheet.id) ? 'bg-green-50' : ''
-                          }`}
+                          className={`hover:bg-blue-50/30 transition-colors duration-150 ${selectedFaceSheets.includes(faceSheet.id) ? 'bg-green-50' : ''
+                            }`}
                         >
                           <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                             <input
@@ -2320,13 +2367,13 @@ const LoadlistsPage = () => {
                     ไม่ต้องแมพกับใบหยิบ (สร้างจาก BFS ทั้งใบ)
                   </span>
                 </label>
-                
+
                 {skipMapping && (
                   <>
                     <p className="text-xs text-blue-600 ml-6">
                       💡 เลือก BFS ที่ต้องการสร้าง Loadlist โดยตรง โดยไม่ต้องเลือกใบหยิบก่อน
                     </p>
-                    
+
                     {/* ✅ NEW: Checkbox สำหรับเลือกเฉพาะบางออเดอร์ */}
                     <label className="flex items-center gap-2 cursor-pointer ml-6">
                       <input
@@ -2345,7 +2392,7 @@ const LoadlistsPage = () => {
                         เลือกเฉพาะบางออเดอร์
                       </span>
                     </label>
-                    
+
                     {selectPartialOrders && (
                       <p className="text-xs text-green-600 ml-12">
                         ✓ คลิกที่ BFS เพื่อดูและเลือกออเดอร์ที่ต้องการ
@@ -2404,8 +2451,8 @@ const LoadlistsPage = () => {
                         {!Array.isArray(unmappedBonusFaceSheets) || unmappedBonusFaceSheets.length === 0 ? (
                           <tr>
                             <td colSpan={selectPartialOrders ? 7 : 6} className="px-4 py-8 text-center text-gray-500">
-                              {loadingUnmappedBfs 
-                                ? 'กำลังโหลด...' 
+                              {loadingUnmappedBfs
+                                ? 'กำลังโหลด...'
                                 : 'ไม่มี BFS ที่ยังไม่ได้สร้าง Loadlist'
                               }
                             </td>
@@ -2417,13 +2464,12 @@ const LoadlistsPage = () => {
                             const orders = bfsOrdersData[bfs.id] || [];
                             const selectedOrders = selectedBfsOrders[bfs.id] || [];
                             const isLoadingOrders = loadingBfsOrders[bfs.id] || false;
-                            
+
                             return (
                               <React.Fragment key={bfs.id}>
                                 <tr
-                                  className={`hover:bg-blue-50/30 transition-colors duration-150 ${
-                                    isSelected ? 'bg-green-50' : ''
-                                  }`}
+                                  className={`hover:bg-blue-50/30 transition-colors duration-150 ${isSelected ? 'bg-green-50' : ''
+                                    }`}
                                 >
                                   <td className="px-2 py-1 border-r border-gray-100 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
                                     <input
@@ -2509,7 +2555,7 @@ const LoadlistsPage = () => {
                                     <Badge variant="success" size="sm">เสร็จสิ้น</Badge>
                                   </td>
                                 </tr>
-                                
+
                                 {/* ✅ NEW: แสดงรายการออเดอร์เมื่อคลิกดู */}
                                 {selectPartialOrders && showOrders && (
                                   <tr>
@@ -2528,7 +2574,7 @@ const LoadlistsPage = () => {
                                             </button>
                                           )}
                                         </div>
-                                        
+
                                         {isLoadingOrders ? (
                                           <div className="flex items-center justify-center py-4">
                                             <Loader2 className="w-5 h-5 animate-spin text-blue-500" />
@@ -2556,9 +2602,8 @@ const LoadlistsPage = () => {
                                                   return (
                                                     <tr
                                                       key={order.order_no}
-                                                      className={`hover:bg-blue-50 cursor-pointer ${
-                                                        isOrderSelected ? 'bg-green-50' : ''
-                                                      }`}
+                                                      className={`hover:bg-blue-50 cursor-pointer ${isOrderSelected ? 'bg-green-50' : ''
+                                                        }`}
                                                       onClick={() => toggleBfsOrder(bfs.id, order.order_no)}
                                                     >
                                                       <td className="px-2 py-1 border-b">
@@ -2612,261 +2657,257 @@ const LoadlistsPage = () => {
 
                   <div className="max-h-80 overflow-y-auto border rounded-lg">
                     <table className="w-full border-collapse text-sm">
-                  <thead className="sticky top-0 z-10 bg-gray-100">
-                    <tr>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap w-12">
-                        <input
-                          type="checkbox"
-                          checked={Array.isArray(availableBonusFaceSheets) && availableBonusFaceSheets.length > 0 && selectedBonusFaceSheets.length === availableBonusFaceSheets.length}
-                          onChange={(e) => {
-                            if (!Array.isArray(availableBonusFaceSheets)) return;
-                            if (e.target.checked) {
-                              setSelectedBonusFaceSheets(availableBonusFaceSheets.map(bfs => bfs.id));
-                            } else {
-                              setSelectedBonusFaceSheets([]);
-                            }
-                          }}
-                          className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
-                          title="เลือกทั้งหมด"
-                        />
-                      </th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสใบปะหน้าของแถม</th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">แพ็ค</th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap min-w-[180px]">เลือกใบหยิบ</th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap min-w-[180px]">เลือกใบปะหน้า</th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap min-w-[140px]">ผู้เช็ค</th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap">สถานะ</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
-                    {!Array.isArray(availableBonusFaceSheets) || availableBonusFaceSheets.length === 0 ? (
-                      <tr>
-                        <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
-                          ไม่พบใบปะหน้าของแถมที่สถานะ "เสร็จสิ้น"
-                        </td>
-                      </tr>
-                    ) : (
-                      availableBonusFaceSheets.map((bonusFaceSheet) => {
-                        const isUsed = bonusFaceSheet.is_used === true;
-                        const isSelected = selectedBonusFaceSheets.includes(bonusFaceSheet.id);
-                        const mapping = bonusFaceSheetMappings[bonusFaceSheet.id] || { selectedPicklistId: null, selectedFaceSheetId: null };
-                        
-                        return (
-                          <tr
-                            key={bonusFaceSheet.id}
-                            className={`hover:bg-blue-50/30 transition-colors duration-150 ${
-                              isSelected 
-                                ? 'bg-green-50' 
-                                : isUsed 
-                                  ? 'bg-gray-100 opacity-60' 
-                                  : ''
-                            }`}
-                          >
-                            <td className="px-2 py-1 border-r border-gray-100 whitespace-nowrap">
-                              <input
-                                type="checkbox"
-                                checked={isSelected}
-                                onChange={() => {
-                                  if (isSelected) {
-                                    setSelectedBonusFaceSheets(selectedBonusFaceSheets.filter(id => id !== bonusFaceSheet.id));
-                                  } else {
-                                    if (isUsed) {
-                                      const confirmSelect = window.confirm(
-                                        `ใบปะหน้าของแถม ${bonusFaceSheet.face_sheet_no} ถูกใช้ในใบโหลดแล้ว\nต้องการเลือกหรือไม่?`
-                                      );
-                                      if (!confirmSelect) return;
-                                    }
-                                    setSelectedBonusFaceSheets([...selectedBonusFaceSheets, bonusFaceSheet.id]);
-                                  }
-                                }}
-                                className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
-                              />
-                            </td>
-                            <td className="px-2 py-1 border-r border-gray-100 whitespace-nowrap">
-                              <div className="flex flex-col">
-                                <span className="font-mono text-purple-600 font-semibold">{bonusFaceSheet.face_sheet_no}</span>
-                                <span className="text-[10px] text-gray-500">
-                                  {bonusFaceSheet.delivery_date ? `ส่ง: ${bonusFaceSheet.delivery_date}` : ''}
-                                </span>
-                                {isUsed && (
-                                  <Badge variant="warning" size="sm" className="mt-0.5 w-fit">
-                                    <span className="text-[9px]">ใช้แล้ว</span>
-                                  </Badge>
-                                )}
-                              </div>
-                            </td>
-                            <td className="px-2 py-1 text-center border-r border-gray-100 whitespace-nowrap">
-                              {/* ✅ FIX (edit02): แสดงจำนวน packages ที่เหลือ (ไม่ใช่ทั้งหมด) */}
-                              <span className="font-semibold text-blue-600">
-                                {bonusFaceSheet.mapped_packages ?? bonusFaceSheet.total_packages}
-                              </span>
-                              {/* แสดง (จาก X) ถ้ามีการใช้ไปบางส่วน */}
-                              {bonusFaceSheet.original_total_packages && 
-                               bonusFaceSheet.mapped_packages !== bonusFaceSheet.original_total_packages && (
-                                <span className="text-[10px] text-gray-500 ml-1">
-                                  (จาก {bonusFaceSheet.original_total_packages})
-                                </span>
-                              )}
-                            </td>
-                            <td className="px-2 py-1 border-r border-gray-100">
-                              <select
-                                value={mapping.selectedPicklistId || ''}
-                                onChange={(e) => {
-                                  const newPicklistId = e.target.value ? Number(e.target.value) : null;
-                                  // ✅ Sync ค่าไปยังทุกแถวที่เลือกไว้
-                                  setBonusFaceSheetMappings(prev => {
-                                    const updated = { ...prev };
-                                    selectedBonusFaceSheets.forEach(bfsId => {
-                                      updated[bfsId] = {
-                                        selectedPicklistId: newPicklistId,
-                                        selectedFaceSheetId: newPicklistId ? null : prev[bfsId]?.selectedFaceSheetId || null
-                                      };
-                                    });
-                                    return updated;
-                                  });
-                                  // ✅ เรียก check-matching API สำหรับทุกแถวที่เลือก
-                                  selectedBonusFaceSheets.forEach(bfsId => {
-                                    fetchMatchingPreview(bfsId, newPicklistId, null);
-                                  });
-                                }}
-                                className={`w-full px-2 py-1 border rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500 ${
-                                  mapping.selectedFaceSheetId ? 'bg-gray-100 border-gray-200 text-gray-400' : 'border-gray-300'
-                                }`}
-                                disabled={!isSelected || !!mapping.selectedFaceSheetId}
-                                title={mapping.selectedFaceSheetId ? 'ยกเลิกการเลือกใบปะหน้าก่อน' : ''}
-                              >
-                                <option value="">-- เลือกใบหยิบ --</option>
-                                {allPicklistsForDropdown.map((pl) => (
-                                  <option key={pl.id} value={pl.id}>
-                                    {pl.picklist_code}
-                                    {pl.daily_trip_number ? ` (คัน ${pl.daily_trip_number})` : ''}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-                            <td className="px-2 py-1 border-r border-gray-100">
-                              <select
-                                value={mapping.selectedFaceSheetId || ''}
-                                onChange={(e) => {
-                                  const newFaceSheetId = e.target.value ? Number(e.target.value) : null;
-                                  // ✅ Sync ค่าไปยังทุกแถวที่เลือกไว้
-                                  setBonusFaceSheetMappings(prev => {
-                                    const updated = { ...prev };
-                                    selectedBonusFaceSheets.forEach(bfsId => {
-                                      updated[bfsId] = {
-                                        selectedPicklistId: newFaceSheetId ? null : prev[bfsId]?.selectedPicklistId || null,
-                                        selectedFaceSheetId: newFaceSheetId
-                                      };
-                                    });
-                                    return updated;
-                                  });
-                                  // ✅ เรียก check-matching API สำหรับทุกแถวที่เลือก
-                                  selectedBonusFaceSheets.forEach(bfsId => {
-                                    fetchMatchingPreview(bfsId, null, newFaceSheetId);
-                                  });
-                                }}
-                                className={`w-full px-2 py-1 border rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500 ${
-                                  mapping.selectedPicklistId ? 'bg-gray-100 border-gray-200 text-gray-400' : 'border-gray-300'
-                                }`}
-                                disabled={!isSelected || !!mapping.selectedPicklistId}
-                                title={mapping.selectedPicklistId ? 'ยกเลิกการเลือกใบหยิบก่อน' : ''}
-                              >
-                                <option value="">-- เลือกใบปะหน้า --</option>
-                                {Array.isArray(availableFaceSheets) && availableFaceSheets.map((fs) => (
-                                  <option key={fs.id} value={fs.id}>
-                                    {fs.face_sheet_no} ({fs.total_packages} แพ็ค)
-                                    {fs.daily_trip_numbers_display && fs.daily_trip_numbers_display !== '-' 
-                                      ? ` - คัน ${fs.daily_trip_numbers_display}` 
-                                      : ''}
-                                  </option>
-                                ))}
-                              </select>
-                              {/* ✅ NEW: แสดง preview จำนวน packages ที่จะ match */}
-                              {matchingPreviews[bonusFaceSheet.id] && (
-                                <div className={`mt-1 text-[10px] ${
-                                  matchingPreviews[bonusFaceSheet.id].loading 
-                                    ? 'text-gray-500' 
-                                    : matchingPreviews[bonusFaceSheet.id].no_loadlist_warning
-                                      ? 'text-orange-600 bg-orange-50 p-1 rounded border border-orange-200'
-                                      : matchingPreviews[bonusFaceSheet.id].matched 
-                                        ? 'text-green-600' 
-                                        : 'text-red-500'
-                                }`}>
-                                  {matchingPreviews[bonusFaceSheet.id].loading ? (
-                                    <span className="flex items-center gap-1">
-                                      <Loader2 className="w-3 h-3 animate-spin" />
-                                      กำลังตรวจสอบ...
-                                    </span>
-                                  ) : matchingPreviews[bonusFaceSheet.id].no_loadlist_warning ? (
-                                    <span className="flex items-center gap-1">
-                                      <AlertTriangle className="w-3 h-3" />
-                                      {matchingPreviews[bonusFaceSheet.id].message}
-                                    </span>
-                                  ) : (
-                                    <span>
-                                      {matchingPreviews[bonusFaceSheet.id].matched 
-                                        ? `✓ ${matchingPreviews[bonusFaceSheet.id].matched_count}/${matchingPreviews[bonusFaceSheet.id].total_packages} แพ็ค`
-                                        : `✗ ${matchingPreviews[bonusFaceSheet.id].message}`
-                                      }
-                                    </span>
-                                  )}
-                                </div>
-                              )}
-                            </td>
-                            <td className="px-2 py-1 border-r border-gray-100">
-                              <select
-                                value={bonusFaceSheetCheckers[bonusFaceSheet.id] ?? ''}
-                                onChange={(e) => {
-                                  const newCheckerId = e.target.value ? Number(e.target.value) : '';
-                                  // ✅ Sync ค่าไปยังทุกแถวที่เลือกไว้
-                                  setBonusFaceSheetCheckers(prev => {
-                                    const updated = { ...prev };
-                                    selectedBonusFaceSheets.forEach(bfsId => {
-                                      updated[bfsId] = newCheckerId;
-                                    });
-                                    return updated;
-                                  });
-                                }}
-                                className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
-                                disabled={!isSelected}
-                              >
-                                <option value="">-- เลือกผู้เช็ค --</option>
-                                {employees.map((emp) => (
-                                  <option key={emp.employee_id} value={emp.employee_id}>
-                                    {emp.first_name} {emp.last_name}
-                                  </option>
-                                ))}
-                              </select>
-                            </td>
-                            <td className="px-2 py-1 text-center">
-                              {isUsed ? (
-                                <Badge variant="default" size="sm">
-                                  <span className="text-[10px]">ใช้แล้ว</span>
-                                </Badge>
-                              ) : isSelected && mapping.selectedPicklistId && mapping.selectedFaceSheetId ? (
-                                <Badge variant="success" size="sm">
-                                  <span className="text-[10px]">พร้อม</span>
-                                </Badge>
-                              ) : isSelected ? (
-                                <Badge variant="warning" size="sm">
-                                  <span className="text-[10px]">รอเลือก</span>
-                                </Badge>
-                              ) : (
-                                <Badge variant="info" size="sm">
-                                  <span className="text-[10px]">รอเลือก</span>
-                                </Badge>
-                              )}
+                      <thead className="sticky top-0 z-10 bg-gray-100">
+                        <tr>
+                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap w-12">
+                            <input
+                              type="checkbox"
+                              checked={Array.isArray(availableBonusFaceSheets) && availableBonusFaceSheets.length > 0 && selectedBonusFaceSheets.length === availableBonusFaceSheets.length}
+                              onChange={(e) => {
+                                if (!Array.isArray(availableBonusFaceSheets)) return;
+                                if (e.target.checked) {
+                                  setSelectedBonusFaceSheets(availableBonusFaceSheets.map(bfs => bfs.id));
+                                } else {
+                                  setSelectedBonusFaceSheets([]);
+                                }
+                              }}
+                              className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                              title="เลือกทั้งหมด"
+                            />
+                          </th>
+                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสใบปะหน้าของแถม</th>
+                          <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">แพ็ค</th>
+                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap min-w-[180px]">เลือกใบหยิบ</th>
+                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap min-w-[180px]">เลือกใบปะหน้า</th>
+                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap min-w-[140px]">ผู้เช็ค</th>
+                          <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap">สถานะ</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
+                        {!Array.isArray(availableBonusFaceSheets) || availableBonusFaceSheets.length === 0 ? (
+                          <tr>
+                            <td colSpan={7} className="px-4 py-8 text-center text-gray-500">
+                              ไม่พบใบปะหน้าของแถมที่สถานะ "เสร็จสิ้น"
                             </td>
                           </tr>
-                        );
-                      })
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              </>
+                        ) : (
+                          availableBonusFaceSheets.map((bonusFaceSheet) => {
+                            const isUsed = bonusFaceSheet.is_used === true;
+                            const isSelected = selectedBonusFaceSheets.includes(bonusFaceSheet.id);
+                            const mapping = bonusFaceSheetMappings[bonusFaceSheet.id] || { selectedPicklistId: null, selectedFaceSheetId: null };
+
+                            return (
+                              <tr
+                                key={bonusFaceSheet.id}
+                                className={`hover:bg-blue-50/30 transition-colors duration-150 ${isSelected
+                                    ? 'bg-green-50'
+                                    : isUsed
+                                      ? 'bg-gray-100 opacity-60'
+                                      : ''
+                                  }`}
+                              >
+                                <td className="px-2 py-1 border-r border-gray-100 whitespace-nowrap">
+                                  <input
+                                    type="checkbox"
+                                    checked={isSelected}
+                                    onChange={() => {
+                                      if (isSelected) {
+                                        setSelectedBonusFaceSheets(selectedBonusFaceSheets.filter(id => id !== bonusFaceSheet.id));
+                                      } else {
+                                        if (isUsed) {
+                                          const confirmSelect = window.confirm(
+                                            `ใบปะหน้าของแถม ${bonusFaceSheet.face_sheet_no} ถูกใช้ในใบโหลดแล้ว\nต้องการเลือกหรือไม่?`
+                                          );
+                                          if (!confirmSelect) return;
+                                        }
+                                        setSelectedBonusFaceSheets([...selectedBonusFaceSheets, bonusFaceSheet.id]);
+                                      }
+                                    }}
+                                    className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                                  />
+                                </td>
+                                <td className="px-2 py-1 border-r border-gray-100 whitespace-nowrap">
+                                  <div className="flex flex-col">
+                                    <span className="font-mono text-purple-600 font-semibold">{bonusFaceSheet.face_sheet_no}</span>
+                                    <span className="text-[10px] text-gray-500">
+                                      {bonusFaceSheet.delivery_date ? `ส่ง: ${bonusFaceSheet.delivery_date}` : ''}
+                                    </span>
+                                    {isUsed && (
+                                      <Badge variant="warning" size="sm" className="mt-0.5 w-fit">
+                                        <span className="text-[9px]">ใช้แล้ว</span>
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </td>
+                                <td className="px-2 py-1 text-center border-r border-gray-100 whitespace-nowrap">
+                                  {/* ✅ FIX (edit02): แสดงจำนวน packages ที่เหลือ (ไม่ใช่ทั้งหมด) */}
+                                  <span className="font-semibold text-blue-600">
+                                    {bonusFaceSheet.mapped_packages ?? bonusFaceSheet.total_packages}
+                                  </span>
+                                  {/* แสดง (จาก X) ถ้ามีการใช้ไปบางส่วน */}
+                                  {bonusFaceSheet.original_total_packages &&
+                                    bonusFaceSheet.mapped_packages !== bonusFaceSheet.original_total_packages && (
+                                      <span className="text-[10px] text-gray-500 ml-1">
+                                        (จาก {bonusFaceSheet.original_total_packages})
+                                      </span>
+                                    )}
+                                </td>
+                                <td className="px-2 py-1 border-r border-gray-100">
+                                  <select
+                                    value={mapping.selectedPicklistId || ''}
+                                    onChange={(e) => {
+                                      const newPicklistId = e.target.value ? Number(e.target.value) : null;
+                                      // ✅ Sync ค่าไปยังทุกแถวที่เลือกไว้
+                                      setBonusFaceSheetMappings(prev => {
+                                        const updated = { ...prev };
+                                        selectedBonusFaceSheets.forEach(bfsId => {
+                                          updated[bfsId] = {
+                                            selectedPicklistId: newPicklistId,
+                                            selectedFaceSheetId: newPicklistId ? null : prev[bfsId]?.selectedFaceSheetId || null
+                                          };
+                                        });
+                                        return updated;
+                                      });
+                                      // ✅ เรียก check-matching API สำหรับทุกแถวที่เลือก
+                                      selectedBonusFaceSheets.forEach(bfsId => {
+                                        fetchMatchingPreview(bfsId, newPicklistId, null);
+                                      });
+                                    }}
+                                    className={`w-full px-2 py-1 border rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500 ${mapping.selectedFaceSheetId ? 'bg-gray-100 border-gray-200 text-gray-400' : 'border-gray-300'
+                                      }`}
+                                    disabled={!isSelected || !!mapping.selectedFaceSheetId}
+                                    title={mapping.selectedFaceSheetId ? 'ยกเลิกการเลือกใบปะหน้าก่อน' : ''}
+                                  >
+                                    <option value="">-- เลือกใบหยิบ --</option>
+                                    {allPicklistsForDropdown.map((pl) => (
+                                      <option key={pl.id} value={pl.id}>
+                                        {pl.picklist_code}
+                                        {pl.daily_trip_number ? ` (คัน ${pl.daily_trip_number})` : ''}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </td>
+                                <td className="px-2 py-1 border-r border-gray-100">
+                                  <select
+                                    value={mapping.selectedFaceSheetId || ''}
+                                    onChange={(e) => {
+                                      const newFaceSheetId = e.target.value ? Number(e.target.value) : null;
+                                      // ✅ Sync ค่าไปยังทุกแถวที่เลือกไว้
+                                      setBonusFaceSheetMappings(prev => {
+                                        const updated = { ...prev };
+                                        selectedBonusFaceSheets.forEach(bfsId => {
+                                          updated[bfsId] = {
+                                            selectedPicklistId: newFaceSheetId ? null : prev[bfsId]?.selectedPicklistId || null,
+                                            selectedFaceSheetId: newFaceSheetId
+                                          };
+                                        });
+                                        return updated;
+                                      });
+                                      // ✅ เรียก check-matching API สำหรับทุกแถวที่เลือก
+                                      selectedBonusFaceSheets.forEach(bfsId => {
+                                        fetchMatchingPreview(bfsId, null, newFaceSheetId);
+                                      });
+                                    }}
+                                    className={`w-full px-2 py-1 border rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500 ${mapping.selectedPicklistId ? 'bg-gray-100 border-gray-200 text-gray-400' : 'border-gray-300'
+                                      }`}
+                                    disabled={!isSelected || !!mapping.selectedPicklistId}
+                                    title={mapping.selectedPicklistId ? 'ยกเลิกการเลือกใบหยิบก่อน' : ''}
+                                  >
+                                    <option value="">-- เลือกใบปะหน้า --</option>
+                                    {Array.isArray(availableFaceSheets) && availableFaceSheets.map((fs) => (
+                                      <option key={fs.id} value={fs.id}>
+                                        {fs.face_sheet_no} ({fs.total_packages} แพ็ค)
+                                        {fs.daily_trip_numbers_display && fs.daily_trip_numbers_display !== '-'
+                                          ? ` - คัน ${fs.daily_trip_numbers_display}`
+                                          : ''}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  {/* ✅ NEW: แสดง preview จำนวน packages ที่จะ match */}
+                                  {matchingPreviews[bonusFaceSheet.id] && (
+                                    <div className={`mt-1 text-[10px] ${matchingPreviews[bonusFaceSheet.id].loading
+                                        ? 'text-gray-500'
+                                        : matchingPreviews[bonusFaceSheet.id].no_loadlist_warning
+                                          ? 'text-orange-600 bg-orange-50 p-1 rounded border border-orange-200'
+                                          : matchingPreviews[bonusFaceSheet.id].matched
+                                            ? 'text-green-600'
+                                            : 'text-red-500'
+                                      }`}>
+                                      {matchingPreviews[bonusFaceSheet.id].loading ? (
+                                        <span className="flex items-center gap-1">
+                                          <Loader2 className="w-3 h-3 animate-spin" />
+                                          กำลังตรวจสอบ...
+                                        </span>
+                                      ) : matchingPreviews[bonusFaceSheet.id].no_loadlist_warning ? (
+                                        <span className="flex items-center gap-1">
+                                          <AlertTriangle className="w-3 h-3" />
+                                          {matchingPreviews[bonusFaceSheet.id].message}
+                                        </span>
+                                      ) : (
+                                        <span>
+                                          {matchingPreviews[bonusFaceSheet.id].matched
+                                            ? `✓ ${matchingPreviews[bonusFaceSheet.id].matched_count}/${matchingPreviews[bonusFaceSheet.id].total_packages} แพ็ค`
+                                            : `✗ ${matchingPreviews[bonusFaceSheet.id].message}`
+                                          }
+                                        </span>
+                                      )}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-2 py-1 border-r border-gray-100">
+                                  <select
+                                    value={bonusFaceSheetCheckers[bonusFaceSheet.id] ?? ''}
+                                    onChange={(e) => {
+                                      const newCheckerId = e.target.value ? Number(e.target.value) : '';
+                                      // ✅ Sync ค่าไปยังทุกแถวที่เลือกไว้
+                                      setBonusFaceSheetCheckers(prev => {
+                                        const updated = { ...prev };
+                                        selectedBonusFaceSheets.forEach(bfsId => {
+                                          updated[bfsId] = newCheckerId;
+                                        });
+                                        return updated;
+                                      });
+                                    }}
+                                    className="w-full px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-green-500"
+                                    disabled={!isSelected}
+                                  >
+                                    <option value="">-- เลือกผู้เช็ค --</option>
+                                    {employees.map((emp) => (
+                                      <option key={emp.employee_id} value={emp.employee_id}>
+                                        {emp.first_name} {emp.last_name}
+                                      </option>
+                                    ))}
+                                  </select>
+                                </td>
+                                <td className="px-2 py-1 text-center">
+                                  {isUsed ? (
+                                    <Badge variant="default" size="sm">
+                                      <span className="text-[10px]">ใช้แล้ว</span>
+                                    </Badge>
+                                  ) : isSelected && mapping.selectedPicklistId && mapping.selectedFaceSheetId ? (
+                                    <Badge variant="success" size="sm">
+                                      <span className="text-[10px]">พร้อม</span>
+                                    </Badge>
+                                  ) : isSelected ? (
+                                    <Badge variant="warning" size="sm">
+                                      <span className="text-[10px]">รอเลือก</span>
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="info" size="sm">
+                                      <span className="text-[10px]">รอเลือก</span>
+                                    </Badge>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
               )}
-              
+
               {/* แสดงสรุปการเลือก */}
               {selectedBonusFaceSheets.length > 0 && !skipMapping && (
                 <div className="bg-blue-50 p-3 rounded-lg text-xs">
@@ -2877,7 +2918,7 @@ const LoadlistsPage = () => {
                       const mapping = bonusFaceSheetMappings[bfsId] || { selectedPicklistId: null, selectedFaceSheetId: null };
                       const selectedPicklist = allPicklistsForDropdown.find(p => p.id === mapping.selectedPicklistId);
                       const selectedFs = availableFaceSheets.find(f => f.id === mapping.selectedFaceSheetId);
-                      
+
                       return (
                         <div key={bfsId} className="flex items-center gap-2 text-gray-700">
                           <span className="font-mono text-purple-600">{bfs?.face_sheet_no}</span>
@@ -3044,7 +3085,7 @@ const LoadlistsPage = () => {
               ต้องการพิมพ์ใบส่งมอบหรือไม่?
             </p>
           </div>
-          
+
           <div className="flex gap-3 justify-center">
             <Button
               variant="outline"
@@ -3147,9 +3188,8 @@ const LoadlistsPage = () => {
                   mappedFaceSheets.map((fs) => (
                     <tr
                       key={fs.face_sheet_id}
-                      className={`hover:bg-blue-50/30 transition-colors duration-150 ${
-                        selectedFaceSheetsForPrint.includes(fs.face_sheet_id) ? 'bg-green-50' : ''
-                      }`}
+                      className={`hover:bg-blue-50/30 transition-colors duration-150 ${selectedFaceSheetsForPrint.includes(fs.face_sheet_id) ? 'bg-green-50' : ''
+                        }`}
                     >
                       <td className="px-2 py-1 border-r border-gray-100">
                         <input
@@ -3238,7 +3278,7 @@ const LoadlistsPage = () => {
 
 export default function LoadlistsPageWithPermission() {
   return (
-    <PermissionGuard 
+    <PermissionGuard
       permission="order_management.loadlists.view"
       fallback={
         <div className="flex items-center justify-center min-h-[400px]">
