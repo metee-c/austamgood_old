@@ -1,10 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
+import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 
 export async function POST(request: NextRequest) {
   try {
     const supabase = await createClient()
+    // Create admin client to bypass RLS for generating move numbers
+    const supabaseAdmin = createSupabaseClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        }
+      }
+    )
     const body = await request.json()
 
     const {
@@ -100,7 +112,7 @@ export async function POST(request: NextRequest) {
           { status: 404 }
         )
       }
-      
+
       balanceRecords = data
       from_location_id = data[0].location_id
     } else if (balance_id) {
@@ -124,7 +136,7 @@ export async function POST(request: NextRequest) {
           { status: 404 }
         )
       }
-      
+
       balanceRecords = [data]
       from_location_id = data.location_id
     }
@@ -151,41 +163,72 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Generate move_no
-    const { data: lastMove } = await supabase
-      .from('wms_moves')
-      .select('move_no')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .single()
+    // Generate move_no and Insert with Retry logic
+    let move
+    let retryCount = 0
+    const maxRetries = 3
 
-    let nextNumber = 1
-    if (lastMove?.move_no) {
-      const match = lastMove.move_no.match(/MV(\d+)/)
-      if (match) {
-        nextNumber = parseInt(match[1]) + 1
+    while (retryCount < maxRetries) {
+      // Find latest move_no (re-query each time using Admin)
+      const { data: lastMove } = await supabaseAdmin
+        .from('wms_moves')
+        .select('move_no')
+        .order('move_no', { ascending: false }) // Sort by move_no to be sure
+        .limit(1)
+        .maybeSingle()
+
+      let nextNumber = 1
+      if (lastMove?.move_no) {
+        const match = lastMove.move_no.match(/MV(\d+)/)
+        if (match) {
+          nextNumber = parseInt(match[1]) + 1
+        }
       }
+
+      // If retrying, skip numbers to avoid collision loop if the latest hasn't updated yet in read replica
+      const currentNumber = nextNumber + retryCount
+      const move_no = `MV${String(currentNumber).padStart(10, '0')}`
+
+      // Try Insert
+      const { data: insertedMove, error: moveError } = await supabase
+        .from('wms_moves')
+        .insert({
+          move_no,
+          move_type: 'transfer',
+          status: 'completed',
+          notes: notes || 'Quick move from misplaced inventory',
+          created_by: employeeId,
+          completed_at: new Date().toISOString()
+        })
+        .select()
+        .single()
+
+      if (moveError) {
+        // Check for unique key violation (Postgres code 23505)
+        if (moveError.code === '23505') {
+          console.warn(`Duplicate move_no ${move_no}, retrying... (${retryCount + 1}/${maxRetries})`)
+          retryCount++
+          // Wait a tiny bit (backoff)
+          await new Promise(resolve => setTimeout(resolve, 100))
+          continue
+        }
+
+        // Real Error
+        console.error('Move insert error:', moveError)
+        return NextResponse.json(
+          { error: 'ไม่สามารถสร้างรายการย้ายได้: ' + moveError.message },
+          { status: 500 }
+        )
+      }
+
+      // Success
+      move = insertedMove
+      break
     }
-    const move_no = `MV${String(nextNumber).padStart(10, '0')}`
 
-    // Insert move header
-    const { data: move, error: moveError } = await supabase
-      .from('wms_moves')
-      .insert({
-        move_no,
-        move_type: 'transfer',
-        status: 'completed',
-        notes: notes || 'Quick move from misplaced inventory',
-        created_by: employeeId,
-        completed_at: new Date().toISOString()
-      })
-      .select()
-      .single()
-
-    if (moveError) {
-      console.error('Move insert error:', moveError)
+    if (!move) {
       return NextResponse.json(
-        { error: 'ไม่สามารถสร้างรายการย้ายได้: ' + moveError.message },
+        { error: 'ไม่สามารถสร้างเลขที่เอกสารได้ กรุณาลองใหม่อีกครั้ง' },
         { status: 500 }
       )
     }
