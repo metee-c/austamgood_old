@@ -2,13 +2,16 @@
  * Next.js proxy for authentication and route protection
  * 
  * Migrated from middleware.ts to proxy.ts for Next.js 16+
+ * Uses simple JWT-based authentication
  * 
  * @see https://nextjs.org/docs/app/building-your-application/routing/middleware
  * @see https://nextjs.org/docs/messages/middleware-to-proxy
  */
 import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
-import { createServerClient } from '@supabase/ssr';
+import jwt from 'jsonwebtoken';
+
+const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
 
 // Define public routes that don't require authentication
 const publicRoutes = [
@@ -25,9 +28,6 @@ const authRoutes = [
   '/reset-password',
 ];
 
-// Session timeout in minutes (30 นาที)
-const SESSION_TIMEOUT_MINUTES = 30;
-
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -43,18 +43,19 @@ export async function proxy(request: NextRequest) {
   if (publicRoutes.some(route => pathname.startsWith(route))) {
     // If user is already authenticated and trying to access auth pages, redirect to dashboard
     if (authRoutes.some(route => pathname.startsWith(route))) {
-      const sessionToken = request.cookies.get('session_token')?.value;
+      const authToken = request.cookies.get('auth_token')?.value;
 
-      if (sessionToken) {
-        // Validate session before redirecting
-        const isValid = await validateSessionToken(sessionToken);
+      if (authToken) {
+        // Validate token before redirecting
+        const isValid = validateToken(authToken);
         if (isValid) {
           // User is authenticated, redirect to dashboard
+          console.log(`✅ [PROXY] User already authenticated, redirecting to dashboard`);
           return NextResponse.redirect(new URL('/dashboard', request.url));
         }
-        // Session invalid, clear cookie and allow login
+        // Token invalid, clear cookie and allow login
         const response = NextResponse.next();
-        response.cookies.delete('session_token');
+        response.cookies.delete('auth_token');
         return response;
       }
     }
@@ -62,89 +63,49 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Check for session token
-  const sessionToken = request.cookies.get('session_token')?.value;
+  // Check for auth token
+  const authToken = request.cookies.get('auth_token')?.value;
 
-  console.log(`🍪 [PROXY] Session token exists: ${!!sessionToken}`);
+  console.log(`🍪 [PROXY] Auth token exists: ${!!authToken}`);
 
-  if (!sessionToken) {
-    // No session token, redirect to login
-    console.log(`❌ [PROXY] No session token, redirecting to login`);
+  if (!authToken) {
+    // No auth token, redirect to login
+    console.log(`❌ [PROXY] No auth token, redirecting to login`);
     const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('redirect', pathname);
+    loginUrl.searchParams.set('from', pathname);
     return NextResponse.redirect(loginUrl);
   }
 
-  // Validate session and check timeout
-  console.log(`🔐 [PROXY] Validating session token...`);
-  const isValid = await validateSessionToken(sessionToken);
+  // Validate JWT token
+  console.log(`🔐 [PROXY] Validating JWT token...`);
+  const isValid = validateToken(authToken);
 
   if (!isValid) {
-    // Session expired or invalid, clear cookie and redirect to login
-    console.log(`❌ [PROXY] Session invalid/expired, redirecting to login`);
+    // Token expired or invalid, clear cookie and redirect to login
+    console.log(`❌ [PROXY] Token invalid/expired, redirecting to login`);
     const loginUrl = new URL('/login', request.url);
-    loginUrl.searchParams.set('redirect', pathname);
+    loginUrl.searchParams.set('from', pathname);
     loginUrl.searchParams.set('timeout', '1'); // Flag for showing "session expired" message
 
     const response = NextResponse.redirect(loginUrl);
-    response.cookies.delete('session_token');
+    response.cookies.delete('auth_token');
     return response;
   }
 
-  // Session valid, allow the request to proceed
-  console.log(`✅ [PROXY] Session valid, allowing request`);
+  // Token valid, allow the request to proceed
+  console.log(`✅ [PROXY] Token valid, allowing request`);
   return NextResponse.next();
 }
 
 /**
- * Validate session token and check timeout
- * Also updates last_activity_at to keep session alive
+ * Validate JWT token
  */
-async function validateSessionToken(token: string): Promise<boolean> {
+function validateToken(token: string): boolean {
   try {
-    // Create Supabase client for proxy
-    const supabase = createServerClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-      {
-        cookies: {
-          getAll() { return [] },
-          setAll() {}
-        }
-      }
-    );
-
-    // Call validate_session_token RPC
-    const { data, error } = await supabase.rpc('validate_session_token', {
-      p_token: token
-    });
-
-    if (error || !data || data.length === 0) {
-      return false;
-    }
-
-    const session = data[0];
-
-    // Check if session is valid and not expired
-    if (!session.is_valid) {
-      return false;
-    }
-
-    // Check session timeout (30 นาที)
-    if (session.last_activity_minutes_ago > SESSION_TIMEOUT_MINUTES) {
-      console.log(`⏰ Session timeout: ${session.last_activity_minutes_ago} minutes ago`);
-      return false;
-    }
-
-    // Update last_activity_at to keep session alive
-    // This ensures the session stays active while user is using the system
-    await supabase.rpc('update_session_activity', {
-      p_token: token
-    });
-
+    jwt.verify(token, JWT_SECRET);
     return true;
   } catch (error) {
-    console.error('❌ Session validation error:', error);
+    console.error('❌ Token validation error:', error);
     return false;
   }
 }

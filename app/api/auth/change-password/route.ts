@@ -1,13 +1,23 @@
-// API route for changing password (authenticated users)
+// API route for changing password (authenticated users) - Simple version
 import { NextRequest, NextResponse } from 'next/server';
-import { changePassword, getCurrentSession } from '@/lib/auth';
+import { getUserFromToken, simpleChangePassword } from '@/lib/auth/simple-auth';
 
 export async function POST(request: NextRequest) {
   try {
-    // Get current session
-    const sessionResult = await getCurrentSession();
+    // Get token from cookie
+    const token = request.cookies.get('auth_token')?.value;
     
-    if (!sessionResult.success || !sessionResult.session) {
+    if (!token) {
+      return NextResponse.json(
+        { error: 'ไม่ได้เข้าสู่ระบบ' },
+        { status: 401 }
+      );
+    }
+
+    // Verify token and get user
+    const userResult = await getUserFromToken(token);
+    
+    if (!userResult.success || !userResult.user) {
       return NextResponse.json(
         { error: 'ไม่ได้เข้าสู่ระบบ' },
         { status: 401 }
@@ -42,8 +52,8 @@ export async function POST(request: NextRequest) {
     }
 
     // Change password
-    const result = await changePassword(
-      sessionResult.session.user_id,
+    const result = await simpleChangePassword(
+      userResult.user.user_id,
       current_password,
       new_password
     );

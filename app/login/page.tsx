@@ -52,20 +52,7 @@ function LoginForm() {
       const data = await response.json();
 
       if (!response.ok) {
-        // Increment failed attempts
-        const newAttempts = failedAttempts + 1;
-        setFailedAttempts(newAttempts);
-
-        // Calculate remaining attempts
-        const remainingAttempts = 5 - newAttempts;
-
-        // Create detailed error message
-        if (newAttempts >= 5) {
-          setError('locked');
-        } else {
-          setError(`attempt_${newAttempts}_${remainingAttempts}`);
-        }
-
+        setError(data.error || 'เข้าสู่ระบบไม่สำเร็จ');
         setLoading(false);
         return;
       }
@@ -73,45 +60,11 @@ function LoginForm() {
       // Reset failed attempts on successful login
       setFailedAttempts(0);
 
-      // Check if user needs to change password
-      if (data.force_password_change) {
-        router.push('/change-password?force=true');
-        return;
-      }
-
-      // ✅ Login successful - determine redirect based on permissions
-      console.log('✅ Login successful, checking permissions...');
-
-      // Small delay to ensure cookie is set
-      await new Promise(resolve => setTimeout(resolve, 200));
-
-      // Fetch user permissions to determine redirect
-      const permResponse = await fetch('/api/auth/permissions');
-      const permData = await permResponse.json();
-
-      if (permData.success && permData.permissions) {
-        const permissions = permData.permissions.map((p: any) => p.module_key);
-
-        // Check if user has mobile-only access
-        const hasMobileAccess = permissions.some((p: string) => p.startsWith('mobile.'));
-        const hasDashboardAccess = permissions.some((p: string) => p.startsWith('dashboard.'));
-
-        console.log('🔑 User permissions:', { hasMobileAccess, hasDashboardAccess });
-
-        // Redirect to appropriate page
-        if (hasMobileAccess && !hasDashboardAccess) {
-          // Mobile-only user → redirect to /mobile
-          console.log('📱 Redirecting to mobile page...');
-          window.location.href = '/mobile';
-        } else {
-          // Regular user → redirect to dashboard
-          console.log('🖥️ Redirecting to dashboard...');
-          window.location.href = '/dashboard';
-        }
-      } else {
-        // Fallback to dashboard if can't fetch permissions
-        window.location.href = '/dashboard';
-      }
+      // Get redirect URL from query params or default to dashboard
+      const from = searchParams.get('from') || '/dashboard';
+      
+      // Redirect to the original page or dashboard
+      window.location.href = from;
     } catch (err) {
       console.error('Login error:', err);
       setError('เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์');
@@ -154,24 +107,7 @@ function LoginForm() {
         {/* Error Message */}
         {error && (
           <div className="bg-red-50 border border-red-200 px-4 py-3 rounded-lg">
-            <div className="space-y-1">
-              {error === 'locked' ? (
-                <>
-                  <p className="text-sm font-semibold text-red-800">บัญชีของคุณถูกล็อกชั่วคราว</p>
-                  <p className="text-xs text-red-700">• ระยะเวลา: 30 นาที</p>
-                  <p className="text-xs text-red-700">• สาเหตุ: พยายามเข้าสู่ระบบผิดพลาด 5 ครั้ง</p>
-                </>
-              ) : error.startsWith('attempt_') ? (
-                <>
-                  <p className="text-sm font-semibold text-red-800">รหัสผ่านไม่ถูกต้อง</p>
-                  <p className="text-xs text-red-700">• คุณพยายามผิดไปแล้ว: {error.split('_')[1]} ครั้ง</p>
-                  <p className="text-xs text-red-700">• จำนวนครั้งที่เหลือ: {error.split('_')[2]} ครั้ง</p>
-                  <p className="text-xs text-red-600 mt-1">• หากครบ 5 ครั้ง บัญชีจะถูกล็อก 30 นาที</p>
-                </>
-              ) : (
-                <p className="text-sm font-medium text-red-800">{error}</p>
-              )}
-            </div>
+            <p className="text-sm font-medium text-red-800">{error}</p>
           </div>
         )}
 
