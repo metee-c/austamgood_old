@@ -249,7 +249,7 @@ export async function POST(request: NextRequest) {
       production_date: balance.production_date,
       expiry_date: balance.expiry_date,
       created_by: employeeId,
-      executed_by: employeeId,
+      ...(employeeId ? { executed_by: employeeId } : {}),
       completed_at: new Date().toISOString()
     }))
 
