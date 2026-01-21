@@ -37,6 +37,7 @@ function LoginForm() {
     setLoading(true);
 
     try {
+      console.log('🔐 [Login Page] Submitting login form...');
       const response = await fetch('/api/auth/login', {
         method: 'POST',
         headers: {
@@ -49,24 +50,29 @@ function LoginForm() {
         }),
       });
 
+      console.log('🔐 [Login Page] Response status:', response.status);
       const data = await response.json();
+      console.log('🔐 [Login Page] Response data:', data);
 
       if (!response.ok) {
+        console.log('❌ [Login Page] Login failed:', data.error);
         setError(data.error || 'เข้าสู่ระบบไม่สำเร็จ');
         setLoading(false);
         return;
       }
 
+      console.log('✅ [Login Page] Login successful, redirecting...');
       // Reset failed attempts on successful login
       setFailedAttempts(0);
 
       // Get redirect URL from query params or default to dashboard
       const from = searchParams.get('from') || '/dashboard';
       
+      console.log('🔄 [Login Page] Redirecting to:', from);
       // Redirect to the original page or dashboard
       window.location.href = from;
     } catch (err) {
-      console.error('Login error:', err);
+      console.error('❌ [Login Page] Login error:', err);
       setError('เกิดข้อผิดพลาดในการเชื่อมต่อกับเซิร์ฟเวอร์');
       setLoading(false);
     }

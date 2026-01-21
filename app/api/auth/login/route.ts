@@ -7,8 +7,11 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { email, password } = body;
 
+    console.log('🔐 [Login API] Login attempt for:', email);
+
     // Validate required fields
     if (!email || !password) {
+      console.log('❌ [Login API] Missing email or password');
       return NextResponse.json(
         { error: 'กรุณากรอกอีเมลและรหัสผ่าน' },
         { status: 400 }
@@ -16,14 +19,19 @@ export async function POST(request: NextRequest) {
     }
 
     // Attempt login
+    console.log('🔐 [Login API] Calling simpleLogin...');
     const result = await simpleLogin({ email, password });
+    console.log('🔐 [Login API] Login result:', { success: result.success, hasToken: !!result.token });
 
     if (!result.success) {
+      console.log('❌ [Login API] Login failed:', result.error);
       return NextResponse.json(
         { error: result.error },
         { status: 401 }
       );
     }
+
+    console.log('✅ [Login API] Login successful for user:', result.user?.email);
 
     // Create response with JWT token in cookie
     const response = NextResponse.json({
@@ -33,13 +41,15 @@ export async function POST(request: NextRequest) {
 
     // Set HttpOnly cookie with JWT token
     if (result.token) {
+      console.log('🍪 [Login API] Setting auth_token cookie');
       response.cookies.set('auth_token', result.token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'strict',
+        sameSite: 'lax', // Changed from 'strict' to 'lax' for better compatibility
         maxAge: 24 * 60 * 60, // 24 hours
         path: '/'
       });
+      console.log('🍪 [Login API] Cookie set successfully');
     }
 
     return response;
