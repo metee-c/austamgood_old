@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Vercel Login</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .section {
+            margin: 20px 0;
+            padding: 15px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+        }
+        .log {
+            background: #f5f5f5;
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 3px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .success { color: green; }
+        .error { color: red; }
+        .info { color: blue; }
+    </style>
+</head>
+<body>
+    <h1>🔐 Test Vercel Login</h1>
+    
+    <div class="section">
+        <h2>1. ตรวจสอบ Environment</h2>
+        <button onclick="checkEnvironment()">Check Environment</button>
+        <div id="env-log" class="log"></div>
+    </div>
+
+    <div class="section">
+        <h2>2. ทดสอบ Login</h2>
+        <input type="email" id="email" placeholder="Email" value="admin@austamgood.com" style="width: 200px; padding: 8px;">
+        <input type="password" id="password" placeholder="Password" value="admin123" style="width: 200px; padding: 8px;">
+        <br><br>
+        <button onclick="testLogin()">Test Login</button>
+        <div id="login-log" class="log"></div>
+    </div>
+
+    <div class="section">
+        <h2>3. ตรวจสอบ Cookies</h2>
+        <button onclick="checkCookies()">Check Cookies</button>
+        <div id="cookie-log" class="log"></div>
+    </div>
+
+    <div class="section">
+        <h2>4. ทดสอบ /api/auth/me</h2>
+        <button onclick="testAuthMe()">Test /api/auth/me</button>
+        <div id="me-log" class="log"></div>
+    </div>
+
+    <script>
+        function log(elementId, message, type = 'info') {
+            const element = document.getElementById(elementId);
+            const timestamp = new Date().toLocaleTimeString();
+            const className = type;
+            element.innerHTML += `<div class="${className}">[${timestamp}] ${message}</div>`;
+            element.scrollTop = element.scrollHeight;
+        }
+
+        function clearLog(elementId) {
+            document.getElementById(elementId).innerHTML = '';
+        }
+
+        async function checkEnvironment() {
+            clearLog('env-log');
+            log('env-log', '🔍 Checking environment...', 'info');
+            
+            log('env-log', `Current URL: ${window.location.href}`, 'info');
+            log('env-log', `Protocol: ${window.location.protocol}`, 'info');
+            log('env-log', `Host: ${window.location.host}`, 'info');
+            log('env-log', `Is HTTPS: ${window.location.protocol === 'https:'}`, window.location.protocol === 'https:' ? 'success' : 'error');
+        }
+
+        async function testLogin() {
+            clearLog('login-log');
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            log('login-log', `🔐 Testing login for: ${email}`, 'info');
+
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include', // Important!
+                    body: JSON.stringify({ email, password })
+                });
+
+                log('login-log', `Response status: ${response.status}`, response.ok ? 'success' : 'error');
+                
+                // Check Set-Cookie header (won't be visible in browser due to HttpOnly)
+                const headers = {};
+                response.headers.forEach((value, key) => {
+                    headers[key] = value;
+                });
+                log('login-log', `Response headers: ${JSON.stringify(headers, null, 2)}`, 'info');
+
+                const data = await response.json();
+                log('login-log', `Response data: ${JSON.stringify(data, null, 2)}`, response.ok ? 'success' : 'error');
+
+                if (response.ok) {
+                    log('login-log', '✅ Login successful!', 'success');
+                    log('login-log', '⏳ Waiting 1 second before checking cookies...', 'info');
+                    setTimeout(() => {
+                        checkCookies();
+                        testAuthMe();
+                    }, 1000);
+                } else {
+                    log('login-log', `❌ Login failed: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                log('login-log', `❌ Error: ${error.message}`, 'error');
+                console.error('Login error:', error);
+            }
+        }
+
+        function checkCookies() {
+            clearLog('cookie-log');
+            log('cookie-log', '🍪 Checking cookies...', 'info');
+            
+            const cookies = document.cookie.split(';').map(c => c.trim());
+            
+            if (cookies.length === 0 || (cookies.length === 1 && cookies[0] === '')) {
+                log('cookie-log', '⚠️ No cookies found!', 'error');
+                log('cookie-log', 'Note: HttpOnly cookies won\'t be visible here', 'info');
+            } else {
+                log('cookie-log', `Found ${cookies.length} cookie(s):`, 'success');
+                cookies.forEach(cookie => {
+                    log('cookie-log', `  - ${cookie}`, 'info');
+                });
+            }
+
+            // Check if auth_token exists (it won't be visible due to HttpOnly)
+            log('cookie-log', '', 'info');
+            log('cookie-log', '⚠️ Note: auth_token is HttpOnly and won\'t appear above', 'info');
+            log('cookie-log', 'But it should be sent with requests automatically', 'info');
+        }
+
+        async function testAuthMe() {
+            clearLog('me-log');
+            log('me-log', '👤 Testing /api/auth/me...', 'info');
+
+            try {
+                const response = await fetch('/api/auth/me', {
+                    method: 'GET',
+                    credentials: 'include' // Important!
+                });
+
+                log('me-log', `Response status: ${response.status}`, response.ok ? 'success' : 'error');
+
+                const data = await response.json();
+                log('me-log', `Response data: ${JSON.stringify(data, null, 2)}`, response.ok ? 'success' : 'error');
+
+                if (response.ok) {
+                    log('me-log', '✅ Authentication successful!', 'success');
+                    log('me-log', `User: ${data.user.email}`, 'success');
+                } else {
+                    log('me-log', `❌ Authentication failed: ${data.error}`, 'error');
+                    log('me-log', 'This means the cookie was not sent or is invalid', 'error');
+                }
+            } catch (error) {
+                log('me-log', `❌ Error: ${error.message}`, 'error');
+                console.error('/api/auth/me error:', error);
+            }
+        }
+
+        // Auto-check environment on load
+        window.addEventListener('load', () => {
+            checkEnvironment();
+        });
+    </script>
+</body>
+</html>

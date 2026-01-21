@@ -1,6 +1,6 @@
 // API route to get current user's permissions
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentSession } from '@/lib/auth';
+import { getUserFromToken } from '@/lib/auth/simple-auth';
 import { createClient } from '@/lib/supabase/server';
 
 /**
@@ -9,15 +9,39 @@ import { createClient } from '@/lib/supabase/server';
  */
 export async function GET(request: NextRequest) {
   try {
-    // Get current session
-    const sessionResult = await getCurrentSession();
+    console.log('🔑 [API /auth/permissions] Checking authentication...');
     
-    if (!sessionResult.success || !sessionResult.session) {
+    // Get all cookies for debugging
+    const allCookies = request.cookies.getAll();
+    console.log('🍪 [API /auth/permissions] All cookies:', allCookies.map(c => ({ name: c.name, hasValue: !!c.value })));
+    
+    // Get token from cookie
+    const token = request.cookies.get('auth_token')?.value;
+    console.log('🍪 [API /auth/permissions] auth_token exists:', !!token);
+    
+    if (!token) {
+      console.log('❌ [API /auth/permissions] No token found in cookies');
       return NextResponse.json(
         { error: 'ไม่ได้เข้าสู่ระบบ' },
         { status: 401 }
       );
     }
+
+    console.log('🔐 [API /auth/permissions] Verifying token...');
+    // Verify token and get user
+    const result = await getUserFromToken(token);
+    console.log('🔐 [API /auth/permissions] Token verification result:', { success: result.success, hasUser: !!result.user });
+    
+    if (!result.success || !result.user) {
+      console.log('❌ [API /auth/permissions] Token verification failed:', result.error);
+      return NextResponse.json(
+        { error: result.error || 'ไม่ได้เข้าสู่ระบบ' },
+        { status: 401 }
+      );
+    }
+
+    const user = result.user;
+    console.log('✅ [API /auth/permissions] User authenticated:', user.email);
 
     const supabase = await createClient();
 
@@ -25,7 +49,7 @@ export async function GET(request: NextRequest) {
     const { data: userData, error: userError } = await supabase
       .from('master_system_user')
       .select('role_id, master_system_role!fk_master_system_user_role(role_name)')
-      .eq('user_id', sessionResult.session.user_id)
+      .eq('user_id', user.user_id)
       .single();
 
     if (userError || !userData) {
@@ -95,7 +119,7 @@ export async function GET(request: NextRequest) {
       can_delete: p.can_delete
     })) || [];
 
-    console.log('🔑 [API /auth/permissions] User:', sessionResult.session.user_id, 'Role:', roleName);
+    console.log('🔑 [API /auth/permissions] User:', user.user_id, 'Role:', roleName);
     console.log('🔑 [API /auth/permissions] Permissions count:', userPermissions.length);
     console.log('🔑 [API /auth/permissions] Has mobile.transfer?', userPermissions.some((p: any) => p.module_key === 'mobile.transfer'));
 

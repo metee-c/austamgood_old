@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Login - Simple</title>
+    <style>
+        body { font-family: Arial; max-width: 600px; margin: 50px auto; padding: 20px; }
+        button { padding: 10px 20px; margin: 10px 0; cursor: pointer; font-size: 16px; }
+        .log { background: #f5f5f5; padding: 10px; margin: 10px 0; border-radius: 5px; max-height: 400px; overflow-y: auto; }
+        .success { color: green; }
+        .error { color: red; }
+        input { padding: 8px; margin: 5px 0; width: 100%; box-sizing: border-box; }
+    </style>
+</head>
+<body>
+    <h1>🔐 Test Login (Simple)</h1>
+    
+    <h2>Step 1: Login</h2>
+    <input type="email" id="email" placeholder="Email" value="admin@austamgood.com">
+    <input type="password" id="password" placeholder="Password" value="admin123">
+    <button onclick="login()">Login</button>
+    <div id="login-log" class="log"></div>
+
+    <h2>Step 2: Check Auth</h2>
+    <button onclick="checkAuth()">Check /api/auth/me</button>
+    <div id="auth-log" class="log"></div>
+
+    <script>
+        function log(id, msg, type = 'info') {
+            const el = document.getElementById(id);
+            const time = new Date().toLocaleTimeString();
+            const color = type === 'success' ? 'green' : type === 'error' ? 'red' : 'black';
+            el.innerHTML += `<div style="color: ${color}">[${time}] ${msg}</div>`;
+            el.scrollTop = el.scrollHeight;
+        }
+
+        async function login() {
+            const loginLog = document.getElementById('login-log');
+            loginLog.innerHTML = '';
+            
+            const email = document.getElementById('email').value;
+            const password = document.getElementById('password').value;
+
+            log('login-log', `Attempting login for: ${email}`, 'info');
+
+            try {
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ email, password })
+                });
+
+                log('login-log', `Status: ${response.status}`, response.ok ? 'success' : 'error');
+
+                const data = await response.json();
+                log('login-log', `Response: ${JSON.stringify(data)}`, response.ok ? 'success' : 'error');
+
+                if (response.ok) {
+                    log('login-log', '✅ Login successful! Now click "Check /api/auth/me"', 'success');
+                } else {
+                    log('login-log', `❌ Login failed: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                log('login-log', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+
+        async function checkAuth() {
+            const authLog = document.getElementById('auth-log');
+            authLog.innerHTML = '';
+
+            log('auth-log', 'Checking authentication...', 'info');
+
+            try {
+                const response = await fetch('/api/auth/me', {
+                    credentials: 'include'
+                });
+
+                log('auth-log', `Status: ${response.status}`, response.ok ? 'success' : 'error');
+
+                const data = await response.json();
+                log('auth-log', `Response: ${JSON.stringify(data, null, 2)}`, response.ok ? 'success' : 'error');
+
+                if (response.ok) {
+                    log('auth-log', `✅ Authenticated as: ${data.user.email}`, 'success');
+                } else {
+                    log('auth-log', `❌ Not authenticated: ${data.error}`, 'error');
+                    log('auth-log', 'This means cookie was not set or not sent', 'error');
+                }
+            } catch (error) {
+                log('auth-log', `❌ Error: ${error.message}`, 'error');
+            }
+        }
+    </script>
+</body>
+</html>
