@@ -8,20 +8,31 @@ import { getUserFromToken } from '@/lib/auth/simple-auth';
  */
 export async function GET(request: NextRequest) {
   try {
+    console.log('👤 [Auth Me API] Checking authentication...');
+    
+    // Get all cookies for debugging
+    const allCookies = request.cookies.getAll();
+    console.log('🍪 [Auth Me API] All cookies:', allCookies.map(c => ({ name: c.name, hasValue: !!c.value })));
+    
     // Get token from cookie
     const token = request.cookies.get('auth_token')?.value;
+    console.log('🍪 [Auth Me API] auth_token exists:', !!token);
     
     if (!token) {
+      console.log('❌ [Auth Me API] No token found in cookies');
       return NextResponse.json(
         { error: 'ไม่ได้เข้าสู่ระบบ' },
         { status: 401 }
       );
     }
 
+    console.log('🔐 [Auth Me API] Verifying token...');
     // Verify token and get user
     const result = await getUserFromToken(token);
+    console.log('🔐 [Auth Me API] Token verification result:', { success: result.success, hasUser: !!result.user });
     
     if (!result.success || !result.user) {
+      console.log('❌ [Auth Me API] Token verification failed:', result.error);
       return NextResponse.json(
         { error: result.error || 'ไม่ได้เข้าสู่ระบบ' },
         { status: 401 }
@@ -29,6 +40,7 @@ export async function GET(request: NextRequest) {
     }
 
     const user = result.user;
+    console.log('✅ [Auth Me API] User authenticated:', user.email);
 
     return NextResponse.json({
       success: true,
@@ -46,7 +58,7 @@ export async function GET(request: NextRequest) {
       }
     });
   } catch (error) {
-    console.error('Get current user error:', error);
+    console.error('❌ [Auth Me API] Error:', error);
     return NextResponse.json(
       { error: 'เกิดข้อผิดพลาดภายในระบบ' },
       { status: 500 }

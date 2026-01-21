@@ -42,13 +42,20 @@ export async function POST(request: NextRequest) {
     // Set HttpOnly cookie with JWT token
     if (result.token) {
       console.log('🍪 [Login API] Setting auth_token cookie');
-      response.cookies.set('auth_token', result.token, {
+      console.log('🍪 [Login API] NODE_ENV:', process.env.NODE_ENV);
+      console.log('🍪 [Login API] JWT_SECRET exists:', !!process.env.JWT_SECRET);
+      
+      const cookieOptions = {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax', // Changed from 'strict' to 'lax' for better compatibility
+        sameSite: 'lax' as const,
         maxAge: 24 * 60 * 60, // 24 hours
-        path: '/'
-      });
+        path: '/',
+        domain: process.env.NODE_ENV === 'production' ? undefined : undefined // Let browser handle domain
+      };
+      
+      console.log('🍪 [Login API] Cookie options:', cookieOptions);
+      response.cookies.set('auth_token', result.token, cookieOptions);
       console.log('🍪 [Login API] Cookie set successfully');
     }
 
