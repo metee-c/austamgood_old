@@ -3,14 +3,14 @@
 
    Creating an optimized production build ...
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
- ✓ Compiled successfully in 13.1s
+ ✓ Compiled successfully in 11.4s
    Running TypeScript ...
    Collecting page data using 13 workers ...
-   Generating static pages using 13 workers (0/237) ...
-   Generating static pages using 13 workers (59/237) 
-   Generating static pages using 13 workers (118/237) 
-   Generating static pages using 13 workers (177/237) 
- ✓ Generating static pages using 13 workers (237/237) in 3.3s
+   Generating static pages using 13 workers (0/238) ...
+   Generating static pages using 13 workers (59/238) 
+   Generating static pages using 13 workers (118/238) 
+   Generating static pages using 13 workers (178/238) 
+ ✓ Generating static pages using 13 workers (238/238) in 1522.2ms
    Finalizing page optimization ...
 
 Route (app)
@@ -85,6 +85,7 @@ Route (app)
 ├ ƒ /api/import-jobs
 ├ ƒ /api/inventory/balances
 ├ ƒ /api/inventory-balances/reset-reservations
+├ ƒ /api/inventory/misplaced-report
 ├ ƒ /api/inventory/reservations
 ├ ƒ /api/loadlists
 ├ ƒ /api/loadlists/available-bfs
@@ -228,6 +229,7 @@ Route (app)
 ├ ƒ /api/route-plans/trips-by-supplier
 ├ ƒ /api/route-plans/trips/[id]
 ├ ƒ /api/sku-options
+├ ƒ /api/sku-preparation-area-mapping
 ├ ƒ /api/skus
 ├ ƒ /api/stock-adjustments
 ├ ƒ /api/stock-adjustments/check-availability
@@ -368,6 +370,7 @@ Route (app)
 ├ ○ /warehouse/inbound-new
 ├ ○ /warehouse/inventory-balances
 ├ ○ /warehouse/inventory-ledger
+├ ○ /warehouse/misplaced-inventory
 ├ ○ /warehouse/preparation-area-inventory
 └ ○ /warehouse/transfer
 

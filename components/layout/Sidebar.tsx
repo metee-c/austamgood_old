@@ -211,6 +211,12 @@ const menuItems = [
         icon: Factory,
         label: 'รายงานการผลิต',
         englishLabel: 'Production Report'
+      },
+      {
+        path: '/warehouse/misplaced-inventory',
+        icon: PackageSearch,
+        label: 'บ้านหยิบผิดตำแหน่ง',
+        englishLabel: 'Misplaced Inventory Report'
       }
     ]
   },

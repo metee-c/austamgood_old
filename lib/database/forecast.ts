@@ -706,14 +706,29 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
   const skuIds = skus.map(s => s.sku_id);
 
   // 2. ดึงยอดสต็อกรวมจากทุก location (แยก total และ available)
-  const { data: balances, error: balanceError } = await supabase
-    .from('wms_inventory_balances')
-    .select('sku_id, total_piece_qty, reserved_piece_qty')
-    .in('sku_id', skuIds);
+  // ใช้ Chunking เพื่อหลีกเลี่ยง Limit Rows (Supabase/PostgREST default limit)
+  const chunkSize = 20; // แบ่งทีละ 20 SKUs
+  const balancePromises = [];
 
-  if (balanceError) {
-    console.error('Error fetching balances:', balanceError);
+  for (let i = 0; i < skuIds.length; i += chunkSize) {
+    const chunkSkus = skuIds.slice(i, i + chunkSize);
+    balancePromises.push(
+      supabase
+        .from('wms_inventory_balances')
+        .select('sku_id, total_piece_qty, reserved_piece_qty')
+        .in('sku_id', chunkSkus)
+        .limit(100000)
+    );
   }
+
+  const balanceResults = await Promise.all(balancePromises);
+
+  // รวมผลลัพธ์จากทุก Chunk
+  const balances: any[] = [];
+  balanceResults.forEach(res => {
+    if (res.data) balances.push(...res.data);
+    if (res.error) console.error('Error fetching balance chunk:', res.error);
+  });
 
   // รวมยอดสต็อกตาม SKU (แยก total และ available)
   const stockBySkuId: Record<string, { total: number; available: number }> = {};
@@ -721,7 +736,7 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
     const totalQty = Number(b.total_piece_qty || 0);
     const reservedQty = Number(b.reserved_piece_qty || 0);
     const availableQty = totalQty - reservedQty;
-    
+
     if (!stockBySkuId[b.sku_id]) {
       stockBySkuId[b.sku_id] = { total: 0, available: 0 };
     }
@@ -733,18 +748,31 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
   const ninetyDaysAgo = new Date();
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
 
-  const { data: shipments, error: shipError } = await supabase
-    .from('wms_inventory_ledger')
-    .select('sku_id, piece_qty, movement_at')
-    .in('sku_id', skuIds)
-    .eq('transaction_type', 'ship')
-    .eq('direction', 'out')
-    .gte('movement_at', ninetyDaysAgo.toISOString())
-    .order('movement_at', { ascending: true });
+  // ใช้ Chunking สำหรับ Ledger เพราะข้อมูลเยอะมาก
+  const ledgerChunkSize = 10; // แบ่งทีละ 10 SKUs
+  const ledgerPromises = [];
 
-  if (shipError) {
-    console.error('Error fetching shipments:', shipError);
+  for (let i = 0; i < skuIds.length; i += ledgerChunkSize) {
+    const chunkSkus = skuIds.slice(i, i + ledgerChunkSize);
+    ledgerPromises.push(
+      supabase
+        .from('wms_inventory_ledger')
+        .select('sku_id, piece_qty, movement_at')
+        .in('sku_id', chunkSkus)
+        .eq('transaction_type', 'ship')
+        .eq('direction', 'out')
+        .gte('movement_at', ninetyDaysAgo.toISOString())
+        .order('movement_at', { ascending: true })
+        .limit(50000)
+    );
   }
+
+  const ledgerResults = await Promise.all(ledgerPromises);
+  const shipments: any[] = [];
+  ledgerResults.forEach(res => {
+    if (res.data) shipments.push(...res.data);
+    if (res.error) console.error('Error fetching ledger chunk:', res.error);
+  });
 
   // จัดกลุ่มข้อมูลการจ่ายตาม SKU และวัน
   const shipDataBySkuId: Record<string, { dailyShips: number[], lastShipDate: string | null, totalDays: number }> = {};
@@ -924,7 +952,7 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
       calculated_safety_stock: calculatedSafetyStock,
       demand_std_dev: demandStdDev,
       reorder_point: sku.reorder_point || 0,
-      total_stock: availableStockFromBalance,  // แสดงสต็อกที่พร้อมใช้งาน (หลังหักยอดจอง)
+      total_stock: totalStock,  // แสดงสต็อกทั้งหมด (รวมยอดจอง) ตามที่ user ต้องการ
       avg_daily_ship: Math.round(avgDailyShip * 100) / 100,
       days_of_supply: daysOfSupply,
       pending_order_qty: pendingOrderQty,
@@ -949,14 +977,8 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
     filteredData = forecastData.filter(d => d.priority === priority);
   }
 
-  // 6. เรียงลำดับตามความสำคัญ (ใช้ priority_score แทน)
-  filteredData.sort((a, b) => {
-    // เรียงตาม priority_score จากมากไปน้อย (10 = วิกฤตที่สุด)
-    const scoreDiff = b.priority_score - a.priority_score;
-    if (Math.abs(scoreDiff) >= 0.5) return scoreDiff;
-    // ถ้าคะแนนใกล้เคียงกัน เรียงตาม days_until_stockout
-    return a.days_until_stockout - b.days_until_stockout;
-  });
+  // 6. เรียงลำดับตามสต็อกปัจจุบัน (มากไปน้อย)
+  filteredData.sort((a, b) => b.total_stock - a.total_stock);
 
   // 7. Pagination
   const totalCount = filteredData.length;

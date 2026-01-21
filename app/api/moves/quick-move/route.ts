@@ -1,191 +1,363 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@/lib/supabase/client';
-import { withAuth } from '@/lib/api/with-auth';
+import { NextRequest, NextResponse } from 'next/server'
+import { createClient } from '@/lib/supabase/server'
+import { cookies } from 'next/headers'
 
-async function handlePost(request: NextRequest, context: any) {
+export async function POST(request: NextRequest) {
   try {
-    const body = await request.json();
-    const { pallet_id, to_location_id, notes } = body;
+    const supabase = await createClient()
+    const body = await request.json()
 
-    // Validation
-    if (!pallet_id || !to_location_id) {
+    const {
+      pallet_id,
+      balance_id,
+      to_location_id,
+      notes,
+      force_move = false
+    } = body
+
+    // Validate input
+    if (!pallet_id && !balance_id) {
       return NextResponse.json(
-        {
-          data: null,
-          error: 'Missing required fields: pallet_id and to_location_id are required'
-        },
+        { error: 'ต้องระบุ pallet_id หรือ balance_id' },
         { status: 400 }
-      );
+      )
     }
 
-    const supabase = await createClient();
+    if (!to_location_id) {
+      return NextResponse.json(
+        { error: 'ต้องระบุ to_location_id' },
+        { status: 400 }
+      )
+    }
 
-    // 1. ค้นหาข้อมูลสินค้าจาก pallet_id ใน inventory_balances
-    const { data: balances, error: balanceError } = await supabase
-      .from('wms_inventory_balances')
+    // Get session token from cookie
+    const cookieStore = await cookies()
+    const sessionToken = cookieStore.get('session_token')?.value
+
+    if (!sessionToken) {
+      return NextResponse.json(
+        { error: 'Unauthorized - No session token' },
+        { status: 401 }
+      )
+    }
+
+    // Get user and employee_id from session token (without timeout check)
+    // Use explicit FK name to avoid ambiguity
+    const { data: sessionData, error: sessionError } = await supabase
+      .from('user_sessions')
       .select(`
-        *,
-        master_sku!sku_id (
-          sku_name,
-          barcode
-        ),
-        master_location!location_id (
-          location_code,
-          location_name
-        )
+        user_id,
+        master_system_user!user_sessions_user_id_fkey(employee_id)
       `)
-      .or(`pallet_id.eq.${pallet_id},pallet_id_external.eq.${pallet_id}`)
-      .gt('total_piece_qty', 0);
+      .eq('token', sessionToken)
+      .eq('invalidated', false)
+      .single()
 
-    if (balanceError) {
-      console.error('Error fetching balance:', balanceError);
+    if (sessionError || !sessionData) {
+      console.error('Session lookup error:', sessionError)
       return NextResponse.json(
-        { data: null, error: `Failed to find pallet: ${balanceError.message}` },
-        { status: 500 }
-      );
+        { error: 'Unauthorized - Invalid session' },
+        { status: 401 }
+      )
     }
 
-    if (!balances || balances.length === 0) {
+    const employeeId = (sessionData.master_system_user as any)?.employee_id
+
+    if (!employeeId) {
       return NextResponse.json(
-        { data: null, error: `ไม่พบ Pallet ID: ${pallet_id} หรือสต็อกเป็น 0` },
-        { status: 404 }
-      );
+        { error: 'Unauthorized - No employee linked to user' },
+        { status: 401 }
+      )
     }
 
-    // 1.5 ตรวจสอบว่าไม่ได้ย้ายไปตำแหน่งเดิม (same-location validation)
-    const currentLocationIds = [...new Set(balances.map(b => b.location_id))];
-    if (currentLocationIds.length === 1 && currentLocationIds[0] === to_location_id) {
-      const currentLocationCode = balances[0].master_location?.location_code || to_location_id;
-      return NextResponse.json(
-        { data: null, error: `ไม่สามารถย้ายไปตำแหน่งเดิมได้ (${currentLocationCode})` },
-        { status: 400 }
-      );
+    // Update last_activity_at
+    await supabase
+      .from('user_sessions')
+      .update({ last_activity_at: new Date().toISOString() })
+      .eq('token', sessionToken)
+
+    let balanceRecords: any[] = []
+    let from_location_id: string | null = null
+
+    // Get balance info
+    if (pallet_id) {
+      const { data, error } = await supabase
+        .from('wms_inventory_balances')
+        .select('*')
+        .eq('pallet_id', pallet_id)
+
+      if (error) {
+        console.error('Pallet query error:', error)
+        return NextResponse.json(
+          { error: `เกิดข้อผิดพลาดในการค้นหา Pallet: ${error.message}` },
+          { status: 500 }
+        )
+      }
+
+      if (!data || data.length === 0) {
+        return NextResponse.json(
+          { error: `ไม่พบข้อมูล Pallet ID: ${pallet_id}` },
+          { status: 404 }
+        )
+      }
+      
+      balanceRecords = data
+      from_location_id = data[0].location_id
+    } else if (balance_id) {
+      const { data, error } = await supabase
+        .from('wms_inventory_balances')
+        .select('*')
+        .eq('balance_id', balance_id)
+        .maybeSingle()
+
+      if (error) {
+        console.error('Balance query error:', error)
+        return NextResponse.json(
+          { error: `เกิดข้อผิดพลาดในการค้นหา Balance: ${error.message}` },
+          { status: 500 }
+        )
+      }
+
+      if (!data) {
+        return NextResponse.json(
+          { error: `ไม่พบข้อมูล Balance ID: ${balance_id}` },
+          { status: 404 }
+        )
+      }
+      
+      balanceRecords = [data]
+      from_location_id = data.location_id
     }
 
-    // 2. ตรวจสอบว่า to_location_id มีอยู่จริง
-    const { data: toLocation, error: locationError } = await supabase
-      .from('master_location')
-      .select('location_id, location_code, location_name, warehouse_id')
-      .eq('location_id', to_location_id)
-      .single();
+    // Use first record for SKU validation
+    const balanceData = balanceRecords[0]
 
-    if (locationError || !toLocation) {
-      return NextResponse.json(
-        { data: null, error: `ไม่พบ Location: ${to_location_id}` },
-        { status: 404 }
-      );
-    }
+    // Validate picking home if not force move
+    if (!force_move) {
+      const { data: skuData } = await supabase
+        .from('master_sku')
+        .select('default_location')
+        .eq('sku_id', balanceData.sku_id)
+        .single()
 
-    // 3. สร้าง move_no
-    const now = new Date();
-    const yearMonth = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}`;
-    const prefix = `MV-${yearMonth}-`;
-
-    const { data: latestMove, error: moveNoError } = await supabase
-      .from('wms_moves')
-      .select('move_no')
-      .like('move_no', `${prefix}%`)
-      .order('move_no', { ascending: false })
-      .limit(1);
-
-    let runningNo = 1;
-    if (latestMove && latestMove.length > 0) {
-      const lastNo = latestMove[0].move_no;
-      const lastRunningNo = parseInt(lastNo.substring(lastNo.lastIndexOf('-') + 1));
-      runningNo = lastRunningNo + 1;
-    }
-
-    const moveNo = `${prefix}${String(runningNo).padStart(4, '0')}`;
-
-    // 4. สร้าง move header
-    const fromWarehouseId = balances[0].warehouse_id;
-    const toWarehouseId = toLocation.warehouse_id;
-
-    const { data: moveHeader, error: headerError } = await supabase
-      .from('wms_moves')
-      .insert({
-        move_no: moveNo,
-        move_type: 'transfer',
-        status: 'completed', // Quick move เสร็จทันที
-        from_warehouse_id: fromWarehouseId,
-        to_warehouse_id: toWarehouseId,
-        scheduled_at: new Date().toISOString(),
-        notes: notes || 'Quick move from mobile',
-      })
-      .select()
-      .single();
-
-    if (headerError || !moveHeader) {
-      console.error('Error creating move header:', headerError);
-      return NextResponse.json(
-        { data: null, error: `Failed to create move: ${headerError?.message}` },
-        { status: 500 }
-      );
-    }
-
-    // 5. สร้าง move items สำหรับแต่ละ SKU ใน pallet
-    const moveItems = balances.map((balance) => ({
-      move_id: moveHeader.move_id,
-      sku_id: balance.sku_id,
-      from_location_id: balance.location_id,
-      to_location_id: to_location_id,
-      pallet_id: balance.pallet_id,
-      pallet_id_external: balance.pallet_id_external,
-      requested_piece_qty: balance.total_piece_qty,
-      confirmed_piece_qty: balance.total_piece_qty,
-      requested_pack_qty: balance.total_pack_qty || 0,
-      confirmed_pack_qty: balance.total_pack_qty || 0,
-      move_method: 'pallet',
-      status: 'completed',
-      production_date: balance.production_date,
-      expiry_date: balance.expiry_date,
-    }));
-
-    const { data: insertedItems, error: itemsError } = await supabase
-      .from('wms_move_items')
-      .insert(moveItems)
-      .select();
-
-    if (itemsError) {
-      console.error('Error creating move items:', itemsError);
-      // Rollback: delete the header
-      await supabase.from('wms_moves').delete().eq('move_id', moveHeader.move_id);
-      return NextResponse.json(
-        { data: null, error: `Failed to create move items: ${itemsError.message}` },
-        { status: 500 }
-      );
-    }
-
-    // 6. Record inventory movement for each completed item
-    const { moveService } = await import('@/lib/database/move');
-    
-    for (const item of insertedItems || []) {
-      const inventoryResult = await moveService.recordInventoryMovement(item, moveHeader);
-      if (inventoryResult.error) {
-        console.error('Failed to record inventory movement:', inventoryResult.error);
-        // Continue with other items even if one fails
+      if (skuData && skuData.default_location && skuData.default_location !== to_location_id) {
+        return NextResponse.json(
+          {
+            error: `ตำแหน่งปลายทาง ${to_location_id} ไม่ใช่บ้านหยิบของ SKU นี้ (${skuData.default_location})`,
+            canForceMove: true
+          },
+          { status: 400 }
+        )
       }
     }
 
-    // 7. Return success
-    return NextResponse.json({
-      data: {
-        move_id: moveHeader.move_id,
-        move_no: moveHeader.move_no,
-        items_count: moveItems.length,
-      },
-      error: null
-    }, { status: 201 });
+    // Generate move_no
+    const { data: lastMove } = await supabase
+      .from('wms_moves')
+      .select('move_no')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single()
 
-  } catch (error) {
-    console.error('API Error in POST /api/moves/quick-move:', error);
-    const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+    let nextNumber = 1
+    if (lastMove?.move_no) {
+      const match = lastMove.move_no.match(/MV(\d+)/)
+      if (match) {
+        nextNumber = parseInt(match[1]) + 1
+      }
+    }
+    const move_no = `MV${String(nextNumber).padStart(10, '0')}`
+
+    // Insert move header
+    const { data: move, error: moveError } = await supabase
+      .from('wms_moves')
+      .insert({
+        move_no,
+        move_type: 'transfer',
+        status: 'completed',
+        notes: notes || 'Quick move from misplaced inventory',
+        created_by: employeeId,
+        completed_at: new Date().toISOString()
+      })
+      .select()
+      .single()
+
+    if (moveError) {
+      console.error('Move insert error:', moveError)
+      return NextResponse.json(
+        { error: 'ไม่สามารถสร้างรายการย้ายได้: ' + moveError.message },
+        { status: 500 }
+      )
+    }
+
+    // Insert move items for all balance records
+    const moveItems = balanceRecords.map(balance => ({
+      move_id: move.move_id,
+      sku_id: balance.sku_id,
+      ...(balance.pallet_id ? { pallet_id: balance.pallet_id } : {}),
+      move_method: balance.pallet_id ? 'pallet' : 'individual',
+      status: 'completed',
+      from_location_id,
+      to_location_id,
+      requested_pack_qty: balance.total_packs || 0,
+      requested_piece_qty: balance.total_pieces || 0,
+      confirmed_pack_qty: balance.total_packs || 0,
+      confirmed_piece_qty: balance.total_pieces || 0,
+      production_date: balance.production_date,
+      expiry_date: balance.expiry_date,
+      created_by: employeeId,
+      executed_by: employeeId,
+      completed_at: new Date().toISOString()
+    }))
+
+    const { error: moveItemError } = await supabase
+      .from('wms_move_items')
+      .insert(moveItems)
+
+    if (moveItemError) {
+      console.error('Move item insert error:', moveItemError)
+      return NextResponse.json(
+        { error: 'ไม่สามารถสร้างรายการย้ายได้: ' + moveItemError.message },
+        { status: 500 }
+      )
+    }
+
+    // Update inventory balance location for all records
+    // Handle duplicate key by trying update first, then merge if conflict
+    // Unique constraint v2: warehouse_id, location_id, sku_id, pallet_id, pallet_id_external, lot_no, production_date, expiry_date
+    for (const balance of balanceRecords) {
+      // First attempt: Try to update location directly
+      const { error: updateError } = await supabase
+        .from('wms_inventory_balances')
+        .update({ location_id: to_location_id })
+        .eq('balance_id', balance.balance_id)
+
+      // If duplicate key error, find the conflicting balance and merge
+      if (updateError && updateError.code === '23505') {
+        console.log('Duplicate key detected, finding matching balance to merge...')
+
+        // Find all balances at destination with same SKU and pallet
+        // We need to match the exact constraint which uses COALESCE
+        const { data: candidates } = await supabase
+          .from('wms_inventory_balances')
+          .select('balance_id, total_piece_qty, total_pack_qty, pallet_id, pallet_id_external, lot_no, production_date, expiry_date')
+          .eq('warehouse_id', balance.warehouse_id)
+          .eq('location_id', to_location_id)
+          .eq('sku_id', balance.sku_id)
+          .neq('balance_id', balance.balance_id)
+
+        // Find the one that matches with COALESCE logic
+        const existingBalance = candidates?.find(c => {
+          const palletMatch = (c.pallet_id || '') === (balance.pallet_id || '')
+          const palletExtMatch = (c.pallet_id_external || '') === (balance.pallet_id_external || '')
+          const lotMatch = (c.lot_no || '') === (balance.lot_no || '')
+
+          // For dates, both null or both equal
+          const prodDateMatch = (c.production_date === balance.production_date) ||
+            (!c.production_date && !balance.production_date)
+          const expDateMatch = (c.expiry_date === balance.expiry_date) ||
+            (!c.expiry_date && !balance.expiry_date)
+
+          return palletMatch && palletExtMatch && lotMatch && prodDateMatch && expDateMatch
+        })
+
+        if (existingBalance) {
+          // Merge: Add qty to existing balance
+          const newPieceQty = (existingBalance.total_piece_qty || 0) + (balance.total_piece_qty || 0)
+          const newPackQty = (existingBalance.total_pack_qty || 0) + (balance.total_pack_qty || 0)
+
+          const { error: mergeError } = await supabase
+            .from('wms_inventory_balances')
+            .update({
+              total_piece_qty: newPieceQty,
+              total_pack_qty: newPackQty,
+              updated_at: new Date().toISOString()
+            })
+            .eq('balance_id', existingBalance.balance_id)
+
+          if (mergeError) {
+            console.error('Balance merge error:', mergeError)
+            return NextResponse.json(
+              { error: 'ไม่สามารถรวม balance ได้: ' + mergeError.message },
+              { status: 500 }
+            )
+          }
+
+          // Update any face_sheet_item_reservations that reference the source balance
+          // to point to the merged balance instead
+          await supabase
+            .from('face_sheet_item_reservations')
+            .update({ balance_id: existingBalance.balance_id })
+            .eq('balance_id', balance.balance_id)
+
+          // Also update bonus_face_sheet_item_reservations if exists
+          await supabase
+            .from('bonus_face_sheet_item_reservations')
+            .update({ balance_id: existingBalance.balance_id })
+            .eq('balance_id', balance.balance_id)
+
+          // Also update picklist_item_reservations if exists
+          await supabase
+            .from('picklist_item_reservations')
+            .update({ balance_id: existingBalance.balance_id })
+            .eq('balance_id', balance.balance_id)
+
+          // Delete source balance
+          const { error: deleteError } = await supabase
+            .from('wms_inventory_balances')
+            .delete()
+            .eq('balance_id', balance.balance_id)
+
+          if (deleteError) {
+            console.error('Balance delete error:', deleteError)
+            // If still can't delete due to other FK constraints, just set qty to 0
+            if (deleteError.code === '23503') {
+              console.log('Cannot delete balance due to FK constraint, setting qty to 0 instead')
+              await supabase
+                .from('wms_inventory_balances')
+                .update({
+                  total_piece_qty: 0,
+                  total_pack_qty: 0,
+                  updated_at: new Date().toISOString()
+                })
+                .eq('balance_id', balance.balance_id)
+            } else {
+              return NextResponse.json(
+                { error: 'ไม่สามารถลบ balance ต้นทางได้: ' + deleteError.message },
+                { status: 500 }
+              )
+            }
+          }
+
+          console.log(`Merged balance ${balance.balance_id} into ${existingBalance.balance_id}`)
+        } else {
+          // Couldn't find matching balance - this shouldn't happen
+          console.error('Duplicate key but no matching balance found:', updateError.details)
+          return NextResponse.json(
+            { error: 'เกิดข้อผิดพลาด: พบ duplicate key แต่ไม่พบ balance ที่ตรงกัน' },
+            { status: 500 }
+          )
+        }
+      } else if (updateError) {
+        // Other error
+        console.error('Balance update error:', updateError)
+        return NextResponse.json(
+          { error: 'ไม่สามารถอัปเดตตำแหน่งได้: ' + updateError.message },
+          { status: 500 }
+        )
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      data: move,
+      message: 'ย้ายสินค้าสำเร็จ'
+    })
+  } catch (error: any) {
+    console.error('Quick move error:', error)
     return NextResponse.json(
-      { data: null, error: errorMessage },
+      { error: error.message || 'เกิดข้อผิดพลาดในการย้ายสินค้า' },
       { status: 500 }
-    );
+    )
   }
 }
-
-// Export with auth wrapper
-export const POST = withAuth(handlePost);

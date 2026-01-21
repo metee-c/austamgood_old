@@ -99,7 +99,7 @@ function MobileTransferListPage() {
 
   // Data fetching
   const { data: allMoves, loading, error, refetch } = useMoves();
-  
+
   // Regular replenishment tasks (auto-replenishment, etc.)
   const { tasks: replenishmentTasks, isLoading: tasksLoading, updateTaskStatus, mutate: mutateTasks } = useReplenishmentTasks({
     status: 'all',
@@ -108,11 +108,11 @@ function MobileTransferListPage() {
 
   // Food material replenishment tasks (from production orders)
   // Only show tasks assigned to current user (showAll: false)
-  const { 
-    tasks: foodMaterialTasks, 
-    isLoading: foodMaterialLoading, 
+  const {
+    tasks: foodMaterialTasks,
+    isLoading: foodMaterialLoading,
     updateTaskStatus: updateFoodMaterialStatus,
-    mutate: mutateFoodMaterial 
+    mutate: mutateFoodMaterial
   } = useReplenishmentTasks({
     status: 'all',
     triggerSource: 'production_order',
@@ -173,6 +173,14 @@ function MobileTransferListPage() {
   const [loadingLocations, setLoadingLocations] = useState(false);
   const [showCapacityError, setShowCapacityError] = useState(false);
   const [capacityErrorMessage, setCapacityErrorMessage] = useState('');
+  
+  // Picking Home Error Modal State
+  const [pickingHomeError, setPickingHomeError] = useState<{
+    skuId: string;
+    skuName: string;
+    destinationLocation: string;
+    correctLocation: string;
+  } | null>(null);
 
   // Audio feedback - with graceful fallback if files don't exist
   const playTapSound = () => {
@@ -237,7 +245,7 @@ function MobileTransferListPage() {
   const handleScanPallet = async () => {
     // Clean pallet ID - remove any extra text that might come from barcode scanner
     const cleanPalletId = palletId.trim().split(/\s+/)[0]; // Take only first word/token
-    
+
     if (!cleanPalletId) {
       setQuickMoveError('กรุณาสแกน Pallet ID');
       playErrorSound();
@@ -276,7 +284,7 @@ function MobileTransferListPage() {
             const existing = acc[existingIndex];
             const itemDate = new Date(item.updated_at || item.created_at).getTime();
             const existingDate = new Date(existing.updated_at || existing.created_at).getTime();
-            
+
             if (itemDate > existingDate || item.total_piece_qty > existing.total_piece_qty) {
               acc[existingIndex] = item;
             }
@@ -292,10 +300,10 @@ function MobileTransferListPage() {
 
       setPalletDetails(filteredData);
       setQuickMoveError(null);
-      
+
       // Fetch locations for next step (with offline support)
       await handleFetchLocations();
-      
+
       setQuickMoveStep('location');
       playSuccessSound();
     } catch (err) {
@@ -364,14 +372,14 @@ function MobileTransferListPage() {
       let selectedLocation = locations.find(
         loc => loc.location_id === locationCode || loc.location_code === locationCode
       );
-      
+
       if (!selectedLocation) {
         setQuickMoveError('ไม่พบข้อมูล Location ที่เลือก');
         playErrorSound();
         setSavingQuickMove(false);
         return;
       }
-      
+
       // Use location_id for API call
       const locationIdToUse = selectedLocation.location_id;
 
@@ -379,7 +387,7 @@ function MobileTransferListPage() {
       try {
         const locationResponse = await fetch(`/api/master-location?location_id=${locationIdToUse}`);
         const locationResult = await locationResponse.json();
-        
+
         if (locationResult.data && locationResult.data.length > 0) {
           selectedLocation = locationResult.data[0];
         }
@@ -473,6 +481,100 @@ function MobileTransferListPage() {
         playErrorSound();
         setSavingQuickMove(false);
         return;
+      }
+
+      // Picking Home Validation using sku_preparation_area_mapping
+      // Logic: Check if destination is a picking home, and if SKU has a designated home that doesn't match
+      try {
+        const destLocationCode = selectedLocation.location_code;
+
+        console.log('=== VALIDATION START ===');
+        console.log('Destination:', destLocationCode);
+        console.log('Pallet Details:', palletDetails);
+
+        // Step 1: Check if destination location is in preparation_area table (is it a picking home?)
+        const prepAreaCheckResponse = await fetch(`/api/sku-preparation-area-mapping?location_code=${destLocationCode}`);
+        const prepAreaCheckResult = await prepAreaCheckResponse.json();
+
+        console.log('Prep Area Check Result:', prepAreaCheckResult);
+
+        const isDestinationPickingHome = prepAreaCheckResult.is_picking_home === true;
+        const allowedSkus = prepAreaCheckResult.allowed_skus || [];
+
+        console.log('Is Destination Picking Home?', isDestinationPickingHome);
+        console.log('Allowed SKUs for this location:', allowedSkus);
+
+        if (isDestinationPickingHome) {
+          // Destination IS a picking home - need to validate
+          console.log(`✓ Destination ${destLocationCode} is a picking home - validating...`);
+
+          // Step 2: For each SKU in pallet, check if it's allowed in this picking home
+          for (const item of palletDetails) {
+            console.log('Checking item:', item);
+            console.log('SKU ID:', item.sku_id);
+
+            // Check if SKU has a designated picking home via API
+            const skuMappingResponse = await fetch(`/api/sku-preparation-area-mapping?sku_id=${item.sku_id}`);
+            const skuMappingResult = await skuMappingResponse.json();
+
+            console.log('SKU Mapping Result:', skuMappingResult);
+
+            const skuDesignatedHome = skuMappingResult.data?.[0]?.location_code;
+            console.log('SKU Designated Home:', skuDesignatedHome);
+
+            if (skuDesignatedHome) {
+              // SKU has a designated picking home from sku_preparation_area_mapping
+              console.log(`SKU ${item.sku_id} has designated home: ${skuDesignatedHome}`);
+
+              if (skuDesignatedHome !== destLocationCode) {
+                // Trying to move to WRONG picking home!
+                console.log(`❌ BLOCKING: ${skuDesignatedHome} !== ${destLocationCode}`);
+
+                const skuName = item.master_sku?.sku_name || item.sku_id;
+
+                setPickingHomeError({
+                  skuId: item.sku_id,
+                  skuName: skuName,
+                  destinationLocation: destLocationCode,
+                  correctLocation: skuDesignatedHome
+                });
+                playErrorSound();
+                setSavingQuickMove(false);
+                return;
+              } else {
+                console.log(`✓ ALLOW: Correct picking home`);
+              }
+            } else {
+              // SKU has no designated home in sku_preparation_area_mapping
+              // Check if destination is assigned to OTHER SKUs
+              if (allowedSkus.length > 0 && !allowedSkus.includes(item.sku_id)) {
+                // Destination is assigned to specific SKUs, but this SKU is not one of them
+                console.log(`❌ BLOCKING: ${destLocationCode} is assigned to ${allowedSkus.join(', ')}, not ${item.sku_id}`);
+
+                const skuName = item.master_sku?.sku_name || item.sku_id;
+
+                setPickingHomeError({
+                  skuId: item.sku_id,
+                  skuName: skuName,
+                  destinationLocation: destLocationCode,
+                  correctLocation: `สินค้านี้ไม่มีบ้านหยิบที่กำหนด\n${destLocationCode} เป็นบ้านหยิบของ: ${allowedSkus.slice(0, 3).join(', ')}${allowedSkus.length > 3 ? '...' : ''}`
+                });
+                playErrorSound();
+                setSavingQuickMove(false);
+                return;
+              }
+              console.log(`✓ ALLOW: SKU has no designated home`);
+            }
+          }
+        } else {
+          // Destination is NOT a picking home (bulk storage) - always allow
+          console.log(`✓ ALLOW: Destination ${destLocationCode} is bulk storage`);
+        }
+
+        console.log('=== VALIDATION END: PASSED ===');
+      } catch (err) {
+        console.error('Error validating preparation area:', err);
+        // Fallback: If check fails, allow the move but log the error
       }
 
       // Execute quick move with offline support
@@ -715,7 +817,7 @@ function MobileTransferListPage() {
     <MobileLayout>
       {/* Offline Banner */}
       <OfflineBanner isOnline={isOnline} pendingCount={pendingCount} />
-      
+
       <div className={`min-h-screen bg-gray-50 pb-16 ${!isOnline || pendingCount > 0 ? 'pt-6' : ''}`}>
         {/* Header with Statistics - Compact */}
         <div className="bg-gradient-to-br from-sky-400 to-sky-500 text-white sticky top-0 z-10 shadow-lg mobile-header">
@@ -778,11 +880,10 @@ function MobileTransferListPage() {
                   setActiveTab('alerts');
                   playTapSound();
                 }}
-                className={`flex-1 py-1.5 px-2 rounded font-thai text-xs font-semibold transition-all ${
-                  activeTab === 'alerts'
-                    ? 'bg-white text-sky-600 shadow-md'
-                    : 'bg-white/20 text-white hover:bg-white/30'
-                }`}
+                className={`flex-1 py-1.5 px-2 rounded font-thai text-xs font-semibold transition-all ${activeTab === 'alerts'
+                  ? 'bg-white text-sky-600 shadow-md'
+                  : 'bg-white/20 text-white hover:bg-white/30'
+                  }`}
               >
                 <div className="flex items-center justify-center gap-1">
                   <AlertTriangle className="w-3 h-3" />
@@ -799,11 +900,10 @@ function MobileTransferListPage() {
                   setActiveTab('food_material');
                   playTapSound();
                 }}
-                className={`flex-1 py-1.5 px-2 rounded font-thai text-xs font-semibold transition-all ${
-                  activeTab === 'food_material'
-                    ? 'bg-white text-sky-600 shadow-md'
-                    : 'bg-white/20 text-white hover:bg-white/30'
-                }`}
+                className={`flex-1 py-1.5 px-2 rounded font-thai text-xs font-semibold transition-all ${activeTab === 'food_material'
+                  ? 'bg-white text-sky-600 shadow-md'
+                  : 'bg-white/20 text-white hover:bg-white/30'
+                  }`}
               >
                 <div className="flex items-center justify-center gap-1">
                   <Utensils className="w-3 h-3" />
@@ -820,11 +920,10 @@ function MobileTransferListPage() {
                   setActiveTab('moves');
                   playTapSound();
                 }}
-                className={`flex-1 py-1.5 px-2 rounded font-thai text-xs font-semibold transition-all ${
-                  activeTab === 'moves'
-                    ? 'bg-white text-sky-600 shadow-md'
-                    : 'bg-white/20 text-white hover:bg-white/30'
-                }`}
+                className={`flex-1 py-1.5 px-2 rounded font-thai text-xs font-semibold transition-all ${activeTab === 'moves'
+                  ? 'bg-white text-sky-600 shadow-md'
+                  : 'bg-white/20 text-white hover:bg-white/30'
+                  }`}
               >
                 <div className="flex items-center justify-center gap-1">
                   <Package className="w-3 h-3" />
@@ -1169,116 +1268,116 @@ function MobileTransferListPage() {
           {/* Moves Tab Content */}
           {activeTab === 'moves' && (
             <>
-          {loading && !refreshing ? (
-            <div className="flex flex-col items-center justify-center h-64 text-gray-500">
-              <Loader2 className="w-8 h-8 animate-spin mb-3" />
-              <p className="text-sm">กำลังโหลดข้อมูล...</p>
-            </div>
-          ) : error ? (
-            <div className="flex flex-col items-center justify-center h-64 text-red-500 px-4">
-              <AlertCircle className="w-12 h-12 mb-3" />
-              <p className="text-sm text-center font-medium">{error}</p>
-              <button
-                onClick={handleRefresh}
-                className="mt-4 px-6 py-2 bg-red-500 text-white text-sm font-medium rounded-lg active:bg-red-600"
-              >
-                ลองใหม่
-              </button>
-            </div>
-          ) : filteredMoves.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-64 text-gray-400">
-              <Package className="w-16 h-16 mb-3" />
-              <p className="text-sm font-medium">ไม่พบรายการย้ายสินค้า</p>
-              <p className="text-xs mt-1">
-                {searchTerm || selectedStatus !== 'all' || selectedType !== 'all'
-                  ? 'ลองปรับเงื่อนไขการค้นหา'
-                  : 'ยังไม่มีใบย้ายในระบบ'}
-              </p>
-            </div>
-          ) : (
-            <div className="space-y-3">
-              {filteredMoves.map((move) => {
-                const items = move.wms_move_items || [];
-                const locations = getLocationSummary(move);
-                const totalPieces = items.reduce((sum, item) => sum + (item.confirmed_piece_qty || item.requested_piece_qty || 0), 0);
-                const totalPacks = items.reduce((sum, item) => sum + (item.confirmed_pack_qty || item.requested_pack_qty || 0), 0);
-
-                return (
-                  <div
-                    key={move.move_id}
-                    onClick={() => handleMoveClick(move)}
-                    className="bg-white rounded-lg shadow-sm border border-gray-200 p-2.5 active:scale-98 transition-all cursor-pointer"
+              {loading && !refreshing ? (
+                <div className="flex flex-col items-center justify-center h-64 text-gray-500">
+                  <Loader2 className="w-8 h-8 animate-spin mb-3" />
+                  <p className="text-sm">กำลังโหลดข้อมูล...</p>
+                </div>
+              ) : error ? (
+                <div className="flex flex-col items-center justify-center h-64 text-red-500 px-4">
+                  <AlertCircle className="w-12 h-12 mb-3" />
+                  <p className="text-sm text-center font-medium">{error}</p>
+                  <button
+                    onClick={handleRefresh}
+                    className="mt-4 px-6 py-2 bg-red-500 text-white text-sm font-medium rounded-lg active:bg-red-600"
                   >
-                    {/* Header Row - Compact */}
-                    <div className="flex items-center justify-between mb-1.5">
-                      <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                        <h3 className="font-bold text-gray-900 font-mono text-sm">
-                          {move.move_no}
-                        </h3>
-                        <span className="text-[11px] text-gray-500 font-thai">
-                          {formatDate(move.scheduled_at || move.created_at)}
-                        </span>
-                      </div>
-                      <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
-                    </div>
+                    ลองใหม่
+                  </button>
+                </div>
+              ) : filteredMoves.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-64 text-gray-400">
+                  <Package className="w-16 h-16 mb-3" />
+                  <p className="text-sm font-medium">ไม่พบรายการย้ายสินค้า</p>
+                  <p className="text-xs mt-1">
+                    {searchTerm || selectedStatus !== 'all' || selectedType !== 'all'
+                      ? 'ลองปรับเงื่อนไขการค้นหา'
+                      : 'ยังไม่มีใบย้ายในระบบ'}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {filteredMoves.map((move) => {
+                    const items = move.wms_move_items || [];
+                    const locations = getLocationSummary(move);
+                    const totalPieces = items.reduce((sum, item) => sum + (item.confirmed_piece_qty || item.requested_piece_qty || 0), 0);
+                    const totalPacks = items.reduce((sum, item) => sum + (item.confirmed_pack_qty || item.requested_pack_qty || 0), 0);
 
-                    {/* Reference Doc - Inline if exists */}
-                    {move.source_document && (
-                      <div className="text-[11px] text-gray-500 font-thai mb-1.5">
-                        อ้างอิง: {move.source_document}
-                      </div>
-                    )}
-
-                    {/* Type and Status - Single Row */}
-                    <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
-                      <MobileBadge variant={STATUS_BADGE_VARIANTS[move.status]} size="sm">
-                        {MOVE_STATUS_LABELS[move.status]}
-                      </MobileBadge>
-                      <span className="text-[11px] text-gray-600 font-thai">
-                        • {MOVE_TYPE_LABELS[move.move_type]}
-                      </span>
-                    </div>
-
-                    {/* Locations - Compact Inline */}
-                    <div className="flex items-center gap-1 mb-1.5 text-[11px]">
-                      <span className="text-gray-600 font-thai truncate">{locations.from}</span>
-                      <ArrowRight className="w-3 h-3 text-gray-400 flex-shrink-0" />
-                      <span className="text-gray-600 font-thai truncate">{locations.to}</span>
-                    </div>
-
-                    {/* Stats - Compact Inline */}
-                    <div className="flex items-center justify-between pt-1.5 border-t border-gray-100">
-                      <div className="flex items-center gap-3 text-[11px]">
-                        <span className="text-gray-600 font-thai">
-                          <span className="font-semibold text-gray-900">{items.length}</span> รายการ
-                        </span>
-                        {totalPacks > 0 && (
-                          <span className="text-green-600 font-thai">
-                            <span className="font-semibold">{totalPacks}</span> แพ็ค
-                          </span>
-                        )}
-                        {totalPieces > 0 && (
-                          <span className="text-sky-600 font-thai">
-                            <span className="font-semibold">{totalPieces}</span> ชิ้น
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Completed Badge - Compact */}
-                    {move.status === 'completed' && (
-                      <div className="mt-1.5 pt-1.5 border-t border-gray-100">
-                        <div className="flex items-center justify-center gap-1 text-green-600 text-[11px] font-semibold font-thai">
-                          <CheckCircle2 className="w-3 h-3" />
-                          เสร็จสิ้นแล้ว
+                    return (
+                      <div
+                        key={move.move_id}
+                        onClick={() => handleMoveClick(move)}
+                        className="bg-white rounded-lg shadow-sm border border-gray-200 p-2.5 active:scale-98 transition-all cursor-pointer"
+                      >
+                        {/* Header Row - Compact */}
+                        <div className="flex items-center justify-between mb-1.5">
+                          <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                            <h3 className="font-bold text-gray-900 font-mono text-sm">
+                              {move.move_no}
+                            </h3>
+                            <span className="text-[11px] text-gray-500 font-thai">
+                              {formatDate(move.scheduled_at || move.created_at)}
+                            </span>
+                          </div>
+                          <ChevronRight className="w-4 h-4 text-gray-400 flex-shrink-0" />
                         </div>
+
+                        {/* Reference Doc - Inline if exists */}
+                        {move.source_document && (
+                          <div className="text-[11px] text-gray-500 font-thai mb-1.5">
+                            อ้างอิง: {move.source_document}
+                          </div>
+                        )}
+
+                        {/* Type and Status - Single Row */}
+                        <div className="flex items-center gap-1.5 mb-1.5 flex-wrap">
+                          <MobileBadge variant={STATUS_BADGE_VARIANTS[move.status]} size="sm">
+                            {MOVE_STATUS_LABELS[move.status]}
+                          </MobileBadge>
+                          <span className="text-[11px] text-gray-600 font-thai">
+                            • {MOVE_TYPE_LABELS[move.move_type]}
+                          </span>
+                        </div>
+
+                        {/* Locations - Compact Inline */}
+                        <div className="flex items-center gap-1 mb-1.5 text-[11px]">
+                          <span className="text-gray-600 font-thai truncate">{locations.from}</span>
+                          <ArrowRight className="w-3 h-3 text-gray-400 flex-shrink-0" />
+                          <span className="text-gray-600 font-thai truncate">{locations.to}</span>
+                        </div>
+
+                        {/* Stats - Compact Inline */}
+                        <div className="flex items-center justify-between pt-1.5 border-t border-gray-100">
+                          <div className="flex items-center gap-3 text-[11px]">
+                            <span className="text-gray-600 font-thai">
+                              <span className="font-semibold text-gray-900">{items.length}</span> รายการ
+                            </span>
+                            {totalPacks > 0 && (
+                              <span className="text-green-600 font-thai">
+                                <span className="font-semibold">{totalPacks}</span> แพ็ค
+                              </span>
+                            )}
+                            {totalPieces > 0 && (
+                              <span className="text-sky-600 font-thai">
+                                <span className="font-semibold">{totalPieces}</span> ชิ้น
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Completed Badge - Compact */}
+                        {move.status === 'completed' && (
+                          <div className="mt-1.5 pt-1.5 border-t border-gray-100">
+                            <div className="flex items-center justify-center gap-1 text-green-600 text-[11px] font-semibold font-thai">
+                              <CheckCircle2 className="w-3 h-3" />
+                              เสร็จสิ้นแล้ว
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                    );
+                  })}
+                </div>
+              )}
             </>
           )}
         </div>
@@ -1356,6 +1455,75 @@ function MobileTransferListPage() {
                 className="w-full px-4 py-3 bg-red-500 text-white rounded-lg font-semibold hover:bg-red-600 transition-colors active:scale-95 font-thai text-base"
               >
                 ปิด
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Picking Home Error Modal */}
+      {pickingHomeError && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4 animate-fade-in">
+          <div className="bg-white w-full max-w-md rounded-2xl shadow-2xl animate-slide-up">
+            {/* Modal Header */}
+            <div className="bg-gradient-to-br from-orange-400 to-orange-500 text-white p-4 rounded-t-2xl">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-bold font-thai flex items-center gap-2">
+                  <AlertTriangle className="w-6 h-6" />
+                  ไม่สามารถย้ายได้
+                </h2>
+                <button
+                  onClick={() => setPickingHomeError(null)}
+                  className="p-1.5 hover:bg-white/20 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-4 space-y-4">
+              {/* Error Icon */}
+              <div className="flex justify-center">
+                <div className="w-16 h-16 bg-orange-100 rounded-full flex items-center justify-center">
+                  <MapPin className="w-8 h-8 text-orange-500" />
+                </div>
+              </div>
+
+              {/* Error Message */}
+              <div className="text-center space-y-2">
+                <p className="text-base font-semibold text-gray-900 font-thai">
+                  ❌ ไม่สามารถย้ายเข้า {pickingHomeError.destinationLocation} ได้
+                </p>
+                <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-left space-y-2">
+                  <p className="text-sm text-gray-700 font-thai">
+                    <span className="font-semibold">สินค้า:</span> {pickingHomeError.skuName}
+                  </p>
+                  <p className="text-sm text-gray-600 font-thai">
+                    <span className="font-semibold">รหัส:</span> {pickingHomeError.skuId}
+                  </p>
+                  <div className="border-t border-orange-200 pt-2 mt-2">
+                    <p className="text-sm text-gray-700 font-thai">
+                      <span className="font-semibold text-green-600">✓ บ้านหยิบที่ถูกต้อง:</span>
+                    </p>
+                    <p className="text-lg font-bold text-green-600 font-thai mt-1">
+                      {pickingHomeError.correctLocation}
+                    </p>
+                  </div>
+                </div>
+                <p className="text-xs text-gray-500 font-thai mt-2">
+                  กรุณาย้ายไปยัง <span className="font-semibold text-green-600">{pickingHomeError.correctLocation}</span> หรือเลือก location เก็บสต็อกทั่วไป
+                </p>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-gray-200">
+              <button
+                onClick={() => setPickingHomeError(null)}
+                className="w-full px-4 py-3 bg-orange-500 text-white rounded-lg font-semibold hover:bg-orange-600 transition-colors active:scale-95 font-thai text-base"
+              >
+                เข้าใจแล้ว
               </button>
             </div>
           </div>
@@ -1441,7 +1609,7 @@ function MobileTransferListPage() {
                         <p className="text-xs font-semibold text-gray-900 font-mono">{palletId}</p>
                       </div>
                     </div>
-                    
+
                     {/* Pallet Details - Compact */}
                     {palletDetails.length > 0 && (
                       <div className="mt-2 pt-2 border-t border-sky-200">
@@ -1468,7 +1636,7 @@ function MobileTransferListPage() {
                         </div>
                         <div className="mt-1.5 pt-1.5 border-t border-sky-200">
                           <p className="text-[10px] text-sky-700 font-thai">
-                            รวม: <span className="font-bold">{palletDetails.length}</span> รายการ, 
+                            รวม: <span className="font-bold">{palletDetails.length}</span> รายการ,
                             <span className="font-bold ml-1">
                               {palletDetails.reduce((sum, item) => sum + (item.total_piece_qty || 0), 0)}
                             </span> ชิ้น
@@ -1486,7 +1654,7 @@ function MobileTransferListPage() {
                     <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">
                       Location ปลายทาง <span className="text-red-500">*</span>
                     </label>
-                    
+
                     {loadingLocations ? (
                       <div className="flex items-center justify-center py-3">
                         <Loader2 className="w-4 h-4 animate-spin text-sky-500" />
@@ -1511,14 +1679,14 @@ function MobileTransferListPage() {
                             </option>
                           ))}
                         </datalist>
-                        
+
                         {/* Show selected location info - Compact */}
                         {locationCode && locations.find(loc => loc.location_code === locationCode || loc.location_id === locationCode) && (
                           <div className="mt-1.5 p-1.5 bg-green-50 border border-green-200 rounded">
                             {(() => {
                               const selectedLoc = locations.find(loc => loc.location_code === locationCode || loc.location_id === locationCode);
                               if (!selectedLoc) return null;
-                              
+
                               return (
                                 <div className="text-[10px]">
                                   <p className="font-semibold text-green-700 font-thai">
@@ -1579,7 +1747,7 @@ function MobileTransferListPage() {
 
 export default function MobileTransferListPageWithPermission() {
   return (
-    <PermissionGuard 
+    <PermissionGuard
       permission="mobile.transfer"
       fallback={
         <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">

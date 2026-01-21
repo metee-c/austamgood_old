@@ -39,7 +39,9 @@ export async function GET(request: NextRequest) {
     const sort_by = searchParams.get('sort_by') || 'area_name';
     const sort_order = searchParams.get('sort_order') || 'asc';
 
-    const offset = (page - 1) * limit;
+    // New optional params for specific lookups
+    const location_id = searchParams.get('location_id') || '';
+    const sku_id = searchParams.get('sku_id') || '';
 
     let query = supabase
       .from('preparation_area')
@@ -56,6 +58,14 @@ export async function GET(request: NextRequest) {
       query = query.eq('warehouse_id', warehouse_id);
     }
 
+    if (location_id) {
+      query = query.eq('location_id', location_id);
+    }
+
+    if (sku_id) {
+      query = query.eq('sku_id', sku_id);
+    }
+
     if (zone) {
       query = query.eq('zone', zone);
     }
@@ -69,8 +79,7 @@ export async function GET(request: NextRequest) {
     }
 
     const { data: preparationAreas, error, count } = await query
-      .order(sort_by, { ascending: sort_order === 'asc' })
-      .range(offset, offset + limit - 1);
+      .order(sort_by, { ascending: sort_order === 'asc' });
 
     if (error) throw error;
 
@@ -96,11 +105,11 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = createServiceRoleClient();
     const body = await request.json();
-    
+
     // Validate required fields
     const requiredFields = ['area_code', 'area_name', 'warehouse_id', 'zone', 'area_type'];
     const missingFields = requiredFields.filter(field => !body[field]);
-    
+
     if (missingFields.length > 0) {
       return NextResponse.json(
         { error: `Missing required fields: ${missingFields.join(', ')}` },

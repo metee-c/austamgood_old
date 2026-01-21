@@ -1,0 +1,1162 @@
+{
+  "summary": {
+    "total_skus": 117,
+    "skus_with_misplaced": 52,
+    "total_misplaced_items": 114,
+    "generated_at": "2026-01-21T05:11:33.982Z"
+  },
+  "misplaced_by_sku": [
+    {
+      "sku_id": "B-BEY-C|MNB|NS|010",
+      "sku_name": "Buzz Beyond แม่และลูกแมว รสแซลมอน ทูน่า และนม | 1 กก. [No Sticker]",
+      "default_location": "A09-01-003",
+      "total_sub_items": 7,
+      "misplaced_count": 6,
+      "misplaced_items": [
+        {
+          "location_id": "A10-01-001",
+          "pallet_id": "MS2026010500001",
+          "qty": 20,
+          "lot_no": null
+        },
+        {
+          "location_id": "PK001",
+          "pallet_id": "ATG2500012572",
+          "qty": 576,
+          "lot_no": null
+        },
+        {
+          "location_id": "PK001",
+          "pallet_id": "ATG2500012571",
+          "qty": 576,
+          "lot_no": null
+        },
+        {
+          "location_id": "PK001",
+          "pallet_id": null,
+          "qty": 282,
+          "lot_no": null
+        },
+        {
+          "location_id": "A10-01-001",
+          "pallet_id": "ATG2500012662",
+          "qty": 576,
+          "lot_no": null
+        },
+        {
+          "location_id": "A10-01-001",
+          "pallet_id": "ATG2500012661",
+          "qty": 576,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "B-BEY-D|SAL|NS|012",
+      "sku_name": "Buzz Beyond สุนัขโต รสแซลมอน | 1.2 กก. [No Sticker]",
+      "default_location": "A09-01-010",
+      "total_sub_items": 7,
+      "misplaced_count": 6,
+      "misplaced_items": [
+        {
+          "location_id": "PK001",
+          "pallet_id": "ATG2500017922",
+          "qty": 576,
+          "lot_no": null
+        },
+        {
+          "location_id": "A10-01-010",
+          "pallet_id": "MS2026010500001",
+          "qty": 813,
+          "lot_no": null
+        },
+        {
+          "location_id": "PK001",
+          "pallet_id": "ATG2500014583",
+          "qty": 576,
+          "lot_no": null
+        },
+        {
+          "location_id": "PK001",
+          "pallet_id": null,
+          "qty": 542,
+          "lot_no": null
+        },
+        {
+          "location_id": "A10-01-010",
+          "pallet_id": "ATG2500017923",
+          "qty": 576,
+          "lot_no": null
+        },
+        {
+          "location_id": "A10-01-010",
+          "pallet_id": "ATG2500017882",
+          "qty": 144,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "B-BEY-C|SAL|NS|010",
+      "sku_name": "Buzz Beyond แมวโต รสแซลมอน | 1 กก. [No Sticker]",
+      "default_location": "A09-01-004",
+      "total_sub_items": 5,
+      "misplaced_count": 4,
+      "misplaced_items": [
+        {
+          "location_id": "A10-01-004",
+          "pallet_id": "MS2026010500001",
+          "qty": 686,
+          "lot_no": null
+        },
+        {
+          "location_id": "PK001",
+          "pallet_id": null,
+          "qty": 1101,
+          "lot_no": null
+        },
+        {
+          "location_id": "A10-01-004",
+          "pallet_id": "ATG2500013700",
+          "qty": 576,
+          "lot_no": null
+        },
+        {
+          "location_id": "A10-01-004",
+          "pallet_id": "ATG2500013639",
+          "qty": 576,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "B-BEY-C|LAM|NS|010",
+      "sku_name": "Buzz Beyond แมวโต รสแกะ | 1 กก. [No Sticker]",
+      "default_location": "A09-01-001",
+      "total_sub_items": 5,
+      "misplaced_count": 4,
+      "misplaced_items": [
+        {
+          "location_id": "A10-01-003",
+          "pallet_id": "MS2026010500001",
+          "qty": 368,
+          "lot_no": null
+        },
+        {
+          "location_id": "PK001",
+          "pallet_id": "ATG2500013311",
+          "qty": 576,
+          "lot_no": null
+        },
+        {
+          "location_id": "PK001",
+          "pallet_id": null,
+          "qty": 256,
+          "lot_no": null
+        },
+        {
+          "location_id": "A10-01-003",
+          "pallet_id": "ATG2500011096",
+          "qty": 576,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "B-BAP-C|WEP|030",
+      "sku_name": "Buzz Balanced+ แมวโต Weight+ | 3 กก.",
+      "default_location": "PK001",
+      "total_sub_items": 4,
+      "misplaced_count": 4,
+      "misplaced_items": [
+        {
+          "location_id": "A10-01-020",
+          "pallet_id": "MS2026010500001",
+          "qty": 340,
+          "lot_no": null
+        },
+        {
+          "location_id": "A10-01-020",
+          "pallet_id": null,
+          "qty": 238,
+          "lot_no": null
+        },
+        {
+          "location_id": "A10-01-020",
+          "pallet_id": "ATG2500015562",
+          "qty": 216,
+          "lot_no": null
+        },
+        {
+          "location_id": "A10-01-020",
+          "pallet_id": "ATG2500015560",
+          "qty": 216,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "TT-NET-C|SAL|0005",
+      "sku_name": "Tester | Buzz Netura แมวโตและลูก แซลมอน | 50 กรัม",
+      "default_location": "A10-01-017",
+      "total_sub_items": 5,
+      "misplaced_count": 4,
+      "misplaced_items": [
+        {
+          "location_id": "PK001",
+          "pallet_id": null,
+          "qty": 600,
+          "lot_no": null
+        },
+        {
+          "location_id": "A09-01-007",
+          "pallet_id": "MS2026010500001",
+          "qty": 87.5,
+          "lot_no": null
+        },
+        {
+          "location_id": "A09-01-007",
+          "pallet_id": "ATG20260106000000079",
+          "qty": 4845,
+          "lot_no": null
+        },
+        {
+          "location_id": "A09-01-007",
+          "pallet_id": null,
+          "qty": 430,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "TT-NET-D|CHI-L|0005",
+      "sku_name": "Tester | Buzz Netura สุนัขโต ไก่ เม็ดใหญ่ | 50 กรัม",
+      "default_location": "A10-01-018",
+      "total_sub_items": 4,
+      "misplaced_count": 4,
+      "misplaced_items": [
+        {
+          "location_id": "PK001",
+          "pallet_id": null,
+          "qty": 600,
+          "lot_no": null
+        },
+        {
+          "location_id": "A09-01-003",
+          "pallet_id": "MS2026010500001",
+          "qty": 346.9,
+          "lot_no": null
+        },
+        {
+          "location_id": "A09-01-003",
+          "pallet_id": null,
+          "qty": 290,
+          "lot_no": null
+        },
+        {
+          "location_id": "A09-01-003",
+          "pallet_id": "ATG2500018277",
+          "qty": 4000,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "B-BEY-C|MCK|NS|010",
+      "sku_name": "Buzz Beyond แมวโต รสปลาทู | 1 กก. [No Sticker]",
+      "default_location": "A09-01-002",
+      "total_sub_items": 5,
+      "misplaced_count": 4,
+      "misplaced_items": [
+        {
+          "location_id": "A10-01-007",
+          "pallet_id": "MS2026010500001",
+          "qty": 149,
+          "lot_no": null
+        },
+        {
+          "location_id": "PK001",
+          "pallet_id": "ATG2500011266",
+          "qty": 576,
+          "lot_no": null
+        },
+        {
+          "location_id": "PK001",
+          "pallet_id": null,
+          "qty": 321,
+          "lot_no": null
+        },
+        {
+          "location_id": "A10-01-007",
+          "pallet_id": "ATG2500011264",
+          "qty": 576,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "B-BAP-C|IND|030",
+      "sku_name": "Buzz Balanced+ แมวโต Indoor | 3 กก.",
+      "default_location": "PK001",
+      "total_sub_items": 6,
+      "misplaced_count": 3,
+      "misplaced_items": [
+        {
+          "location_id": "A10-01-019",
+          "pallet_id": "MS2026010500001",
+          "qty": 112,
+          "lot_no": null
+        },
+        {
+          "location_id": "A10-01-019",
+          "pallet_id": null,
+          "qty": 132,
+          "lot_no": null
+        },
+        {
+          "location_id": "A10-01-019",
+          "pallet_id": "ATG2500017943",
+          "qty": 216,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "B-BAP-C|WEP|010",
+      "sku_name": "Buzz Balanced+ แมวโต Weight+ | 1 กก.",
+      "default_location": "PK001",
+      "total_sub_items": 9,
+      "misplaced_count": 3,
+      "misplaced_items": [
+        {
+          "location_id": "A10-01-016",
+          "pallet_id": "MS2026010500001",
+          "qty": 670,
+          "lot_no": null
+        },
+        {
+          "location_id": "A10-01-016",
+          "pallet_id": "ATG2500014386",
+          "qty": 576,
+          "lot_no": null
+        },
+        {
+          "location_id": "A10-01-016",
+          "pallet_id": "ATG2500014385",
+          "qty": 576,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "B-BAP-C|IND|010",
+      "sku_name": "Buzz Balanced+ แมวโต Indoor | 1 กก.",
+      "default_location": "PK001",
+      "total_sub_items": 5,
+      "misplaced_count": 3,
+      "misplaced_items": [
+        {
+          "location_id": "A10-01-015",
+          "pallet_id": "MS2026010500001",
+          "qty": 722,
+          "lot_no": null
+        },
+        {
+          "location_id": "A10-01-015",
+          "pallet_id": null,
+          "qty": 228,
+          "lot_no": null
+        },
+        {
+          "location_id": "A10-01-015",
+          "pallet_id": "ATG2500015536",
+          "qty": 576,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "B-BAP-C|KNP|010",
+      "sku_name": "Buzz Balanced+ ลูกและแม่แมว K&P | 1 กก.",
+      "default_location": "PK001",
+      "total_sub_items": 5,
+      "misplaced_count": 3,
+      "misplaced_items": [
+        {
+          "location_id": "A10-01-013",
+          "pallet_id": "MS2026010500001",
+          "qty": 577,
+          "lot_no": null
+        },
+        {
+          "location_id": "A10-01-013",
+          "pallet_id": "ATG2500015594",
+          "qty": 576,
+          "lot_no": null
+        },
+        {
+          "location_id": "A10-01-013",
+          "pallet_id": "ATG2500015593",
+          "qty": 576,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "B-NET-C|FHC|040",
+      "sku_name": "Buzz Netura แมวโตและลูก ปลาเนื้อขาว แฮร์ริ่ง และไก่ | 4 กก.",
+      "default_location": "PK001",
+      "total_sub_items": 7,
+      "misplaced_count": 3,
+      "misplaced_items": [
+        {
+          "location_id": "A10-01-021",
+          "pallet_id": null,
+          "qty": 139,
+          "lot_no": null
+        },
+        {
+          "location_id": "A10-01-021",
+          "pallet_id": "ATG20260106000000006",
+          "qty": 40,
+          "lot_no": null
+        },
+        {
+          "location_id": "A10-01-021",
+          "pallet_id": "ATG20260106000000001",
+          "qty": 160,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "TT-NET-C|FNC|0005",
+      "sku_name": "Tester | Buzz Netura แมวโตและลูก ปลาและไก่ | 50 กรัม",
+      "default_location": "A10-01-016",
+      "total_sub_items": 4,
+      "misplaced_count": 3,
+      "misplaced_items": [
+        {
+          "location_id": "PK001",
+          "pallet_id": null,
+          "qty": 600,
+          "lot_no": null
+        },
+        {
+          "location_id": "A09-01-009",
+          "pallet_id": "MS2026010500001",
+          "qty": 1836.5,
+          "lot_no": null
+        },
+        {
+          "location_id": "A09-01-009",
+          "pallet_id": null,
+          "qty": 280,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "TT-NET-D|SAL-S|0005",
+      "sku_name": "Tester | Buzz Netura สุนัขโต แซลมอน เม็ดเล็ก | 50 กรัม",
+      "default_location": "A10-01-021",
+      "total_sub_items": 3,
+      "misplaced_count": 3,
+      "misplaced_items": [
+        {
+          "location_id": "A09-01-002",
+          "pallet_id": "MS2026010500001",
+          "qty": 359.9,
+          "lot_no": null
+        },
+        {
+          "location_id": "PK001",
+          "pallet_id": "ATG20260119000000074",
+          "qty": 4000,
+          "lot_no": null
+        },
+        {
+          "location_id": "A09-01-002",
+          "pallet_id": null,
+          "qty": 290,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "TT-BEY-D|LAM|0005",
+      "sku_name": "Tester | Buzz Beyond สุนัขโต รสแกะ | 50 กรัม",
+      "default_location": "A10-01-012",
+      "total_sub_items": 3,
+      "misplaced_count": 3,
+      "misplaced_items": [
+        {
+          "location_id": "A09-01-017",
+          "pallet_id": "MS2026010500001",
+          "qty": 629.95,
+          "lot_no": null
+        },
+        {
+          "location_id": "PK001",
+          "pallet_id": "ATG20260114000000042",
+          "qty": 2000,
+          "lot_no": null
+        },
+        {
+          "location_id": "PK001",
+          "pallet_id": "ATG20260114000000041",
+          "qty": 4000,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "B-BEY-D|MNB|NS|010",
+      "sku_name": "Buzz Beyond แม่และลูกสุนัข | 1 กก. [No Sticker]",
+      "default_location": "A09-01-009",
+      "total_sub_items": 4,
+      "misplaced_count": 3,
+      "misplaced_items": [
+        {
+          "location_id": "PK001",
+          "pallet_id": "ATG2500007294",
+          "qty": 552,
+          "lot_no": null
+        },
+        {
+          "location_id": "A10-01-008",
+          "pallet_id": "MS2026010500001",
+          "qty": 264,
+          "lot_no": null
+        },
+        {
+          "location_id": "PK001",
+          "pallet_id": null,
+          "qty": 170,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "B-BEY-C|TUN|NS|010",
+      "sku_name": "Buzz Beyond แมวโต รสทูน่า | 1 กก. [No Sticker]",
+      "default_location": "A09-01-005",
+      "total_sub_items": 4,
+      "misplaced_count": 3,
+      "misplaced_items": [
+        {
+          "location_id": "PK001",
+          "pallet_id": "ATG2500011330",
+          "qty": 576,
+          "lot_no": null
+        },
+        {
+          "location_id": "PK001",
+          "pallet_id": null,
+          "qty": 16,
+          "lot_no": null
+        },
+        {
+          "location_id": "A10-01-006",
+          "pallet_id": "ATG2500013516",
+          "qty": 576,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "B-BEY-D|BEF|NS|012",
+      "sku_name": "Buzz Beyond สุนัขโต รสเนื้ออบ | 1.2 กก. [No Sticker]",
+      "default_location": "A09-01-006",
+      "total_sub_items": 4,
+      "misplaced_count": 3,
+      "misplaced_items": [
+        {
+          "location_id": "A10-01-012",
+          "pallet_id": "MS2026010500001",
+          "qty": 441,
+          "lot_no": null
+        },
+        {
+          "location_id": "PK001",
+          "pallet_id": "ATG2500017985",
+          "qty": 576,
+          "lot_no": null
+        },
+        {
+          "location_id": "PK001",
+          "pallet_id": null,
+          "qty": 640,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "TT-NET-C|FHC|0005",
+      "sku_name": "Tester | Buzz Netura แมวโตและลูก ปลาเนื้อขาว แฮร์ริ่ง และไก่ | 50 กรัม",
+      "default_location": "A10-01-015",
+      "total_sub_items": 3,
+      "misplaced_count": 3,
+      "misplaced_items": [
+        {
+          "location_id": "A09-01-006",
+          "pallet_id": "MS2026010500001",
+          "qty": 1579.45,
+          "lot_no": null
+        },
+        {
+          "location_id": "PK001",
+          "pallet_id": "ATG20260113000000182",
+          "qty": 400,
+          "lot_no": null
+        },
+        {
+          "location_id": "A09-01-006",
+          "pallet_id": null,
+          "qty": 300,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "B-BAP-C|HNS|010",
+      "sku_name": "Buzz Balanced+ แมวโต Hair&Skin | 1 กก.",
+      "default_location": "PK001",
+      "total_sub_items": 3,
+      "misplaced_count": 2,
+      "misplaced_items": [
+        {
+          "location_id": "A10-01-014",
+          "pallet_id": "MS2026010500001",
+          "qty": 994,
+          "lot_no": null
+        },
+        {
+          "location_id": "A10-01-014",
+          "pallet_id": "ATG2500015526",
+          "qty": 576,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "B-BAP-C|HNS|030",
+      "sku_name": "Buzz Balanced+ แมวโต Hair&Skin | 3 กก.",
+      "default_location": "PK001",
+      "total_sub_items": 6,
+      "misplaced_count": 2,
+      "misplaced_items": [
+        {
+          "location_id": "A10-01-018",
+          "pallet_id": null,
+          "qty": 111,
+          "lot_no": null
+        },
+        {
+          "location_id": "A10-01-018",
+          "pallet_id": "ATG2500015497",
+          "qty": 216,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "TT-BEY-C|TUN|0005",
+      "sku_name": "Tester | Buzz Beyond แมวโต รสทูน่า | 50 กรัม",
+      "default_location": "A10-01-009",
+      "total_sub_items": 2,
+      "misplaced_count": 2,
+      "misplaced_items": [
+        {
+          "location_id": "PK001",
+          "pallet_id": null,
+          "qty": 600,
+          "lot_no": null
+        },
+        {
+          "location_id": "A09-01-020",
+          "pallet_id": "MS2026010500001",
+          "qty": 1045.95,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "TT-BAP-C|HNS|0005",
+      "sku_name": "Tester | Buzz Balanced+ แมวโต Hair&Skin | 50 กรัม",
+      "default_location": "A10-01-001",
+      "total_sub_items": 2,
+      "misplaced_count": 2,
+      "misplaced_items": [
+        {
+          "location_id": "PK001",
+          "pallet_id": null,
+          "qty": 1200,
+          "lot_no": null
+        },
+        {
+          "location_id": "A09-01-012",
+          "pallet_id": "MS2026010500001",
+          "qty": 1309.8,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "TT-BAP-C|WEP|0005",
+      "sku_name": "Tester | Buzz Balanced+ แมวโต Weight+ | 50 กรัม",
+      "default_location": "A10-01-004",
+      "total_sub_items": 2,
+      "misplaced_count": 2,
+      "misplaced_items": [
+        {
+          "location_id": "PK001",
+          "pallet_id": null,
+          "qty": 1200,
+          "lot_no": null
+        },
+        {
+          "location_id": "A09-01-010",
+          "pallet_id": "MS2026010500001",
+          "qty": 1115.75,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "TT-BEY-D|MNB|0005",
+      "sku_name": "Tester | Buzz Beyond แม่และลูกสุนัข | 50 กรัม",
+      "default_location": "A10-01-013",
+      "total_sub_items": 2,
+      "misplaced_count": 2,
+      "misplaced_items": [
+        {
+          "location_id": "PK001",
+          "pallet_id": null,
+          "qty": 600,
+          "lot_no": null
+        },
+        {
+          "location_id": "A09-01-018",
+          "pallet_id": "MS2026010500001",
+          "qty": 1920.95,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "TT-NET-D|SAL-L|0005",
+      "sku_name": "Tester | Buzz Netura สุนัขโต แซลมอน เม็ดใหญ่ | 50 กรัม",
+      "default_location": "A10-01-020",
+      "total_sub_items": 2,
+      "misplaced_count": 2,
+      "misplaced_items": [
+        {
+          "location_id": "A09-01-001",
+          "pallet_id": "MS2026010500001",
+          "qty": 1560.9,
+          "lot_no": null
+        },
+        {
+          "location_id": "A09-01-001",
+          "pallet_id": null,
+          "qty": 290,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "TT-BEY-C|MCK|0005",
+      "sku_name": "Tester | Buzz Beyond แมวโต รสปลาทู | 50 กรัม",
+      "default_location": "A10-01-006",
+      "total_sub_items": 2,
+      "misplaced_count": 2,
+      "misplaced_items": [
+        {
+          "location_id": "A09-01-019",
+          "pallet_id": "MS2026010500001",
+          "qty": 379.9,
+          "lot_no": null
+        },
+        {
+          "location_id": "PK001",
+          "pallet_id": "ATG20260114000000064",
+          "qty": 6000,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "B-BEY-D|CNL|NS|012",
+      "sku_name": "Buzz Beyond สุนัขโต รสไก่อบและตับ | 1.2 กก. [No Sticker]",
+      "default_location": "A09-01-007",
+      "total_sub_items": 3,
+      "misplaced_count": 2,
+      "misplaced_items": [
+        {
+          "location_id": "A10-01-011",
+          "pallet_id": "MS2026010500001",
+          "qty": 327,
+          "lot_no": null
+        },
+        {
+          "location_id": "PK001",
+          "pallet_id": null,
+          "qty": 246,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "B-BEY-D|LAM|NS|012",
+      "sku_name": "Buzz Beyond สุนัขโต รสแกะ | 1.2 กก. [No Sticker]",
+      "default_location": "A09-01-008",
+      "total_sub_items": 3,
+      "misplaced_count": 2,
+      "misplaced_items": [
+        {
+          "location_id": "A10-01-009",
+          "pallet_id": "MS2026010500001",
+          "qty": 369,
+          "lot_no": null
+        },
+        {
+          "location_id": "PK001",
+          "pallet_id": null,
+          "qty": 330,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "PRE-BAG|SPB|MARKET",
+      "sku_name": "ถุงผ้าสปันบอนด์การ์ตูนสกรีนเต็มใบ Size XL (50*40*9 cm)",
+      "default_location": "PK002",
+      "total_sub_items": 20,
+      "misplaced_count": 1,
+      "misplaced_items": [
+        {
+          "location_id": "PK001",
+          "pallet_id": null,
+          "qty": 180,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "PRE-BOW|TILT|CAT",
+      "sku_name": "ชามแมวยกสูงสีน้ำเงิน",
+      "default_location": "PK002",
+      "total_sub_items": 14,
+      "misplaced_count": 1,
+      "misplaced_items": [
+        {
+          "location_id": "PK001",
+          "pallet_id": null,
+          "qty": 40,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "B-NET-D|CHI-S|025",
+      "sku_name": "Buzz Netura สุนัขโต ไก่ เม็ดเล็ก | 2.5 กก.",
+      "default_location": "PK001",
+      "total_sub_items": 3,
+      "misplaced_count": 1,
+      "misplaced_items": [
+        {
+          "location_id": "A10-01-022",
+          "pallet_id": "MS2026010500001",
+          "qty": 138.5,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "B-NET-D|SAL-L|025",
+      "sku_name": "Buzz Netura สุนัขโต แซลมอน เม็ดใหญ่ | 2.5 กก.",
+      "default_location": "PK001",
+      "total_sub_items": 3,
+      "misplaced_count": 1,
+      "misplaced_items": [
+        {
+          "location_id": "A10-01-025",
+          "pallet_id": "MS2026010500001",
+          "qty": 188.5,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "B-BAP-C|KNP|030",
+      "sku_name": "Buzz Balanced+ ลูกและแม่แมว K&P | 3 กก.",
+      "default_location": "PK001",
+      "total_sub_items": 3,
+      "misplaced_count": 1,
+      "misplaced_items": [
+        {
+          "location_id": "A10-01-017",
+          "pallet_id": "MS2026010500001",
+          "qty": 371,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "B-NET-D|SAL-S|008",
+      "sku_name": "Buzz Netura สุนัขโต แซลมอน เม็ดเล็ก | 800 กรัม",
+      "default_location": "PK001",
+      "total_sub_items": 5,
+      "misplaced_count": 1,
+      "misplaced_items": [
+        {
+          "location_id": "A10-01-026",
+          "pallet_id": "MS2026010500001",
+          "qty": 139.2,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "TT-NET-C|CNT|0005",
+      "sku_name": "Tester | Buzz Netura แมวโตและสูงวัยอายุ 7 ปีขึ้นไป ปลาค็อด และ ปลาเทราต์ | 50 กรัม",
+      "default_location": "A10-01-022",
+      "total_sub_items": 3,
+      "misplaced_count": 1,
+      "misplaced_items": [
+        {
+          "location_id": "PK001",
+          "pallet_id": null,
+          "qty": 600,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "TT-BAP-C|IND|0005",
+      "sku_name": "Tester | Buzz Balanced+ แมวโต Indoor | 50 กรัม",
+      "default_location": "A10-01-002",
+      "total_sub_items": 1,
+      "misplaced_count": 1,
+      "misplaced_items": [
+        {
+          "location_id": "A09-01-011",
+          "pallet_id": "MS2026010500001",
+          "qty": 4859.8,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "TT-BEY-C|SAL|0005",
+      "sku_name": "Tester | Buzz Beyond แมวโต รสแซลมอน | 50 กรัม",
+      "default_location": "A10-01-008",
+      "total_sub_items": 1,
+      "misplaced_count": 1,
+      "misplaced_items": [
+        {
+          "location_id": "A09-01-021",
+          "pallet_id": "MS2026010500001",
+          "qty": 3529.85,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "TT-NET-D|CHI-S|0005",
+      "sku_name": "Tester | Buzz Netura สุนัขโต ไก่ เม็ดเล็ก | 50 กรัม",
+      "default_location": "A10-01-019",
+      "total_sub_items": 1,
+      "misplaced_count": 1,
+      "misplaced_items": [
+        {
+          "location_id": "A09-01-004",
+          "pallet_id": "MS2026010500001",
+          "qty": 5373.9,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "TT-BEY-C|MNB|0005",
+      "sku_name": "Tester | Buzz Beyond แม่และลูกแมว รสแซลมอน ทูน่า และนม | 50 กรัม",
+      "default_location": "A10-01-007",
+      "total_sub_items": 1,
+      "misplaced_count": 1,
+      "misplaced_items": [
+        {
+          "location_id": "A09-01-023",
+          "pallet_id": "MS2026010500001",
+          "qty": 5352.9,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "TT-BEY-D|BEF|0005",
+      "sku_name": "Tester | Buzz Beyond สุนัขโต รสเนื้ออบ | 50 กรัม",
+      "default_location": "A10-01-010",
+      "total_sub_items": 1,
+      "misplaced_count": 1,
+      "misplaced_items": [
+        {
+          "location_id": "A09-01-014",
+          "pallet_id": "MS2026010500001",
+          "qty": 618.95,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "TT-BEY-D|CNL|0005",
+      "sku_name": "Tester | Buzz Beyond สุนัขโต รสไก่อบและตับ | 50 กรัม",
+      "default_location": "A10-01-011",
+      "total_sub_items": 1,
+      "misplaced_count": 1,
+      "misplaced_items": [
+        {
+          "location_id": "A09-01-015",
+          "pallet_id": "MS2026010500001",
+          "qty": 2403.95,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "TT-BEY-C|LAM|0005",
+      "sku_name": "Tester | Buzz Beyond แมวโต รสแกะ | 50 กรัม",
+      "default_location": "A10-01-005",
+      "total_sub_items": 1,
+      "misplaced_count": 1,
+      "misplaced_items": [
+        {
+          "location_id": "A09-01-022",
+          "pallet_id": "MS2026010500001",
+          "qty": 2211.8,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "TT-BEY-D|SAL|0005",
+      "sku_name": "Tester | Buzz Beyond สุนัขโต รสแซลมอน | 50 กรัม",
+      "default_location": "A10-01-014",
+      "total_sub_items": 1,
+      "misplaced_count": 1,
+      "misplaced_items": [
+        {
+          "location_id": "A09-01-016",
+          "pallet_id": "MS2026010500001",
+          "qty": 3482.95,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "B-NET-D|SAL-S|025",
+      "sku_name": "Buzz Netura สุนัขโต แซลมอน เม็ดเล็ก | 2.5 กก.",
+      "default_location": "PK001",
+      "total_sub_items": 3,
+      "misplaced_count": 1,
+      "misplaced_items": [
+        {
+          "location_id": "A10-01-024",
+          "pallet_id": "MS2026010500001",
+          "qty": 26,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "02-STICKER-C|SAL|279",
+      "sku_name": "สติ๊กเกอร์ราคาแมวสูตรปลาแซลมอน 1 กก. 279 บาท เส้นผ่าศูนย์กลาง 4.5cm.",
+      "default_location": "PK002",
+      "total_sub_items": 2,
+      "misplaced_count": 1,
+      "misplaced_items": [
+        {
+          "location_id": "PK001",
+          "pallet_id": null,
+          "qty": 3989,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "B-NET-D|CHI-S|008",
+      "sku_name": "Buzz Netura สุนัขโต ไก่ เม็ดเล็ก | 800 กรัม",
+      "default_location": "PK001",
+      "total_sub_items": 3,
+      "misplaced_count": 1,
+      "misplaced_items": [
+        {
+          "location_id": "A09-01-025",
+          "pallet_id": "MS2026010500001",
+          "qty": 130.2,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "02-STICKER-C|FHC|279",
+      "sku_name": "สติ๊กเกอร์ราคาแมวสูตรโปรตีน เอ็กซ์ 1 กก. 279 บาท เส้นผ่าศูนย์กลาง 4.5cm.",
+      "default_location": "PK002",
+      "total_sub_items": 1,
+      "misplaced_count": 1,
+      "misplaced_items": [
+        {
+          "location_id": "PK001",
+          "pallet_id": null,
+          "qty": 2287,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "B-NET-D|CHI-L|025",
+      "sku_name": "Buzz Netura สุนัขโต ไก่ เม็ดใหญ่ | 2.5 กก.",
+      "default_location": "PK001",
+      "total_sub_items": 2,
+      "misplaced_count": 1,
+      "misplaced_items": [
+        {
+          "location_id": "A10-01-023",
+          "pallet_id": "MS2026010500001",
+          "qty": 124,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "B-NET-D|SAL-L|008",
+      "sku_name": "Buzz Netura สุนัขโต แซลมอน เม็ดใหญ่ | 800 กรัม",
+      "default_location": "PK001",
+      "total_sub_items": 2,
+      "misplaced_count": 1,
+      "misplaced_items": [
+        {
+          "location_id": "A09-01-026",
+          "pallet_id": "MS2026010500001",
+          "qty": 438,
+          "lot_no": null
+        }
+      ]
+    },
+    {
+      "sku_id": "02-STICKER-C|FHC|990",
+      "sku_name": "สติ๊กเกอร์ราคาแมวสูตรโปรตีน เอ็กซ์ 4 กก. 990 บาท เส้นผ่าศูนย์กลาง 4.5cm.",
+      "default_location": "PK002",
+      "total_sub_items": 1,
+      "misplaced_count": 1,
+      "misplaced_items": [
+        {
+          "location_id": "PK001",
+          "pallet_id": null,
+          "qty": 2000,
+          "lot_no": null
+        }
+      ]
+    }
+  ]
+}

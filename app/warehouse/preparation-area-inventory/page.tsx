@@ -608,12 +608,15 @@ const InventoryBalancesPage = () => {
     return new Date(expiryDate) < new Date();
   };
 
-  // Aggregate data by SKU for preparation tab
+  // Aggregate data by Location + SKU for preparation tab
   const aggregateDataBySku = (data: InventoryBalance[]): InventoryBalance[] => {
     const skuMap = new Map<string, InventoryBalance>();
 
     for (const item of data) {
-      const existing = skuMap.get(item.sku_id);
+      // Group by Location + SKU to show one row per Picking Home
+      const key = `${item.location_id}_${item.sku_id}`;
+
+      const existing = skuMap.get(key);
       if (existing) {
         // Sum quantities
         existing.total_pack_qty += item.total_pack_qty || 0;
@@ -621,33 +624,43 @@ const InventoryBalancesPage = () => {
         existing.reserved_pack_qty += item.reserved_pack_qty || 0;
         existing.reserved_piece_qty += item.reserved_piece_qty || 0;
 
+        // Check if this item is "newer" (latest pallet filled down)
+        // We use updated_at or created_at to determine the latest movement
+        const currentUpdate = item.updated_at ? new Date(item.updated_at).getTime() : 0;
+        const existingUpdate = existing.updated_at ? new Date(existing.updated_at).getTime() : 0;
+
+        if (currentUpdate > existingUpdate) {
+          // Update displayed dates to match the latest pallet
+          existing.production_date = item.production_date;
+          existing.expiry_date = item.expiry_date;
+          existing.lot_no = item.lot_no; // Also show Lot from latest
+          existing.updated_at = item.updated_at;
+        }
+
         // Append to sub-items
         if (!(existing as any).subItems) (existing as any).subItems = [];
         (existing as any).subItems.push(item);
       } else {
         // Create new aggregated entry
-        skuMap.set(item.sku_id, {
+        skuMap.set(key, {
           ...item,
-          balance_id: 0, // Aggregated row doesn't have single balance_id
-          location_id: '-', // Multiple locations
-          pallet_id: null,
+          // balance_id: 0, // Keep original ID for key purposes, though it's aggregated
+          pallet_id: null, // Multiple pallets
           pallet_id_external: null,
-          lot_no: null,
-          production_date: null,
-          expiry_date: null,
-          last_move_id: null,
-          last_movement_at: null,
-          total_pack_qty: item.total_pack_qty || 0,
-          total_piece_qty: item.total_piece_qty || 0,
-          reserved_pack_qty: item.reserved_pack_qty || 0,
-          reserved_piece_qty: item.reserved_piece_qty || 0,
+          // Dates are already set from this first item, will be updated if newer items found
+
           // Store sub-items for expansion
           subItems: [item]
         } as any);
       }
     }
 
-    return Array.from(skuMap.values()).sort((a, b) => a.sku_id.localeCompare(b.sku_id));
+    return Array.from(skuMap.values()).sort((a, b) => {
+      // Sort by Location then SKU
+      const locCompare = (a.location_id || '').localeCompare(b.location_id || '');
+      if (locCompare !== 0) return locCompare;
+      return a.sku_id.localeCompare(b.sku_id);
+    });
   };
 
   // กรองข้อมูลตาม Tab ที่เลือก
@@ -682,8 +695,8 @@ const InventoryBalancesPage = () => {
       return false;
     });
 
-    // Aggregate by SKU for preparation tab
-    if (activeTab === 'preparation') {
+    // Aggregate by SKU for preparation and premium tabs
+    if (activeTab === 'preparation' || activeTab === 'premium') {
       return aggregateDataBySku(filtered);
     }
 
@@ -1170,15 +1183,19 @@ const InventoryBalancesPage = () => {
                     <p className="text-xs text-thai-gray-400 mt-1 font-thai">ลองปรับเปลี่ยนตัวกรองหรือค้นหาใหม่</p>
                   </div>
                 </div>
-              ) : activeTab === 'preparation' ? (
-                /* Aggregated SKU view with EXPANDABLE rows for preparation tab */
+              ) : (activeTab === 'preparation' || activeTab === 'premium') ? (
+                /* Aggregated SKU view with EXPANDABLE rows for preparation and premium tabs */
                 <div className="flex-1 overflow-auto thin-scrollbar">
                   <table className="w-full border-collapse text-sm">
                     <thead className="sticky top-0 z-10 bg-gray-100">
                       <tr>
                         <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 w-10"></th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ตำแหน่ง</th>
                         <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสสินค้า</th>
-                        <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap min-w-[250px]">ชื่อสินค้า</th>
+                        <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap min-w-[200px]">ชื่อสินค้า</th>
+                        {activeTab !== 'premium' && (
+                          <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันผลิต/หมดอายุ</th>
+                        )}
                         <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-green-50">ชิ้นรวม</th>
                         <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-green-50">แพ็ครวม</th>
                         <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-orange-50">ชิ้นจอง</th>
@@ -1191,16 +1208,37 @@ const InventoryBalancesPage = () => {
                       {filteredData.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((balance, idx) => {
                         const availablePiece = balance.total_piece_qty - balance.reserved_piece_qty;
                         const availablePack = balance.total_pack_qty - balance.reserved_pack_qty;
-                        const isExpanded = expandedSkus.has(balance.sku_id);
+                        const rowKey = `${balance.location_id}_${balance.sku_id}`;
+                        const isExpanded = expandedSkus.has(rowKey);
+
+                        // Count misplaced items in sub-items
+                        const defaultLocation = (balance as any).master_sku?.default_location;
+                        const misplacedCount = defaultLocation && (balance as any).subItems
+                          ? (balance as any).subItems.filter((subItem: InventoryBalance) => {
+                            const currentLocation = subItem.location_id;
+                            const isInPickingHome = preparationAreaCodes.includes(currentLocation);
+                            return isInPickingHome && currentLocation !== defaultLocation;
+                          }).length
+                          : 0;
 
                         return (
-                          <Fragment key={`agg-${balance.sku_id}-${idx}`}>
+                          <Fragment key={`agg-${rowKey}-${idx}`}>
                             <tr
-                              className={`hover:bg-blue-50/30 transition-colors duration-150 cursor-pointer ${isExpanded ? 'bg-blue-50/50' : ''}`}
-                              onClick={() => toggleSkuExpand(balance.sku_id)}
+                              className={`hover:bg-blue-50/30 transition-colors duration-150 cursor-pointer ${isExpanded ? 'bg-blue-50/50' : ''} ${misplacedCount > 0 ? 'border-l-4 border-l-red-500' : ''}`}
+                              onClick={() => toggleSkuExpand(rowKey)}
                             >
                               <td className="px-3 py-1.5 text-center border-r border-gray-100">
-                                {isExpanded ? <ArrowUp className="w-4 h-4 text-blue-500" /> : <ArrowDown className="w-4 h-4 text-gray-400" />}
+                                <div className="flex items-center justify-center gap-1">
+                                  {isExpanded ? <ArrowUp className="w-4 h-4 text-blue-500" /> : <ArrowDown className="w-4 h-4 text-gray-400" />}
+                                  {misplacedCount > 0 && (
+                                    <Badge variant="danger" size="sm">
+                                      <span className="text-[10px]">{misplacedCount}</span>
+                                    </Badge>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="px-3 py-1.5 border-r border-gray-100 whitespace-nowrap">
+                                <span className="font-mono font-bold text-blue-600">{balance.location_id}</span>
                               </td>
                               <td className="px-3 py-1.5 border-r border-gray-100 whitespace-nowrap">
                                 <span className="font-mono font-semibold text-thai-gray-700">{balance.sku_id}</span>
@@ -1210,6 +1248,18 @@ const InventoryBalancesPage = () => {
                                   {(balance as any).master_sku?.sku_name || '-'}
                                 </span>
                               </td>
+                              {activeTab !== 'premium' && (
+                                <td className="px-3 py-1.5 border-r border-gray-100 whitespace-nowrap">
+                                  <div className="flex flex-col text-[10px]">
+                                    <span className="text-gray-500">
+                                      ผลิต: {balance.production_date ? new Date(balance.production_date).toLocaleDateString('th-TH') : '-'}
+                                    </span>
+                                    <span className={`${isExpired(balance.expiry_date || '') ? 'text-red-600 font-bold' : isExpiringSoon(balance.expiry_date || '') ? 'text-orange-600' : 'text-gray-500'}`}>
+                                      หมด: {balance.expiry_date ? new Date(balance.expiry_date).toLocaleDateString('th-TH') : '-'}
+                                    </span>
+                                  </div>
+                                </td>
+                              )}
                               <td className="px-3 py-1.5 text-center border-r border-gray-100 whitespace-nowrap bg-green-50/30">
                                 <span className="font-bold text-green-600">
                                   {balance.total_piece_qty?.toLocaleString() || 0}
@@ -1243,7 +1293,7 @@ const InventoryBalancesPage = () => {
                             </tr>
                             {isExpanded && (balance as any).subItems && (
                               <tr>
-                                <td colSpan={9} className="bg-gray-50/50 p-2 border-b border-gray-200 shadow-inner">
+                                <td colSpan={activeTab === 'premium' ? 10 : 11} className="bg-gray-50/50 p-2 border-b border-gray-200 shadow-inner">
                                   <div className="ml-8 bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
                                     <table className="w-full text-xs">
                                       <thead className="bg-gray-100 text-gray-700">
@@ -1259,26 +1309,50 @@ const InventoryBalancesPage = () => {
                                         </tr>
                                       </thead>
                                       <tbody className="divide-y divide-gray-100">
-                                        {((balance as any).subItems as InventoryBalance[]).map((subItem, subIdx) => (
-                                          <tr key={`sub-${subItem.balance_id}-${subIdx}`} className="hover:bg-gray-50">
-                                            <td className="px-3 py-2 font-mono">{subItem.location_id}</td>
-                                            <td className="px-3 py-2 font-mono text-gray-500">{subItem.pallet_id_external || subItem.pallet_id || '-'}</td>
-                                            <td className="px-3 py-2 font-mono">{subItem.lot_no || '-'}</td>
-                                            <td className="px-3 py-2">{subItem.production_date ? new Date(subItem.production_date).toLocaleDateString('th-TH') : '-'}</td>
-                                            <td className="px-3 py-2">
-                                              {subItem.expiry_date ? (
-                                                <span className={`${isExpired(subItem.expiry_date) ? 'text-red-600 font-bold' : isExpiringSoon(subItem.expiry_date) ? 'text-orange-600' : ''}`}>
-                                                  {new Date(subItem.expiry_date).toLocaleDateString('th-TH')}
-                                                </span>
-                                              ) : '-'}
-                                            </td>
-                                            <td className="px-3 py-2 text-center font-medium">{subItem.total_piece_qty.toLocaleString()}</td>
-                                            <td className="px-3 py-2 text-center font-medium">{subItem.total_pack_qty.toLocaleString()}</td>
-                                            <td className="px-3 py-2 text-center text-gray-500 text-[10px]">
-                                              {subItem.updated_at ? new Date(subItem.updated_at).toLocaleString('th-TH') : '-'}
-                                            </td>
-                                          </tr>
-                                        ))}
+                                        {((balance as any).subItems as InventoryBalance[]).map((subItem, subIdx) => {
+                                          const defaultLocation = (balance as any).master_sku?.default_location;
+                                          const currentLocation = subItem.location_id;
+                                          const isInPickingHome = preparationAreaCodes.includes(currentLocation);
+                                          const isMisplaced = defaultLocation && isInPickingHome && currentLocation !== defaultLocation;
+
+                                          return (
+                                            <tr
+                                              key={`sub-${subItem.balance_id}-${subIdx}`}
+                                              className={`hover:bg-gray-50 ${isMisplaced ? 'bg-red-50' : ''}`}
+                                            >
+                                              <td className="px-3 py-2 font-mono">
+                                                <div className="flex items-center gap-2">
+                                                  <span className={isMisplaced ? 'text-red-600 font-bold' : ''}>{subItem.location_id}</span>
+                                                  {isMisplaced && (
+                                                    <Badge variant="danger" size="sm">
+                                                      <span className="text-[10px]">ผิดตำแหน่ง</span>
+                                                    </Badge>
+                                                  )}
+                                                </div>
+                                                {isMisplaced && defaultLocation && (
+                                                  <div className="text-[10px] text-green-600 mt-0.5">
+                                                    ✓ ควรอยู่: {defaultLocation}
+                                                  </div>
+                                                )}
+                                              </td>
+                                              <td className="px-3 py-2 font-mono text-gray-500">{subItem.pallet_id_external || subItem.pallet_id || '-'}</td>
+                                              <td className="px-3 py-2 font-mono">{subItem.lot_no || '-'}</td>
+                                              <td className="px-3 py-2">{subItem.production_date ? new Date(subItem.production_date).toLocaleDateString('th-TH') : '-'}</td>
+                                              <td className="px-3 py-2">
+                                                {subItem.expiry_date ? (
+                                                  <span className={`${isExpired(subItem.expiry_date) ? 'text-red-600 font-bold' : isExpiringSoon(subItem.expiry_date) ? 'text-orange-600' : ''}`}>
+                                                    {new Date(subItem.expiry_date).toLocaleDateString('th-TH')}
+                                                  </span>
+                                                ) : '-'}
+                                              </td>
+                                              <td className="px-3 py-2 text-center font-medium">{subItem.total_piece_qty.toLocaleString()}</td>
+                                              <td className="px-3 py-2 text-center font-medium">{subItem.total_pack_qty.toLocaleString()}</td>
+                                              <td className="px-3 py-2 text-center text-gray-500 text-[10px]">
+                                                {subItem.updated_at ? new Date(subItem.updated_at).toLocaleString('th-TH') : '-'}
+                                              </td>
+                                            </tr>
+                                          );
+                                        })}
                                       </tbody>
                                     </table>
                                   </div>

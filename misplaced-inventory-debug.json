@@ -1,0 +1,343 @@
+{
+  "summary": {
+    "total_inventory": 1000,
+    "skus_with_default_location": 912,
+    "skus_without_default_location": 88,
+    "items_in_picking_homes": 71,
+    "items_in_bulk_storage": 929,
+    "misplaced_old_logic": 14,
+    "misplaced_new_logic": 16,
+    "api_query_result": 1000,
+    "generated_at": "2026-01-21T04:42:44.059Z"
+  },
+  "misplaced_old_logic": [
+    {
+      "pallet_id": "ATG20260114000000064",
+      "sku_id": "TT-BEY-C|MCK|0005",
+      "sku_name": "Tester | Buzz Beyond แมวโต รสปลาทู | 50 กรัม",
+      "qty": 6000,
+      "current_location": "PK001",
+      "default_location": "A10-01-006",
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": "ATG20260114000000041",
+      "sku_id": "TT-BEY-D|LAM|0005",
+      "sku_name": "Tester | Buzz Beyond สุนัขโต รสแกะ | 50 กรัม",
+      "qty": 4000,
+      "current_location": "PK001",
+      "default_location": "A10-01-012",
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": "MS2026010500001",
+      "sku_id": "B-BEY-D|SAL|NS|012",
+      "sku_name": "Buzz Beyond สุนัขโต รสแซลมอน | 1.2 กก. [No Sticker]",
+      "qty": 813,
+      "current_location": "A10-01-010",
+      "default_location": "A09-01-010",
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": "ATG2500012571",
+      "sku_id": "B-BEY-C|MNB|NS|010",
+      "sku_name": "Buzz Beyond แม่และลูกแมว รสแซลมอน ทูน่า และนม | 1 กก. [No Sticker]",
+      "qty": 576,
+      "current_location": "PK001",
+      "default_location": "A09-01-003",
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": "ATG20260119000000074",
+      "sku_id": "TT-NET-D|SAL-S|0005",
+      "sku_name": "Tester | Buzz Netura สุนัขโต แซลมอน เม็ดเล็ก | 50 กรัม",
+      "qty": 4000,
+      "current_location": "PK001",
+      "default_location": "A10-01-021",
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": "MS2026010500001",
+      "sku_id": "B-BAP-C|WEP|030",
+      "sku_name": "Buzz Balanced+ แมวโต Weight+ | 3 กก.",
+      "qty": 340,
+      "current_location": "A10-01-020",
+      "default_location": "PK001",
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": "MS2026010500001",
+      "sku_id": "B-BAP-C|IND|030",
+      "sku_name": "Buzz Balanced+ แมวโต Indoor | 3 กก.",
+      "qty": 112,
+      "current_location": "A10-01-019",
+      "default_location": "PK001",
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": "ATG2500011330",
+      "sku_id": "B-BEY-C|TUN|NS|010",
+      "sku_name": "Buzz Beyond แมวโต รสทูน่า | 1 กก. [No Sticker]",
+      "qty": 576,
+      "current_location": "PK001",
+      "default_location": "A09-01-005",
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": "ATG2500017922",
+      "sku_id": "B-BEY-D|SAL|NS|012",
+      "sku_name": "Buzz Beyond สุนัขโต รสแซลมอน | 1.2 กก. [No Sticker]",
+      "qty": 576,
+      "current_location": "PK001",
+      "default_location": "A09-01-010",
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": "MS2026010500001",
+      "sku_id": "B-NET-D|CHI-S|008",
+      "sku_name": "Buzz Netura สุนัขโต ไก่ เม็ดเล็ก | 800 กรัม",
+      "qty": 130.2,
+      "current_location": "A09-01-025",
+      "default_location": "PK001",
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": "ATG20260114000000042",
+      "sku_id": "TT-BEY-D|LAM|0005",
+      "sku_name": "Tester | Buzz Beyond สุนัขโต รสแกะ | 50 กรัม",
+      "qty": 2000,
+      "current_location": "PK001",
+      "default_location": "A10-01-012",
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": "MS2026010500001",
+      "sku_id": "B-NET-D|CHI-S|025",
+      "sku_name": "Buzz Netura สุนัขโต ไก่ เม็ดเล็ก | 2.5 กก.",
+      "qty": 138.5,
+      "current_location": "A10-01-022",
+      "default_location": "PK001",
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": "MS2026010500001",
+      "sku_id": "TT-BEY-C|MCK|0005",
+      "sku_name": "Tester | Buzz Beyond แมวโต รสปลาทู | 50 กรัม",
+      "qty": 379.9,
+      "current_location": "A09-01-019",
+      "default_location": "A10-01-006",
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": "MS2026010500001",
+      "sku_id": "TT-BEY-C|TUN|0005",
+      "sku_name": "Tester | Buzz Beyond แมวโต รสทูน่า | 50 กรัม",
+      "qty": 1045.95,
+      "current_location": "A09-01-020",
+      "default_location": "A10-01-009",
+      "reason": "In picking home but wrong location"
+    }
+  ],
+  "misplaced_new_logic": [
+    {
+      "pallet_id": "ATG20260114000000064",
+      "sku_id": "TT-BEY-C|MCK|0005",
+      "sku_name": "Tester | Buzz Beyond แมวโต รสปลาทู | 50 กรัม",
+      "qty": 6000,
+      "current_location": "PK001",
+      "default_location": "A10-01-006",
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": "ATG20260114000000041",
+      "sku_id": "TT-BEY-D|LAM|0005",
+      "sku_name": "Tester | Buzz Beyond สุนัขโต รสแกะ | 50 กรัม",
+      "qty": 4000,
+      "current_location": "PK001",
+      "default_location": "A10-01-012",
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": "MS2026010500001",
+      "sku_id": "B-BEY-D|SAL|NS|012",
+      "sku_name": "Buzz Beyond สุนัขโต รสแซลมอน | 1.2 กก. [No Sticker]",
+      "qty": 813,
+      "current_location": "A10-01-010",
+      "default_location": "A09-01-010",
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": "ATG2500012571",
+      "sku_id": "B-BEY-C|MNB|NS|010",
+      "sku_name": "Buzz Beyond แม่และลูกแมว รสแซลมอน ทูน่า และนม | 1 กก. [No Sticker]",
+      "qty": 576,
+      "current_location": "PK001",
+      "default_location": "A09-01-003",
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": "ATG20260119000000074",
+      "sku_id": "TT-NET-D|SAL-S|0005",
+      "sku_name": "Tester | Buzz Netura สุนัขโต แซลมอน เม็ดเล็ก | 50 กรัม",
+      "qty": 4000,
+      "current_location": "PK001",
+      "default_location": "A10-01-021",
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": "MS2026010500001",
+      "sku_id": "B-BAP-C|WEP|030",
+      "sku_name": "Buzz Balanced+ แมวโต Weight+ | 3 กก.",
+      "qty": 340,
+      "current_location": "A10-01-020",
+      "default_location": "PK001",
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": "MS2026010500001",
+      "sku_id": "B-BAP-C|IND|030",
+      "sku_name": "Buzz Balanced+ แมวโต Indoor | 3 กก.",
+      "qty": 112,
+      "current_location": "A10-01-019",
+      "default_location": "PK001",
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": "ATG2500011330",
+      "sku_id": "B-BEY-C|TUN|NS|010",
+      "sku_name": "Buzz Beyond แมวโต รสทูน่า | 1 กก. [No Sticker]",
+      "qty": 576,
+      "current_location": "PK001",
+      "default_location": "A09-01-005",
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": "ATG2500017922",
+      "sku_id": "B-BEY-D|SAL|NS|012",
+      "sku_name": "Buzz Beyond สุนัขโต รสแซลมอน | 1.2 กก. [No Sticker]",
+      "qty": 576,
+      "current_location": "PK001",
+      "default_location": "A09-01-010",
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": null,
+      "sku_id": "MKT-PTR",
+      "sku_name": "รางใส",
+      "qty": 112,
+      "current_location": "PK002",
+      "default_location": null,
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": "MS2026010500001",
+      "sku_id": "B-NET-D|CHI-S|008",
+      "sku_name": "Buzz Netura สุนัขโต ไก่ เม็ดเล็ก | 800 กรัม",
+      "qty": 130.2,
+      "current_location": "A09-01-025",
+      "default_location": "PK001",
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": null,
+      "sku_id": "PRE-BAG|CAV|CM|R",
+      "sku_name": "กระเป๋าผ้า Christmas 24 สะพายสีแดง",
+      "qty": 6,
+      "current_location": "PK002",
+      "default_location": null,
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": "ATG20260114000000042",
+      "sku_id": "TT-BEY-D|LAM|0005",
+      "sku_name": "Tester | Buzz Beyond สุนัขโต รสแกะ | 50 กรัม",
+      "qty": 2000,
+      "current_location": "PK001",
+      "default_location": "A10-01-012",
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": "MS2026010500001",
+      "sku_id": "B-NET-D|CHI-S|025",
+      "sku_name": "Buzz Netura สุนัขโต ไก่ เม็ดเล็ก | 2.5 กก.",
+      "qty": 138.5,
+      "current_location": "A10-01-022",
+      "default_location": "PK001",
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": "MS2026010500001",
+      "sku_id": "TT-BEY-C|MCK|0005",
+      "sku_name": "Tester | Buzz Beyond แมวโต รสปลาทู | 50 กรัม",
+      "qty": 379.9,
+      "current_location": "A09-01-019",
+      "default_location": "A10-01-006",
+      "reason": "In picking home but wrong location"
+    },
+    {
+      "pallet_id": "MS2026010500001",
+      "sku_id": "TT-BEY-C|TUN|0005",
+      "sku_name": "Tester | Buzz Beyond แมวโต รสทูน่า | 50 กรัม",
+      "qty": 1045.95,
+      "current_location": "A09-01-020",
+      "default_location": "A10-01-009",
+      "reason": "In picking home but wrong location"
+    }
+  ],
+  "picking_homes": [
+    "PK002",
+    "PK001",
+    "A10-01-001",
+    "A10-01-002",
+    "A10-01-003",
+    "A10-01-004",
+    "A10-01-005",
+    "A10-01-006",
+    "A10-01-007",
+    "A10-01-008",
+    "A10-01-009",
+    "A10-01-010",
+    "A10-01-011",
+    "A10-01-012",
+    "A10-01-013",
+    "A10-01-014",
+    "A10-01-015",
+    "A10-01-016",
+    "A10-01-017",
+    "A10-01-018",
+    "A10-01-019",
+    "A10-01-020",
+    "A10-01-021",
+    "A10-01-022",
+    "A10-01-023",
+    "A10-01-024",
+    "A10-01-025",
+    "A10-01-026",
+    "A09-01-001",
+    "A09-01-002",
+    "A09-01-003",
+    "A09-01-004",
+    "A09-01-005",
+    "A09-01-006",
+    "A09-01-007",
+    "A09-01-008",
+    "A09-01-009",
+    "A09-01-010",
+    "A09-01-011",
+    "A09-01-012",
+    "A09-01-013",
+    "A09-01-014",
+    "A09-01-015",
+    "A09-01-016",
+    "A09-01-017",
+    "A09-01-018",
+    "A09-01-019",
+    "A09-01-020",
+    "A09-01-021",
+    "A09-01-022",
+    "A09-01-023",
+    "A09-01-024",
+    "A09-01-025",
+    "A09-01-026"
+  ]
+}
