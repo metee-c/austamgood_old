@@ -8,15 +8,15 @@ async function handleGet(request: NextRequest, context: any) {
     const search = searchParams.get('search')
     const category = searchParams.get('category')
     const status = searchParams.get('status')
-    const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '100')
+    
+    // ✅ REMOVED PAGINATION: เอาการจำกัดออกเพื่อความเร็ว
 
     const supabase = await createServerClient()
 
-    // Build query with count
+    // Build query
     let query = supabase
       .from('master_sku')
-      .select('*', { count: 'exact' })
+      .select('*')
       .order('created_at', { ascending: false })
 
     // Apply filters
@@ -35,12 +35,8 @@ async function handleGet(request: NextRequest, context: any) {
       query = query.eq('status', status)
     }
 
-    // Apply pagination
-    const from = (page - 1) * limit
-    const to = from + limit - 1
-    query = query.range(from, to)
-
-    const { data, error, count } = await query
+    // ✅ REMOVED PAGINATION: ดึงข้อมูลทั้งหมด
+    const { data, error } = await query
 
     if (error) {
       console.error('Database error:', error)
@@ -51,13 +47,7 @@ async function handleGet(request: NextRequest, context: any) {
     }
 
     return NextResponse.json({ 
-      data: data || [],
-      pagination: {
-        page,
-        limit,
-        total: count || 0,
-        totalPages: Math.ceil((count || 0) / limit)
-      }
+      data: data || []
     })
   } catch (error) {
     console.error('API error:', error)

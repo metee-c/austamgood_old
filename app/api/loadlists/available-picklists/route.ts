@@ -10,10 +10,7 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     const searchParams = request.nextUrl.searchParams;
     
-    // ✅ PAGINATION: เพิ่ม page parameter
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '100');
-    const offset = (page - 1) * limit;
+    // ✅ REMOVED PAGINATION: เอาการจำกัดออกเพื่อความเร็ว
 
     // Step 1: Get all picklist IDs that are already in loadlists
     const { data: loadlistPicklists, error: loadlistError } = await supabase
@@ -32,7 +29,7 @@ export async function GET(request: NextRequest) {
 
     // Step 2: Fetch completed picklists that are NOT in the used list
     // Note: voided picklists are already excluded by status='completed' filter
-    const { data: picklists, error, count } = await supabase
+    const { data: picklists, error } = await supabase
       .from('picklists')
       .select(`
         id,
@@ -59,8 +56,7 @@ export async function GET(request: NextRequest) {
       `, { count: 'exact' })
       .eq('status', 'completed')
       .not('id', 'in', `(${usedPicklistIds.length > 0 ? usedPicklistIds.join(',') : '0'})`)
-      .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+      .order('created_at', { ascending: false });
 
     if (error) {
       console.error('Error fetching picklists:', error);
@@ -180,18 +176,9 @@ export async function GET(request: NextRequest) {
       };
     });
 
-    // ✅ PAGINATION: Return with pagination metadata (use filtered count)
-    const filteredCount = filteredPicklists.length;
-    const totalPages = Math.ceil(filteredCount / limit);
-
+    // ✅ REMOVED PAGINATION: ส่งข้อมูลทั้งหมดเพื่อความเร็ว
     return NextResponse.json({
-      data: transformedPicklists,
-      pagination: {
-        page,
-        limit,
-        total: filteredCount,
-        totalPages
-      }
+      data: transformedPicklists
     });
   } catch (error) {
     console.error('API error:', error);

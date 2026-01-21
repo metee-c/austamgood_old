@@ -9,96 +9,42 @@ export async function GET(request: NextRequest) {
     const warehouseId = searchParams.get('warehouse_id') || 'WH001';
     const exportAll = searchParams.get('export') === 'true';
     
-    // Pagination parameters (only for non-export mode)
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '100');
-    const offset = (page - 1) * limit;
-    
-    console.log(`🔵 [DISPATCH-INVENTORY] Warehouse: ${warehouseId}, Export: ${exportAll}, Page: ${page}, Limit: ${limit}`);
+    // ✅ REMOVED PAGINATION: เอาการจำกัดออกเพื่อความเร็ว
+    console.log(`🔵 [DISPATCH-INVENTORY] Warehouse: ${warehouseId}, Export: ${exportAll}`);
 
     // ดึงข้อมูล inventory ที่ Dispatch location พร้อมข้อมูลใบหยิบและออเดอร์
     let dispatchInventory: any[] = [];
     
-    if (exportAll) {
-      // For export, fetch ALL data with pagination loop
-      const batchSize = 1000;
-      let offset = 0;
-      let hasMore = true;
-      
-      while (hasMore) {
-        const { data, error } = await supabase
-          .from('wms_inventory_balances')
-          .select(`
-            balance_id,
-            warehouse_id,
-            location_id,
-            sku_id,
-            pallet_id,
-            pallet_id_external,
-            lot_no,
-            production_date,
-            expiry_date,
-            total_pack_qty,
-            total_piece_qty,
-            reserved_pack_qty,
-            reserved_piece_qty,
-            last_move_id,
-            last_movement_at,
-            created_at,
-            updated_at,
-            master_location!location_id (location_name),
-            master_sku!sku_id (sku_name, weight_per_piece_kg)
-          `)
-          .eq('location_id', 'Dispatch')
-          .eq('warehouse_id', warehouseId)
-          .order('updated_at', { ascending: false })
-          .range(offset, offset + batchSize - 1);
-        
-        if (error) throw error;
-        if (data && data.length > 0) {
-          dispatchInventory.push(...data);
-          offset += batchSize;
-          if (data.length < batchSize) hasMore = false;
-        } else {
-          hasMore = false;
-        }
-      }
-    } else {
-      // For normal display, use pagination
-      const { data, error, count } = await supabase
-        .from('wms_inventory_balances')
-        .select(`
-          balance_id,
-          warehouse_id,
-          location_id,
-          sku_id,
-          pallet_id,
-          pallet_id_external,
-          lot_no,
-          production_date,
-          expiry_date,
-          total_pack_qty,
-          total_piece_qty,
-          reserved_pack_qty,
-          reserved_piece_qty,
-          last_move_id,
-          last_movement_at,
-          created_at,
-          updated_at,
-          master_location!location_id (location_name),
-          master_sku!sku_id (sku_name, weight_per_piece_kg)
-        `, { count: 'exact' })
-        .eq('location_id', 'Dispatch')
-        .eq('warehouse_id', warehouseId)
-        .order('updated_at', { ascending: false })
-        .range(offset, offset + limit - 1);
+    // ✅ REMOVED PAGINATION: ดึงข้อมูลทั้งหมดเพื่อความเร็ว
+    const { data, error } = await supabase
+      .from('wms_inventory_balances')
+      .select(`
+        balance_id,
+        warehouse_id,
+        location_id,
+        sku_id,
+        pallet_id,
+        pallet_id_external,
+        lot_no,
+        production_date,
+        expiry_date,
+        total_pack_qty,
+        total_piece_qty,
+        reserved_pack_qty,
+        reserved_piece_qty,
+        last_move_id,
+        last_movement_at,
+        created_at,
+        updated_at,
+        master_location!location_id (location_name),
+        master_sku!sku_id (sku_name, weight_per_piece_kg)
+      `)
+      .eq('location_id', 'Dispatch')
+      .eq('warehouse_id', warehouseId)
+      .order('updated_at', { ascending: false });
 
-      if (error) throw error;
-      dispatchInventory = data || [];
-      
-      // Store count for pagination response
-      (request as any).totalCount = count || 0;
-    }
+    if (error) throw error;
+    dispatchInventory = data || [];
 
     // ✅ ไม่ดึง bonus_face_sheet_items แล้ว - BFS ควรแสดงเฉพาะในแท็บ "จัดสินค้าเสร็จ (BFS)" เท่านั้น
     // BFS flow: บ้านหยิบ -> PQ01-PQ10/MR01-MR10 -> MRTD/PQTD -> โหลดขึ้นรถ (ไม่ผ่าน Dispatch)
@@ -407,22 +353,11 @@ export async function GET(request: NextRequest) {
       console.log(`[DISPATCH-INVENTORY] ⚠️ NO items have related_documents!`);
     }
 
-    const response: any = {
+    // ✅ REMOVED PAGINATION: ส่งข้อมูลทั้งหมดเพื่อความเร็ว
+    return NextResponse.json({
       success: true,
       data: finalData
-    };
-
-    // Add pagination info for non-export mode
-    if (!exportAll) {
-      response.pagination = {
-        page,
-        limit,
-        total: (request as any).totalCount || 0,
-        totalPages: Math.ceil(((request as any).totalCount || 0) / limit)
-      };
-    }
-
-    return NextResponse.json(response);
+    });
   } catch (error: any) {
     console.error('Error fetching dispatch inventory:', error);
     return NextResponse.json(

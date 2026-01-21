@@ -21,12 +21,11 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
     
+    // ✅ REMOVED PAGINATION: เอาการจำกัดออกเพื่อความเร็ว
+    
     const search = searchParams.get('search') || '';
     const dateFrom = searchParams.get('dateFrom') || '';
     const dateTo = searchParams.get('dateTo') || '';
-    const page = parseInt(searchParams.get('page') || '1');
-    const pageSize = parseInt(searchParams.get('pageSize') || '100');
-
     let query = supabase
       .from('production_receipts')
       .select(`
@@ -78,11 +77,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Pagination
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
-    query = query.range(from, to);
+    query = query;
 
-    const { data, error, count } = await query;
+    const { data, error } = await query;
 
     if (error) {
       console.error('Error fetching production receipts:', error);
@@ -327,11 +324,9 @@ export async function GET(request: NextRequest) {
       };
     });
 
+    // Pagination removed for performance - return all data
     return NextResponse.json({
-      data: enrichedData,
-      totalCount: count || 0,
-      page,
-      pageSize
+      data: enrichedData
     });
   } catch (error: any) {
     console.error('Error in GET /api/production/actual:', error);

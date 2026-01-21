@@ -8,7 +8,7 @@ import {
   fetchProductionReport,
   fetchFgSkuOptions,
   fetchMaterialSkuOptions,
-  exportProductionReport,
+  exportProductionReport
 } from '@/lib/database/production-report'
 import { ProductionReportFilterSchema } from '@/types/production-report-schema'
 
@@ -45,31 +45,21 @@ export async function GET(request: Request) {
         success: true,
         data,
         total: data.length,
-        export_format: exportFormat,
+        export_format: exportFormat
       })
     }
     
     // Parse filters
     const filters = parseFilters(searchParams)
     
-    // Parse pagination
-    const page = parseInt(searchParams.get('page') || '1')
-    const pageSize = parseInt(searchParams.get('pageSize') || '50')
-    
-    // Fetch data
-    const result = await fetchProductionReport(filters, page, pageSize)
+    // Pagination removed for performance - fetch all data
+    const result = await fetchProductionReport(filters)
     
     return NextResponse.json({
       success: true,
       data: result.data,
-      pagination: {
-        page,
-        pageSize,
-        totalCount: result.totalCount,
-        totalPages: Math.ceil(result.totalCount / pageSize),
-      },
       summary: result.summary,
-      filters_applied: filters,
+      filters_applied: filters
     })
   } catch (error: any) {
     console.error('Error in production report API:', error)

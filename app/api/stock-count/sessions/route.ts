@@ -7,36 +7,26 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '100');
+    
+    // ✅ REMOVED PAGINATION: เอาการจำกัดออกเพื่อความเร็ว
 
     let query = supabase
       .from('wms_stock_count_sessions')
-      .select('*', { count: 'exact' })
+      .select('*')
       .order('created_at', { ascending: false });
 
     if (status) {
       query = query.eq('status', status);
     }
 
-    // Apply pagination
-    const from = (page - 1) * limit;
-    const to = from + limit - 1;
-    query = query.range(from, to);
-
-    const { data, error, count } = await query;
+    // ✅ REMOVED PAGINATION: ดึงข้อมูลทั้งหมด
+    const { data, error } = await query;
 
     if (error) throw error;
 
     return NextResponse.json({ 
       success: true, 
-      data,
-      pagination: {
-        page,
-        limit,
-        total: count || 0,
-        totalPages: Math.ceil((count || 0) / limit)
-      }
+      data
     });
   } catch (error) {
     console.error('Error fetching stock count sessions:', error);

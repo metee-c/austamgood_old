@@ -10,7 +10,7 @@ import {
   fetchLocationOptions,
   fetchZoneOptions,
   fetchWarehouseOptions,
-  exportStockControlCard391,
+  exportStockControlCard391
 } from '@/lib/database/report-391'
 import { Report391FilterSchema } from '@/types/report-391-schema'
 
@@ -55,31 +55,21 @@ export async function GET(request: Request) {
         success: true,
         data,
         total: data.length,
-        export_format: exportFormat,
+        export_format: exportFormat
       })
     }
     
     // Parse filters
     const filters = parseFilters(searchParams)
     
-    // Parse pagination
-    const page = parseInt(searchParams.get('page') || '1')
-    const pageSize = parseInt(searchParams.get('pageSize') || '50')
-    
-    // Fetch data
-    const result = await fetchStockControlCard391(filters, page, pageSize)
+    // Pagination removed for performance - fetch all data
+    const result = await fetchStockControlCard391(filters)
     
     return NextResponse.json({
       success: true,
       data: result.data,
-      pagination: {
-        page,
-        pageSize,
-        totalCount: result.totalCount,
-        totalPages: Math.ceil(result.totalCount / pageSize),
-      },
       summary: result.summary,
-      filters_applied: filters,
+      filters_applied: filters
     })
   } catch (error: any) {
     console.error('Error in report 391 API:', error)

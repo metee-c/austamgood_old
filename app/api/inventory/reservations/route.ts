@@ -4,10 +4,9 @@ import { NextResponse } from 'next/server';
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
+    
+    // ✅ REMOVED PAGINATION: เอาการจำกัดออกเพื่อความเร็ว
     const balanceId = searchParams.get('balance_id');
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '100');
-
     if (!balanceId) {
       return NextResponse.json(
         { error: 'balance_id is required' },
@@ -99,7 +98,7 @@ export async function GET(request: Request) {
             reserved_pack_qty: res.reserved_pack_qty,
             status: res.status,
             item_status: item?.status || '-',
-            reserved_at: res.reserved_at,
+            reserved_at: res.reserved_at
           });
         });
       }
@@ -152,7 +151,7 @@ export async function GET(request: Request) {
               reserved_piece_qty: res.reserved_piece_qty,
               reserved_pack_qty: res.reserved_pack_qty,
               status: res.status,
-              reserved_at: res.reserved_at,
+              reserved_at: res.reserved_at
             });
           });
       }
@@ -205,7 +204,7 @@ export async function GET(request: Request) {
               reserved_piece_qty: res.reserved_piece_qty,
               reserved_pack_qty: res.reserved_pack_qty,
               status: res.status,
-              reserved_at: res.reserved_at,
+              reserved_at: res.reserved_at
             });
           });
       }
@@ -216,21 +215,11 @@ export async function GET(request: Request) {
       return new Date(b.reserved_at).getTime() - new Date(a.reserved_at).getTime();
     });
 
-    // Apply pagination
-    const totalCount = reservations.length;
-    const from = (page - 1) * limit;
-    const to = from + limit;
-    const paginatedData = reservations.slice(from, to);
-
+    // Pagination removed for performance - return all data
     return NextResponse.json({
       success: true,
-      data: paginatedData,
-      total: totalCount,
-      pagination: {
-        page,
-        limit,
-        totalPages: Math.ceil(totalCount / limit)
-      }
+      data: reservations,
+      total: reservations.length
     });
   } catch (error: any) {
     console.error('Error in reservations API:', error);

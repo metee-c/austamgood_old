@@ -14,8 +14,8 @@ async function handleGet(request: NextRequest, context: any) {
     const startDate = searchParams.get('startDate');
     const endDate = searchParams.get('endDate');
     const searchTerm = searchParams.get('searchTerm');
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '100');
+    
+    // ✅ REMOVED PAGINATION: เอาการจำกัดออกเพื่อความเร็ว
 
     // Build query with count
     let query = supabase
@@ -33,7 +33,7 @@ async function handleGet(request: NextRequest, context: any) {
             plan_name
           )
         )
-      `, { count: 'exact' })
+      `)
       .order('created_at', { ascending: false });
 
     // Apply filters
@@ -60,12 +60,8 @@ async function handleGet(request: NextRequest, context: any) {
       }
     }
 
-    // Add pagination
-    const from = (page - 1) * limit;
-    const to = from + limit - 1;
-    query = query.range(from, to);
-
-    const { data: picklists, error, count } = await query;
+    // ✅ REMOVED PAGINATION: ดึงข้อมูลทั้งหมด
+    const { data: picklists, error } = await query;
 
     if (error) {
       console.error('Error fetching picklists:', error);
@@ -117,13 +113,7 @@ async function handleGet(request: NextRequest, context: any) {
     }
 
     return NextResponse.json({ 
-      data: picklists,
-      pagination: {
-        page,
-        limit,
-        total: count || 0,
-        totalPages: Math.ceil((count || 0) / limit)
-      }
+      data: picklists
     });
   } catch (error: any) {
     console.error('Error in GET /api/picklists:', error);

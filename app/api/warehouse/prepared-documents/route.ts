@@ -50,8 +50,8 @@ export async function GET(request: Request) {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
     const warehouseId = searchParams.get('warehouse_id') || 'WH001';
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '100');
+    
+    // ✅ REMOVED PAGINATION: เอาการจำกัดออกเพื่อความเร็ว
 
     const documents: PreparedDocument[] = [];
 
@@ -433,21 +433,11 @@ export async function GET(request: Request) {
       new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
 
-    // Apply pagination
-    const totalCount = documents.length;
-    const from = (page - 1) * limit;
-    const to = from + limit;
-    const paginatedData = documents.slice(from, to);
-
+    // ✅ REMOVED PAGINATION: ส่งข้อมูลทั้งหมดเพื่อความเร็ว
     return NextResponse.json({
       success: true,
-      data: paginatedData,
-      total: totalCount,
-      pagination: {
-        page,
-        limit,
-        totalPages: Math.ceil(totalCount / limit)
-      }
+      data: documents,
+      total: documents.length
     });
 
   } catch (error: any) {

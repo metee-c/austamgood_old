@@ -13,12 +13,11 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
+    
+    // ✅ REMOVED PAGINATION: เอาการจำกัดออกเพื่อความเร็ว
 
     const search = searchParams.get('search') || '';
     const status = searchParams.get('status') || 'all';
-    const page = parseInt(searchParams.get('page') || '1');
-    const pageSize = parseInt(searchParams.get('pageSize') || '100');
-
     // 1. Fetch replenishment tasks for food materials (trigger_source='production_order')
     let replenishmentQuery = supabase
       .from('replenishment_queue')
@@ -182,7 +181,7 @@ export async function GET(request: NextRequest) {
         started_at: task.started_at,
         completed_at: task.completed_at,
         created_at: task.created_at,
-        notes: task.notes,
+        notes: task.notes
       };
     });
 
@@ -217,7 +216,7 @@ export async function GET(request: NextRequest) {
           stockLocationsMap[stock.sku_id].push({
             location_id: stock.location_id,
             zone: stock.master_location?.zone || '',
-            qty: availableQty,
+            qty: availableQty
           });
         }
       });
@@ -335,7 +334,7 @@ export async function GET(request: NextRequest) {
         started_at: null,
         completed_at: item.issued_date,
         created_at: item.created_at,
-        notes: item.remarks,
+        notes: item.remarks
       };
     });
 
@@ -344,12 +343,7 @@ export async function GET(request: NextRequest) {
       (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
     );
 
-    // Apply pagination
-    const totalCount = allMaterials.length;
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize;
-    const paginatedData = allMaterials.slice(from, to);
-
+    // Pagination removed for performance - return all data
     // Calculate summary
     const summary = {
       total: allMaterials.length,
@@ -358,13 +352,12 @@ export async function GET(request: NextRequest) {
       in_progress: allMaterials.filter((m) => m.status === 'in_progress').length,
       completed: allMaterials.filter((m) => m.status === 'completed').length,
       partial: allMaterials.filter((m) => m.status === 'partial').length,
-      cancelled: allMaterials.filter((m) => m.status === 'cancelled').length,
+      cancelled: allMaterials.filter((m) => m.status === 'cancelled').length
     };
 
     return NextResponse.json({
-      data: paginatedData,
-      totalCount,
-      summary,
+      data: allMaterials,
+      summary
     });
   } catch (error: any) {
     console.error('Error in GET /api/production/material-requisition:', error);

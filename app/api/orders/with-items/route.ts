@@ -5,12 +5,10 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
+    
+    // ✅ REMOVED PAGINATION: เอาการจำกัดออกเพื่อความเร็ว
 
     // Pagination parameters
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '100');
-    const offset = (page - 1) * limit;
-
     // Build query - get all orders with items first
     let query = supabase
       .from('wms_orders')
@@ -19,7 +17,7 @@ export async function GET(request: NextRequest) {
         items:wms_order_items(*),
         created_by_user:master_system_user!created_by(user_id, username, full_name),
         updated_by_user:master_system_user!updated_by(user_id, username, full_name)
-      `, { count: 'exact' })
+      `)
       .order('order_date', { ascending: false });
 
     // Apply filters
@@ -66,9 +64,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Apply pagination
-    query = query.range(offset, offset + limit - 1);
+    query = query;
 
-    const { data: ordersData, error, count } = await query;
+    const { data: ordersData, error } = await query;
 
     if (error) {
       console.error('Error fetching orders with items:', error);
@@ -366,13 +364,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ 
       data: ordersWithCustomer, 
-      error: null,
-      pagination: {
-        page,
-        limit,
-        total: count || 0,
-        totalPages: Math.ceil((count || 0) / limit)
-      }
+      error: null
     });
   } catch (error) {
     console.error('API Error in GET /api/orders/with-items:', error);

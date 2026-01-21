@@ -13,12 +13,11 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
+    
+    // ✅ REMOVED PAGINATION: เอาการจำกัดออกเพื่อความเร็ว
 
     const status = searchParams.get('status') || 'all';
     const productionOrderId = searchParams.get('production_order_id') || '';
-    const page = parseInt(searchParams.get('page') || '1');
-    const pageSize = parseInt(searchParams.get('pageSize') || '100');
-
     // Build query for production_order_items with food materials only
     let query = supabase
       .from('production_order_items')
@@ -68,11 +67,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Pagination
-    const from = (page - 1) * pageSize;
-    const to = from + pageSize - 1;
-    query = query.range(from, to);
+    query = query;
 
-    const { data, error, count } = await query;
+    const { data, error } = await query;
 
     if (error) {
       console.error('Error fetching food material requisition:', error);
@@ -109,7 +106,7 @@ export async function GET(request: NextRequest) {
       status: item.status,
       created_at: item.created_at,
       updated_at: item.updated_at,
-      remarks: item.remarks,
+      remarks: item.remarks
     }));
 
     // Get summary counts
@@ -118,13 +115,12 @@ export async function GET(request: NextRequest) {
       pending: transformedData.filter((o: any) => o.status === 'pending').length,
       partial: transformedData.filter((o: any) => o.status === 'partial').length,
       issued: transformedData.filter((o: any) => o.status === 'issued').length,
-      completed: transformedData.filter((o: any) => o.status === 'completed').length,
+      completed: transformedData.filter((o: any) => o.status === 'completed').length
     };
 
     return NextResponse.json({
       data: transformedData,
-      totalCount: transformedData.length,
-      summary,
+      summary
     });
   } catch (error: any) {
     console.error('Error in GET /api/production/material-requisition/food:', error);
@@ -204,7 +200,7 @@ export async function POST(request: NextRequest) {
         status: 'pending',
         trigger_source: 'production_order',
         trigger_reference: itemData.production_order?.production_no || production_order_item_id,
-        notes: notes || `เบิกวัตถุดิบอาหารสำหรับใบสั่งผลิต ${itemData.production_order?.production_no}`,
+        notes: notes || `เบิกวัตถุดิบอาหารสำหรับใบสั่งผลิต ${itemData.production_order?.production_no}`
       })
       .select()
       .single();
@@ -216,7 +212,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       data: queueData,
-      message: 'สร้างงานเบิกเติมวัตถุดิบสำเร็จ',
+      message: 'สร้างงานเบิกเติมวัตถุดิบสำเร็จ'
     });
   } catch (error: any) {
     console.error('Error in POST /api/production/material-requisition/food:', error);

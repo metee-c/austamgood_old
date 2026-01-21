@@ -124,7 +124,7 @@ async function handlePost(request: NextRequest, context: any) {
         errorDetails.push({
           type: 'Customer Not Found',
           message: `ไม่พบข้อมูลลูกค้าในตาราง Master: ${filteredMissingCustomers.join(', ')}`,
-          customers: filteredMissingCustomers,
+          customers: filteredMissingCustomers
         });
       }
       if (filteredMissingHubs.length > 0) {
@@ -185,14 +185,14 @@ async function handlePost(request: NextRequest, context: any) {
           type: 'Hub is Missing',
           message: `ลูกค้ายังไม่มีข้อมูล Hub: ${filteredMissingHubs.join(', ')}`,
           customers: filteredMissingHubs,
-          customers_info: customersInfo,
+          customers_info: customersInfo
         });
       }
 
       return NextResponse.json(
         {
           error: 'ข้อมูลลูกค้าไม่สมบูรณ์ กรุณาอัปเดตข้อมูลใน Master Customer',
-          details: errorDetails,
+          details: errorDetails
         },
         { status: 400 }
       );
@@ -260,19 +260,17 @@ async function handleGetGenerate(request: NextRequest, context: any) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
+    
+    // ✅ REMOVED PAGINATION: เอาการจำกัดออกเพื่อความเร็ว
     const status = searchParams.get('status');
     const date = searchParams.get('date');
     
     // ✅ PAGINATION: แปลง offset เป็น page/limit
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '50');
-    const offset = (page - 1) * limit;
-
     let query = supabase
       .from('face_sheet_summary')
-      .select('*', { count: 'exact' })
+      .select('*')
       .order('created_date', { ascending: false })
-      .range(offset, offset + limit - 1);
+      ;
 
     if (status && status !== 'all') {
       query = query.eq('status', status);
@@ -282,7 +280,7 @@ async function handleGetGenerate(request: NextRequest, context: any) {
       query = query.eq('created_date', date);
     }
 
-    const { data, error, count } = await query;
+    const { data, error } = await query;
 
     if (error) {
       console.error('Error fetching face sheets:', error);
@@ -334,18 +332,10 @@ async function handleGetGenerate(request: NextRequest, context: any) {
     }
 
     // ✅ PAGINATION: Return with pagination metadata
-    const totalPages = count ? Math.ceil(count / limit) : 0;
-
     return NextResponse.json({
       success: true,
       data: data || [],
-      total: data?.length || 0,
-      pagination: {
-        page,
-        limit,
-        total: count || 0,
-        totalPages
-      }
+      total: data?.length || 0
     });
 
   } catch (error) {

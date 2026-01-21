@@ -10,10 +10,9 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = createServiceRoleClient();
     const { searchParams } = new URL(request.url);
+    
+    // ✅ REMOVED PAGINATION: เอาการจำกัดออกเพื่อความเร็ว
     const search = searchParams.get('search') || '';
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '100');
-
     // ใช้ raw SQL เพื่อหลีกเลี่ยงปัญหา foreign key join
     let sql = `
       SELECT o.order_id, o.order_no, o.status, o.customer_id, o.delivery_date, o.order_date,
@@ -27,19 +26,19 @@ export async function GET(request: NextRequest) {
       sql += ` AND o.order_no ILIKE '%${search.replace(/'/g, "''")}%'`;
     }
 
-    sql += ` ORDER BY o.order_date DESC LIMIT ${limit}`;
+    // Pagination removed for performance - return all data
+    sql += ` ORDER BY o.order_date DESC`;
 
     const { data: orders, error } = await supabase.rpc('exec_sql', { sql_query: sql });
 
     // ถ้า rpc ไม่มี ให้ใช้ query ปกติ
     if (error) {
-      // Fallback to regular query without join
+      // Fallback to regular query without join - pagination removed for performance
       let query = supabase
         .from('wms_orders')
         .select('order_id, order_no, status, customer_id, delivery_date, order_date')
         .in('status', ['loaded', 'in_transit', 'delivered'])
-        .order('order_date', { ascending: false })
-        .limit(limit);
+        .order('order_date', { ascending: false });
 
       if (search) {
         query = query.ilike('order_no', `%${search}%`);
@@ -86,24 +85,13 @@ export async function GET(request: NextRequest) {
           customer_name: customerMap[order.customer_id] || '-',
           delivery_date: order.delivery_date,
           order_date: order.order_date,
-          label: `${order.order_no} - ${customerMap[order.customer_id] || 'ไม่ระบุลูกค้า'}`,
+          label: `${order.order_no} - ${customerMap[order.customer_id] || 'ไม่ระบุลูกค้า'}`
         })) || [];
 
-      // Apply pagination
-      const totalCount = formattedOrders.length;
-      const from = (page - 1) * limit;
-      const to = from + limit;
-      const paginatedData = formattedOrders.slice(from, to);
-
+      // Pagination removed for performance - return all data
       return NextResponse.json({
         success: true,
-        data: paginatedData,
-        pagination: {
-          page,
-          limit,
-          total: totalCount,
-          totalPages: Math.ceil(totalCount / limit)
-        }
+        data: formattedOrders
       });
     }
 
@@ -117,24 +105,13 @@ export async function GET(request: NextRequest) {
         customer_name: order.customer_name || '-',
         delivery_date: order.delivery_date,
         order_date: order.order_date,
-        label: `${order.order_no} - ${order.customer_name || 'ไม่ระบุลูกค้า'}`,
+        label: `${order.order_no} - ${order.customer_name || 'ไม่ระบุลูกค้า'}`
       })) || [];
 
-    // Apply pagination
-    const totalCount = formattedOrders.length;
-    const from = (page - 1) * limit;
-    const to = from + limit;
-    const paginatedData = formattedOrders.slice(from, to);
-
+    // Pagination removed for performance - return all data
     return NextResponse.json({
       success: true,
-      data: paginatedData,
-      pagination: {
-        page,
-        limit,
-        total: totalCount,
-        totalPages: Math.ceil(totalCount / limit)
-      }
+      data: formattedOrders
     });
   } catch (error: any) {
     console.error('Error in GET /api/orders/returnable:', error);

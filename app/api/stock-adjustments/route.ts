@@ -39,8 +39,8 @@ export async function GET(request: NextRequest) {
 
     // Parse query parameters
     const searchParams = request.nextUrl.searchParams;
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '100');
+    
+    // ✅ REMOVED PAGINATION: เอาการจำกัดออกเพื่อความเร็ว
     
     const rawFilters: any = {
       adjustment_type: searchParams.get('adjustment_type') || undefined,
@@ -55,8 +55,6 @@ export async function GET(request: NextRequest) {
       searchTerm: searchParams.get('searchTerm') || undefined,
       startDate: searchParams.get('startDate') || undefined,
       endDate: searchParams.get('endDate') || undefined,
-      limit,
-      offset: (page - 1) * limit,
     };
 
     // Remove undefined values
@@ -72,15 +70,8 @@ export async function GET(request: NextRequest) {
     }
 
     // Count total (approximation - service doesn't return count)
-    const hasMore = adjustments && adjustments.length === limit;
-    
     return NextResponse.json({ 
-      data: adjustments,
-      pagination: {
-        page,
-        limit,
-        hasMore
-      }
+      data: adjustments
     });
   } catch (error: any) {
     console.error('Error fetching stock adjustments:', error);

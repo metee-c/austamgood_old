@@ -29,8 +29,8 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = createServiceRoleClient();
     const { searchParams } = new URL(request.url);
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '10');
+    
+    // ✅ REMOVED PAGINATION: เอาการจำกัดออกเพื่อความเร็ว
     const search = searchParams.get('search') || '';
     const warehouse_id = searchParams.get('warehouse_id') || '';
     const zone = searchParams.get('zone') || '';
@@ -45,7 +45,7 @@ export async function GET(request: NextRequest) {
 
     let query = supabase
       .from('preparation_area')
-      .select(PREPARATION_AREA_FIELDS, { count: 'exact' });
+      .select(PREPARATION_AREA_FIELDS);
 
     if (search) {
       const hasSpecialChars = /[|,()\\]/.test(search);
@@ -78,19 +78,13 @@ export async function GET(request: NextRequest) {
       query = query.eq('status', status);
     }
 
-    const { data: preparationAreas, error, count } = await query
+    const { data: preparationAreas, error } = await query
       .order(sort_by, { ascending: sort_order === 'asc' });
 
     if (error) throw error;
 
     return NextResponse.json({
-      data: preparationAreas || [],
-      pagination: {
-        page,
-        limit,
-        total: count || 0,
-        totalPages: Math.ceil((count || 0) / limit)
-      }
+      data: preparationAreas || []
     });
   } catch (error) {
     console.error('Error fetching preparation areas:', error);

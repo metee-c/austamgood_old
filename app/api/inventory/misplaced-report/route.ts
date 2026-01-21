@@ -8,11 +8,7 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient()
     const searchParams = request.nextUrl.searchParams
 
-    const page = parseInt(searchParams.get('page') || '1')
-    const limit = parseInt(searchParams.get('limit') || '100')
     const priority = searchParams.get('priority') || 'all'
-
-    const offset = (page - 1) * limit
 
     // Get all preparation areas first
     const { data: prepAreas } = await supabase
@@ -33,8 +29,7 @@ export async function GET(request: NextRequest) {
           total_pieces: 0,
           unique_skus: 0,
           priority_breakdown: { high: 0, medium: 0, low: 0 }
-        },
-        pagination: { page, limit, totalCount: 0, totalPages: 0 }
+        }
       })
     }
 
@@ -168,19 +163,11 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Paginate
-    const paginatedData = filteredItems.slice(offset, offset + limit)
-
+    // Pagination removed for performance - return all data
     return NextResponse.json({
       success: true,
-      data: paginatedData,
-      summary,
-      pagination: {
-        page,
-        limit,
-        totalCount: filteredItems.length,
-        totalPages: Math.ceil(filteredItems.length / limit)
-      }
+      data: filteredItems,
+      summary
     })
   } catch (error: any) {
     console.error('Error in misplaced-report API:', error)

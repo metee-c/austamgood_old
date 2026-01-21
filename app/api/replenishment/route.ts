@@ -13,12 +13,11 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
     
+    // ✅ REMOVED PAGINATION: เอาการจำกัดออกเพื่อความเร็ว
+    
     const status = searchParams.get('status');
     const warehouseId = searchParams.get('warehouse_id');
     const triggerSource = searchParams.get('trigger_source');
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '100');
-
     let query = supabase
       .from('replenishment_queue')
       .select(`
@@ -44,7 +43,7 @@ export async function GET(request: NextRequest) {
           username,
           full_name
         )
-      `, { count: 'exact' })
+      `)
       .order('priority', { ascending: true })
       .order('created_at', { ascending: false });
 
@@ -62,11 +61,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Apply pagination
-    const from = (page - 1) * limit;
-    const to = from + limit - 1;
-    query = query.range(from, to);
+    query = query;
 
-    const { data, error, count } = await query;
+    const { data, error } = await query;
 
     if (error) {
       console.error('Error fetching replenishment queue:', error);
@@ -74,13 +71,7 @@ export async function GET(request: NextRequest) {
     }
 
     return NextResponse.json({ 
-      data,
-      pagination: {
-        page,
-        limit,
-        total: count || 0,
-        totalPages: Math.ceil((count || 0) / limit)
-      }
+      data
     });
   } catch (error: any) {
     console.error('Error in GET /api/replenishment:', error);

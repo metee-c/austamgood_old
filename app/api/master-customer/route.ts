@@ -5,14 +5,13 @@ import { withAuth, withAdminAuth } from '@/lib/api/with-auth';
 
 async function handleGet(request: NextRequest, context: any) {
   const { searchParams } = new URL(request.url);
+    
+    // ✅ REMOVED PAGINATION: เอาการจำกัดออกเพื่อความเร็ว
   const search = searchParams.get('search');
-  const page = parseInt(searchParams.get('page') || '1');
-  const limit = parseInt(searchParams.get('limit') || '100');
-  
   const supabase = await createClient();
   
   // Build query with count
-  let query = supabase.from('master_customer').select('*', { count: 'exact' });
+  let query = supabase.from('master_customer').select('*');
 
   if (search) {
     const hasSpecialChars = /[|,()\\]/.test(search);
@@ -22,24 +21,16 @@ async function handleGet(request: NextRequest, context: any) {
   }
 
   // Apply pagination
-  const from = (page - 1) * limit;
-  const to = from + limit - 1;
-  query = query.range(from, to);
+  query = query;
 
-  const { data: customers, error, count } = await query;
+  const { data: customers, error } = await query;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
   return NextResponse.json({
-    data: customers,
-    pagination: {
-      page,
-      limit,
-      total: count || 0,
-      totalPages: Math.ceil((count || 0) / limit)
-    }
+    data: customers
   });
 }
 

@@ -288,11 +288,7 @@ async function handleGet(request: NextRequest, context: any) {
     const searchParams = request.nextUrl.searchParams;
     
     // ✅ PAGINATION: เพิ่ม page parameter
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '100');
-    const offset = (page - 1) * limit;
-
-    const { data: loadlists, error, count } = await supabase
+    const { data: loadlists, error } = await supabase
       .from('loadlists')
       .select(`
         *,
@@ -357,9 +353,9 @@ async function handleGet(request: NextRequest, context: any) {
             total_orders
           )
         )
-      `, { count: 'exact' })
+      `)
       .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1);
+      ;
 
     if (error) {
       return NextResponse.json(
@@ -760,16 +756,8 @@ async function handleGet(request: NextRequest, context: any) {
     });
 
     // ✅ PAGINATION: Return with pagination metadata
-    const totalPages = count ? Math.ceil(count / limit) : 0;
-
     return NextResponse.json({
-      data: transformedLoadlists,
-      pagination: {
-        page,
-        limit,
-        total: count || 0,
-        totalPages
-      }
+      data: transformedLoadlists
     });
   } catch (error) {
     console.error('API error:', error);

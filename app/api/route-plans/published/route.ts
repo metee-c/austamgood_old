@@ -8,14 +8,11 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
     
-    // ✅ PAGINATION: เพิ่ม page parameter
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '100');
-    const offset = (page - 1) * limit;
+    // ✅ REMOVED PAGINATION: เอาการจำกัดออกเพื่อความเร็ว
 
     // Get route plans with status 'approved' only
     // approved = อนุมัติแล้ว (ผู้จัดการอนุมัติใบว่าจ้างแล้ว - พร้อมสร้าง Picklist)
-    const { data: plans, error, count } = await supabase
+    const { data: plans, error } = await supabase
       .from('receiving_route_plans')
       .select(`
         plan_id,
@@ -34,8 +31,7 @@ export async function GET(request: NextRequest) {
       `, { count: 'exact' })
       .eq('status', 'approved')
       .order('plan_date', { ascending: false })
-      .order('plan_code', { ascending: false })
-      .range(offset, offset + limit - 1);
+      .order('plan_code', { ascending: false });
 
     if (error) {
       console.error('Error fetching published plans:', error);
@@ -416,18 +412,10 @@ export async function GET(request: NextRequest) {
       return hasValidTrips;
     });
 
-    // ✅ PAGINATION: Return with pagination metadata
-    const totalPages = count ? Math.ceil(count / limit) : 0;
-
+    // ✅ REMOVED PAGINATION: ส่งข้อมูลทั้งหมดเพื่อความเร็ว
     return NextResponse.json({ 
       data: plansWithAvailableTrips || [], 
-      error: null,
-      pagination: {
-        page,
-        limit,
-        total: count || 0,
-        totalPages
-      }
+      error: null
     });
   } catch (error: any) {
     console.error('Error fetching published plans:', error);

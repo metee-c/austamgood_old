@@ -12,6 +12,8 @@ export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { searchParams } = request.nextUrl;
+    
+    // ✅ REMOVED PAGINATION: เอาการจำกัดออกเพื่อความเร็ว
 
     const warehouseId = searchParams.get('warehouse_id');
     const locationId = searchParams.get('location_id');
@@ -19,10 +21,6 @@ export async function GET(request: NextRequest) {
     const palletId = searchParams.get('pallet_id');
     
     // Pagination parameters
-    const page = parseInt(searchParams.get('page') || '1');
-    const limit = parseInt(searchParams.get('limit') || '100');
-    const offset = (page - 1) * limit;
-
     // สร้าง query - กรองเฉพาะ balance ที่มีสต็อก > 0
     let query = supabase
       .from('wms_inventory_balances')
@@ -41,7 +39,7 @@ export async function GET(request: NextRequest) {
           location_type,
           zone
         )
-      `, { count: 'exact' })
+      `)
       .gt('total_piece_qty', 0)
       .order('sku_id', { ascending: true })
       .order('production_date', { ascending: true });
@@ -65,9 +63,9 @@ export async function GET(request: NextRequest) {
     }
 
     // Apply pagination
-    query = query.range(offset, offset + limit - 1);
+    query = query;
 
-    const { data, error, count } = await query;
+    const { data, error } = await query;
 
     if (error) {
       console.error('Inventory balances fetch error:', error);
@@ -79,13 +77,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({
       data: data || [],
-      error: null,
-      pagination: {
-        page,
-        limit,
-        total: count || 0,
-        totalPages: Math.ceil((count || 0) / limit)
-      }
+      error: null
     });
   } catch (error: any) {
     console.error('Inventory balances API error:', error);

@@ -23,19 +23,17 @@ interface Report391QueryResult {
 }
 
 /**
- * Fetch Stock Control Card 391 data with filters and pagination
+ * Fetch Stock Control Card 391 data with filters - pagination removed for performance
  */
 export async function fetchStockControlCard391(
-  filters: Report391Filter,
-  page: number = 1,
-  pageSize: number = 50
+  filters: Report391Filter
 ): Promise<Report391QueryResult> {
   const supabase = await createClient()
   
-  // Build the query
+  // Build the query - pagination removed for performance
   let query = supabase
     .from('v_stock_control_card_391')
-    .select('*', { count: 'exact' })
+    .select('*')
   
   // Apply filters
   if (filters.warehouse_id) {
@@ -107,12 +105,8 @@ export async function fetchStockControlCard391(
   query = query.order('transaction_datetime', { ascending: false })
   query = query.order('ledger_id', { ascending: false })
   
-  // Apply pagination
-  const from = (page - 1) * pageSize
-  const to = from + pageSize - 1
-  query = query.range(from, to)
-  
-  const { data, error, count } = await query
+  // Pagination removed for performance - fetch all data
+  const { data, error } = await query
   
   if (error) {
     console.error('Error fetching report 391:', error)
@@ -124,7 +118,7 @@ export async function fetchStockControlCard391(
   
   return {
     data: (data || []) as StockControlCard391Record[],
-    totalCount: count || 0,
+    totalCount: (data || []).length,
     summary,
   }
 }

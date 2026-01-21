@@ -36,13 +36,11 @@ interface ProductionReportQueryResult {
 }
 
 /**
- * Fetch Production Report data with filters and pagination
+ * Fetch Production Report data - pagination removed for performance
  * ดึงข้อมูลจาก wms_receive_items (รายพาเลท FG) แทน production_receipts
  */
 export async function fetchProductionReport(
-  filters: ProductionReportFilter,
-  page: number = 1,
-  pageSize: number = 50
+  filters: ProductionReportFilter
 ): Promise<ProductionReportQueryResult> {
   const supabase = await createClient()
   
@@ -97,11 +95,7 @@ export async function fetchProductionReport(
   // Order by created_at descending
   query = query.order('created_at', { ascending: false })
   
-  // Apply pagination
-  const from = (page - 1) * pageSize
-  const to = from + pageSize - 1
-  query = query.range(from, to)
-  
+  // Pagination removed for performance - fetch all data
   const { data: receiveItems, error } = await query
   
   if (error) {
@@ -399,12 +393,12 @@ export async function fetchMaterialSkuOptions() {
 }
 
 /**
- * Export report data (for Excel/PDF generation)
+ * Export report data (for Excel/PDF generation) - pagination removed for performance
  */
 export async function exportProductionReport(
   filters: ProductionReportFilter,
   maxRows: number = 10000
 ): Promise<ProductionReportRecord[]> {
-  const result = await fetchProductionReport(filters, 1, maxRows)
+  const result = await fetchProductionReport(filters)
   return result.data
 }
