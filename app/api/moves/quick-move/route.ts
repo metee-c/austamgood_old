@@ -226,73 +226,39 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Generate move_no and Insert with Retry logic
-    let move
-    let retryCount = 0
-    const maxRetries = 3
+    // ✅ Generate move_no using database function (correct format: TRF-202601-0001)
+    const { data: move_no, error: moveNoError } = await supabaseAdmin.rpc('generate_move_no', {
+      p_move_type: 'transfer',
+      p_pallet_id: pallet_id || null
+    })
 
-    while (retryCount < maxRetries) {
-      // Find latest move_no (re-query each time using Admin)
-      const { data: lastMove } = await supabaseAdmin
-        .from('wms_moves')
-        .select('move_no')
-        .order('move_no', { ascending: false }) // Sort by move_no to be sure
-        .limit(1)
-        .maybeSingle()
-
-      let nextNumber = 1
-      if (lastMove?.move_no) {
-        const match = lastMove.move_no.match(/MV(\d+)/)
-        if (match) {
-          nextNumber = parseInt(match[1]) + 1
-        }
-      }
-
-      // If retrying, skip numbers to avoid collision loop if the latest hasn't updated yet in read replica
-      const currentNumber = nextNumber + retryCount
-      const move_no = `MV${String(currentNumber).padStart(10, '0')}`
-
-      // Try Insert
-      const { data: insertedMove, error: moveError } = await supabase
-        .from('wms_moves')
-        .insert({
-          move_no,
-          move_type: 'transfer',
-          status: 'completed',
-          from_warehouse_id: warehouse_id,
-          notes: notes || 'Quick move from misplaced inventory',
-          created_by: userId, // ✅ Use user_id
-          completed_at: new Date().toISOString()
-        })
-        .select()
-        .single()
-
-      if (moveError) {
-        // Check for unique key violation (Postgres code 23505)
-        if (moveError.code === '23505') {
-          console.warn(`Duplicate move_no ${move_no}, retrying... (${retryCount + 1}/${maxRetries})`)
-          retryCount++
-          // Wait a tiny bit (backoff)
-          await new Promise(resolve => setTimeout(resolve, 100))
-          continue
-        }
-
-        // Real Error
-        console.error('Move insert error:', moveError)
-        return NextResponse.json(
-          { error: 'ไม่สามารถสร้างรายการย้ายได้: ' + moveError.message },
-          { status: 500 }
-        )
-      }
-
-      // Success
-      move = insertedMove
-      break
+    if (moveNoError || !move_no) {
+      console.error('Move number generation error:', moveNoError)
+      return NextResponse.json(
+        { error: 'ไม่สามารถสร้างเลขที่เอกสารได้: ' + (moveNoError?.message || 'Unknown error') },
+        { status: 500 }
+      )
     }
 
-    if (!move) {
+    // Insert move with generated move_no
+    const { data: move, error: moveError } = await supabase
+      .from('wms_moves')
+      .insert({
+        move_no,
+        move_type: 'transfer',
+        status: 'completed',
+        from_warehouse_id: warehouse_id,
+        notes: notes || 'Quick move from misplaced inventory',
+        created_by: userId, // ✅ Use user_id
+        completed_at: new Date().toISOString()
+      })
+      .select()
+      .single()
+
+    if (moveError) {
+      console.error('Move insert error:', moveError)
       return NextResponse.json(
-        { error: 'ไม่สามารถสร้างเลขที่เอกสารได้ กรุณาลองใหม่อีกครั้ง' },
+        { error: 'ไม่สามารถสร้างรายการย้ายได้: ' + moveError.message },
         { status: 500 }
       )
     }

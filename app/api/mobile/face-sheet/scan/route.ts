@@ -201,6 +201,29 @@ async function handlePost(request: NextRequest, context: any) {
           );
         }
 
+        // ✅ FIX: Check if this is a Virtual Pallet
+        const isVirtualPallet = balance.pallet_id && balance.pallet_id.startsWith('VIRTUAL-');
+        
+        // ✅ FIX: ถ้า balance มีสต็อค 0 แล้ว (อาจถูกหักไปแล้วจากการ scan ซ้ำ) ให้ข้ามไป
+        // แต่ถ้าเป็น Virtual Pallet ให้ดำเนินการต่อ (อนุญาตให้ติดลบ)
+        if (!isVirtualPallet && balance.total_piece_qty === 0 && balance.reserved_piece_qty === 0) {
+          console.log(`⚠️ Balance ${balance.balance_id} already depleted (0 stock), skipping and releasing reservation`);
+          // Release reservation ที่ไม่ถูกต้อง
+          await supabase
+            .from('face_sheet_item_reservations')
+            .update({
+              status: 'released',
+              picked_at: now,
+              updated_at: now
+            })
+            .eq('reservation_id', reservation.reservation_id);
+          continue;
+        }
+        
+        if (isVirtualPallet && balance.total_piece_qty === 0 && balance.reserved_piece_qty === 0) {
+          console.log(`✅ Virtual Pallet ${balance.pallet_id} at 0 stock - allowing to go negative`);
+        }
+
         // เก็บวันที่จาก balance แรก
         if (!sourceProductionDate && balance.production_date) {
           sourceProductionDate = balance.production_date;
@@ -214,7 +237,7 @@ async function handlePost(request: NextRequest, context: any) {
 
         // ตรวจสอบว่ามีสต็อคเพียงพอ
         // ✅ FIX: รองรับ Virtual Pallet (pallet_id ขึ้นต้นด้วย VIRTUAL-)
-        const isVirtualPallet = balance.pallet_id && balance.pallet_id.startsWith('VIRTUAL-');
+        // isVirtualPallet already defined above
         
         if (!isVirtualPallet && balance.total_piece_qty < qtyToDeduct) {
           return NextResponse.json(

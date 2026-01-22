@@ -144,37 +144,21 @@ const MOVE_SELECT = `
 class MoveService {
   private supabase = supabase;
 
-  async generateMoveNo(): Promise<{ data: string | null; error: string | null }> {
+  async generateMoveNo(moveType: MoveType, palletId?: string | null): Promise<{ data: string | null; error: string | null }> {
     try {
-      const now = new Date();
-      const year = String(now.getFullYear());
-      const month = String(now.getMonth() + 1).padStart(2, '0');
-      const prefix = 'MV-' + year + month + '-';
-      const pattern = prefix + '%';
-
-      const { data, error } = await this.supabase
-        .from('wms_moves')
-        .select('move_no')
-        .like('move_no', pattern)
-        .order('move_no', { ascending: false })
-        .limit(1);
+      // เรียก database function generate_move_no ที่สร้าง format ถูกต้องตาม move_type
+      // Format: PUT-202601-0001, TRF-202601-0001, REP-202601-0001, ADJ-202601-0001
+      const { data, error } = await this.supabase.rpc('generate_move_no', {
+        p_move_type: moveType,
+        p_pallet_id: palletId || null
+      });
 
       if (error) {
-        console.error('[MoveService] Failed to fetch latest move_no', error);
+        console.error('[MoveService] Failed to generate move_no', error);
         return { data: null, error: error.message };
       }
 
-      let running = 1;
-      if (data && data.length > 0) {
-        const last = data[0].move_no;
-        const lastDash = last.lastIndexOf('-');
-        const suffix = lastDash >= 0 ? last.slice(lastDash + 1) : '';
-        const parsed = parseInt(suffix, 10);
-        running = Number.isNaN(parsed) ? 1 : parsed + 1;
-      }
-
-      const moveNo = prefix + String(running).padStart(4, '0');
-      return { data: moveNo, error: null };
+      return { data, error: null };
     } catch (err) {
       console.error('[MoveService] generateMoveNo error', err);
       return { data: null, error: 'Failed to generate move number' };
@@ -253,7 +237,9 @@ class MoveService {
 
   async createMove(payload: CreateMovePayload): Promise<{ data: MoveRecord | null; error: string | null }> {
     try {
-      const generated = await this.generateMoveNo();
+      // ส่ง move_type และ pallet_id (ถ้ามี) ไปยัง generateMoveNo
+      const firstPalletId = payload.items?.[0]?.pallet_id || null;
+      const generated = await this.generateMoveNo(payload.move_type, firstPalletId);
       if (!generated.data) {
         return { data: null, error: generated.error || 'Cannot generate move number' };
       }
