@@ -288,7 +288,11 @@ export function useOfflineTransfer(options: UseOfflineTransferOptions = {}) {
       try {
         const response = await fetch('/api/moves/quick-move', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 
+            'Content-Type': 'application/json',
+            'Cookie': document.cookie
+          },
+          credentials: 'include',
           body: JSON.stringify({
             pallet_id: palletId,
             to_location_id: toLocationId,

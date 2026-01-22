@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { cookies } from 'next/headers'
+import { getCurrentUserFromCookie } from '@/lib/auth/simple-auth'
 
 export async function POST(request: NextRequest) {
   try {
@@ -42,38 +42,17 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Get session token from cookie
-    const cookieStore = await cookies()
-    const sessionToken = cookieStore.get('session_token')?.value
-
-    if (!sessionToken) {
+    // Get current user from JWT token
+    const userResult = await getCurrentUserFromCookie();
+    
+    if (!userResult.success || !userResult.user) {
       return NextResponse.json(
-        { error: 'Unauthorized - No session token' },
+        { error: 'Unauthorized' },
         { status: 401 }
       )
     }
-
-    // Get user and employee_id from session token (without timeout check)
-    // Use explicit FK name to avoid ambiguity
-    const { data: sessionData, error: sessionError } = await supabase
-      .from('user_sessions')
-      .select(`
-        user_id,
-        master_system_user!user_sessions_user_id_fkey(employee_id)
-      `)
-      .eq('token', sessionToken)
-      .eq('invalidated', false)
-      .single()
-
-    if (sessionError || !sessionData) {
-      console.error('Session lookup error:', sessionError)
-      return NextResponse.json(
-        { error: 'Unauthorized - Invalid session' },
-        { status: 401 }
-      )
-    }
-
-    const employeeId = (sessionData.master_system_user as any)?.employee_id
+    
+    const employeeId = userResult.user.employee_id
 
     if (!employeeId) {
       return NextResponse.json(
@@ -82,14 +61,9 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Update last_activity_at
-    await supabase
-      .from('user_sessions')
-      .update({ last_activity_at: new Date().toISOString() })
-      .eq('token', sessionToken)
-
     let balanceRecords: any[] = []
     let from_location_id: string | null = null
+    let warehouse_id: string = 'WH001' // Default warehouse
 
     // Get balance info
     if (pallet_id) {
@@ -115,6 +89,7 @@ export async function POST(request: NextRequest) {
 
       balanceRecords = data
       from_location_id = data[0].location_id
+      warehouse_id = data[0].warehouse_id || 'WH001' // Get warehouse from balance
     } else if (balance_id) {
       const { data, error } = await supabase
         .from('wms_inventory_balances')
@@ -139,6 +114,7 @@ export async function POST(request: NextRequest) {
 
       balanceRecords = [data]
       from_location_id = data.location_id
+      warehouse_id = data.warehouse_id || 'WH001' // Get warehouse from balance
     }
 
     // Use first record for SKU validation
@@ -178,7 +154,7 @@ export async function POST(request: NextRequest) {
         const uniqueSkus = [...new Set(balanceRecords.map(b => b.sku_id).filter(Boolean))]
 
         for (const skuId of uniqueSkus) {
-          const { data: skuHomeMapping } = await supabaseAdmin
+          const { data: skuHomeMappings } = await supabaseAdmin
             .from('sku_preparation_area_mapping')
             .select(`
               sku_id,
@@ -192,14 +168,17 @@ export async function POST(request: NextRequest) {
             .eq('sku_id', skuId)
             .order('is_primary', { ascending: false })
             .order('priority', { ascending: true })
-            .limit(1)
-            .maybeSingle()
 
-          const prepArea = (skuHomeMapping as any)?.preparation_area
-          const mappedHomeCode = Array.isArray(prepArea) ? prepArea[0]?.area_code : prepArea?.area_code
-          const mappedHomeName = Array.isArray(prepArea) ? prepArea[0]?.area_name : prepArea?.area_name
+          const allValidHomes = (skuHomeMappings || []).map((m: any) => {
+            const prepArea = Array.isArray(m.preparation_area) ? m.preparation_area[0] : m.preparation_area;
+            return prepArea?.area_code;
+          }).filter(Boolean);
 
-          let designatedHomeCode: string | null = mappedHomeCode || null
+          const primaryMapping = skuHomeMappings?.find((m: any) => m.is_primary);
+          const prepArea = primaryMapping?.preparation_area as any;
+          const mappedHomeName = prepArea?.area_name;
+
+          let designatedHomeCode: string | null = allValidHomes.length > 0 ? allValidHomes[0] : null
 
           if (!designatedHomeCode) {
             const { data: skuData } = await supabaseAdmin
@@ -211,10 +190,10 @@ export async function POST(request: NextRequest) {
             designatedHomeCode = skuData?.default_location || null
           }
 
-          if (designatedHomeCode && designatedHomeCode !== destinationLocationCode) {
+          if (allValidHomes.length > 0 && !allValidHomes.includes(destinationLocationCode)) {
             return NextResponse.json(
               {
-                error: `ตำแหน่งปลายทาง ${destinationLocationCode} ไม่ใช่บ้านหยิบของ SKU นี้ (${designatedHomeCode}${mappedHomeName ? ` - ${mappedHomeName}` : ''})`,
+                error: `ตำแหน่งปลายทาง ${destinationLocationCode} ไม่ใช่บ้านหยิบของ SKU นี้ (${allValidHomes.join(', ')}${mappedHomeName ? ` - ${mappedHomeName}` : ''})`,
                 canForceMove: true
               },
               { status: 400 }
@@ -267,6 +246,7 @@ export async function POST(request: NextRequest) {
           move_no,
           move_type: 'transfer',
           status: 'completed',
+          from_warehouse_id: warehouse_id,
           notes: notes || 'Quick move from misplaced inventory',
           created_by: employeeId,
           completed_at: new Date().toISOString()

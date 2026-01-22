@@ -1,6 +1,7 @@
 // Simple Authentication Service - ไม่ใช้ session management
 import { createClient } from '@/lib/supabase/server';
 import { hashPassword, verifyPassword } from './password';
+import { cookies } from 'next/headers';
 import jwt from 'jsonwebtoken';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key-change-in-production';
@@ -35,6 +36,20 @@ export interface TokenPayload {
   employee_id: number | null;
   iat?: number;
   exp?: number;
+}
+
+export interface UserFromTokenResult {
+  success: boolean;
+  user?: {
+    user_id: number;
+    username: string;
+    email: string;
+    full_name: string;
+    role_id: number;
+    role_name: string;
+    employee_id: number | null;
+  };
+  error?: string;
 }
 
 /**
@@ -156,19 +171,7 @@ export function verifyToken(token: string): { valid: boolean; payload?: TokenPay
 /**
  * ดึงข้อมูลผู้ใช้จาก token
  */
-export async function getUserFromToken(token: string): Promise<{
-  success: boolean;
-  user?: {
-    user_id: number;
-    username: string;
-    email: string;
-    full_name: string;
-    role_id: number;
-    role_name: string;
-    employee_id: number | null;
-  };
-  error?: string;
-}> {
+export async function getUserFromToken(token: string): Promise<UserFromTokenResult> {
   const verification = verifyToken(token);
   
   if (!verification.valid || !verification.payload) {
@@ -231,6 +234,23 @@ export async function getUserFromToken(token: string): Promise<{
       error: 'เกิดข้อผิดพลาดภายในระบบ'
     };
   }
+}
+
+/**
+ * Helper function: ดึงข้อมูลผู้ใช้จาก cookie (สำหรับใช้ใน API routes)
+ */
+export async function getCurrentUserFromCookie(): Promise<UserFromTokenResult> {
+  const cookieStore = await cookies();
+  const token = cookieStore.get('auth_token')?.value;
+  
+  if (!token) {
+    return {
+      success: false,
+      error: 'No token found'
+    };
+  }
+
+  return getUserFromToken(token);
 }
 
 /**

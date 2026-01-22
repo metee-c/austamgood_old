@@ -34,27 +34,20 @@ export function withAuth(handler: ApiHandler, options: WithAuthOptions = {}) {
     }
 
     try {
-      console.log('🔐 [withAuth] Checking authentication...');
-      
       // Get token from cookie
       const token = request.cookies.get('auth_token')?.value;
-      console.log('🍪 [withAuth] auth_token exists:', !!token);
       
       if (!token) {
-        console.log('❌ [withAuth] No token found in cookies');
         return NextResponse.json(
           { error: 'กรุณาเข้าสู่ระบบ', error_code: 'UNAUTHORIZED' },
           { status: 401 }
         );
       }
 
-      console.log('🔐 [withAuth] Verifying token...');
       // Verify token and get user
       const result = await getUserFromToken(token);
-      console.log('🔐 [withAuth] Token verification result:', { success: result.success, hasUser: !!result.user });
       
       if (!result.success || !result.user) {
-        console.log('❌ [withAuth] Token verification failed:', result.error);
         return NextResponse.json(
           { error: result.error || 'กรุณาเข้าสู่ระบบ', error_code: 'UNAUTHORIZED' },
           { status: 401 }
@@ -62,7 +55,6 @@ export function withAuth(handler: ApiHandler, options: WithAuthOptions = {}) {
       }
 
       const user = result.user;
-      console.log('✅ [withAuth] User authenticated:', user.email);
 
       // ตรวจสอบ role ถ้าระบุ
       if (options.allowedRoles && !options.allowedRoles.includes(user.role_id)) {

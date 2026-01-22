@@ -40,6 +40,7 @@ export async function GET(request: NextRequest) {
                     )
                 `)
                 .eq('sku_id', sku_id)
+                .order('is_primary', { ascending: false })
                 .order('priority', { ascending: true });
 
             if (mappingError) {

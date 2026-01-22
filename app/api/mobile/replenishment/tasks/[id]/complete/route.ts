@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getCurrentSession } from '@/lib/auth';
+import { getCurrentUserFromCookie } from '@/lib/auth/simple-auth';
 import { stockAdjustmentService } from '@/lib/database/stock-adjustment';
 import { canTransferToLocation } from '@/lib/database/prep-area-validation';
 import { isPrepArea, upsertPrepAreaBalance } from '@/lib/database/prep-area-balance';
@@ -30,9 +30,14 @@ export async function POST(
 
     const { pallet_id, to_location_code, confirmed_qty, notes } = body;
 
-    // Get current user
-    const sessionResult = await getCurrentSession();
-    const currentUserId = sessionResult.session?.user_id;
+    // Get current user from JWT token
+    const userResult = await getCurrentUserFromCookie();
+    
+    if (!userResult.success || !userResult.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const currentUserId = userResult.user.user_id;
 
     if (!currentUserId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -137,10 +142,13 @@ export async function POST(
     // Create inventory ledger entries for stock movement
     const now = new Date().toISOString();
     const referenceNo = `REPL-${taskId.substring(0, 8)}`;
+    
+    // Use warehouse_id from task if available, otherwise use default
+    const warehouseId = task.warehouse_id || palletStock.warehouse_id || 'WH001';
 
     // 1. OUT from source location
     const outEntry = {
-      warehouse_id: task.warehouse_id,
+      warehouse_id: warehouseId,
       location_id: fromLocationId,
       sku_id: task.sku_id,
       pallet_id: pallet_id,
@@ -158,7 +166,7 @@ export async function POST(
 
     // 2. IN to destination location
     const inEntry = {
-      warehouse_id: task.warehouse_id,
+      warehouse_id: warehouseId,
       location_id: targetLocationId,
       sku_id: task.sku_id,
       pallet_id: pallet_id,

@@ -519,30 +519,31 @@ function MobileTransferListPage() {
 
             console.log('SKU Mapping Result:', skuMappingResult);
 
-            const skuDesignatedHome = skuMappingResult.data?.[0]?.location_code;
-            console.log('SKU Designated Home:', skuDesignatedHome);
+            const allValidHomes = skuMappingResult.data?.map((m: any) => m.location_code) || [];
+            console.log('All Valid Picking Homes:', allValidHomes);
 
-            if (skuDesignatedHome) {
-              // SKU has a designated picking home from sku_preparation_area_mapping
-              console.log(`SKU ${item.sku_id} has designated home: ${skuDesignatedHome}`);
+            if (allValidHomes.length > 0) {
+              // SKU has designated picking homes from sku_preparation_area_mapping
+              console.log(`SKU ${item.sku_id} has valid homes: ${allValidHomes.join(', ')}`);
 
-              if (skuDesignatedHome !== destLocationCode) {
-                // Trying to move to WRONG picking home!
-                console.log(`❌ BLOCKING: ${skuDesignatedHome} !== ${destLocationCode}`);
+              if (!allValidHomes.includes(destLocationCode)) {
+                // Trying to move to location that's NOT in the valid picking homes list!
+                console.log(`❌ BLOCKING: ${destLocationCode} not in valid homes [${allValidHomes.join(', ')}]`);
 
                 const skuName = item.master_sku?.sku_name || item.sku_id;
+                const primaryHome = allValidHomes[0]; // First one is primary
 
                 setPickingHomeError({
                   skuId: item.sku_id,
                   skuName: skuName,
                   destinationLocation: destLocationCode,
-                  correctLocation: skuDesignatedHome
+                  correctLocation: primaryHome
                 });
                 playErrorSound();
                 setSavingQuickMove(false);
                 return;
               } else {
-                console.log(`✓ ALLOW: Correct picking home`);
+                console.log(`✓ ALLOW: ${destLocationCode} is in valid picking homes`);
               }
             } else {
               // SKU has no designated home in sku_preparation_area_mapping

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getCurrentSession } from '@/lib/auth';
+import { getCurrentUserFromCookie } from '@/lib/auth/simple-auth';
 
 export const dynamic = 'force-dynamic';
 
@@ -17,13 +17,28 @@ export async function GET(request: NextRequest) {
     const triggerSource = searchParams.get('trigger_source') || null;
     const showAll = searchParams.get('show_all') === 'true'; // Show all tasks, not just assigned to current user
 
-    // Get current user from session
-    const sessionResult = await getCurrentSession();
-    const currentUserId = sessionResult.session?.user_id;
-
-    if (!currentUserId) {
+    // Get current user from JWT token
+    const userResult = await getCurrentUserFromCookie();
+    
+    console.log('[Replenishment Tasks] User result:', { 
+      success: userResult.success, 
+      hasUser: !!userResult.user,
+      error: userResult.error 
+    });
+    
+    if (!userResult.success || !userResult.user) {
+      console.error('[Replenishment Tasks] Auth failed:', userResult.error);
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
+
+    const currentUserId = userResult.user.user_id;
+
+    if (!currentUserId) {
+      console.error('[Replenishment Tasks] No user_id found');
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    
+    console.log('[Replenishment Tasks] Authenticated user:', currentUserId);
 
     let query = supabase
       .from('replenishment_queue')
