@@ -44,19 +44,27 @@ export async function POST(request: NextRequest) {
       console.log('🍪 [Login API] Setting auth_token cookie');
       console.log('🍪 [Login API] NODE_ENV:', process.env.NODE_ENV);
       console.log('🍪 [Login API] JWT_SECRET exists:', !!process.env.JWT_SECRET);
+      console.log('🍪 [Login API] User ID:', result.user?.user_id);
       
+      // ⚠️ CRITICAL FIX: Cookie settings to prevent session mixing on Vercel
       const cookieOptions = {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production',
-        sameSite: 'lax' as const,
+        secure: process.env.NODE_ENV === 'production', // HTTPS only in production
+        sameSite: 'strict' as const, // ✅ Changed from 'lax' to 'strict' to prevent cookie sharing
         maxAge: 24 * 60 * 60, // 24 hours
         path: '/',
-        domain: process.env.NODE_ENV === 'production' ? undefined : undefined // Let browser handle domain
+        // ✅ NO domain specified - let browser handle it (prevents cross-subdomain sharing)
       };
       
       console.log('🍪 [Login API] Cookie options:', cookieOptions);
       response.cookies.set('auth_token', result.token, cookieOptions);
-      console.log('🍪 [Login API] Cookie set successfully');
+      
+      // ✅ Add Cache-Control headers to prevent Vercel edge caching
+      response.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+      response.headers.set('Pragma', 'no-cache');
+      response.headers.set('Expires', '0');
+      
+      console.log('🍪 [Login API] Cookie set successfully with strict security');
     }
 
     return response;

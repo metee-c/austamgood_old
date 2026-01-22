@@ -34,6 +34,8 @@ export interface TokenPayload {
   full_name: string;
   role_id: number;
   employee_id: number | null;
+  // ✅ Add unique identifiers to prevent token reuse
+  jti?: string; // JWT ID - unique identifier for this token
   iat?: number;
   exp?: number;
 }
@@ -116,14 +118,18 @@ export async function simpleLogin(credentials: SimpleLoginCredentials): Promise<
       ? masterRole[0]?.role_name
       : masterRole?.role_name || 'Unknown';
 
-    // สร้าง JWT token
+    // สร้าง JWT token with unique identifier
+    const crypto = require('crypto');
+    const jti = crypto.randomBytes(16).toString('hex'); // ✅ Unique token ID
+    
     const tokenPayload: TokenPayload = {
       user_id: userData.user_id,
       username: userData.username,
       email: userData.email,
       full_name: userData.full_name,
       role_id: userData.role_id,
-      employee_id: userData.employee_id
+      employee_id: userData.employee_id,
+      jti // ✅ Add unique identifier to prevent token reuse
     };
 
     const token = jwt.sign(tokenPayload, JWT_SECRET, { expiresIn: JWT_EXPIRY });

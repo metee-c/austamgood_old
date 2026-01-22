@@ -41,8 +41,10 @@ export async function GET(request: NextRequest) {
 
     const user = result.user;
     console.log('✅ [Auth Me API] User authenticated:', user.email);
+    console.log('👤 [Auth Me API] User ID:', user.user_id);
 
-    return NextResponse.json({
+    // ✅ Create response with strict cache control headers
+    const response = NextResponse.json({
       success: true,
       user: {
         user_id: user.user_id,
@@ -57,6 +59,14 @@ export async function GET(request: NextRequest) {
         is_active: true,
       }
     });
+    
+    // ✅ CRITICAL: Prevent Vercel edge caching of user data
+    response.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+    response.headers.set('Vary', 'Cookie'); // ✅ Tell CDN to vary by cookie
+    
+    return response;
   } catch (error) {
     console.error('❌ [Auth Me API] Error:', error);
     return NextResponse.json(
