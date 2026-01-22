@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, Fragment } from 'react';
+import React, { useState, useEffect, useCallback, Fragment } from 'react';
 import {
   Package,
   Search,
@@ -27,9 +27,11 @@ import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
 import { createClient } from '@/lib/supabase/client';
+import { fetchJsonWithAuth } from '@/lib/api/fetch-with-auth';
 import ReservationDetailsModal from '@/components/warehouse/ReservationDetailsModal';
 import ReservationPopover from '@/components/warehouse/ReservationPopover';
 import PreparedDocumentsTable from '@/components/warehouse/PreparedDocumentsTable';
+import QuickAdjustModal from '@/components/warehouse/QuickAdjustModal';
 import * as XLSX from 'xlsx';
 
 interface RelatedDocument {
@@ -121,6 +123,10 @@ const InventoryBalancesPage = () => {
   const [reservationModalOpen, setReservationModalOpen] = useState(false);
   const [selectedReservationBalance, setSelectedReservationBalance] = useState<InventoryBalance | null>(null);
 
+  // Quick Adjust modal states
+  const [quickAdjustModalOpen, setQuickAdjustModalOpen] = useState(false);
+  const [selectedAdjustBalance, setSelectedAdjustBalance] = useState<InventoryBalance | null>(null);
+
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedWarehouse, setSelectedWarehouse] = useState('all');
@@ -128,6 +134,7 @@ const InventoryBalancesPage = () => {
   const [showLowStock, setShowLowStock] = useState(false);
   const [showExpiringSoon, setShowExpiringSoon] = useState(false);
   const [showZeroBalance, setShowZeroBalance] = useState(true);
+  const [showCorrectLocationOnly, setShowCorrectLocationOnly] = useState(false);
 
   // Advanced filter panel state
   const [showFilters, setShowFilters] = useState(false);
@@ -173,18 +180,26 @@ const InventoryBalancesPage = () => {
   // Reset page when filters change
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchTerm, selectedWarehouse, showLowStock, showExpiringSoon, showZeroBalance, activeTab, advancedFilters]);
+  }, [searchTerm, selectedWarehouse, showLowStock, showExpiringSoon, showZeroBalance, showCorrectLocationOnly, activeTab, advancedFilters]);
 
   useEffect(() => {
     fetchWarehouses();
     fetchPreparationAreas();
+    fetchSkuOptions();
+    fetchLocationOptions();
+  }, []);
+
+  // Refetch data when filter changes
+  useEffect(() => {
     fetchBalanceData();
     fetchPremiumData();
+  }, [showCorrectLocationOnly, selectedWarehouse]);
+
+  // Fetch dispatch/staging/delivery data once on mount
+  useEffect(() => {
     fetchDispatchData();
     fetchBfsStagingData();
     fetchDeliveryData();
-    fetchSkuOptions();
-    fetchLocationOptions();
   }, []);
 
   const fetchPreparationAreas = async () => {
@@ -269,41 +284,24 @@ const InventoryBalancesPage = () => {
   const fetchBalanceData = async () => {
     try {
       setLoading(true);
-      const supabase = createClient();
-
-      // First get preparation area codes
-      const { data: prepAreas } = await supabase
-        .from('preparation_area')
-        .select('area_code')
-        .eq('status', 'active');
-
-      const prepAreaCodes = prepAreas?.map(p => p.area_code) || [];
-
-      // Fetch only inventory in preparation areas
-      const { data, error } = await supabase
-        .from('wms_inventory_balances')
-        .select(`
-          *,
-          master_location!location_id (
-            location_name
-          ),
-          master_warehouse!warehouse_id (
-            warehouse_name
-          ),
-          master_sku!sku_id (
-            sku_name,
-            weight_per_piece_kg
-          )
-        `)
-        .in('location_id', prepAreaCodes)
-        .order('updated_at', { ascending: false })
-        .limit(2000);
-
-      if (error) {
-        setError(error.message);
-        console.error('Error fetching balance data:', error);
+      
+      // Build API URL with filter parameter
+      const warehouseParam = selectedWarehouse === 'all' ? 'WH001' : selectedWarehouse;
+      const filterParam = showCorrectLocationOnly ? '&filter_correct_location=true' : '';
+      
+      // Fetch from new preparation_area_inventory table via API
+      const result = await fetchJsonWithAuth<{ success: boolean; data: any[]; error?: string }>(
+        `/api/inventory/prep-area-balances?warehouse_id=${warehouseParam}${filterParam}`
+      );
+      
+      if (result.success) {
+        // Filter out premium zone (PK002) for regular preparation tab
+        const regularPrepData = (result.data || []).filter((item: any) => 
+          !premiumZoneLocations.includes(item.location_id)
+        );
+        setBalanceData(regularPrepData);
       } else {
-        setBalanceData(data || []);
+        setError(result.error || 'Failed to load data');
       }
     } catch (err: any) {
       setError('เกิดข้อผิดพลาดในการโหลดข้อมูล');
@@ -315,32 +313,23 @@ const InventoryBalancesPage = () => {
 
   const fetchPremiumData = async () => {
     try {
-      const supabase = createClient();
-
-      // Fetch only inventory in Picking Zone 2
-      const { data, error } = await supabase
-        .from('wms_inventory_balances')
-        .select(`
-          *,
-          master_location!location_id (
-            location_name
-          ),
-          master_warehouse!warehouse_id (
-            warehouse_name
-          ),
-          master_sku!sku_id (
-            sku_name,
-            weight_per_piece_kg
-          )
-        `)
-        .in('location_id', premiumZoneLocations)
-        .order('updated_at', { ascending: false })
-        .limit(2000);
-
-      if (error) {
-        console.error('Error fetching premium data:', error);
+      // Build API URL with filter parameter
+      const warehouseParam = selectedWarehouse === 'all' ? 'WH001' : selectedWarehouse;
+      const filterParam = showCorrectLocationOnly ? '&filter_correct_location=true' : '';
+      
+      // Fetch from new preparation_area_inventory table via API
+      const result = await fetchJsonWithAuth<{ success: boolean; data: any[]; error?: string }>(
+        `/api/inventory/prep-area-balances?warehouse_id=${warehouseParam}${filterParam}`
+      );
+      
+      if (result.success) {
+        // Filter only premium zone (PK002) for premium tab
+        const premiumData = (result.data || []).filter((item: any) => 
+          premiumZoneLocations.includes(item.location_id)
+        );
+        setPremiumData(premiumData);
       } else {
-        setPremiumData(data || []);
+        console.error('Error fetching premium data:', result.error);
       }
     } catch (err: any) {
       console.error('Error fetching premium data:', err);
@@ -349,11 +338,7 @@ const InventoryBalancesPage = () => {
 
   const fetchDispatchData = async () => {
     try {
-      const response = await fetch('/api/warehouse/dispatch-inventory');
-      if (!response.ok) {
-        throw new Error('Failed to fetch dispatch inventory');
-      }
-      const data = await response.json();
+      const data = await fetchJsonWithAuth<{ data: any[] }>('/api/warehouse/dispatch-inventory');
       setDispatchData(data.data || []);
     } catch (err: any) {
       console.error('❌ Error fetching dispatch data:', err);
@@ -362,11 +347,7 @@ const InventoryBalancesPage = () => {
 
   const fetchBfsStagingData = async () => {
     try {
-      const response = await fetch('/api/warehouse/bfs-staging-inventory');
-      if (!response.ok) {
-        throw new Error('Failed to fetch BFS staging inventory');
-      }
-      const data = await response.json();
+      const data = await fetchJsonWithAuth<{ data: any[] }>('/api/warehouse/bfs-staging-inventory');
       setBfsStagingData(data.data || []);
     } catch (err: any) {
       console.error('❌ Error fetching BFS staging data:', err);
@@ -375,11 +356,7 @@ const InventoryBalancesPage = () => {
 
   const fetchDeliveryData = async () => {
     try {
-      const response = await fetch('/api/warehouse/delivery-inventory');
-      if (!response.ok) {
-        throw new Error('Failed to fetch delivery inventory');
-      }
-      const data = await response.json();
+      const data = await fetchJsonWithAuth<{ data: any[] }>('/api/warehouse/delivery-inventory');
       setDeliveryData(data.data || []);
     } catch (err: any) {
       console.error('❌ Error fetching delivery data:', err);
@@ -394,6 +371,20 @@ const InventoryBalancesPage = () => {
   const handleViewReservations = (balance: InventoryBalance) => {
     setSelectedReservationBalance(balance);
     setReservationModalOpen(true);
+  };
+
+  const handleQuickAdjust = (balance: InventoryBalance) => {
+    setSelectedAdjustBalance(balance);
+    setQuickAdjustModalOpen(true);
+  };
+
+  const handleAdjustSuccess = () => {
+    // Refresh data after successful adjustment
+    if (activeTab === 'preparation') {
+      fetchBalanceData();
+    } else if (activeTab === 'premium') {
+      fetchPremiumData();
+    }
   };
 
   const handleSort = (column: 'picklist_code' | 'location_id') => {
@@ -609,53 +600,12 @@ const InventoryBalancesPage = () => {
   };
 
   // Aggregate data by Location + SKU for preparation tab
+  // NOTE: The new preparation_area_inventory table already aggregates by location+sku
+  // So we just need to format the data, not re-aggregate
   const aggregateDataBySku = (data: InventoryBalance[]): InventoryBalance[] => {
-    const skuMap = new Map<string, InventoryBalance>();
-
-    for (const item of data) {
-      // Group by Location + SKU to show one row per Picking Home
-      const key = `${item.location_id}_${item.sku_id}`;
-
-      const existing = skuMap.get(key);
-      if (existing) {
-        // Sum quantities
-        existing.total_pack_qty += item.total_pack_qty || 0;
-        existing.total_piece_qty += item.total_piece_qty || 0;
-        existing.reserved_pack_qty += item.reserved_pack_qty || 0;
-        existing.reserved_piece_qty += item.reserved_piece_qty || 0;
-
-        // Check if this item is "newer" (latest pallet filled down)
-        // We use updated_at or created_at to determine the latest movement
-        const currentUpdate = item.updated_at ? new Date(item.updated_at).getTime() : 0;
-        const existingUpdate = existing.updated_at ? new Date(existing.updated_at).getTime() : 0;
-
-        if (currentUpdate > existingUpdate) {
-          // Update displayed dates to match the latest pallet
-          existing.production_date = item.production_date;
-          existing.expiry_date = item.expiry_date;
-          existing.lot_no = item.lot_no; // Also show Lot from latest
-          existing.updated_at = item.updated_at;
-        }
-
-        // Append to sub-items
-        if (!(existing as any).subItems) (existing as any).subItems = [];
-        (existing as any).subItems.push(item);
-      } else {
-        // Create new aggregated entry
-        skuMap.set(key, {
-          ...item,
-          // balance_id: 0, // Keep original ID for key purposes, though it's aggregated
-          pallet_id: null, // Multiple pallets
-          pallet_id_external: null,
-          // Dates are already set from this first item, will be updated if newer items found
-
-          // Store sub-items for expansion
-          subItems: [item]
-        } as any);
-      }
-    }
-
-    return Array.from(skuMap.values()).sort((a, b) => {
+    // Data is already aggregated from preparation_area_inventory table
+    // Just return sorted data
+    return data.sort((a, b) => {
       // Sort by Location then SKU
       const locCompare = (a.location_id || '').localeCompare(b.location_id || '');
       if (locCompare !== 0) return locCompare;
@@ -680,27 +630,17 @@ const InventoryBalancesPage = () => {
       return deliveryData;
     }
 
-    // ถ้าเป็น premium tab ให้ใช้ข้อมูลจาก premiumData
+    // ถ้าเป็น premium tab ให้ใช้ข้อมูลจาก premiumData (already filtered by API)
     if (activeTab === 'premium') {
-      return premiumData;
+      return aggregateDataBySku(premiumData);
     }
 
-    // บ้านหยิบ - preparation area codes ยกเว้น PK002 (premium zone)
-    const filtered = balanceData.filter(item => {
-      if (activeTab === 'preparation') {
-        return item.location_id
-          ? preparationAreaCodes.includes(item.location_id) && !premiumZoneLocations.includes(item.location_id)
-          : false;
-      }
-      return false;
-    });
-
-    // Aggregate by SKU for preparation and premium tabs
-    if (activeTab === 'preparation' || activeTab === 'premium') {
-      return aggregateDataBySku(filtered);
+    // บ้านหยิบ - balanceData already filtered by API (excludes PK002)
+    if (activeTab === 'preparation') {
+      return aggregateDataBySku(balanceData);
     }
 
-    return filtered;
+    return [];
   };
 
   const tabFilteredData = getFilteredDataByTab();
@@ -894,6 +834,25 @@ const InventoryBalancesPage = () => {
               />
               ยอด 0
             </label>
+            {(activeTab === 'preparation' || activeTab === 'premium') && (
+              <label className="flex items-center cursor-pointer text-xs font-thai px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded hover:bg-white/80">
+                <input
+                  type="checkbox"
+                  className="mr-1 w-3 h-3"
+                  checked={showCorrectLocationOnly}
+                  onChange={(e) => {
+                    setShowCorrectLocationOnly(e.target.checked);
+                    // Refetch data when filter changes
+                    if (activeTab === 'preparation') {
+                      fetchBalanceData();
+                    } else if (activeTab === 'premium') {
+                      fetchPremiumData();
+                    }
+                  }}
+                />
+                แสดงเฉพาะสินค้าที่อยู่ถูกที่
+              </label>
+            )}
             <Button
               variant="outline"
               size="sm"
@@ -1197,45 +1156,30 @@ const InventoryBalancesPage = () => {
                           <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันผลิต/หมดอายุ</th>
                         )}
                         <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-green-50">ชิ้นรวม</th>
-                        <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-green-50">แพ็ครวม</th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-green-50 hidden">แพ็ครวม</th>
                         <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-orange-50">ชิ้นจอง</th>
-                        <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-orange-50">แพ็คจอง</th>
-                        <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">คงเหลือ (ชิ้น)</th>
-                        <th className="px-3 py-2 text-center text-xs font-semibold border-b border-gray-200 whitespace-nowrap bg-blue-50">คงเหลือ (แพ็ค)</th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-orange-50 hidden">แพ็คจอง</th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold border-b border-gray-200 whitespace-nowrap bg-blue-50">คงเหลือ (ชิ้น)</th>
+                        <th className="px-3 py-2 text-center text-xs font-semibold border-b border-gray-200 whitespace-nowrap bg-blue-50 hidden">คงเหลือ (แพ็ค)</th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-100">
                       {filteredData.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((balance, idx) => {
                         const availablePiece = balance.total_piece_qty - balance.reserved_piece_qty;
                         const availablePack = balance.total_pack_qty - balance.reserved_pack_qty;
-                        const rowKey = `${balance.location_id}_${balance.sku_id}`;
+                        const rowKey = `${balance.warehouse_id}_${balance.location_id}_${balance.sku_id}`;
                         const isExpanded = expandedSkus.has(rowKey);
 
-                        // Count misplaced items in sub-items
-                        const defaultLocation = (balance as any).master_sku?.default_location;
-                        const misplacedCount = defaultLocation && (balance as any).subItems
-                          ? (balance as any).subItems.filter((subItem: InventoryBalance) => {
-                            const currentLocation = subItem.location_id;
-                            const isInPickingHome = preparationAreaCodes.includes(currentLocation);
-                            return isInPickingHome && currentLocation !== defaultLocation;
-                          }).length
-                          : 0;
+                        // No need to check for misplaced items since data is already aggregated
+                        // and we're showing summary view only
 
                         return (
-                          <Fragment key={`agg-${rowKey}-${idx}`}>
+                          <Fragment key={rowKey}>
                             <tr
-                              className={`hover:bg-blue-50/30 transition-colors duration-150 cursor-pointer ${isExpanded ? 'bg-blue-50/50' : ''} ${misplacedCount > 0 ? 'border-l-4 border-l-red-500' : ''}`}
-                              onClick={() => toggleSkuExpand(rowKey)}
+                              className={`hover:bg-blue-50/30 transition-colors duration-150 ${isExpanded ? 'bg-blue-50/50' : ''}`}
                             >
                               <td className="px-3 py-1.5 text-center border-r border-gray-100">
-                                <div className="flex items-center justify-center gap-1">
-                                  {isExpanded ? <ArrowUp className="w-4 h-4 text-blue-500" /> : <ArrowDown className="w-4 h-4 text-gray-400" />}
-                                  {misplacedCount > 0 && (
-                                    <Badge variant="danger" size="sm">
-                                      <span className="text-[10px]">{misplacedCount}</span>
-                                    </Badge>
-                                  )}
-                                </div>
+                                {/* Removed expand button since we're showing summary only */}
                               </td>
                               <td className="px-3 py-1.5 border-r border-gray-100 whitespace-nowrap">
                                 <span className="font-mono font-bold text-blue-600">{balance.location_id}</span>
@@ -1245,27 +1189,31 @@ const InventoryBalancesPage = () => {
                               </td>
                               <td className="px-3 py-1.5 border-r border-gray-100">
                                 <span className="text-thai-gray-700 font-thai text-[11px]">
-                                  {(balance as any).master_sku?.sku_name || '-'}
+                                  {balance.sku_name || (balance as any).master_sku?.sku_name || '-'}
                                 </span>
                               </td>
                               {activeTab !== 'premium' && (
                                 <td className="px-3 py-1.5 border-r border-gray-100 whitespace-nowrap">
                                   <div className="flex flex-col text-[10px]">
                                     <span className="text-gray-500">
-                                      ผลิต: {balance.production_date ? new Date(balance.production_date).toLocaleDateString('th-TH') : '-'}
+                                      ผลิต: {balance.production_date ? new Date(balance.production_date).toLocaleDateString('en-GB') : '-'}
                                     </span>
                                     <span className={`${isExpired(balance.expiry_date || '') ? 'text-red-600 font-bold' : isExpiringSoon(balance.expiry_date || '') ? 'text-orange-600' : 'text-gray-500'}`}>
-                                      หมด: {balance.expiry_date ? new Date(balance.expiry_date).toLocaleDateString('th-TH') : '-'}
+                                      หมด: {balance.expiry_date ? new Date(balance.expiry_date).toLocaleDateString('en-GB') : '-'}
                                     </span>
                                   </div>
                                 </td>
                               )}
-                              <td className="px-3 py-1.5 text-center border-r border-gray-100 whitespace-nowrap bg-green-50/30">
-                                <span className="font-bold text-green-600">
+                              <td 
+                                className="px-3 py-1.5 text-center border-r border-gray-100 whitespace-nowrap bg-green-50/30 cursor-pointer hover:bg-green-100/50 transition-colors"
+                                onClick={() => handleQuickAdjust(balance)}
+                                title="คลิกเพื่อปรับสต็อก"
+                              >
+                                <span className="font-bold text-green-600 hover:text-green-700 hover:underline">
                                   {balance.total_piece_qty?.toLocaleString() || 0}
                                 </span>
                               </td>
-                              <td className="px-3 py-1.5 text-center border-r border-gray-100 whitespace-nowrap bg-green-50/30">
+                              <td className="px-3 py-1.5 text-center border-r border-gray-100 whitespace-nowrap bg-green-50/30 hidden">
                                 <span className="font-bold text-green-600">
                                   {balance.total_pack_qty?.toLocaleString() || 0}
                                 </span>
@@ -1275,7 +1223,7 @@ const InventoryBalancesPage = () => {
                                   {balance.reserved_piece_qty?.toLocaleString() || 0}
                                 </span>
                               </td>
-                              <td className="px-3 py-1.5 text-center border-r border-gray-100 whitespace-nowrap bg-orange-50/30">
+                              <td className="px-3 py-1.5 text-center border-r border-gray-100 whitespace-nowrap bg-orange-50/30 hidden">
                                 <span className={`font-bold ${balance.reserved_pack_qty > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
                                   {balance.reserved_pack_qty?.toLocaleString() || 0}
                                 </span>
@@ -1285,80 +1233,13 @@ const InventoryBalancesPage = () => {
                                   {availablePiece.toLocaleString()}
                                 </span>
                               </td>
-                              <td className="px-3 py-1.5 text-center border-r border-gray-100 whitespace-nowrap bg-blue-50/30">
+                              <td className="px-3 py-1.5 text-center border-r border-gray-100 whitespace-nowrap bg-blue-50/30 hidden">
                                 <span className={`font-bold ${availablePack <= 0 ? 'text-red-600' : 'text-blue-600'}`}>
                                   {availablePack.toLocaleString()}
                                 </span>
                               </td>
                             </tr>
-                            {isExpanded && (balance as any).subItems && (
-                              <tr>
-                                <td colSpan={activeTab === 'premium' ? 10 : 11} className="bg-gray-50/50 p-2 border-b border-gray-200 shadow-inner">
-                                  <div className="ml-8 bg-white rounded-lg border border-gray-200 overflow-hidden shadow-sm">
-                                    <table className="w-full text-xs">
-                                      <thead className="bg-gray-100 text-gray-700">
-                                        <tr>
-                                          <th className="px-3 py-2 text-left font-semibold">Location</th>
-                                          <th className="px-3 py-2 text-left font-semibold">Pallet ID</th>
-                                          <th className="px-3 py-2 text-left font-semibold">Lot No</th>
-                                          <th className="px-3 py-2 text-left font-semibold">วันผลิต</th>
-                                          <th className="px-3 py-2 text-left font-semibold">วันหมดอายุ</th>
-                                          <th className="px-3 py-2 text-center font-semibold">ชิ้น</th>
-                                          <th className="px-3 py-2 text-center font-semibold">แพ็ค</th>
-                                          <th className="px-3 py-2 text-center font-semibold">อัปเดต</th>
-                                        </tr>
-                                      </thead>
-                                      <tbody className="divide-y divide-gray-100">
-                                        {((balance as any).subItems as InventoryBalance[]).map((subItem, subIdx) => {
-                                          const defaultLocation = (balance as any).master_sku?.default_location;
-                                          const currentLocation = subItem.location_id;
-                                          const isInPickingHome = preparationAreaCodes.includes(currentLocation);
-                                          const isMisplaced = defaultLocation && isInPickingHome && currentLocation !== defaultLocation;
-
-                                          return (
-                                            <tr
-                                              key={`sub-${subItem.balance_id}-${subIdx}`}
-                                              className={`hover:bg-gray-50 ${isMisplaced ? 'bg-red-50' : ''}`}
-                                            >
-                                              <td className="px-3 py-2 font-mono">
-                                                <div className="flex items-center gap-2">
-                                                  <span className={isMisplaced ? 'text-red-600 font-bold' : ''}>{subItem.location_id}</span>
-                                                  {isMisplaced && (
-                                                    <Badge variant="danger" size="sm">
-                                                      <span className="text-[10px]">ผิดตำแหน่ง</span>
-                                                    </Badge>
-                                                  )}
-                                                </div>
-                                                {isMisplaced && defaultLocation && (
-                                                  <div className="text-[10px] text-green-600 mt-0.5">
-                                                    ✓ ควรอยู่: {defaultLocation}
-                                                  </div>
-                                                )}
-                                              </td>
-                                              <td className="px-3 py-2 font-mono text-gray-500">{subItem.pallet_id_external || subItem.pallet_id || '-'}</td>
-                                              <td className="px-3 py-2 font-mono">{subItem.lot_no || '-'}</td>
-                                              <td className="px-3 py-2">{subItem.production_date ? new Date(subItem.production_date).toLocaleDateString('th-TH') : '-'}</td>
-                                              <td className="px-3 py-2">
-                                                {subItem.expiry_date ? (
-                                                  <span className={`${isExpired(subItem.expiry_date) ? 'text-red-600 font-bold' : isExpiringSoon(subItem.expiry_date) ? 'text-orange-600' : ''}`}>
-                                                    {new Date(subItem.expiry_date).toLocaleDateString('th-TH')}
-                                                  </span>
-                                                ) : '-'}
-                                              </td>
-                                              <td className="px-3 py-2 text-center font-medium">{subItem.total_piece_qty.toLocaleString()}</td>
-                                              <td className="px-3 py-2 text-center font-medium">{subItem.total_pack_qty.toLocaleString()}</td>
-                                              <td className="px-3 py-2 text-center text-gray-500 text-[10px]">
-                                                {subItem.updated_at ? new Date(subItem.updated_at).toLocaleString('th-TH') : '-'}
-                                              </td>
-                                            </tr>
-                                          );
-                                        })}
-                                      </tbody>
-                                    </table>
-                                  </div>
-                                </td>
-                              </tr>
-                            )}
+                            {/* Removed expandable sub-items section since we're showing summary only */}
                           </Fragment>
                         );
                       })}
@@ -1946,6 +1827,24 @@ const InventoryBalancesPage = () => {
           locationId={selectedReservationBalance.location_id}
           totalReservedPack={selectedReservationBalance.reserved_pack_qty}
           totalReservedPiece={selectedReservationBalance.reserved_piece_qty}
+        />
+      )}
+
+      {/* Quick Adjust Modal */}
+      {selectedAdjustBalance && (
+        <QuickAdjustModal
+          isOpen={quickAdjustModalOpen}
+          onClose={() => {
+            setQuickAdjustModalOpen(false);
+            setSelectedAdjustBalance(null);
+          }}
+          onSuccess={handleAdjustSuccess}
+          warehouseId={selectedAdjustBalance.warehouse_id}
+          locationId={selectedAdjustBalance.location_id}
+          skuId={selectedAdjustBalance.sku_id}
+          skuName={selectedAdjustBalance.sku_name || (selectedAdjustBalance as any).master_sku?.sku_name}
+          currentPieceQty={selectedAdjustBalance.total_piece_qty}
+          reservedPieceQty={selectedAdjustBalance.reserved_piece_qty}
         />
       )}
     </div>
