@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentSession, SessionData } from '@/lib/auth/session';
+import { getUserFromToken } from '@/lib/auth/simple-auth';
 
 type ApiHandler = (
   request: NextRequest,
-  context: { params?: any; user: SessionData }
+  context: { params?: any; user: any }
 ) => Promise<NextResponse>;
 
 interface WithAuthOptions {
@@ -21,37 +21,51 @@ export function withAuth(handler: ApiHandler, options: WithAuthOptions = {}) {
     // Skip auth if explicitly disabled (for gradual migration)
     if (options.skipAuth) {
       // เรียก handler เดิมโดยไม่ตรวจสอบ auth
-      const mockUser: SessionData = {
-        session_id: 'system',
+      const mockUser = {
         user_id: 1,
         username: 'system',
         email: 'system@localhost',
         full_name: 'System User',
         role_id: 1,
-        role_name: 'admin',
-        employee_id: null,
-        is_valid: true,
-        expires_in_seconds: 0,
-        last_activity_minutes_ago: 0
+        role_name: 'Super Admin',
+        employee_id: null
       };
       return handler(request, { ...context, user: mockUser });
     }
 
     try {
-      // ดึง session จาก cookie
-      const sessionResult = await getCurrentSession();
-
-      if (!sessionResult.success || !sessionResult.session) {
+      console.log('🔐 [withAuth] Checking authentication...');
+      
+      // Get token from cookie
+      const token = request.cookies.get('auth_token')?.value;
+      console.log('🍪 [withAuth] auth_token exists:', !!token);
+      
+      if (!token) {
+        console.log('❌ [withAuth] No token found in cookies');
         return NextResponse.json(
           { error: 'กรุณาเข้าสู่ระบบ', error_code: 'UNAUTHORIZED' },
           { status: 401 }
         );
       }
 
-      const session = sessionResult.session;
+      console.log('🔐 [withAuth] Verifying token...');
+      // Verify token and get user
+      const result = await getUserFromToken(token);
+      console.log('🔐 [withAuth] Token verification result:', { success: result.success, hasUser: !!result.user });
+      
+      if (!result.success || !result.user) {
+        console.log('❌ [withAuth] Token verification failed:', result.error);
+        return NextResponse.json(
+          { error: result.error || 'กรุณาเข้าสู่ระบบ', error_code: 'UNAUTHORIZED' },
+          { status: 401 }
+        );
+      }
+
+      const user = result.user;
+      console.log('✅ [withAuth] User authenticated:', user.email);
 
       // ตรวจสอบ role ถ้าระบุ
-      if (options.allowedRoles && !options.allowedRoles.includes(session.role_id)) {
+      if (options.allowedRoles && !options.allowedRoles.includes(user.role_id)) {
         return NextResponse.json(
           { error: 'คุณไม่มีสิทธิ์ใช้งานฟังก์ชันนี้', error_code: 'FORBIDDEN' },
           { status: 403 }
@@ -59,7 +73,7 @@ export function withAuth(handler: ApiHandler, options: WithAuthOptions = {}) {
       }
 
       // ✅ เรียก handler เดิมพร้อม user context
-      return handler(request, { ...context, user: session });
+      return handler(request, { ...context, user });
 
     } catch (error) {
       console.error('[withAuth] Error:', error);
