@@ -316,131 +316,14 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // Update inventory balance location for all records
-    // Handle duplicate key by trying update first, then merge if conflict
-    // Unique constraint v2: warehouse_id, location_id, sku_id, pallet_id, pallet_id_external, lot_no, production_date, expiry_date
-    for (const balance of balanceRecords) {
-      // First attempt: Try to update location directly
-      const { error: updateError } = await supabase
-        .from('wms_inventory_balances')
-        .update({ location_id: to_location_id })
-        .eq('balance_id', balance.balance_id)
-
-      // If duplicate key error, find the conflicting balance and merge
-      if (updateError && updateError.code === '23505') {
-        console.log('Duplicate key detected, finding matching balance to merge...')
-
-        // Find all balances at destination with same SKU and pallet
-        // We need to match the exact constraint which uses COALESCE
-        const { data: candidates } = await supabase
-          .from('wms_inventory_balances')
-          .select('balance_id, total_piece_qty, total_pack_qty, pallet_id, pallet_id_external, lot_no, production_date, expiry_date')
-          .eq('warehouse_id', balance.warehouse_id)
-          .eq('location_id', to_location_id)
-          .eq('sku_id', balance.sku_id)
-          .neq('balance_id', balance.balance_id)
-
-        // Find the one that matches with COALESCE logic
-        const existingBalance = candidates?.find(c => {
-          const palletMatch = (c.pallet_id || '') === (balance.pallet_id || '')
-          const palletExtMatch = (c.pallet_id_external || '') === (balance.pallet_id_external || '')
-          const lotMatch = (c.lot_no || '') === (balance.lot_no || '')
-
-          // For dates, both null or both equal
-          const prodDateMatch = (c.production_date === balance.production_date) ||
-            (!c.production_date && !balance.production_date)
-          const expDateMatch = (c.expiry_date === balance.expiry_date) ||
-            (!c.expiry_date && !balance.expiry_date)
-
-          return palletMatch && palletExtMatch && lotMatch && prodDateMatch && expDateMatch
-        })
-
-        if (existingBalance) {
-          // Merge: Add qty to existing balance
-          const newPieceQty = (existingBalance.total_piece_qty || 0) + (balance.total_piece_qty || 0)
-          const newPackQty = (existingBalance.total_pack_qty || 0) + (balance.total_pack_qty || 0)
-
-          const { error: mergeError } = await supabase
-            .from('wms_inventory_balances')
-            .update({
-              total_piece_qty: newPieceQty,
-              total_pack_qty: newPackQty,
-              updated_at: new Date().toISOString()
-            })
-            .eq('balance_id', existingBalance.balance_id)
-
-          if (mergeError) {
-            console.error('Balance merge error:', mergeError)
-            return NextResponse.json(
-              { error: 'ไม่สามารถรวม balance ได้: ' + mergeError.message },
-              { status: 500 }
-            )
-          }
-
-          // Update any face_sheet_item_reservations that reference the source balance
-          // to point to the merged balance instead
-          await supabase
-            .from('face_sheet_item_reservations')
-            .update({ balance_id: existingBalance.balance_id })
-            .eq('balance_id', balance.balance_id)
-
-          // Also update bonus_face_sheet_item_reservations if exists
-          await supabase
-            .from('bonus_face_sheet_item_reservations')
-            .update({ balance_id: existingBalance.balance_id })
-            .eq('balance_id', balance.balance_id)
-
-          // Also update picklist_item_reservations if exists
-          await supabase
-            .from('picklist_item_reservations')
-            .update({ balance_id: existingBalance.balance_id })
-            .eq('balance_id', balance.balance_id)
-
-          // Delete source balance
-          const { error: deleteError } = await supabase
-            .from('wms_inventory_balances')
-            .delete()
-            .eq('balance_id', balance.balance_id)
-
-          if (deleteError) {
-            console.error('Balance delete error:', deleteError)
-            // If still can't delete due to other FK constraints, just set qty to 0
-            if (deleteError.code === '23503') {
-              console.log('Cannot delete balance due to FK constraint, setting qty to 0 instead')
-              await supabase
-                .from('wms_inventory_balances')
-                .update({
-                  total_piece_qty: 0,
-                  total_pack_qty: 0,
-                  updated_at: new Date().toISOString()
-                })
-                .eq('balance_id', balance.balance_id)
-            } else {
-              return NextResponse.json(
-                { error: 'ไม่สามารถลบ balance ต้นทางได้: ' + deleteError.message },
-                { status: 500 }
-              )
-            }
-          }
-
-          console.log(`Merged balance ${balance.balance_id} into ${existingBalance.balance_id}`)
-        } else {
-          // Couldn't find matching balance - this shouldn't happen
-          console.error('Duplicate key but no matching balance found:', updateError.details)
-          return NextResponse.json(
-            { error: 'เกิดข้อผิดพลาด: พบ duplicate key แต่ไม่พบ balance ที่ตรงกัน' },
-            { status: 500 }
-          )
-        }
-      } else if (updateError) {
-        // Other error
-        console.error('Balance update error:', updateError)
-        return NextResponse.json(
-          { error: 'ไม่สามารถอัปเดตตำแหน่งได้: ' + updateError.message },
-          { status: 500 }
-        )
-      }
-    }
+    // ✅ ไม่ต้อง UPDATE balance location โดยตรง
+    // ให้ trigger sync_inventory_ledger_to_balance จัดการเอง
+    // Trigger จะ:
+    // 1. ลบ balance ที่ from_location (OUT entry)
+    // 2. เพิ่ม balance ที่ to_location (IN entry)
+    // 
+    // หมายเหตุ: Balance จะถูกจัดการโดย trigger อัตโนมัติ
+    // ไม่ต้องทำอะไรเพิ่มเติมที่นี่
 
     return NextResponse.json({
       success: true,
