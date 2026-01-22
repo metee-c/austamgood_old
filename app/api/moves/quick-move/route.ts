@@ -142,24 +142,95 @@ export async function POST(request: NextRequest) {
     }
 
     // Use first record for SKU validation
-    const balanceData = balanceRecords[0]
-
-    // Validate picking home if not force move
     if (!force_move) {
-      const { data: skuData } = await supabase
-        .from('master_sku')
-        .select('default_location')
-        .eq('sku_id', balanceData.sku_id)
-        .single()
+      const { data: destinationLocation } = await supabaseAdmin
+        .from('master_location')
+        .select('location_id, location_code')
+        .eq('location_id', to_location_id)
+        .maybeSingle()
 
-      if (skuData && skuData.default_location && skuData.default_location !== to_location_id) {
-        return NextResponse.json(
-          {
-            error: `ตำแหน่งปลายทาง ${to_location_id} ไม่ใช่บ้านหยิบของ SKU นี้ (${skuData.default_location})`,
-            canForceMove: true
-          },
-          { status: 400 }
-        )
+      const destinationLocationCode = destinationLocation?.location_code || to_location_id
+
+      const { data: destPrepArea } = await supabaseAdmin
+        .from('preparation_area')
+        .select('area_id, area_code, area_name')
+        .eq('area_code', destinationLocationCode)
+        .maybeSingle()
+
+      if (destPrepArea) {
+        const { data: skuMappings } = await supabaseAdmin
+          .from('sku_preparation_area_mapping')
+          .select('sku_id, priority, is_primary')
+          .eq('preparation_area_id', destPrepArea.area_id)
+          .order('priority', { ascending: true })
+
+        let allowedSkus: string[] = (skuMappings || []).map((m: any) => m.sku_id)
+
+        if (allowedSkus.length === 0) {
+          const { data: skusByDefault } = await supabaseAdmin
+            .from('master_sku')
+            .select('sku_id')
+            .eq('default_location', destinationLocationCode)
+
+          allowedSkus = (skusByDefault || []).map((s: any) => s.sku_id)
+        }
+
+        const uniqueSkus = [...new Set(balanceRecords.map(b => b.sku_id).filter(Boolean))]
+
+        for (const skuId of uniqueSkus) {
+          const { data: skuHomeMapping } = await supabaseAdmin
+            .from('sku_preparation_area_mapping')
+            .select(`
+              sku_id,
+              priority,
+              is_primary,
+              preparation_area:preparation_area_id (
+                area_code,
+                area_name
+              )
+            `)
+            .eq('sku_id', skuId)
+            .order('is_primary', { ascending: false })
+            .order('priority', { ascending: true })
+            .limit(1)
+            .maybeSingle()
+
+          const prepArea = (skuHomeMapping as any)?.preparation_area
+          const mappedHomeCode = Array.isArray(prepArea) ? prepArea[0]?.area_code : prepArea?.area_code
+          const mappedHomeName = Array.isArray(prepArea) ? prepArea[0]?.area_name : prepArea?.area_name
+
+          let designatedHomeCode: string | null = mappedHomeCode || null
+
+          if (!designatedHomeCode) {
+            const { data: skuData } = await supabaseAdmin
+              .from('master_sku')
+              .select('default_location')
+              .eq('sku_id', skuId)
+              .maybeSingle()
+
+            designatedHomeCode = skuData?.default_location || null
+          }
+
+          if (designatedHomeCode && designatedHomeCode !== destinationLocationCode) {
+            return NextResponse.json(
+              {
+                error: `ตำแหน่งปลายทาง ${destinationLocationCode} ไม่ใช่บ้านหยิบของ SKU นี้ (${designatedHomeCode}${mappedHomeName ? ` - ${mappedHomeName}` : ''})`,
+                canForceMove: true
+              },
+              { status: 400 }
+            )
+          }
+
+          if (!designatedHomeCode && allowedSkus.length > 0 && !allowedSkus.includes(skuId)) {
+            return NextResponse.json(
+              {
+                error: `ตำแหน่งปลายทาง ${destinationLocationCode} เป็นบ้านหยิบของสินค้าอื่น ไม่รองรับ SKU ${skuId}`,
+                canForceMove: true
+              },
+              { status: 400 }
+            )
+          }
+        }
       }
     }
 

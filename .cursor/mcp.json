@@ -1,7 +1,11 @@
 {
     "mcpServers": {
         "supabase": {
-            "url": "https://mcp.supabase.com/mcp?project_ref=iwlkslewdgenckuejbit"
+            "url": "https://mcp.supabase.com/mcp?project_ref=iwlkslewdgenckuejbit",
+            "env": {
+                "SUPABASE_SERVICE_ROLE_KEY": "sbp_2e93d33f0126da411a40c402cf66649c9a816344",
+                "NEXT_PUBLIC_SUPABASE_ANON_KEY": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml3bGtzbGV3ZGdlbmNrdWVqYml0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgwNzUwNjksImV4cCI6MjA3MzY1MTA2OX0.eD-XwISz_SUllwKnsm8PNuMbiDPJ-gfX8wYFncknVNo"
+            }
         }
     }
 }
