@@ -52,11 +52,12 @@ export async function POST(request: NextRequest) {
       )
     }
     
-    const employeeId = userResult.user.employee_id
+    // ✅ Use user_id (not employee_id) - FK points to master_system_user.user_id
+    const userId = userResult.user.user_id
 
-    if (!employeeId) {
+    if (!userId) {
       return NextResponse.json(
-        { error: 'Unauthorized - No employee linked to user' },
+        { error: 'Unauthorized - No user ID' },
         { status: 401 }
       )
     }
@@ -248,7 +249,7 @@ export async function POST(request: NextRequest) {
           status: 'completed',
           from_warehouse_id: warehouse_id,
           notes: notes || 'Quick move from misplaced inventory',
-          created_by: employeeId,
+          created_by: userId, // ✅ Use user_id
           completed_at: new Date().toISOString()
         })
         .select()
@@ -299,8 +300,8 @@ export async function POST(request: NextRequest) {
       confirmed_piece_qty: balance.total_piece_qty || 0,
       production_date: balance.production_date,
       expiry_date: balance.expiry_date,
-      created_by: employeeId,
-      ...(employeeId ? { executed_by: employeeId } : {}),
+      created_by: userId, // ✅ Use user_id
+      executed_by: userId, // ✅ Use user_id
       completed_at: new Date().toISOString()
     }))
 

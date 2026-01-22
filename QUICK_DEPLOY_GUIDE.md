@@ -9,7 +9,13 @@
 
 ## ⚡ Quick Steps (5 นาที)
 
-### 1. ตรวจสอบ ✅
+### 1. ตรวจสอบ Build ✅
+```bash
+npm run build
+```
+**Expected**: Exit Code: 0 (Build สำเร็จ)
+
+### 2. ตรวจสอบ Session Fix ✅
 ```bash
 node verify-session-fix.js
 ```
@@ -32,7 +38,7 @@ node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"
 
 ```bash
 git add .
-git commit -m "fix(auth): prevent session mixing on Vercel"
+git commit -m "fix(auth): prevent session mixing + fix build error"
 git push origin main
 ```
 

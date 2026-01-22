@@ -23,7 +23,7 @@ const filesToCheck = [
   'app/api/auth/login/route.ts',
   'lib/auth/simple-auth.ts',
   'app/api/auth/me/route.ts',
-  'middleware.ts'
+  'proxy.ts' // Changed from middleware.ts (merged into proxy.ts for Next.js 16)
 ];
 
 filesToCheck.forEach(file => {
@@ -134,33 +134,33 @@ meChecks.forEach(check => {
 console.log('');
 
 // ========================================
-// 5. ตรวจสอบ Middleware
+// 5. ตรวจสอบ Proxy (merged from middleware.ts)
 // ========================================
-console.log('🛡️  5. Checking Middleware...');
+console.log('🛡️  5. Checking Proxy Cache Headers...');
 
-const middlewareFile = fs.readFileSync('middleware.ts', 'utf8');
+const proxyFile = fs.readFileSync('proxy.ts', 'utf8');
 
-const middlewareChecks = [
+const proxyChecks = [
   {
-    name: 'Middleware function exists',
-    pattern: /export\s+function\s+middleware/
+    name: 'Proxy function exists',
+    pattern: /export\s+async\s+function\s+proxy/
   },
   {
-    name: 'API route matcher',
-    pattern: /matcher:\s*['"]\/api\/:path\*/
+    name: 'API route check',
+    pattern: /pathname\.startsWith\(['"]\/api\/['"]\)/
   },
   {
-    name: 'Cache-Control in middleware',
+    name: 'Cache-Control in proxy',
     pattern: /Cache-Control.*private.*no-cache/
   },
   {
-    name: 'Vary: Cookie in middleware',
+    name: 'Vary: Cookie in proxy',
     pattern: /Vary.*Cookie/
   }
 ];
 
-middlewareChecks.forEach(check => {
-  const passed = check.pattern.test(middlewareFile);
+proxyChecks.forEach(check => {
+  const passed = check.pattern.test(proxyFile);
   console.log(`   ${passed ? '✅' : '❌'} ${check.name}`);
   if (!passed) allPassed = false;
 });
