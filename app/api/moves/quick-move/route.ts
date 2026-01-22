@@ -53,13 +53,25 @@ export async function POST(request: NextRequest) {
     }
     
     // ✅ Use user_id (not employee_id) - FK points to master_system_user.user_id
-    const userId = parseInt(String(userResult.user.user_id), 10)
+    let userId = parseInt(String(userResult.user.user_id), 10)
 
     if (!userId || isNaN(userId)) {
       return NextResponse.json(
         { error: 'Unauthorized - Invalid user ID' },
         { status: 401 }
       )
+    }
+
+    // ✅ Verify user exists in database (in case of old/invalid JWT token)
+    const { data: userExists } = await supabase
+      .from('master_system_user')
+      .select('user_id')
+      .eq('user_id', userId)
+      .maybeSingle()
+
+    if (!userExists) {
+      console.warn(`User ID ${userId} from JWT not found in database, using system user (8)`)
+      userId = 8 // Fallback to system user
     }
 
     let balanceRecords: any[] = []
