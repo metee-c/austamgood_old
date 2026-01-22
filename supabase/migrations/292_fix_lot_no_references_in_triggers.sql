@@ -9,7 +9,7 @@
 CREATE OR REPLACE FUNCTION sync_inventory_ledger_to_balance()
 RETURNS TRIGGER AS $$
 DECLARE
-  v_balance_id UUID;
+  v_balance_id bigint;
   v_lookup_pallet_id TEXT;
   v_delta_pack_qty INTEGER;
   v_delta_piece_qty INTEGER;

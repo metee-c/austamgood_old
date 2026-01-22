@@ -298,6 +298,7 @@ export async function POST(request: NextRequest) {
     }
 
     // Insert move items for all balance records
+    console.log('DEBUG: move.move_id =', move.move_id, 'type:', typeof move.move_id)
     const moveItems = balanceRecords.map(balance => ({
       move_id: move.move_id,
       sku_id: balance.sku_id,

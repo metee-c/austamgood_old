@@ -13,7 +13,7 @@ AS $function$
 DECLARE
     v_item RECORD;
     v_ledger RECORD;
-    v_balance_id uuid;
+    v_balance_id bigint;
 BEGIN
     RAISE NOTICE 'Cleaning up inventory for receive_id: %', OLD.receive_id;
     
