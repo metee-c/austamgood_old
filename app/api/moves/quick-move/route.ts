@@ -53,11 +53,11 @@ export async function POST(request: NextRequest) {
     }
     
     // ✅ Use user_id (not employee_id) - FK points to master_system_user.user_id
-    const userId = userResult.user.user_id
+    const userId = parseInt(String(userResult.user.user_id), 10)
 
-    if (!userId) {
+    if (!userId || isNaN(userId)) {
       return NextResponse.json(
-        { error: 'Unauthorized - No user ID' },
+        { error: 'Unauthorized - Invalid user ID' },
         { status: 401 }
       )
     }
