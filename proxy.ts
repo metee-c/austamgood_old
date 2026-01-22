@@ -33,10 +33,21 @@ export async function proxy(request: NextRequest) {
 
   console.log(`🔍 [PROXY] Request: ${pathname}`);
 
-  // Skip authentication for all /api/auth/* routes
-  if (pathname.startsWith('/api/auth/')) {
-    console.log(`✅ [PROXY] Skipping auth for API route: ${pathname}`);
-    return NextResponse.next();
+  // ✅ CRITICAL: Prevent Vercel edge caching for all API routes (Session Mixing Fix)
+  if (pathname.startsWith('/api/')) {
+    const response = NextResponse.next();
+    response.headers.set('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+    response.headers.set('Pragma', 'no-cache');
+    response.headers.set('Expires', '0');
+    response.headers.set('Vary', 'Cookie'); // Tell CDN to vary by cookie
+    
+    // Skip authentication for /api/auth/* routes
+    if (pathname.startsWith('/api/auth/')) {
+      console.log(`✅ [PROXY] Skipping auth for API route: ${pathname}`);
+      return response;
+    }
+    
+    return response;
   }
 
   // Allow public routes
