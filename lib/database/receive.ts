@@ -501,7 +501,7 @@ export class ReceiveService {
         return { data: null, error: error.message };
       }
 
-      // Fetch current locations from inventory_balances for all pallet_ids
+      // Fetch destination locations from move_items for all pallet_ids
       if (data && data.length > 0) {
         // Collect all pallet_ids from all items
         const allPalletIds: string[] = [];
@@ -516,25 +516,47 @@ export class ReceiveService {
         });
 
         if (allPalletIds.length > 0) {
-          // Fetch current locations from inventory_balances
-          const { data: balanceData, error: balanceError } = await this.supabase
-            .from('wms_inventory_balances')
-            .select('pallet_id, location_id')
-            .in('pallet_id', allPalletIds);
+          // Fetch latest move destination for each pallet from wms_move_items
+          // Split into batches to avoid headers overflow error
+          const batchSize = 50;
+          const allMoveData: any[] = [];
+          
+          for (let i = 0; i < allPalletIds.length; i += batchSize) {
+            const batch = allPalletIds.slice(i, i + batchSize);
+            const { data: batchData, error: batchError } = await this.supabase
+              .from('wms_move_items')
+              .select('pallet_id, to_location_id, completed_at')
+              .in('pallet_id', batch)
+              .eq('status', 'completed')
+              .order('completed_at', { ascending: false });
+            
+            if (batchError) {
+              console.error('[Receive Service] Error fetching move data batch:', batchError);
+            } else if (batchData) {
+              allMoveData.push(...batchData);
+            }
+          }
 
-          if (!balanceError && balanceData) {
-            // Create a map of pallet_id -> current_location
-            const palletLocationMap = new Map<string, string>();
-            balanceData.forEach((balance: any) => {
-              palletLocationMap.set(balance.pallet_id, balance.location_id);
+          if (allMoveData.length > 0) {
+            console.log('[Receive Service] Move data fetched:', allMoveData.length, 'records');
+            
+            // Create a map of pallet_id -> latest to_location_id
+            const palletDestinationMap = new Map<string, string>();
+            allMoveData.forEach((move: any) => {
+              // Only set if not already set (since we ordered by completed_at desc, first one is latest)
+              if (!palletDestinationMap.has(move.pallet_id) && move.to_location_id) {
+                palletDestinationMap.set(move.pallet_id, move.to_location_id);
+              }
             });
 
-            // Fetch location codes for all unique locations
-            const uniqueLocations = [...new Set(balanceData.map((b: any) => b.location_id))];
+            console.log('[Receive Service] Pallet destination map size:', palletDestinationMap.size);
+
+            // Fetch location codes for all unique destination locations
+            const uniqueDestinations = [...new Set(Array.from(palletDestinationMap.values()))];
             const { data: locationData } = await this.supabase
               .from('master_location')
               .select('location_id, location_code')
-              .in('location_id', uniqueLocations);
+              .in('location_id', uniqueDestinations);
 
             const locationCodeMap = new Map<string, string>();
             if (locationData) {
@@ -543,20 +565,25 @@ export class ReceiveService {
               });
             }
 
-            // Add current_location to each item
+            console.log('[Receive Service] Location code map size:', locationCodeMap.size);
+
+            // Add destination location to each item
+            let updatedCount = 0;
             data.forEach((receive: any) => {
               if (receive.wms_receive_items) {
                 receive.wms_receive_items.forEach((item: any) => {
                   if (item.pallet_id) {
-                    const currentLocationId = palletLocationMap.get(item.pallet_id);
-                    if (currentLocationId && currentLocationId !== 'Receiving' && currentLocationId !== item.location_id) {
-                      item.current_location_id = currentLocationId;
-                      item.current_location_code = locationCodeMap.get(currentLocationId) || currentLocationId;
+                    const destinationLocationId = palletDestinationMap.get(item.pallet_id);
+                    if (destinationLocationId) {
+                      item.current_location_id = destinationLocationId;
+                      item.current_location_code = locationCodeMap.get(destinationLocationId) || destinationLocationId;
+                      updatedCount++;
                     }
                   }
                 });
               }
             });
+            console.log('[Receive Service] Updated', updatedCount, 'items with destination location');
           }
         }
       }

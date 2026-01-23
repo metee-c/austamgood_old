@@ -705,20 +705,40 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
 
   const skuIds = skus.map(s => s.sku_id);
 
-  // 2. ดึงยอดสต็อกรวมจากทุก location (แยก total และ available)
+  // 2. ดึงยอดสต็อกรวมจากคลังหลัก (ไม่รวม Preparation Areas)
   // ใช้ Chunking เพื่อหลีกเลี่ยง Limit Rows (Supabase/PostgREST default limit)
+  const { data: prepAreas } = await supabase
+    .from('preparation_area')
+    .select('area_code')
+    .eq('status', 'active');
+  
+  const excludeLocations = [
+    'Delivery-In-Progress',
+    'ADJ-LOSS',
+    'Dispatch',
+    'Expired',
+    'Return',
+    'Receiving',
+    'Repair',
+    ...(prepAreas?.map(p => p.area_code) || [])
+  ];
+
   const chunkSize = 20; // แบ่งทีละ 20 SKUs
   const balancePromises = [];
 
   for (let i = 0; i < skuIds.length; i += chunkSize) {
     const chunkSkus = skuIds.slice(i, i + chunkSize);
-    balancePromises.push(
-      supabase
-        .from('wms_inventory_balances')
-        .select('sku_id, total_piece_qty, reserved_piece_qty')
-        .in('sku_id', chunkSkus)
-        .limit(100000)
-    );
+    let query = supabase
+      .from('wms_inventory_balances')
+      .select('sku_id, total_piece_qty, reserved_piece_qty, location_id, pallet_id')
+      .in('sku_id', chunkSkus);
+    
+    // Exclude locations
+    excludeLocations.forEach(loc => {
+      query = query.neq('location_id', loc);
+    });
+    
+    balancePromises.push(query.limit(100000));
   }
 
   const balanceResults = await Promise.all(balancePromises);
@@ -731,17 +751,26 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
   });
 
   // รวมยอดสต็อกตาม SKU (แยก total และ available)
-  const stockBySkuId: Record<string, { total: number; available: number }> = {};
+  // นับเฉพาะ pallet_id ที่ไม่ซ้ำกัน เพราะพาเลทเดียวกันอาจถูกแยกไปหลายโลเคชั่น
+  const stockBySkuId: Record<string, { total: number; available: number; pallets: Set<string> }> = {};
+  
+  // นับสต็อกจากคลังหลัก (ไม่รวม prep areas)
   (balances || []).forEach(b => {
     const totalQty = Number(b.total_piece_qty || 0);
     const reservedQty = Number(b.reserved_piece_qty || 0);
     const availableQty = totalQty - reservedQty;
+    const palletId = b.pallet_id || `no_pallet_${b.location_id}_${b.sku_id}`;
 
     if (!stockBySkuId[b.sku_id]) {
-      stockBySkuId[b.sku_id] = { total: 0, available: 0 };
+      stockBySkuId[b.sku_id] = { total: 0, available: 0, pallets: new Set() };
     }
-    stockBySkuId[b.sku_id].total += totalQty;
-    stockBySkuId[b.sku_id].available += availableQty;
+    
+    // นับเฉพาะครั้งแรกที่เจอ pallet_id นี้
+    if (!stockBySkuId[b.sku_id].pallets.has(palletId)) {
+      stockBySkuId[b.sku_id].pallets.add(palletId);
+      stockBySkuId[b.sku_id].total += totalQty;
+      stockBySkuId[b.sku_id].available += availableQty;
+    }
   });
 
   // 3. ดึงข้อมูลการจ่ายสินค้า (ship) ย้อนหลัง 90 วัน

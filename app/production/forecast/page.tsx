@@ -57,8 +57,10 @@ interface ForecastSKU {
 
 interface BalanceDetail {
   id: number;
+  sku_name: string;
   location_code: string;
   location_name: string;
+  pallet_id: string;
   production_date: string | null;
   expiry_date: string | null;
   lot_no: string | null;
@@ -156,47 +158,28 @@ const ForecastPage = () => {
     try {
       setLoadingBalances(prev => new Set(prev).add(skuId));
 
-      // Import supabase client dynamically
-      const { createClient } = await import('@/lib/supabase/client');
-      const supabase = createClient();
+      // Use API endpoint instead of direct query
+      const response = await fetch(`/api/production/forecast/${skuId}`, {
+        cache: 'no-store'
+      });
 
-      // Query balance details directly
-      const { data: balances, error } = await supabase
-        .from('wms_inventory_balances')
-        .select(`
-          balance_id,
-          sku_id,
-          location_id,
-          production_date,
-          expiry_date,
-          lot_no,
-          total_piece_qty,
-          reserved_piece_qty,
-          master_location(
-            location_code,
-            location_name
-          )
-        `)
-        .eq('sku_id', skuId)
-        .gt('total_piece_qty', 0)
-        .order('expiry_date', { ascending: true, nullsFirst: false })
-        .order('production_date', { ascending: true, nullsFirst: false });
-
-      if (error) {
-        throw error;
+      if (!response.ok) {
+        throw new Error('Failed to fetch balance details');
       }
 
-      // Format the data
-      const formattedBalances = (balances || []).map((balance: any) => ({
-        id: balance.balance_id,
-        location_code: balance.master_location?.location_code || '-',
-        location_name: balance.master_location?.location_name || '-',
+      const result = await response.json();
+      const formattedBalances = (result.balances || []).map((balance: any) => ({
+        id: balance.id,
+        sku_name: balance.sku_name,
+        location_code: balance.location_code,
+        location_name: balance.location_name,
+        pallet_id: balance.pallet_id,
         production_date: balance.production_date,
         expiry_date: balance.expiry_date,
         lot_no: balance.lot_no,
-        piece_qty: balance.total_piece_qty,
-        reserved_piece_qty: balance.reserved_piece_qty || 0,
-        available_qty: balance.total_piece_qty - (balance.reserved_piece_qty || 0),
+        piece_qty: balance.piece_qty,
+        reserved_piece_qty: balance.reserved_piece_qty,
+        available_qty: balance.available_qty,
       }));
 
       setBalanceDetails(prev => ({
@@ -1422,43 +1405,30 @@ const ForecastPage = () => {
                                   </div>
                                 ) : (
                                   <div className="px-4 py-2">
-                                    {/* Group balances by production_date + expiry_date */}
+                                    {/* แสดงรายละเอียดแต่ละโลเคชั่น */}
                                     {(() => {
-                                      const grouped = balances.reduce((acc, balance) => {
-                                        const key = `${balance.production_date || 'null'}_${balance.expiry_date || 'null'}`;
-                                        if (!acc[key]) {
-                                          acc[key] = {
-                                            production_date: balance.production_date,
-                                            expiry_date: balance.expiry_date,
-                                            piece_qty: 0,
-                                            reserved_piece_qty: 0,
-                                            available_qty: 0,
-                                          };
-                                        }
-                                        acc[key].piece_qty += balance.piece_qty;
-                                        acc[key].reserved_piece_qty += balance.reserved_piece_qty;
-                                        acc[key].available_qty += balance.available_qty;
-                                        return acc;
-                                      }, {} as Record<string, { production_date: string | null; expiry_date: string | null; piece_qty: number; reserved_piece_qty: number; available_qty: number }>);
-                                      
-                                      const groupedBalances = Object.values(grouped).sort((a, b) => {
-                                        // Sort by expiry_date first, then production_date
+                                      // Sort by expiry_date, production_date, location
+                                      const sortedBalances = [...balances].sort((a, b) => {
                                         const expA = a.expiry_date || '9999-12-31';
                                         const expB = b.expiry_date || '9999-12-31';
                                         if (expA !== expB) return expA.localeCompare(expB);
                                         const prodA = a.production_date || '9999-12-31';
                                         const prodB = b.production_date || '9999-12-31';
-                                        return prodA.localeCompare(prodB);
+                                        if (prodA !== prodB) return prodA.localeCompare(prodB);
+                                        return (a.location_code || '').localeCompare(b.location_code || '');
                                       });
 
                                       return (
                                         <>
                                           <div className="text-xs font-semibold text-gray-700 mb-2 font-thai">
-                                            รายละเอียดสต็อกตามวันผลิต/หมดอายุ ({groupedBalances.length} รายการ)
+                                            รายละเอียดสต็อก: {balances[0]?.sku_name || record.sku_name} ({sortedBalances.length} โลเคชั่น)
                                           </div>
                                           <table className="w-full text-[10px] border border-gray-200">
                                             <thead className="bg-gray-100">
                                               <tr>
+                                                <th className="px-2 py-1 text-left border-r border-gray-200 font-thai">ชื่อสินค้า</th>
+                                                <th className="px-2 py-1 text-left border-r border-gray-200 font-thai">โลเคชั่น</th>
+                                                <th className="px-2 py-1 text-left border-r border-gray-200 font-thai">พาเลท ID</th>
                                                 <th className="px-2 py-1 text-center border-r border-gray-200 font-thai">วันผลิต</th>
                                                 <th className="px-2 py-1 text-center border-r border-gray-200 font-thai">วันหมดอายุ</th>
                                                 <th className="px-2 py-1 text-center border-r border-gray-200 font-thai">จำนวน (ถุง)</th>
@@ -1468,8 +1438,28 @@ const ForecastPage = () => {
                                               </tr>
                                             </thead>
                                             <tbody className="bg-white">
-                                              {groupedBalances.map((balance, idx) => (
-                                                <tr key={idx} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                              {sortedBalances.map((balance, idx) => (
+                                                <tr key={balance.id} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                                                  <td className="px-2 py-1 text-left border-r border-gray-200">
+                                                    <div className="text-[10px] text-gray-700 font-thai font-medium">
+                                                      {balance.sku_name}
+                                                    </div>
+                                                  </td>
+                                                  <td className="px-2 py-1 text-left border-r border-gray-200">
+                                                    <span className="font-mono text-xs font-semibold text-gray-700">
+                                                      {balance.location_code}
+                                                    </span>
+                                                    {balance.location_name !== balance.location_code && (
+                                                      <div className="text-[9px] text-gray-500 font-thai">
+                                                        {balance.location_name}
+                                                      </div>
+                                                    )}
+                                                  </td>
+                                                  <td className="px-2 py-1 text-left border-r border-gray-200">
+                                                    <span className="font-mono text-[9px] text-gray-600">
+                                                      {balance.pallet_id}
+                                                    </span>
+                                                  </td>
                                                   <td className="px-2 py-1 text-center border-r border-gray-200">
                                                     {balance.production_date
                                                       ? new Date(balance.production_date).toLocaleDateString('th-TH', {

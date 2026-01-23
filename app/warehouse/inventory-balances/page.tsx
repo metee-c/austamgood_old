@@ -112,8 +112,16 @@ const InventoryBalancesPage = () => {
     expiry_date?: string;
     location_type?: string;
   }
-  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>({});
-  const [tempAdvancedFilters, setTempAdvancedFilters] = useState<AdvancedFilters>({});
+  // Initialize advanced filters from URL params
+  const initialAdvancedFilters: AdvancedFilters = {};
+  if (searchParams.get('production_date')) {
+    initialAdvancedFilters.production_date = searchParams.get('production_date') || undefined;
+  }
+  if (searchParams.get('expiry_date')) {
+    initialAdvancedFilters.expiry_date = searchParams.get('expiry_date') || undefined;
+  }
+  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>(initialAdvancedFilters);
+  const [tempAdvancedFilters, setTempAdvancedFilters] = useState<AdvancedFilters>(initialAdvancedFilters);
 
   // Warehouses for filter
   const [warehouses, setWarehouses] = useState<any[]>([]);
@@ -513,14 +521,15 @@ const InventoryBalancesPage = () => {
     return { zones: sortedZones, groups: zoneGroups };
   }, [masterLocations, balanceData, preparationAreaCodes, selectedWarehouse, selectedZone, showEmptyLocations, showLowStock, showExpiringSoon, advancedFilters]);
 
-  // Auto-expand zones when filters are applied
+  // Auto-expand zones when filters are applied or when coming from URL params
   useEffect(() => {
     const hasActiveFilters = Object.keys(advancedFilters).some(k => advancedFilters[k as keyof AdvancedFilters]);
-    if (hasActiveFilters || showLowStock || showExpiringSoon) {
-      // Auto-expand all zones when filtering
+    const hasUrlParams = searchParams.get('sku') || searchParams.get('production_date') || searchParams.get('expiry_date');
+    if (hasActiveFilters || showLowStock || showExpiringSoon || hasUrlParams) {
+      // Auto-expand all zones when filtering or coming from URL
       setExpandedZones(new Set(groupedByZone.zones));
     }
-  }, [advancedFilters, showLowStock, showExpiringSoon, groupedByZone.zones]);
+  }, [advancedFilters, showLowStock, showExpiringSoon, groupedByZone.zones, searchParams]);
 
   // Calculate totals
   const totals = useMemo(() => {

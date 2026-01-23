@@ -47,7 +47,8 @@ import {
   Factory,
   ClipboardCheck,
   PackageCheck,
-  Upload
+  Upload,
+  TrendingUp
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -76,6 +77,12 @@ const menuItems = [
         icon: ClipboardCheck,
         label: 'วางแผนผลิต',
         englishLabel: 'Production Planning'
+      },
+      {
+        path: '/production/forecast',
+        icon: TrendingUp,
+        label: 'ยอดประมาณการณ์',
+        englishLabel: 'Forecast'
       },
       {
         path: '/production/orders',

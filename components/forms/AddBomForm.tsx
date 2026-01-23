@@ -185,6 +185,9 @@ const AddBomForm: React.FC<AddBomFormProps> = ({
             <p className="text-sm text-thai-gray-600 font-thai">
               กรอกข้อมูล Bill of Materials สำหรับการผลิต
             </p>
+            <p className="text-xs text-thai-gray-500 font-thai mt-1">
+              หมายเหตุ: ปริมาณวัตถุดิบคือปริมาณต่อการผลิตสินค้าสำเร็จรูป 1 หน่วย
+            </p>
           </div>
         </div>
 
@@ -210,8 +213,11 @@ const AddBomForm: React.FC<AddBomFormProps> = ({
                 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
                 text-sm font-thai
               "
-              placeholder="เช่น BOM001"
+              placeholder="เช่น BOM-B-BEY-C|MNB|010-FOOD"
             />
+            <p className="text-xs text-thai-gray-500 font-thai mt-1">
+              <strong>สูตรใหม่:</strong> ตั้งรหัสใหม่ (เช่น BOM-[SKU]-FOOD) | <strong>เพิ่มวัตถุดิบในสูตรเดิม:</strong> ใช้รหัส BOM เดิม
+            </p>
             {errors.bom_id && (
               <p className="text-red-500 text-xs font-thai mt-1">{errors.bom_id.message}</p>
             )}
@@ -233,6 +239,9 @@ const AddBomForm: React.FC<AddBomFormProps> = ({
               placeholder="1"
               min="1"
             />
+            <p className="text-xs text-thai-gray-500 font-thai mt-1">
+              ลำดับกระบวนการผลิต (1, 2, 3...) หากมีขั้นตอนเดียวให้ใช้ 1
+            </p>
             {errors.step_order && (
               <p className="text-red-500 text-xs font-thai mt-1">{errors.step_order.message}</p>
             )}
@@ -244,6 +253,9 @@ const AddBomForm: React.FC<AddBomFormProps> = ({
           <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
             สินค้าสำเร็จรูป *
           </label>
+          <p className="text-xs text-thai-gray-500 font-thai mb-2">
+            SKU ของสินค้าที่ต้องการผลิต (เช่น B-BEY-C|MNB|010, TT-BEY-C|SAL|0005)
+          </p>
           <div className="relative">
             <div className="flex space-x-2">
               <input
@@ -293,6 +305,9 @@ const AddBomForm: React.FC<AddBomFormProps> = ({
           <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
             วัตถุดิบ *
           </label>
+          <p className="text-xs text-thai-gray-500 font-thai mb-2">
+            SKU ของวัตถุดิบที่ใช้ในสูตร (เช่น 00-BEY-C|MNB|20=อาหาร, 01-BEY-C|MNB|010=ถุง, 02-BEYOND-ALL|119=สติ๊กเกอร์)
+          </p>
           <div className="relative">
             <div className="flex space-x-2">
               <input
@@ -343,6 +358,9 @@ const AddBomForm: React.FC<AddBomFormProps> = ({
             <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
               ปริมาณวัตถุดิบ *
             </label>
+            <p className="text-xs text-thai-gray-500 font-thai mb-2">
+              ปริมาณวัตถุดิบที่ใช้ต่อการผลิตสินค้าสำเร็จรูป 1 หน่วย
+            </p>
             <input
               type="number"
               step="0.001"
@@ -364,6 +382,9 @@ const AddBomForm: React.FC<AddBomFormProps> = ({
             <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
               หน่วยวัด *
             </label>
+            <p className="text-xs text-thai-gray-500 font-thai mb-2">
+              ระบบเติมให้อัตโนมัติจาก SKU (ส่วนใหญ่ใช้ "ชิ้น" หรือ "ถุง")
+            </p>
             <input
               type="text"
               {...register('material_uom')}
@@ -372,7 +393,7 @@ const AddBomForm: React.FC<AddBomFormProps> = ({
                 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
                 text-sm font-thai
               "
-              placeholder="กก., ลิตร, ชิ้น"
+              placeholder="ชิ้น, ถุง"
             />
             {errors.material_uom && (
               <p className="text-red-500 text-xs font-thai mt-1">{errors.material_uom.message}</p>
@@ -386,6 +407,9 @@ const AddBomForm: React.FC<AddBomFormProps> = ({
             <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
               ชื่อขั้นตอน
             </label>
+            <p className="text-xs text-thai-gray-500 font-thai mb-2">
+              ชื่อขั้นตอนการผลิต (ไม่บังคับ) เช่น "วัตถุดิบอาหาร", "ถุง", "สติ๊กเกอร์"
+            </p>
             <input
               type="text"
               {...register('step_name')}
@@ -394,7 +418,7 @@ const AddBomForm: React.FC<AddBomFormProps> = ({
                 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
                 text-sm font-thai
               "
-              placeholder="เช่น แพ็ค, ติดสติกเกอร์"
+              placeholder="วัตถุดิบอาหาร, ถุง, สติ๊กเกอร์, สินค้า"
             />
           </div>
 
@@ -402,6 +426,9 @@ const AddBomForm: React.FC<AddBomFormProps> = ({
             <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
               ปริมาณเสีย/Loss
             </label>
+            <p className="text-xs text-thai-gray-500 font-thai mb-2">
+              ปริมาณสูญเสียในกระบวนการผลิต (ไม่บังคับ) ส่วนใหญ่ใช้ 0
+            </p>
             <input
               type="number"
               step="0.001"
@@ -422,6 +449,9 @@ const AddBomForm: React.FC<AddBomFormProps> = ({
           <label className="block text-sm font-medium text-thai-gray-700 font-thai mb-2">
             รายละเอียดขั้นตอน
           </label>
+          <p className="text-xs text-thai-gray-500 font-thai mb-2">
+            รายละเอียดเพิ่มเติมของขั้นตอน (ไม่บังคับ)
+          </p>
           <textarea
             {...register('step_description')}
             rows={3}
@@ -430,7 +460,7 @@ const AddBomForm: React.FC<AddBomFormProps> = ({
               focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
               text-sm font-thai resize-none
             "
-            placeholder="อธิบายรายละเอียดของขั้นตอนการผลิต..."
+            placeholder="อธิบายรายละเอียดของขั้นตอนการผลิต... (ไม่บังคับ)"
           />
         </div>
 

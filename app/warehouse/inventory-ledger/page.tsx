@@ -332,22 +332,22 @@ const InventoryLedgerPage = () => {
         .from('wms_inventory_ledger')
         .select(`
           *,
-          master_location!location_id (
+          master_location (
             location_name
           ),
-          master_sku!sku_id (
+          master_sku (
             sku_name,
             weight_per_piece_kg
           ),
-          wms_move_items!move_item_id (
+          wms_move_items (
             parent_pallet_id,
             new_pallet_id
           ),
-          master_system_user!created_by (
+          master_system_user (
             username,
             full_name
           ),
-          wms_orders!order_id (
+          wms_orders (
             order_no
           )
         `)
@@ -403,14 +403,14 @@ const InventoryLedgerPage = () => {
           .from('wms_inventory_ledger')
           .select(`
             *,
-            master_location!location_id (
+            master_location (
               location_name
             ),
-            master_sku!sku_id (
+            master_sku (
               sku_name,
               weight_per_piece_kg
             ),
-            master_system_user!created_by (
+            master_system_user (
               username,
               full_name
             )
