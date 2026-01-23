@@ -151,6 +151,9 @@ const InventoryBalancesPage = () => {
   useEffect(() => {
     if (preparationAreaCodes.length >= 0 && masterLocations.length > 0) {
       console.log('[Inventory Balances] Initial data load triggered');
+      console.log('[Inventory Balances] Current searchTerm:', searchTerm);
+      console.log('[Inventory Balances] Current debouncedSearchTerm:', debouncedSearchTerm);
+      console.log('[Inventory Balances] Current advancedFilters:', advancedFilters);
       fetchBalanceData();
     }
   }, [preparationAreaCodes.length, masterLocations.length]);
@@ -159,6 +162,9 @@ const InventoryBalancesPage = () => {
   useEffect(() => {
     if (preparationAreaCodes.length >= 0 && masterLocations.length > 0) {
       console.log('[Inventory Balances] Filter change triggered');
+      console.log('[Inventory Balances] Current searchTerm:', searchTerm);
+      console.log('[Inventory Balances] Current debouncedSearchTerm:', debouncedSearchTerm);
+      console.log('[Inventory Balances] Current advancedFilters:', advancedFilters);
       fetchBalanceData();
     }
   }, [debouncedSearchTerm, selectedWarehouse, selectedZone, JSON.stringify(advancedFilters)]);
@@ -290,7 +296,7 @@ const InventoryBalancesPage = () => {
         if (matchingSkuIds.length > 0) {
           const encodedIds = matchingSkuIds.map(id => `"${id}"`).join(',');
           dataQuery = dataQuery.filter('sku_id', 'in', `(${encodedIds})`);
-        } else if (debouncedSearchTerm) {
+        } else if (debouncedSearchTerm && !Object.keys(advancedFilters).some(k => advancedFilters[k as keyof AdvancedFilters])) {
           const hasSpecialChars = /[|,()\\]/.test(debouncedSearchTerm);
           if (!hasSpecialChars) {
             const conditions = [
@@ -399,6 +405,7 @@ const InventoryBalancesPage = () => {
 
   // Apply advanced filters
   const applyFilters = () => {
+    // ไม่ reset searchTerm เมื่อใช้ตัวกรองขั้นสูง
     setAdvancedFilters(tempAdvancedFilters);
     setShowFilters(false);
   };
@@ -465,6 +472,26 @@ const InventoryBalancesPage = () => {
       const matchesLowStock = !showLowStock || (balance.total_piece_qty - balance.reserved_piece_qty) <= 10;
       const matchesExpiring = !showExpiringSoon || isExpiringSoon(balance.expiry_date);
       
+      // Apply search filter from debouncedSearchTerm
+      let matchesSearch = true;
+      if (debouncedSearchTerm) {
+        const hasSpecialChars = /[|,()\\]/.test(debouncedSearchTerm);
+        if (!hasSpecialChars) {
+          const searchLower = debouncedSearchTerm.toLowerCase();
+          const matchesSku = balance.sku_id.toLowerCase().includes(searchLower);
+          const matchesLot = balance.lot_no?.toLowerCase().includes(searchLower) || false;
+          const matchesPallet = balance.pallet_id?.toLowerCase().includes(searchLower) || false;
+          const matchesPalletExternal = balance.pallet_id_external?.toLowerCase().includes(searchLower) || false;
+          const matchesSkuName = (balance as any).master_sku?.sku_name?.toLowerCase().includes(searchLower) || false;
+          matchesSearch = matchesSku || matchesLot || matchesPallet || matchesPalletExternal || matchesSkuName;
+          
+          // Debug: Log filtering results
+          if (!matchesSearch) {
+            console.log(`[Filter Debug] Excluded balance: ${balance.sku_id}, pallet: ${balance.pallet_id}, search: "${debouncedSearchTerm}"`);
+          }
+        }
+      }
+      
       // Apply advanced filters for balance items
       let matchesAdvanced = true;
       if (advancedFilters.sku_id && !matchesMultiValue(balance.sku_id, advancedFilters.sku_id)) matchesAdvanced = false;
@@ -476,7 +503,7 @@ const InventoryBalancesPage = () => {
       }
       if (advancedFilters.lot_no && !matchesMultiValue(balance.lot_no, advancedFilters.lot_no)) matchesAdvanced = false;
       
-      if (matchesLowStock && matchesExpiring && matchesAdvanced) {
+      if (matchesLowStock && matchesExpiring && matchesAdvanced && matchesSearch) {
         balancesByLocation.get(locId)!.push(balance);
       }
     });
@@ -519,7 +546,7 @@ const InventoryBalancesPage = () => {
     });
 
     return { zones: sortedZones, groups: zoneGroups };
-  }, [masterLocations, balanceData, preparationAreaCodes, selectedWarehouse, selectedZone, showEmptyLocations, showLowStock, showExpiringSoon, advancedFilters]);
+  }, [masterLocations, balanceData, preparationAreaCodes, selectedWarehouse, selectedZone, showEmptyLocations, showLowStock, showExpiringSoon, advancedFilters, debouncedSearchTerm]);
 
   // Auto-expand zones when filters are applied or when coming from URL params
   useEffect(() => {
