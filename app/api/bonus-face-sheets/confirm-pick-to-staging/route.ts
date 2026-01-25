@@ -527,22 +527,46 @@ async function handlePost(request: NextRequest, context: any) {
       }
     }
 
-    // 8. Clear storage_location from packages ที่มี trip_number (mark as moved to staging)
-    // ✅ FIX: เพิ่ม logging และ error handling
-    console.log(`📦 Clearing storage_location for ${packageIds.length} packages: ${packageIds.join(', ')}`);
+    // 8. Update storage_location to MRTD/PQTD based on original location
+    // ✅ FIX: ตั้ง storage_location เป็น MRTD/PQTD แทน null เพื่อให้ tracking ได้
+    console.log(`📦 Updating storage_location for ${packages.length} packages to staging locations`);
     
-    const { error: updatePkgError, count: updatedCount } = await supabase
-      .from('bonus_face_sheet_packages')
-      .update({ 
-        storage_location: null,
-        updated_at: now
-      })
-      .in('id', packageIds);
-
-    if (updatePkgError) {
-      console.error('❌ Error clearing storage_location:', updatePkgError);
-    } else {
-      console.log(`✅ Cleared storage_location for packages`);
+    // Group packages by staging location
+    const pqPackageIds = packages.filter(p => p.storage_location?.startsWith('PQ')).map(p => p.id);
+    const mrPackageIds = packages.filter(p => p.storage_location?.startsWith('MR')).map(p => p.id);
+    
+    // Update PQ packages to PQTD
+    if (pqPackageIds.length > 0) {
+      const { error: pqError } = await supabase
+        .from('bonus_face_sheet_packages')
+        .update({ 
+          storage_location: 'PQTD',
+          updated_at: now
+        })
+        .in('id', pqPackageIds);
+      
+      if (pqError) {
+        console.error('❌ Error updating PQ packages to PQTD:', pqError);
+      } else {
+        console.log(`✅ Updated ${pqPackageIds.length} packages to PQTD`);
+      }
+    }
+    
+    // Update MR packages to MRTD
+    if (mrPackageIds.length > 0) {
+      const { error: mrError } = await supabase
+        .from('bonus_face_sheet_packages')
+        .update({ 
+          storage_location: 'MRTD',
+          updated_at: now
+        })
+        .in('id', mrPackageIds);
+      
+      if (mrError) {
+        console.error('❌ Error updating MR packages to MRTD:', mrError);
+      } else {
+        console.log(`✅ Updated ${mrPackageIds.length} packages to MRTD`);
+      }
     }
 
     console.log(`✅ Moved ${totalMoved} pieces to staging locations from ${bonusFaceSheets.length} BFS`);

@@ -17,7 +17,8 @@ import {
   MapPin,
   FileText,
   PackageSearch,
-  Trash2
+  Trash2,
+  ClipboardList
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
@@ -144,6 +145,14 @@ const BonusFaceSheetsPage = () => {
   const [viewMode, setViewMode] = useState<'summary' | 'packages'>('summary');
   const [packagesData, setPackagesData] = useState<PackageRow[]>([]);
   const [loadingPackages, setLoadingPackages] = useState(false);
+  
+  // ✅ State สำหรับนับสต็อก/ปรับสต็อก
+  const [showStockCountModal, setShowStockCountModal] = useState(false);
+  const [stockCountData, setStockCountData] = useState<any>(null);
+  const [loadingStockCount, setLoadingStockCount] = useState(false);
+  const [stockCountMode, setStockCountMode] = useState<'select' | 'count' | 'adjust'>('select');
+  const [selectedPackageIds, setSelectedPackageIds] = useState<number[]>([]);
+  const [adjustingStock, setAdjustingStock] = useState(false);
   
   // Check if current user can delete
   const canDelete = user?.email === 'metee.c@buzzpetsfood.com';
@@ -854,6 +863,226 @@ const BonusFaceSheetsPage = () => {
     }
   };
 
+  // ✅ Handler: เปิด modal นับสต็อก/ปรับสต็อก
+  const handleOpenStockCountModal = async () => {
+    setShowStockCountModal(true);
+    setStockCountMode('select');
+    setSelectedPackageIds([]);
+    setStockCountData(null);
+  };
+
+  // ✅ Handler: ดึงข้อมูล packages สำหรับนับสต็อก
+  const fetchStockCountData = async () => {
+    setLoadingStockCount(true);
+    try {
+      const response = await fetch('/api/bonus-face-sheets/stock-count');
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'ไม่สามารถดึงข้อมูลได้');
+      }
+
+      setStockCountData(result.data);
+    } catch (err: any) {
+      console.error('Error fetching stock count data:', err);
+      setError(err.message || 'ไม่สามารถดึงข้อมูลสต็อกได้');
+    } finally {
+      setLoadingStockCount(false);
+    }
+  };
+
+  // ✅ Handler: เลือก "นับสต็อก" - สร้างเอกสาร HTML สำหรับปริ้น
+  const handleStockCount = async () => {
+    setStockCountMode('count');
+    await fetchStockCountData();
+  };
+
+  // ✅ Handler: เลือก "ปรับสต็อก" - แสดงรายการให้เลือกติ๊ก
+  const handleStockAdjust = async () => {
+    setStockCountMode('adjust');
+    await fetchStockCountData();
+  };
+
+  // ✅ Handler: Toggle เลือก package สำหรับปรับออก
+  const handleTogglePackage = (packageId: number) => {
+    setSelectedPackageIds(prev => {
+      if (prev.includes(packageId)) {
+        return prev.filter(id => id !== packageId);
+      } else {
+        return [...prev, packageId];
+      }
+    });
+  };
+
+  // ✅ Handler: เลือกทั้งหมด
+  const handleSelectAllPackages = () => {
+    if (stockCountData?.packages) {
+      setSelectedPackageIds(stockCountData.packages.map((p: any) => p.id));
+    }
+  };
+
+  // ✅ Handler: ยกเลิกเลือกทั้งหมด
+  const handleDeselectAllPackages = () => {
+    setSelectedPackageIds([]);
+  };
+
+  // ✅ Handler: ยืนยันปรับสต็อก
+  const handleConfirmStockAdjust = async () => {
+    if (selectedPackageIds.length === 0) {
+      alert('กรุณาเลือก packages ที่ต้องการปรับออก');
+      return;
+    }
+
+    if (!confirm(`คุณแน่ใจหรือไม่ที่จะปรับสต็อกออก ${selectedPackageIds.length} แพ็ค?\n\nการปรับสต็อกจะย้ายสินค้าไปยัง Delivery-In-Progress`)) {
+      return;
+    }
+
+    setAdjustingStock(true);
+    try {
+      const response = await fetch('/api/bonus-face-sheets/stock-adjust', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          package_ids: selectedPackageIds,
+          reason: 'ปรับสต็อกจากการนับสต็อกจริง - แพ็คไม่อยู่ในคลัง'
+        })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'ไม่สามารถปรับสต็อกได้');
+      }
+
+      setSuccess(result.message);
+      setShowStockCountModal(false);
+      setSelectedPackageIds([]);
+      fetchBonusFaceSheets(); // Refresh list
+    } catch (err: any) {
+      console.error('Error adjusting stock:', err);
+      setError(err.message || 'เกิดข้อผิดพลาดในการปรับสต็อก');
+    } finally {
+      setAdjustingStock(false);
+    }
+  };
+
+  // ✅ Handler: พิมพ์ใบนับสต็อก
+  const handlePrintStockCount = (zone: 'PQ' | 'MR' | 'ALL') => {
+    if (!stockCountData?.packages || stockCountData.packages.length === 0) {
+      alert('ไม่มีข้อมูลสำหรับพิมพ์');
+      return;
+    }
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('ไม่สามารถเปิดหน้าต่างพิมพ์ได้ กรุณาอนุญาต popup');
+      return;
+    }
+
+    // กรอง packages ตาม zone
+    let packages = stockCountData.packages;
+    let zoneLabel = 'ทั้งหมด';
+    
+    if (zone === 'PQ') {
+      packages = stockCountData.packages.filter((p: any) => p.storage_location?.startsWith('PQ'));
+      zoneLabel = 'โซน PQ (PQ01-PQ10, PQTD)';
+    } else if (zone === 'MR') {
+      packages = stockCountData.packages.filter((p: any) => p.storage_location?.startsWith('MR'));
+      zoneLabel = 'โซน MR (MR01-MR10, MRTD)';
+    }
+
+    const summary = {
+      total_packages: packages.length,
+      pq_packages: packages.filter((p: any) => p.storage_location?.startsWith('PQ')).length,
+      mr_packages: packages.filter((p: any) => p.storage_location?.startsWith('MR')).length
+    };
+
+    const html = `
+      <!DOCTYPE html>
+      <html>
+      <head>
+        <meta charset="utf-8">
+        <title>ใบนับสต็อกของแถม ${zoneLabel} - ${new Date().toLocaleDateString('th-TH')}</title>
+        <style>
+          @page { size: A4; margin: 10mm; }
+          body { font-family: 'Sarabun', sans-serif; font-size: 11px; margin: 0; padding: 10px; }
+          h1 { font-size: 16px; text-align: center; margin-bottom: 10px; }
+          .summary { background: #f5f5f5; padding: 10px; margin-bottom: 15px; border-radius: 5px; }
+          .summary-row { display: flex; justify-content: space-between; margin-bottom: 5px; }
+          table { width: 100%; border-collapse: collapse; font-size: 10px; }
+          th, td { border: 1px solid #333; padding: 4px 6px; text-align: left; }
+          th { background: #e0e0e0; font-weight: bold; }
+          .check-col { width: 60px; text-align: center; }
+          .location-header { background: #d0d0d0; font-weight: bold; }
+          .print-date { text-align: right; font-size: 10px; margin-bottom: 10px; }
+          @media print {
+            .no-print { display: none; }
+          }
+        </style>
+      </head>
+      <body>
+        <h1>📦 ใบนับสต็อกของแถม - ${zoneLabel}</h1>
+        <div class="print-date">พิมพ์เมื่อ: ${new Date().toLocaleString('th-TH')}</div>
+        
+        <div class="summary">
+          <div class="summary-row"><span>จำนวนแพ็คทั้งหมด:</span><strong>${summary.total_packages} แพ็ค</strong></div>
+          <div class="summary-row"><span>โซน PQ (PQ01-PQ10, PQTD):</span><strong>${summary.pq_packages} แพ็ค</strong></div>
+          <div class="summary-row"><span>โซน MR (MR01-MR10, MRTD):</span><strong>${summary.mr_packages} แพ็ค</strong></div>
+        </div>
+
+        <table>
+          <thead>
+            <tr>
+              <th class="check-col">✓ มี</th>
+              <th class="check-col">✗ ไม่มี</th>
+              <th>โลเคชั่น</th>
+              <th>เลข BFS</th>
+              <th>แพ็คที่</th>
+              <th>เลขออเดอร์</th>
+              <th>ร้านค้า</th>
+              <th>Hub</th>
+              <th>สินค้า</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${packages.map((pkg: any) => `
+              <tr>
+                <td class="check-col">☐</td>
+                <td class="check-col">☐</td>
+                <td><strong>${pkg.storage_location}</strong></td>
+                <td>${pkg.face_sheet_no}</td>
+                <td>${pkg.package_number}</td>
+                <td>${pkg.order_no || '-'}</td>
+                <td>${pkg.shop_name || '-'}</td>
+                <td>${pkg.hub || '-'}</td>
+                <td>${pkg.items?.map((item: any) => (item.product_code || item.sku_id) + ' x' + item.quantity).join(', ') || '-'}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+
+        <div style="margin-top: 30px; display: flex; justify-content: space-between;">
+          <div>
+            <p>ผู้นับ: ___________________</p>
+            <p>วันที่: ___________________</p>
+          </div>
+          <div>
+            <p>ผู้ตรวจสอบ: ___________________</p>
+            <p>วันที่: ___________________</p>
+          </div>
+        </div>
+
+        <script>
+          window.onload = function() { window.print(); }
+        </script>
+      </body>
+      </html>
+    `;
+
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
+
   return (
     <PageContainer>
       <PageHeaderWithFilters title="สร้างใบปะหน้าของแถม (Bonus Face Sheets)">
@@ -896,6 +1125,14 @@ const BonusFaceSheetsPage = () => {
             มุมมองแพ็ค
           </button>
         </div>
+        <Button
+          variant="primary"
+          className="text-xs py-1 px-2 bg-purple-500 hover:bg-purple-600"
+          onClick={handleOpenStockCountModal}
+        >
+          <ClipboardList className="w-3 h-3 mr-1" />
+          นับสต็อก
+        </Button>
         <Button
           variant="primary"
           className="text-xs py-1 px-2 bg-purple-500 hover:bg-purple-600"
@@ -992,21 +1229,19 @@ const BonusFaceSheetsPage = () => {
                           <Badge variant="default" size="sm">รอหยิบ</Badge>
                         )}
                       </td>
-                      {/* สถานะแพ็ค - ติดตามว่าแพ็คอยู่ในคลังหรือส่งออกแล้ว */}
+                      {/* สถานะแพ็ค - แสดงเป็น Badge (ไม่อนุญาตให้เปลี่ยนจาก UI) */}
                       <td className="px-4 py-3 text-xs whitespace-nowrap">
-                        <select
-                          className="w-full px-2 py-1 border border-gray-300 rounded text-xs font-thai text-gray-900 focus:outline-none focus:ring-1 focus:ring-purple-500 focus:border-purple-500 cursor-pointer"
-                          value={sheet.status}
-                          disabled={editingStatusId === sheet.id}
-                          onChange={(e) => handleStatusChange(sheet.id, e.target.value)}
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          {statusOptions.map((status) => (
-                            <option key={status.value} value={status.value}>
-                              {status.label}
-                            </option>
-                          ))}
-                        </select>
+                        {sheet.status === 'completed' ? (
+                          <Badge variant="success" size="sm">เสร็จสิ้น</Badge>
+                        ) : sheet.status === 'picking' ? (
+                          <Badge variant="warning" size="sm">กำลังหยิบ</Badge>
+                        ) : sheet.status === 'generated' ? (
+                          <Badge variant="info" size="sm">สร้างแล้ว</Badge>
+                        ) : sheet.status === 'cancelled' ? (
+                          <Badge variant="danger" size="sm">ยกเลิก</Badge>
+                        ) : (
+                          <Badge variant="default" size="sm">{sheet.status}</Badge>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-xs whitespace-nowrap">
                         {new Date(sheet.created_date).toLocaleDateString('th-TH', { year: '2-digit', month: '2-digit', day: '2-digit' })}
@@ -1767,6 +2002,240 @@ const BonusFaceSheetsPage = () => {
       </Modal>
 
       {/* Delete Loading Modal */}
+      {/* ✅ Modal นับสต็อก/ปรับสต็อก */}
+      <Modal
+        isOpen={showStockCountModal}
+        onClose={() => setShowStockCountModal(false)}
+        title="นับสต็อก / ปรับสต็อก ใบปะหน้าของแถม"
+        size="xl"
+      >
+        <div className="space-y-4">
+          {/* Mode Selection */}
+          {stockCountMode === 'select' && (
+            <div className="space-y-4">
+              <p className="text-sm text-gray-600">
+                เลือกการดำเนินการ:
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <button
+                  onClick={handleStockCount}
+                  className="p-4 border-2 border-blue-200 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors text-left"
+                >
+                  <div className="flex items-center space-x-3">
+                    <Printer className="w-8 h-8 text-blue-600" />
+                    <div>
+                      <h3 className="font-semibold text-gray-900">นับสต็อก</h3>
+                      <p className="text-xs text-gray-500">พิมพ์ใบนับสต็อกเพื่อไปเช็คของจริงในคลัง</p>
+                    </div>
+                  </div>
+                </button>
+                <button
+                  onClick={handleStockAdjust}
+                  className="p-4 border-2 border-orange-200 rounded-lg hover:border-orange-500 hover:bg-orange-50 transition-colors text-left"
+                >
+                  <div className="flex items-center space-x-3">
+                    <Package className="w-8 h-8 text-orange-600" />
+                    <div>
+                      <h3 className="font-semibold text-gray-900">ปรับสต็อก</h3>
+                      <p className="text-xs text-gray-500">เลือกแพ็คที่ไม่อยู่ในคลังเพื่อปรับออก</p>
+                    </div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Loading */}
+          {loadingStockCount && (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-8 h-8 animate-spin text-purple-600" />
+              <span className="ml-2 text-gray-600">กำลังโหลดข้อมูล...</span>
+            </div>
+          )}
+
+          {/* Count Mode - Show summary and print button */}
+          {stockCountMode === 'count' && !loadingStockCount && stockCountData && (
+            <div className="space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h3 className="font-semibold text-blue-800 mb-2">สรุปข้อมูลสต็อก</h3>
+                <div className="grid grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <span className="text-gray-600">แพ็คทั้งหมด:</span>
+                    <span className="ml-2 font-bold text-blue-700">{stockCountData.summary?.total_packages || 0}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">โซน PQ:</span>
+                    <span className="ml-2 font-bold text-green-700">{stockCountData.summary?.pq_packages || 0}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">โซน MR:</span>
+                    <span className="ml-2 font-bold text-orange-700">{stockCountData.summary?.mr_packages || 0}</span>
+                  </div>
+                </div>
+              </div>
+
+              {stockCountData.packages?.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <Package className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                  <p>ไม่มีแพ็คในพื้นที่จัดเก็บ</p>
+                </div>
+              ) : (
+                <div className="flex justify-between items-center">
+                  <Button
+                    variant="secondary"
+                    onClick={() => setStockCountMode('select')}
+                  >
+                    ย้อนกลับ
+                  </Button>
+                  <div className="flex space-x-2">
+                    <Button
+                      variant="primary"
+                      className="bg-green-600 hover:bg-green-700"
+                      onClick={() => handlePrintStockCount('PQ')}
+                      disabled={!stockCountData.summary?.pq_packages}
+                    >
+                      <Printer className="w-4 h-4 mr-1" />
+                      พิมพ์โซน PQ ({stockCountData.summary?.pq_packages || 0})
+                    </Button>
+                    <Button
+                      variant="primary"
+                      className="bg-orange-600 hover:bg-orange-700"
+                      onClick={() => handlePrintStockCount('MR')}
+                      disabled={!stockCountData.summary?.mr_packages}
+                    >
+                      <Printer className="w-4 h-4 mr-1" />
+                      พิมพ์โซน MR ({stockCountData.summary?.mr_packages || 0})
+                    </Button>
+                    <Button
+                      variant="primary"
+                      className="bg-blue-600 hover:bg-blue-700"
+                      onClick={() => handlePrintStockCount('ALL')}
+                    >
+                      <Printer className="w-4 h-4 mr-1" />
+                      พิมพ์ทั้งหมด
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Adjust Mode - Show list with checkboxes */}
+          {stockCountMode === 'adjust' && !loadingStockCount && stockCountData && (
+            <div className="space-y-4">
+              <div className="bg-orange-50 border border-orange-200 rounded-lg p-4">
+                <h3 className="font-semibold text-orange-800 mb-2">ปรับสต็อก - เลือกแพ็คที่ไม่อยู่ในคลัง</h3>
+                <p className="text-xs text-orange-600">
+                  เลือกแพ็คที่ไม่พบในคลังจริง ระบบจะย้ายสต็อกไปยัง Delivery-In-Progress
+                </p>
+              </div>
+
+              {stockCountData.packages?.length === 0 ? (
+                <div className="text-center py-8 text-gray-500">
+                  <Package className="w-12 h-12 mx-auto mb-2 text-gray-300" />
+                  <p>ไม่มีแพ็คในพื้นที่จัดเก็บ</p>
+                </div>
+              ) : (
+                <>
+                  {/* Select All / Deselect All */}
+                  <div className="flex items-center justify-between border-b pb-2">
+                    <span className="text-sm text-gray-600">
+                      เลือกแล้ว: <strong className="text-orange-600">{selectedPackageIds.length}</strong> / {stockCountData.packages?.length || 0} แพ็ค
+                    </span>
+                    <div className="space-x-2">
+                      <button
+                        onClick={handleSelectAllPackages}
+                        className="text-xs text-blue-600 hover:underline"
+                      >
+                        เลือกทั้งหมด
+                      </button>
+                      <button
+                        onClick={handleDeselectAllPackages}
+                        className="text-xs text-gray-600 hover:underline"
+                      >
+                        ยกเลิกทั้งหมด
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Package List */}
+                  <div className="max-h-96 overflow-y-auto border rounded-lg">
+                    <table className="min-w-full text-xs">
+                      <thead className="bg-gray-100 sticky top-0">
+                        <tr>
+                          <th className="px-2 py-2 text-center w-10">เลือก</th>
+                          <th className="px-2 py-2 text-left">โลเคชั่น</th>
+                          <th className="px-2 py-2 text-left">เลข BFS</th>
+                          <th className="px-2 py-2 text-center">แพ็คที่</th>
+                          <th className="px-2 py-2 text-left">เลขออเดอร์</th>
+                          <th className="px-2 py-2 text-left">ร้านค้า</th>
+                          <th className="px-2 py-2 text-left">Hub</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y">
+                        {stockCountData.packages?.map((pkg: any) => (
+                          <tr
+                            key={pkg.id}
+                            className={`hover:bg-gray-50 cursor-pointer ${
+                              selectedPackageIds.includes(pkg.id) ? 'bg-orange-50' : ''
+                            }`}
+                            onClick={() => handleTogglePackage(pkg.id)}
+                          >
+                            <td className="px-2 py-2 text-center">
+                              <input
+                                type="checkbox"
+                                checked={selectedPackageIds.includes(pkg.id)}
+                                onChange={() => handleTogglePackage(pkg.id)}
+                                className="w-4 h-4 text-orange-600 rounded"
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                            </td>
+                            <td className="px-2 py-2 font-semibold text-purple-600">{pkg.storage_location}</td>
+                            <td className="px-2 py-2">{pkg.face_sheet_no}</td>
+                            <td className="px-2 py-2 text-center">{pkg.package_number}</td>
+                            <td className="px-2 py-2">{pkg.order_no || '-'}</td>
+                            <td className="px-2 py-2 truncate max-w-32">{pkg.shop_name || '-'}</td>
+                            <td className="px-2 py-2">{pkg.hub || '-'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex justify-end space-x-2 pt-2">
+                    <Button
+                      variant="secondary"
+                      onClick={() => setStockCountMode('select')}
+                    >
+                      ย้อนกลับ
+                    </Button>
+                    <Button
+                      variant="primary"
+                      className="bg-orange-600 hover:bg-orange-700"
+                      onClick={handleConfirmStockAdjust}
+                      disabled={selectedPackageIds.length === 0 || adjustingStock}
+                    >
+                      {adjustingStock ? (
+                        <>
+                          <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                          กำลังปรับสต็อก...
+                        </>
+                      ) : (
+                        <>
+                          <Package className="w-4 h-4 mr-1" />
+                          ปรับสต็อกออก ({selectedPackageIds.length} แพ็ค)
+                        </>
+                      )}
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+      </Modal>
+
       <DeleteLoadingModal
         isOpen={!!deletingInfo}
         documentType="Bonus Face Sheet"

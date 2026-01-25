@@ -3,14 +3,14 @@
 
    Creating an optimized production build ...
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
- ✓ Compiled successfully in 16.1s
+ ✓ Compiled successfully in 11.9s
    Running TypeScript ...
    Collecting page data using 13 workers ...
-   Generating static pages using 13 workers (0/240) ...
-   Generating static pages using 13 workers (60/240) 
-   Generating static pages using 13 workers (120/240) 
-   Generating static pages using 13 workers (180/240) 
- ✓ Generating static pages using 13 workers (240/240) in 1592.9ms
+   Generating static pages using 13 workers (0/242) ...
+   Generating static pages using 13 workers (60/242) 
+   Generating static pages using 13 workers (120/242) 
+   Generating static pages using 13 workers (181/242) 
+ ✓ Generating static pages using 13 workers (242/242) in 3.3s
    Finalizing page optimization ...
 
 Route (app)
@@ -63,6 +63,8 @@ Route (app)
 ├ ƒ /api/bonus-face-sheets/packages
 ├ ƒ /api/bonus-face-sheets/pick-list
 ├ ƒ /api/bonus-face-sheets/print
+├ ƒ /api/bonus-face-sheets/stock-adjust
+├ ƒ /api/bonus-face-sheets/stock-count
 ├ ƒ /api/bonus-face-sheets/storage-placement
 ├ ƒ /api/bonus-face-sheets/trip-counts
 ├ ƒ /api/bonus-face-sheets/unloaded-packages

@@ -59,6 +59,25 @@ interface MasterLocation {
   active_status: string;
 }
 
+// BFS Package interfaces
+interface BFSPackageItem {
+  id: number;
+  sku_id: string;
+  sku_name: string | null;
+  quantity: number;
+}
+
+interface BFSPackageInfo {
+  id: number;
+  package_number: number;
+  storage_location: string;
+  order_no: string;
+  shop_name: string;
+  face_sheet_no: string;
+  face_sheet_id: number;
+  items: BFSPackageItem[];
+}
+
 // ลำดับความสำคัญของ zone (เรียงจากสำคัญมากไปน้อย)
 const ZONE_PRIORITY: Record<string, number> = {
   'Zone Selective Rack': 1,
@@ -133,10 +152,27 @@ const InventoryBalancesPage = () => {
   // Export state
   const [exporting, setExporting] = useState(false);
 
+  // BFS packages state
+  const [bfsPackagesByLocation, setBfsPackagesByLocation] = useState<Map<string, BFSPackageInfo[]>>(new Map());
+  const [expandedBFSPackages, setExpandedBFSPackages] = useState<Set<number>>(new Set());
+
+  const toggleBFSPackageExpansion = (packageId: number) => {
+    setExpandedBFSPackages(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(packageId)) {
+        newSet.delete(packageId);
+      } else {
+        newSet.add(packageId);
+      }
+      return newSet;
+    });
+  };
+
   useEffect(() => {
     fetchWarehouses();
     fetchPreparationAreas();
     fetchMasterLocations();
+    fetchBFSPackages();
   }, []);
 
   // Debounce search term
@@ -361,6 +397,149 @@ const InventoryBalancesPage = () => {
       console.error('Error:', err);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // ดึงข้อมูล BFS packages สำหรับ MR/PQ zones และ MRTD/PQTD
+  const fetchBFSPackages = async () => {
+    try {
+      const supabase = createClient();
+      
+      // 1. ดึง package IDs ที่ถูกโหลดไปแล้ว
+      const { data: loadedBfsLinks } = await supabase
+        .from('wms_loadlist_bonus_face_sheets')
+        .select('matched_package_ids, loaded_at')
+        .not('loaded_at', 'is', null);
+      
+      const loadedPackageIds = new Set<number>();
+      loadedBfsLinks?.forEach((link: any) => {
+        if (link.matched_package_ids && Array.isArray(link.matched_package_ids)) {
+          link.matched_package_ids.forEach((id: number) => loadedPackageIds.add(id));
+        }
+      });
+      console.log('[BFS] Loaded package IDs to exclude:', loadedPackageIds.size);
+      
+      // 2. ดึง packages ที่มี storage_location เป็น MR%/PQ% หรือ null
+      const { data: allBfsPackages, error: packagesError } = await supabase
+        .from('bonus_face_sheet_packages')
+        .select(`
+          id,
+          package_number,
+          storage_location,
+          order_no,
+          shop_name,
+          face_sheet_id,
+          bonus_face_sheets!inner (
+            face_sheet_no,
+            status
+          )
+        `)
+        .or('storage_location.like.MR%,storage_location.like.PQ%,storage_location.is.null')
+        .order('storage_location')
+        .order('package_number');
+
+      if (packagesError) {
+        console.error('Error fetching BFS packages:', packagesError);
+        return;
+      }
+
+      // 3. กรอง packages ที่โหลดไปแล้วออก
+      const filteredPackages = (allBfsPackages || []).filter(
+        (pkg: any) => !loadedPackageIds.has(Number(pkg.id))
+      );
+      console.log('[BFS] Packages after filtering:', filteredPackages.length, 'of', allBfsPackages?.length || 0);
+
+      // 4. ดึง items ด้วย pagination (Supabase จำกัด 1000 rows)
+      const packageIds = filteredPackages.map((p: any) => p.id);
+      let itemsData: any[] = [];
+      
+      if (packageIds.length > 0) {
+        console.log('[BFS] Fetching items for package IDs:', packageIds.slice(0, 10), '...');
+        
+        const batchSize = 1000;
+        let from = 0;
+        let hasMore = true;
+        
+        while (hasMore) {
+          // ใช้ OR filter แทน .in() สำหรับ array ใหญ่
+          const idConditions = packageIds.slice(from, from + batchSize).map(id => `package_id.eq.${id}`).join(',');
+          
+          const { data: items, error: itemsError } = await supabase
+            .from('bonus_face_sheet_items')
+            .select('id, package_id, sku_id, product_code, product_name, quantity')
+            .or(idConditions);
+          
+          if (itemsError) {
+            console.error('[BFS] Items query error:', itemsError);
+            break;
+          }
+          
+          if (items && items.length > 0) {
+            itemsData.push(...items);
+            console.log(`[BFS] Items batch fetched: ${items.length} items`);
+          }
+          
+          from += batchSize;
+          hasMore = from < packageIds.length;
+        }
+        
+        console.log('[BFS] Total items fetched:', itemsData.length);
+        if (itemsData.length > 0) {
+          console.log('[BFS] Sample item:', itemsData[0]);
+        }
+      }
+
+      // 5. Group items by package_id
+      const itemsByPackage = new Map<number, any[]>();
+      itemsData.forEach((item: any) => {
+        const pkgId = Number(item.package_id);
+        if (!itemsByPackage.has(pkgId)) {
+          itemsByPackage.set(pkgId, []);
+        }
+        itemsByPackage.get(pkgId)!.push(item);
+      });
+      console.log('[BFS] itemsByPackage keys (first 10):', Array.from(itemsByPackage.keys()).slice(0, 10));
+      console.log('[BFS] Package 609 items:', itemsByPackage.get(609)?.length || 0);
+      console.log('[BFS] Package 713 items:', itemsByPackage.get(713)?.length || 0);
+
+      // 6. Group packages by storage_location
+      const packagesByLocation = new Map<string, BFSPackageInfo[]>();
+      filteredPackages.forEach((pkg: any) => {
+        let loc = pkg.storage_location;
+        if (!loc || loc.trim() === '') {
+          const orderNo = pkg.order_no || '';
+          loc = orderNo.startsWith('MR') ? 'MRTD' : 'PQTD';
+        }
+        
+        if (!packagesByLocation.has(loc)) {
+          packagesByLocation.set(loc, []);
+        }
+        
+        const pkgIdNum = Number(pkg.id);
+        const pkgItems = itemsByPackage.get(pkgIdNum) || [];
+        const items: BFSPackageItem[] = pkgItems.map((item: any) => ({
+          id: item.id,
+          sku_id: item.sku_id || item.product_code || '-',
+          sku_name: item.product_name || null,
+          quantity: item.quantity || 0
+        }));
+        
+        packagesByLocation.get(loc)!.push({
+          id: pkg.id,
+          package_number: pkg.package_number,
+          storage_location: loc,
+          order_no: pkg.order_no,
+          shop_name: pkg.shop_name,
+          face_sheet_no: pkg.bonus_face_sheets?.face_sheet_no || '-',
+          face_sheet_id: pkg.face_sheet_id,
+          items
+        });
+      });
+
+      setBfsPackagesByLocation(packagesByLocation);
+      console.log(`[BFS] Loaded ${filteredPackages.length} packages in ${packagesByLocation.size} locations`);
+    } catch (err) {
+      console.error('Error fetching BFS packages:', err);
     }
   };
 
@@ -1038,6 +1217,73 @@ const InventoryBalancesPage = () => {
                               </tr>
                             ));
                           })}
+                          {/* BFS Packages for MR/PQ/MRTD/PQTD zones */}
+                          {isExpanded && ['MR', 'PQ'].includes(zone) && (() => {
+                            const bfsZoneLocations = Array.from(bfsPackagesByLocation.keys()).filter(loc => loc.startsWith(zone.substring(0, 2)));
+                            console.log(`[BFS Render] Zone: ${zone}, bfsPackagesByLocation size: ${bfsPackagesByLocation.size}, bfsZoneLocations:`, bfsZoneLocations);
+                            return bfsZoneLocations.map(loc => {
+                              const packages = bfsPackagesByLocation.get(loc) || [];
+                              console.log(`[BFS Render] Location ${loc}: ${packages.length} packages`);
+                              if (packages.length === 0) return null;
+                              return packages.map((pkg) => {
+                                console.log(`[BFS Render] Package ${pkg.id}: ${pkg.items.length} items`);
+                                const isPackageExpanded = expandedBFSPackages.has(pkg.id);
+                                return (
+                                  <React.Fragment key={`bfs-${pkg.id}`}>
+                                    <tr 
+                                      className="bg-purple-50 hover:bg-purple-100 cursor-pointer"
+                                      onClick={() => toggleBFSPackageExpansion(pkg.id)}
+                                    >
+                                      <td className="px-2 py-0.5 border-r border-gray-100">
+                                        {isPackageExpanded ? <ChevronDown className="w-3 h-3 text-purple-600" /> : <ChevronRight className="w-3 h-3 text-purple-600" />}
+                                      </td>
+                                      <td className="px-2 py-0.5 border-r border-gray-100">
+                                        <span className="font-mono text-purple-700 ml-4">{loc}</span>
+                                      </td>
+                                      <td className="px-2 py-0.5 border-r border-gray-100">
+                                        <Badge variant="info" size="sm">BFS</Badge>
+                                      </td>
+                                      <td className="px-2 py-0.5 border-r border-gray-100">
+                                        <span className="font-mono text-purple-700">{pkg.face_sheet_no}</span>
+                                      </td>
+                                      <td className="px-2 py-0.5 border-r border-gray-100">
+                                        <span className="text-purple-700">แพ็ค #{pkg.package_number}</span>
+                                      </td>
+                                      <td className="px-2 py-0.5 border-r border-gray-100">
+                                        <span className="font-mono text-gray-600">{pkg.order_no}</span>
+                                      </td>
+                                      <td className="px-2 py-0.5 border-r border-gray-100">
+                                        <span className="text-gray-700">{pkg.shop_name}</span>
+                                      </td>
+                                      <td className="px-2 py-0.5 text-center border-r border-gray-100" colSpan={3}></td>
+                                      <td className="px-2 py-0.5 border-r border-gray-100" colSpan={2}></td>
+                                      <td className="px-2 py-0.5 text-center text-purple-600">
+                                        {pkg.items.length} รายการ
+                                      </td>
+                                    </tr>
+                                    {isPackageExpanded && pkg.items.map((item) => (
+                                      <tr key={`bfs-item-${item.id}`} className="bg-purple-25 hover:bg-purple-50">
+                                        <td className="px-2 py-0.5 border-r border-gray-100"></td>
+                                        <td className="px-2 py-0.5 border-r border-gray-100"></td>
+                                        <td className="px-2 py-0.5 border-r border-gray-100"></td>
+                                        <td className="px-2 py-0.5 border-r border-gray-100">
+                                          <span className="font-mono text-gray-600 ml-6">{item.sku_id}</span>
+                                        </td>
+                                        <td className="px-2 py-0.5 border-r border-gray-100" colSpan={3}>
+                                          <span className="text-gray-700">{item.sku_name || '-'}</span>
+                                        </td>
+                                        <td className="px-2 py-0.5 text-center border-r border-gray-100">
+                                          <span className="font-bold text-purple-600">{Number(item.quantity).toLocaleString()}</span>
+                                        </td>
+                                        <td className="px-2 py-0.5 border-r border-gray-100" colSpan={4}></td>
+                                        <td className="px-2 py-0.5"></td>
+                                      </tr>
+                                    ))}
+                                  </React.Fragment>
+                                );
+                              });
+                            });
+                          })()}
                         </React.Fragment>
                       );
                     })}
@@ -1047,6 +1293,84 @@ const InventoryBalancesPage = () => {
             )}
           </div>
         </div>
+
+        {/* View Balance Modal */}
+        <Modal isOpen={viewModalOpen} onClose={() => setViewModalOpen(false)} title="รายละเอียดสต็อก" size="lg">
+          {selectedBalance && (
+            <div className="space-y-6">
+              <div className="border-b pb-4">
+                <h3 className="text-lg font-semibold text-thai-gray-900 font-thai mb-4">ข้อมูลสินค้า</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <span className="text-sm text-thai-gray-600 font-thai">SKU ID:</span>
+                    <p className="text-sm font-thai font-medium">{selectedBalance.sku_id}</p>
+                  </div>
+                  <div>
+                    <span className="text-sm text-thai-gray-600 font-thai">ชื่อสินค้า:</span>
+                    <p className="text-sm font-thai font-medium">{(selectedBalance as any).master_sku?.sku_name || '-'}</p>
+                  </div>
+                  <div>
+                    <span className="text-sm text-thai-gray-600 font-thai">Lot No:</span>
+                    <p className="text-sm font-thai font-medium">{selectedBalance.lot_no || '-'}</p>
+                  </div>
+                  <div>
+                    <span className="text-sm text-thai-gray-600 font-thai">Pallet ID:</span>
+                    <p className="text-sm font-thai font-medium">{selectedBalance.pallet_id_external || selectedBalance.pallet_id || '-'}</p>
+                  </div>
+                  <div>
+                    <span className="text-sm text-thai-gray-600 font-thai">วันผลิต:</span>
+                    <p className="text-sm font-thai font-medium">
+                      {selectedBalance.production_date ? new Date(selectedBalance.production_date).toLocaleDateString('th-TH') : '-'}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-sm text-thai-gray-600 font-thai">วันหมดอายุ:</span>
+                    <p className={`text-sm font-thai font-medium ${
+                      isExpired(selectedBalance.expiry_date) ? 'text-red-600' :
+                      isExpiringSoon(selectedBalance.expiry_date) ? 'text-orange-600' : ''
+                    }`}>
+                      {selectedBalance.expiry_date ? new Date(selectedBalance.expiry_date).toLocaleDateString('th-TH') : '-'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="border-b pb-4">
+                <h3 className="text-lg font-semibold text-thai-gray-900 font-thai mb-4">ตำแหน่งจัดเก็บ</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <span className="text-sm text-thai-gray-600 font-thai">คลัง:</span>
+                    <p className="text-sm font-thai font-medium">{selectedBalance.warehouse_id}</p>
+                  </div>
+                  <div>
+                    <span className="text-sm text-thai-gray-600 font-thai">ตำแหน่ง:</span>
+                    <p className="text-sm font-thai font-medium">
+                      {(selectedBalance as any).master_location?.location_name || selectedBalance.location_id || '-'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-thai-gray-900 font-thai mb-4">จำนวนสต็อก</h3>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                  <div className="text-center p-4 bg-green-50 rounded-lg">
+                    <p className="text-sm text-thai-gray-600 font-thai mb-1">ชิ้นรวม</p>
+                    <p className="text-2xl font-bold text-green-600">{selectedBalance.total_piece_qty?.toLocaleString()}</p>
+                  </div>
+                  <div className="text-center p-4 bg-orange-50 rounded-lg">
+                    <p className="text-sm text-thai-gray-600 font-thai mb-1">ชิ้นจอง</p>
+                    <p className="text-2xl font-bold text-orange-600">{selectedBalance.reserved_piece_qty?.toLocaleString()}</p>
+                  </div>
+                  <div className="text-center p-4 bg-blue-50 rounded-lg">
+                    <p className="text-sm text-thai-gray-600 font-thai mb-1">พร้อมใช้</p>
+                    <p className="text-2xl font-bold text-blue-600">
+                      {((selectedBalance.total_piece_qty || 0) - (selectedBalance.reserved_piece_qty || 0)).toLocaleString()}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </Modal>
       </div>
 
       {/* View Balance Modal */}
