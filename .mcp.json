@@ -1,10 +1,15 @@
 {
   "mcpServers": {
     "supabase": {
-      "url": "https://mcp.supabase.com/mcp?project_ref=iwlkslewdgenckuejbit",
-      "env": {
-        "SUPABASE_SERVICE_ROLE_KEY": "sbp_2e93d33f0126da411a40c402cf66649c9a816344"
-      }
+      "command": "npx",
+      "args": [
+        "-y",
+        "@supabase/mcp-server-supabase",
+        "--access-token",
+        "sbp_18b23c5cd9c58e2cf63abc78db79dd59615d7990",
+        "--project-ref",
+        "iwlkslewdgenckuejbit"
+      ]
     }
   }
 }

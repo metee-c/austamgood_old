@@ -1,7 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { setDatabaseUserContext } from '@/lib/database/user-context';
+import { isPrepArea } from '@/lib/database/prep-area-balance';
 import { withAuth } from '@/lib/api/with-auth';
+
+/**
+ * ✅ Helper: ตรวจสอบว่า location เป็น Preparation Area หรือไม่
+ * Preparation Area อนุญาตให้สต็อคติดลบได้
+ */
+async function isPreparationArea(supabase: any, locationId: string): Promise<boolean> {
+  return isPrepArea(supabase, locationId);
+}
 
 /**
  * POST /api/mobile/face-sheet/scan
@@ -236,26 +245,36 @@ async function handlePost(request: NextRequest, context: any) {
         }
 
         // ตรวจสอบว่ามีสต็อคเพียงพอ
-        // ✅ FIX: รองรับ Virtual Pallet (pallet_id ขึ้นต้นด้วย VIRTUAL-)
-        // isVirtualPallet already defined above
-        
-        if (!isVirtualPallet && balance.total_piece_qty < qtyToDeduct) {
-          return NextResponse.json(
-            { error: `สต็อคไม่เพียงพอ: ต้องการ ${qtyToDeduct} แต่มีเพียง ${balance.total_piece_qty} ชิ้น` },
-            { status: 400 }
-          );
-        }
-        
-        if (isVirtualPallet) {
-          console.log(`✅ Virtual Pallet detected: ${balance.pallet_id} - อนุญาตให้หักติดลบ`);
+        // ✅ FIX: รองรับ Virtual Pallet และ Preparation Area อนุญาตให้ติดลบ
+        if (balance.total_piece_qty < qtyToDeduct) {
+          // ตรวจสอบว่าเป็น Virtual Pallet หรือ Preparation Area หรือไม่
+          const isPrepAreaLocation = await isPreparationArea(supabase, balance.location_id);
+
+          if (!isVirtualPallet && !isPrepAreaLocation) {
+            // 🔴 ไม่ใช่ Virtual Pallet หรือ Preparation Area - ไม่อนุญาตติดลบ
+            console.error(`🔴 Block negative: ${balance.location_id} is not a Virtual Pallet or Prep Area`);
+            return NextResponse.json({
+              success: false,
+              error: `สต็อคไม่พอ: ต้องการ ${qtyToDeduct} แต่มีเพียง ${balance.total_piece_qty} ชิ้น`,
+              error_code: 'INSUFFICIENT_STOCK',
+              location_id: balance.location_id
+            }, { status: 400 });
+          }
+
+          // ✅ Virtual Pallet หรือ Preparation Area - อนุญาตให้ติดลบ
+          if (isVirtualPallet) {
+            console.log(`⚠️ Virtual Pallet (${balance.pallet_id}): อนุญาตหักติดลบ ${qtyToDeduct - balance.total_piece_qty} ชิ้น`);
+          } else {
+            console.log(`⚠️ Prep Area (${balance.location_id}): อนุญาตหักติดลบ ${qtyToDeduct - balance.total_piece_qty} ชิ้น`);
+          }
         }
 
-        // ลดยอดจองและสต็อคจริง
+        // ลดยอดจองและสต็อคจริง (อนุญาตติดลบสำหรับ Virtual Pallet/Prep Area - checked above)
         console.log(`🔄 Updating balance ${balance.balance_id}:`, {
           before: { total: balance.total_piece_qty, reserved: balance.reserved_piece_qty },
           deduct: { total: qtyToDeduct, reserved: qtyToDeduct },
           after: {
-            total: Math.max(0, balance.total_piece_qty - qtyToDeduct),
+            total: balance.total_piece_qty - qtyToDeduct,
             reserved: Math.max(0, balance.reserved_piece_qty - qtyToDeduct)
           }
         });
@@ -265,8 +284,8 @@ async function handlePost(request: NextRequest, context: any) {
           .update({
             reserved_piece_qty: Math.max(0, balance.reserved_piece_qty - qtyToDeduct),
             reserved_pack_qty: Math.max(0, balance.reserved_pack_qty - packToDeduct),
-            total_piece_qty: Math.max(0, balance.total_piece_qty - qtyToDeduct),
-            total_pack_qty: Math.max(0, balance.total_pack_qty - packToDeduct),
+            total_piece_qty: balance.total_piece_qty - qtyToDeduct, // ✅ อนุญาตติดลบ (checked above)
+            total_pack_qty: balance.total_pack_qty - packToDeduct,   // ✅ อนุญาตติดลบ (checked above)
             updated_at: now
           })
           .eq('balance_id', balance.balance_id);

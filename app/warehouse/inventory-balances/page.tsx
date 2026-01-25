@@ -518,10 +518,13 @@ const InventoryBalancesPage = () => {
       }
       
       const balances = balancesByLocation.get(loc.location_id) || [];
-      
-      // ถ้าไม่แสดงโลเคชั่นว่าง และไม่มี balance ให้ข้าม
-      if (!showEmptyLocations && balances.length === 0) return;
-      
+
+      // ถ้ากำลังค้นหา ให้แสดงเฉพาะโลเคชั่นที่มี balance ตรงกับคำค้น
+      const hasActiveSearch = debouncedSearchTerm || Object.keys(advancedFilters).some(k => advancedFilters[k as keyof AdvancedFilters]);
+
+      // ถ้าไม่แสดงโลเคชั่นว่าง หรือกำลังค้นหาและไม่มี balance ที่ตรงกัน ให้ข้าม
+      if ((!showEmptyLocations || hasActiveSearch) && balances.length === 0) return;
+
       zoneGroups.get(zone)!.push({ location: loc, balances });
     });
 

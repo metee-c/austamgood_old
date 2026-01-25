@@ -1,7 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { setDatabaseUserContext } from '@/lib/database/user-context';
+import { isPrepArea } from '@/lib/database/prep-area-balance';
 import { withAuth } from '@/lib/api/with-auth';
+
+/**
+ * ✅ Helper: ตรวจสอบว่า location เป็น Preparation Area หรือไม่
+ * Preparation Area อนุญาตให้สต็อคติดลบได้
+ */
+async function isPreparationArea(supabase: any, locationId: string): Promise<boolean> {
+  return isPrepArea(supabase, locationId);
+}
 
 /**
  * POST /api/mobile/bonus-face-sheet/scan
@@ -238,19 +247,39 @@ async function handlePost(request: NextRequest, context: any) {
           sourceLotNo = balance.lot_no;
         }
 
-        // ✅ FIX: รองรับ Virtual Pallet (pallet_id ขึ้นต้นด้วย VIRTUAL-)
+        // ✅ FIX: รองรับ Virtual Pallet และ Preparation Area อนุญาตให้ติดลบ
         const isVirtualPallet = balance.pallet_id && balance.pallet_id.startsWith('VIRTUAL-');
-        
-        if (isVirtualPallet) {
-          console.log(`✅ Virtual Pallet detected: ${balance.pallet_id} - อนุญาตให้หักติดลบ`);
+
+        // ตรวจสอบว่ามีสต็อคเพียงพอ
+        if (balance.total_piece_qty < qtyToDeduct) {
+          // ตรวจสอบว่าเป็น Virtual Pallet หรือ Preparation Area หรือไม่
+          const isPrepAreaLocation = await isPreparationArea(supabase, balance.location_id);
+
+          if (!isVirtualPallet && !isPrepAreaLocation) {
+            // 🔴 ไม่ใช่ Virtual Pallet หรือ Preparation Area - ไม่อนุญาตติดลบ
+            console.error(`🔴 Block negative: ${balance.location_id} is not a Virtual Pallet or Prep Area`);
+            return NextResponse.json({
+              success: false,
+              error: `สต็อคไม่พอ: ต้องการ ${qtyToDeduct} แต่มีเพียง ${balance.total_piece_qty} ชิ้น`,
+              error_code: 'INSUFFICIENT_STOCK',
+              location_id: balance.location_id
+            }, { status: 400 });
+          }
+
+          // ✅ Virtual Pallet หรือ Preparation Area - อนุญาตให้ติดลบ
+          if (isVirtualPallet) {
+            console.log(`⚠️ Virtual Pallet (${balance.pallet_id}): อนุญาตหักติดลบ ${qtyToDeduct - balance.total_piece_qty} ชิ้น`);
+          } else {
+            console.log(`⚠️ Prep Area (${balance.location_id}): อนุญาตหักติดลบ ${qtyToDeduct - balance.total_piece_qty} ชิ้น`);
+          }
         }
-        
-        // ลดยอดจองและสต็อคจริง (ยอมให้ติดลบได้สำหรับ Virtual Pallet)
+
+        // ลดยอดจองและสต็อคจริง (อนุญาตติดลบสำหรับ Virtual Pallet/Prep Area - checked above)
         const newTotalPiece = balance.total_piece_qty - qtyToDeduct;
         const newTotalPack = balance.total_pack_qty - packToDeduct;
         const newReservedPiece = balance.reserved_piece_qty - qtyToDeduct;
         const newReservedPack = balance.reserved_pack_qty - packToDeduct;
-        
+
         console.log(`🔄 Updating balance ${balance.balance_id}${isVirtualPallet ? ' (Virtual Pallet)' : ''}:`, {
           before: { total: balance.total_piece_qty, reserved: balance.reserved_piece_qty },
           deduct: { total: qtyToDeduct, reserved: qtyToDeduct },
@@ -262,8 +291,8 @@ async function handlePost(request: NextRequest, context: any) {
           .update({
             reserved_piece_qty: Math.max(0, newReservedPiece), // reserved ไม่ติดลบ
             reserved_pack_qty: Math.max(0, newReservedPack),
-            total_piece_qty: isVirtualPallet ? newTotalPiece : Math.max(0, newTotalPiece), // ✅ Virtual Pallet ยอมให้ติดลบได้
-            total_pack_qty: isVirtualPallet ? newTotalPack : Math.max(0, newTotalPack),   // ✅ Virtual Pallet ยอมให้ติดลบได้
+            total_piece_qty: newTotalPiece, // ✅ อนุญาตติดลบ (checked above)
+            total_pack_qty: newTotalPack,   // ✅ อนุญาตติดลบ (checked above)
             updated_at: now
           })
           .eq('balance_id', balance.balance_id);
@@ -460,9 +489,28 @@ async function handlePost(request: NextRequest, context: any) {
         }
       }
 
-      // ✅ หักสต็อกจากบ้านหยิบ (ยอมให้ติดลบได้)
+      // ✅ ตรวจสอบว่ามีสต็อคเพียงพอ - รองรับ Prep Area อนุญาตให้ติดลบ
       const newPieceQty = currentPieceQty - quantity_picked;
       const newPackQtyVal = currentPackQty - packQty;
+
+      // ถ้าสต็อคไม่พอ ให้ตรวจสอบว่าเป็น Prep Area หรือไม่
+      if (currentPieceQty < quantity_picked) {
+        const isPrepAreaLocation = await isPreparationArea(supabase, sourceLocationId);
+
+        if (!isPrepAreaLocation) {
+          // 🔴 ไม่ใช่ Preparation Area - ไม่อนุญาตติดลบ
+          console.error(`🔴 Block negative: ${sourceLocationCode} is not a Prep Area`);
+          return NextResponse.json({
+            success: false,
+            error: `สต็อคไม่พอ: ต้องการ ${quantity_picked} แต่มีเพียง ${currentPieceQty} ชิ้น`,
+            error_code: 'INSUFFICIENT_STOCK',
+            location_id: sourceLocationId
+          }, { status: 400 });
+        }
+
+        // ✅ Preparation Area - อนุญาตให้ติดลบ
+        console.log(`⚠️ Prep Area (${sourceLocationCode}): อนุญาตหักติดลบ ${quantity_picked - currentPieceQty} ชิ้น`);
+      }
 
       console.log(`🔄 Deducting from prep area ${sourceLocationCode}:`, {
         before: { piece: currentPieceQty, pack: currentPackQty },
@@ -473,8 +521,8 @@ async function handlePost(request: NextRequest, context: any) {
       const { error: updatePrepError } = await supabase
         .from('wms_inventory_balances')
         .update({
-          total_piece_qty: newPieceQty, // ✅ ยอมให้ติดลบได้
-          total_pack_qty: newPackQtyVal,
+          total_piece_qty: newPieceQty, // ✅ อนุญาตติดลบ (checked above)
+          total_pack_qty: newPackQtyVal, // ✅ อนุญาตติดลบ (checked above)
           updated_at: now
         })
         .eq('balance_id', balanceId);
@@ -487,7 +535,7 @@ async function handlePost(request: NextRequest, context: any) {
         );
       }
 
-      console.log(`✅ Prep area balance updated successfully (may be negative)`);
+      console.log(`✅ Prep area balance updated successfully`);
 
       // บันทึก ledger: OUT จากบ้านหยิบ
       ledgerEntries.push({
