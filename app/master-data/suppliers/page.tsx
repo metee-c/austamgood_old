@@ -362,10 +362,10 @@ const SuppliersPage = () => {
                       <span className="text-xs whitespace-nowrap">{supplier.created_by || '-'}</span>
                     </Table.Cell>
                     <Table.Cell>
-                      <span className="font-mono text-xs whitespace-nowrap">{supplier.created_at ? new Date(supplier.created_at).toLocaleDateString('th-TH') : '-'}</span>
+                      <span className="font-mono text-xs whitespace-nowrap">{supplier.created_at ? new Date(supplier.created_at).toLocaleDateString('en-GB') : '-'}</span>
                     </Table.Cell>
                     <Table.Cell>
-                      <span className="font-mono text-xs whitespace-nowrap">{supplier.updated_at ? new Date(supplier.updated_at).toLocaleDateString('th-TH') : '-'}</span>
+                      <span className="font-mono text-xs whitespace-nowrap">{supplier.updated_at ? new Date(supplier.updated_at).toLocaleDateString('en-GB') : '-'}</span>
                     </Table.Cell>
                     <Table.Cell className="text-center">
                       <div className="flex items-center justify-center space-x-1 whitespace-nowrap">

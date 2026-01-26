@@ -57,7 +57,7 @@ export const getStatusBadgeInfo = (status: string): { label: string; variant: Ba
  * Format date to Thai locale
  */
 export const formatDateThai = (dateString: string): string => {
-    return new Date(dateString).toLocaleDateString('th-TH');
+    return new Date(dateString).toLocaleDateString('en-GB');
 };
 
 /**

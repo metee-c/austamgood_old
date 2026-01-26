@@ -803,8 +803,8 @@ const InventoryBalancesPage = () => {
                 'ชิ้นรวม': item.total_piece_qty || 0,
                 'ชิ้นจอง': item.reserved_piece_qty || 0,
                 'ชิ้นพร้อมใช้': (item.total_piece_qty || 0) - (item.reserved_piece_qty || 0),
-                'วันผลิต': item.production_date ? new Date(item.production_date).toLocaleDateString('th-TH') : '-',
-                'วันหมดอายุ': item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('th-TH') : '-',
+                'วันผลิต': item.production_date ? new Date(item.production_date).toLocaleDateString('en-GB') : '-',
+                'วันหมดอายุ': item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('en-GB') : '-',
               });
             });
           }
@@ -1188,7 +1188,7 @@ const InventoryBalancesPage = () => {
                                 </td>
                                 <td className="px-2 py-0.5 border-r border-gray-100">
                                   <span className="font-thai text-gray-700">
-                                    {balance.production_date ? new Date(balance.production_date).toLocaleDateString('th-TH') : '-'}
+                                    {balance.production_date ? new Date(balance.production_date).toLocaleDateString('en-GB') : '-'}
                                   </span>
                                 </td>
                                 <td className="px-2 py-0.5 border-r border-gray-100">
@@ -1198,7 +1198,7 @@ const InventoryBalancesPage = () => {
                                         isExpired(balance.expiry_date) ? 'text-red-600 font-bold' :
                                         isExpiringSoon(balance.expiry_date) ? 'text-orange-600 font-medium' : 'text-gray-700'
                                       }`}>
-                                        {new Date(balance.expiry_date).toLocaleDateString('th-TH')}
+                                        {new Date(balance.expiry_date).toLocaleDateString('en-GB')}
                                       </span>
                                       {isExpired(balance.expiry_date) && <Badge variant="danger" size="sm"><span className="text-[9px]">หมดอายุ</span></Badge>}
                                       {isExpiringSoon(balance.expiry_date) && !isExpired(balance.expiry_date) && <Badge variant="warning" size="sm"><span className="text-[9px]">ใกล้หมด</span></Badge>}
@@ -1320,7 +1320,7 @@ const InventoryBalancesPage = () => {
                   <div>
                     <span className="text-sm text-thai-gray-600 font-thai">วันผลิต:</span>
                     <p className="text-sm font-thai font-medium">
-                      {selectedBalance.production_date ? new Date(selectedBalance.production_date).toLocaleDateString('th-TH') : '-'}
+                      {selectedBalance.production_date ? new Date(selectedBalance.production_date).toLocaleDateString('en-GB') : '-'}
                     </p>
                   </div>
                   <div>
@@ -1329,7 +1329,7 @@ const InventoryBalancesPage = () => {
                       isExpired(selectedBalance.expiry_date) ? 'text-red-600' :
                       isExpiringSoon(selectedBalance.expiry_date) ? 'text-orange-600' : ''
                     }`}>
-                      {selectedBalance.expiry_date ? new Date(selectedBalance.expiry_date).toLocaleDateString('th-TH') : '-'}
+                      {selectedBalance.expiry_date ? new Date(selectedBalance.expiry_date).toLocaleDateString('en-GB') : '-'}
                     </p>
                   </div>
                 </div>
@@ -1399,7 +1399,7 @@ const InventoryBalancesPage = () => {
                 <div>
                   <span className="text-sm text-thai-gray-600 font-thai">วันผลิต:</span>
                   <p className="text-sm font-thai font-medium">
-                    {selectedBalance.production_date ? new Date(selectedBalance.production_date).toLocaleDateString('th-TH') : '-'}
+                    {selectedBalance.production_date ? new Date(selectedBalance.production_date).toLocaleDateString('en-GB') : '-'}
                   </p>
                 </div>
                 <div>
@@ -1408,7 +1408,7 @@ const InventoryBalancesPage = () => {
                     isExpired(selectedBalance.expiry_date) ? 'text-red-600' :
                     isExpiringSoon(selectedBalance.expiry_date) ? 'text-orange-600' : ''
                   }`}>
-                    {selectedBalance.expiry_date ? new Date(selectedBalance.expiry_date).toLocaleDateString('th-TH') : '-'}
+                    {selectedBalance.expiry_date ? new Date(selectedBalance.expiry_date).toLocaleDateString('en-GB') : '-'}
                   </p>
                 </div>
               </div>

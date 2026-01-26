@@ -112,7 +112,7 @@ const FaceSheetDetailModal: React.FC<FaceSheetDetailModalProps> = ({
               </div>
               <p className="text-lg font-bold text-orange-900 capitalize">{data.status || 'N/A'}</p>
               <p className="text-xs text-orange-600 mt-1 font-thai">
-                {new Date(data.created_date).toLocaleDateString('th-TH')}
+                {new Date(data.created_date).toLocaleDateString('en-GB')}
               </p>
             </div>
           </div>

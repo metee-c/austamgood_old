@@ -70,7 +70,7 @@ export function TableRow({
       {/* Plan date */}
       <td className="px-2 py-2 text-xs border-r border-gray-100">
         <div className="font-medium text-gray-700">
-          {new Date(plan.plan_date).toLocaleDateString('th-TH')}
+          {new Date(plan.plan_date).toLocaleDateString('en-GB')}
         </div>
       </td>
 

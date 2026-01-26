@@ -463,8 +463,8 @@ const InventoryLedgerPage = () => {
         'แพ็ค': item.pack_qty || 0,
         'ชิ้น': item.piece_qty || 0,
         'น้ำหนัก (กก.)': ((item.piece_qty || 0) * (item.master_sku?.weight_per_piece_kg || 0)).toFixed(2),
-        'วันผลิต': item.production_date ? new Date(item.production_date).toLocaleDateString('th-TH') : '-',
-        'วันหมดอายุ': item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('th-TH') : '-',
+        'วันผลิต': item.production_date ? new Date(item.production_date).toLocaleDateString('en-GB') : '-',
+        'วันหมดอายุ': item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('en-GB') : '-',
         'เลขที่อ้างอิง': item.reference_no || '-',
         'หมายเหตุ': item.remarks || '-',
         'เหตุผลยกเลิก': item.rollback_reason || '-',
@@ -1158,12 +1158,12 @@ const InventoryLedgerPage = () => {
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">
                           <span className="font-medium text-gray-900 font-thai">
-                            {ledger.production_date ? new Date(ledger.production_date).toLocaleDateString('th-TH') : '-'}
+                            {ledger.production_date ? new Date(ledger.production_date).toLocaleDateString('en-GB') : '-'}
                           </span>
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">
                           <span className="font-medium text-gray-900 font-thai">
-                            {ledger.expiry_date ? new Date(ledger.expiry_date).toLocaleDateString('th-TH') : '-'}
+                            {ledger.expiry_date ? new Date(ledger.expiry_date).toLocaleDateString('en-GB') : '-'}
                           </span>
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">

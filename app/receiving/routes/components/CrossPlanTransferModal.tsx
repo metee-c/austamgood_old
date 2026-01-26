@@ -429,7 +429,7 @@ export function CrossPlanTransferModal({
                 <option value="">-- เลือกแผน --</option>
                 {availablePlans.map(plan => (
                   <option key={plan.plan_id} value={plan.plan_id}>
-                    {plan.plan_code} - {plan.plan_name || 'ไม่มีชื่อ'} ({new Date(plan.plan_date).toLocaleDateString('th-TH')})
+                    {plan.plan_code} - {plan.plan_name || 'ไม่มีชื่อ'} ({new Date(plan.plan_date).toLocaleDateString('en-GB')})
                   </option>
                 ))}
               </select>

@@ -323,8 +323,8 @@ export function MultiPlanTransportContractModal({
   const planDates = tripsToUse.map(t => t.plan?.plan_date).filter(Boolean).sort();
   const dateRangeText = planDates.length > 0 
     ? (planDates[0] === planDates[planDates.length - 1] 
-        ? new Date(planDates[0]!).toLocaleDateString('th-TH')
-        : `${new Date(planDates[0]!).toLocaleDateString('th-TH')} - ${new Date(planDates[planDates.length - 1]!).toLocaleDateString('th-TH')}`)
+        ? new Date(planDates[0]!).toLocaleDateString('en-GB')
+        : `${new Date(planDates[0]!).toLocaleDateString('en-GB')} - ${new Date(planDates[planDates.length - 1]!).toLocaleDateString('en-GB')}`)
     : '-';
 
   return (
@@ -594,7 +594,7 @@ const CombinedTripsContractDocument: React.FC<CombinedTripsContractDocumentProps
                               ({customerCount} ร้านค้า / {totalStops} จุดส่ง)
                             </span>
                             <span className="ml-3 text-xs text-gray-500">
-                              แผน: {trip.plan?.plan_code} | วันที่: {trip.plan?.plan_date ? new Date(trip.plan.plan_date).toLocaleDateString('th-TH') : '-'}
+                              แผน: {trip.plan?.plan_code} | วันที่: {trip.plan?.plan_date ? new Date(trip.plan.plan_date).toLocaleDateString('en-GB') : '-'}
                             </span>
                           </div>
                           <div className="text-right text-xs">
@@ -974,7 +974,7 @@ const CombinedTripsContractDocument: React.FC<CombinedTripsContractDocumentProps
                   <tr key={trip.trip_id} className="hover:bg-gray-50">
                     <td className="border border-gray-300 px-2 py-3 text-center font-semibold text-sm">{displayTripNumber}</td>
                     <td className="border border-gray-300 px-2 py-3 text-xs">{trip.plan?.plan_code || '-'}</td>
-                    <td className="border border-gray-300 px-2 py-3 text-xs">{trip.plan?.plan_date ? new Date(trip.plan.plan_date).toLocaleDateString('th-TH') : '-'}</td>
+                    <td className="border border-gray-300 px-2 py-3 text-xs">{trip.plan?.plan_date ? new Date(trip.plan.plan_date).toLocaleDateString('en-GB') : '-'}</td>
                     <td className="border border-gray-300 px-2 py-3 text-center text-xs">{customerCount} ลูกค้า / {totalStops} จุด</td>
                     <td className="border border-gray-300 px-2 py-3 text-xs">{notes.vehicle_label || '-'}</td>
                     <td className="border border-gray-300 px-2 py-3 text-xs">{notes.driver_label || '-'}</td>

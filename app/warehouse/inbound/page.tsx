@@ -362,7 +362,7 @@ const InboundPage = () => {
     if (!dateString) return '-';
     const date = new Date(dateString);
     if (Number.isNaN(date.getTime())) return '-';
-    return date.toLocaleDateString('th-TH');
+    return date.toLocaleDateString('en-GB');
   };
   const getStatusBadge = (status: ReceiveStatus) => {
     switch (status) {

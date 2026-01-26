@@ -340,7 +340,7 @@ const ReceivingPage = () => {
                         <Calendar className="w-4 h-4 text-thai-gray-400 flex-shrink-0" />
                         <div>
                           <div className="text-sm font-medium">
-                            {new Date(order.expectedDate).toLocaleDateString('th-TH')}
+                            {new Date(order.expectedDate).toLocaleDateString('en-GB')}
                           </div>
                           <div className="text-xs text-thai-gray-500">คาดว่าจะรับ</div>
                         </div>
@@ -352,7 +352,7 @@ const ReceivingPage = () => {
                           <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
                           <div>
                             <div className="text-sm font-medium">
-                              {new Date(order.receivedDate).toLocaleDateString('th-TH')}
+                              {new Date(order.receivedDate).toLocaleDateString('en-GB')}
                             </div>
                             <div className="text-xs text-green-600 font-thai">รับแล้ว</div>
                           </div>
@@ -443,7 +443,7 @@ const ReceivingPage = () => {
                         ฿{order.totalValue.toLocaleString()}
                       </span>
                       <span className="text-thai-gray-500 font-thai">
-                        {order.receivedDate && new Date(order.receivedDate).toLocaleDateString('th-TH')}
+                        {order.receivedDate && new Date(order.receivedDate).toLocaleDateString('en-GB')}
                       </span>
                     </div>
                   </div>
@@ -492,7 +492,7 @@ const ReceivingPage = () => {
                         ฿{order.totalValue.toLocaleString()}
                       </span>
                       <span className="text-thai-gray-500 font-thai">
-                        กำหนด: {new Date(order.expectedDate).toLocaleDateString('th-TH')}
+                        กำหนด: {new Date(order.expectedDate).toLocaleDateString('en-GB')}
                       </span>
                     </div>
                   </div>

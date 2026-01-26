@@ -552,7 +552,7 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
                         <tr key={plan.plan_id} className="hover:bg-gray-50">
                           <td className="px-4 py-3 text-blue-600 font-mono">{plan.plan_code}</td>
                           <td className="px-4 py-3 font-thai">{plan.plan_name || '-'}</td>
-                          <td className="px-4 py-3">{new Date(plan.plan_date).toLocaleDateString('th-TH')}</td>
+                          <td className="px-4 py-3">{new Date(plan.plan_date).toLocaleDateString('en-GB')}</td>
                           <td className="px-4 py-3 font-thai">{plan.warehouse?.warehouse_name || '-'}</td>
                           <td className="px-4 py-3 text-center">
                             <button
@@ -822,7 +822,7 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                   <div className="text-xs leading-relaxed pr-2" style={{ position: 'absolute', top: '12px', right: '0', textAlign: 'right' }}>
                     <p className="text-gray-700 font-normal">เลขที่: {contractNo || '-'}</p>
                     <p className="text-gray-700 font-normal">พิมพ์วันที่: {contractDate}</p>
-                    <p className="text-gray-700 font-normal">วันที่ส่ง: {plan.plan_name || new Date(plan.plan_date).toLocaleDateString('th-TH')}</p>
+                    <p className="text-gray-700 font-normal">วันที่ส่ง: {plan.plan_name || new Date(plan.plan_date).toLocaleDateString('en-GB')}</p>
                     <p className="text-gray-700 font-normal">ผู้ออกเอกสาร: {currentUser}</p>
                   </div>
 

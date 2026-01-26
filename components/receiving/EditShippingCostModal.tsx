@@ -1474,7 +1474,7 @@ const EditShippingCostModal: React.FC<EditShippingCostModalProps> = ({
                         <tr key={plan.plan_id} className="hover:bg-gray-50">
                           <td className="px-4 py-3 text-blue-600 font-mono">{plan.plan_code}</td>
                           <td className="px-4 py-3 font-thai">{plan.plan_name || '-'}</td>
-                          <td className="px-4 py-3">{new Date(plan.plan_date).toLocaleDateString('th-TH')}</td>
+                          <td className="px-4 py-3">{new Date(plan.plan_date).toLocaleDateString('en-GB')}</td>
                           <td className="px-4 py-3 font-thai">{plan.warehouse?.warehouse_name || '-'}</td>
                           <td className="px-4 py-3 text-center">{plan.total_trips || plan.trips?.length || 0}</td>
                           <td className="px-4 py-3 text-center">{plan.total_distance_km ? plan.total_distance_km.toFixed(1) : '-'}</td>

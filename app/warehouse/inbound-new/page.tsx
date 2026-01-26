@@ -190,7 +190,7 @@ const WarehouseInboundPage = () => {
     const confirmMessage = `คุณต้องการลบการรับสินค้า #${receive.receive_id} หรือไม่?
 
 ข้อมูลที่จะถูกลบ:
-- วันที่รับ: ${new Date(receive.receive_date).toLocaleDateString('th-TH')}
+- วันที่รับ: ${new Date(receive.receive_date).toLocaleDateString('en-GB')}
 - ซัพพลายเออร์: ${receive.supplier_name || '-'}
 - จำนวนสินค้า: ${receive.total_items || 0} รายการ
 - จำนวนพาเลท: ${receive.total_pallets || 0} พาเลท
@@ -628,7 +628,7 @@ const WarehouseInboundPage = () => {
                       </Table.Cell>
                       <Table.Cell className="w-32">
                         <span className="font-thai text-sm">
-                          {new Date(receive.receive_date).toLocaleDateString('th-TH')}
+                          {new Date(receive.receive_date).toLocaleDateString('en-GB')}
                         </span>
                       </Table.Cell>
                       <Table.Cell className="w-32">
@@ -1150,7 +1150,7 @@ const WarehouseInboundPage = () => {
               <div>
                 <span className="text-sm text-thai-gray-600 font-thai">วันที่รับ:</span>
                 <p className="text-sm font-thai font-medium">
-                  {new Date(selectedReceive.receive_date).toLocaleDateString('th-TH')}
+                  {new Date(selectedReceive.receive_date).toLocaleDateString('en-GB')}
                 </p>
               </div>
               

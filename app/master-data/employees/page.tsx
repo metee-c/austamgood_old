@@ -306,7 +306,7 @@ const EmployeesPage = () => {
                           <span>{employee.gender === 'male' ? 'ชาย' : employee.gender === 'female' ? 'หญิง' : '-'}</span>
                         </td>
                         <td className="px-2 py-1 border-r border-gray-100">
-                          <span>{employee.date_of_birth ? new Date(employee.date_of_birth).toLocaleDateString('th-TH') : '-'}</span>
+                          <span>{employee.date_of_birth ? new Date(employee.date_of_birth).toLocaleDateString('en-GB') : '-'}</span>
                         </td>
                         <td className="px-2 py-1 border-r border-gray-100">
                           <span className="font-mono">{employee.national_id || '-'}</span>
@@ -327,7 +327,7 @@ const EmployeesPage = () => {
                           <span>{employee.emergency_contact_phone || '-'}</span>
                         </td>
                         <td className="px-2 py-1 border-r border-gray-100">
-                          <span>{employee.hire_date ? new Date(employee.hire_date).toLocaleDateString('th-TH') : '-'}</span>
+                          <span>{employee.hire_date ? new Date(employee.hire_date).toLocaleDateString('en-GB') : '-'}</span>
                         </td>
                         <td className="px-2 py-1 text-center border-r border-gray-100">
                           <Badge variant={employee.employment_type === 'permanent' ? 'success' : employee.employment_type === 'contract' ? 'warning' : 'default'} size="sm">

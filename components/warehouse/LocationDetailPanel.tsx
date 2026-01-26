@@ -168,14 +168,14 @@ export default function LocationDetailPanel({ location, onClose }: LocationDetai
                       {item.production_date && (
                         <div>
                           <span className="text-gray-600 font-thai">ผลิต:</span>
-                          <p className="font-semibold">{new Date(item.production_date).toLocaleDateString('th-TH')}</p>
+                          <p className="font-semibold">{new Date(item.production_date).toLocaleDateString('en-GB')}</p>
                         </div>
                       )}
                       {item.expiry_date && (
                         <div>
                           <span className="text-gray-600 font-thai">หมดอายุ:</span>
                           <p className={`font-semibold ${isExpiringSoon ? 'text-red-600' : ''}`}>
-                            {new Date(item.expiry_date).toLocaleDateString('th-TH')}
+                            {new Date(item.expiry_date).toLocaleDateString('en-GB')}
                           </p>
                         </div>
                       )}

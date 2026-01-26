@@ -1099,7 +1099,7 @@ export default function ReturnsPage() {
                       return (
                         <div>
                           <span className="text-gray-600">วันที่จัดส่งสินค้า:</span>
-                          <div className="font-semibold text-gray-800">📅 {new Date(shippedDate).toLocaleDateString('th-TH')}</div>
+                          <div className="font-semibold text-gray-800">📅 {new Date(shippedDate).toLocaleDateString('en-GB')}</div>
                         </div>
                       );
                     }
@@ -1111,7 +1111,7 @@ export default function ReturnsPage() {
                   </div>
                   <div>
                     <span className="text-gray-600">วันที่สร้างคำขอ:</span>
-                    <div className="font-semibold text-gray-800">{new Date(selectedReturn.created_at).toLocaleDateString('th-TH')}</div>
+                    <div className="font-semibold text-gray-800">{new Date(selectedReturn.created_at).toLocaleDateString('en-GB')}</div>
                   </div>
                 </div>
               </div>
@@ -1320,7 +1320,7 @@ export default function ReturnsPage() {
                       </div>
                       <div>
                         <span className="text-gray-600">วันที่สร้างคำขอ:</span>
-                        <div className="font-medium">{new Date(viewingReturn.created_at).toLocaleDateString('th-TH')}</div>
+                        <div className="font-medium">{new Date(viewingReturn.created_at).toLocaleDateString('en-GB')}</div>
                       </div>
                     </div>
 
@@ -1350,7 +1350,7 @@ export default function ReturnsPage() {
                             </div>
                             <div>
                               <span className="text-gray-600">วันที่สร้าง:</span>
-                              <div className="font-medium">{new Date(item.created_at).toLocaleDateString('th-TH')}</div>
+                              <div className="font-medium">{new Date(item.created_at).toLocaleDateString('en-GB')}</div>
                             </div>
                             <div>
                               <span className="text-gray-600">ผู้ประมวลผล:</span>
@@ -1399,7 +1399,7 @@ export default function ReturnsPage() {
                     </div>
                     <div>
                       <span className="text-gray-600">วันที่สร้างคำขอ:</span>
-                      <div className="font-medium">{new Date(viewingReturn.created_at).toLocaleDateString('th-TH')}</div>
+                      <div className="font-medium">{new Date(viewingReturn.created_at).toLocaleDateString('en-GB')}</div>
                     </div>
                   </div>
                 )}
@@ -1429,7 +1429,7 @@ export default function ReturnsPage() {
                       {warehouseData.received_date && (
                         <div>
                           <span className="text-gray-600">วันที่รับสินค้าคืน:</span>
-                          <div className="font-medium">{new Date(warehouseData.received_date).toLocaleDateString('th-TH')}</div>
+                          <div className="font-medium">{new Date(warehouseData.received_date).toLocaleDateString('en-GB')}</div>
                         </div>
                       )}
 
@@ -1443,7 +1443,7 @@ export default function ReturnsPage() {
                       {warehouseData.reshipping_date && (
                         <div>
                           <span className="text-gray-600">วันที่ส่งใหม่:</span>
-                          <div className="font-medium">{new Date(warehouseData.reshipping_date).toLocaleDateString('th-TH')}</div>
+                          <div className="font-medium">{new Date(warehouseData.reshipping_date).toLocaleDateString('en-GB')}</div>
                         </div>
                       )}
 
@@ -1515,7 +1515,7 @@ export default function ReturnsPage() {
                       {viewingReturn.processed_at && (
                         <div>
                           <span className="text-gray-600">วันที่ประมวลผล:</span>
-                          <div className="font-medium">{new Date(viewingReturn.processed_at).toLocaleDateString('th-TH')} {new Date(viewingReturn.processed_at).toLocaleTimeString('th-TH')}</div>
+                          <div className="font-medium">{new Date(viewingReturn.processed_at).toLocaleDateString('en-GB')} {new Date(viewingReturn.processed_at).toLocaleTimeString('th-TH')}</div>
                         </div>
                       )}
                     </div>

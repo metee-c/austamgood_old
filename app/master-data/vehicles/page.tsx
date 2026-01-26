@@ -356,7 +356,7 @@ const VehiclesPage = () => {
                     <Table.Cell>
                       <div className="text-xs">
                         {vehicle.registration_expiry_date
-                          ? new Date(vehicle.registration_expiry_date).toLocaleDateString('th-TH')
+                          ? new Date(vehicle.registration_expiry_date).toLocaleDateString('en-GB')
                           : '-'}
                       </div>
                     </Table.Cell>
@@ -365,7 +365,7 @@ const VehiclesPage = () => {
                     <Table.Cell>
                       <div className="text-xs">
                         {vehicle.insurance_expiry_date
-                          ? new Date(vehicle.insurance_expiry_date).toLocaleDateString('th-TH')
+                          ? new Date(vehicle.insurance_expiry_date).toLocaleDateString('en-GB')
                           : '-'}
                       </div>
                     </Table.Cell>

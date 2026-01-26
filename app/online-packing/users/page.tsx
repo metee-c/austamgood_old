@@ -473,7 +473,7 @@ const UsersManagement = ({ users, onAdd, onUpdate, onDelete, selectedUser, setSe
                     </span>
                   </td>
                   <td className="px-2 py-1.5 text-center text-gray-500">
-                    {user.last_login ? new Date(user.last_login).toLocaleDateString('th-TH') : '-'}
+                    {user.last_login ? new Date(user.last_login).toLocaleDateString('en-GB') : '-'}
                   </td>
                   <td className="px-2 py-1.5 text-center">
                     <div className="flex justify-center gap-2">

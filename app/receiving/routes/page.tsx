@@ -2281,7 +2281,7 @@ const RoutesPage = () => {
                                     {previewPlan.plan_name || 'แผนรับสินค้า'}
                                 </div>
                                 <div className="text-xs text-gray-500">
-                                    {previewPlan.plan_date ? new Date(previewPlan.plan_date).toLocaleDateString('th-TH') : '-'}
+                                    {previewPlan.plan_date ? new Date(previewPlan.plan_date).toLocaleDateString('en-GB') : '-'}
                                 </div>
                             </div>
                             <div className="flex flex-col gap-2 md:items-end">

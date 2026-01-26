@@ -126,7 +126,7 @@ export async function POST(request: Request) {
       .from('wms_stock_import_batches')
       .insert({
         batch_id: batchId,
-        batch_name: batchName || `นำเข้า Picking Area ${locationData.location_code} - ${new Date().toLocaleDateString('th-TH')}`,
+        batch_name: batchName || `นำเข้า Picking Area ${locationData.location_code} - ${new Date().toLocaleDateString('en-GB')}`,
         warehouse_id: warehouseId,
         file_name: file.name,
         file_size: file.size,

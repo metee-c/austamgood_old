@@ -876,7 +876,7 @@ export default function ERPPage() {
             <h1>ใบจัดสินค้า</h1>
             <div class="header-info">
               <span>แพลตฟอร์ม: ${platform}</span>
-              <span>วันที่: ${new Date().toLocaleDateString('th-TH')} เวลา: ${new Date().toLocaleTimeString('th-TH')}</span>
+              <span>วันที่: ${new Date().toLocaleDateString('en-GB')} เวลา: ${new Date().toLocaleTimeString('th-TH')}</span>
             </div>
           </div>
 
@@ -1249,7 +1249,7 @@ export default function ERPPage() {
             <h1>ใบเปิด SO</h1>
             <div class="header-info">
               <span>แพลตฟอร์ม: ${platform}</span>
-              <span>วันที่: ${new Date().toLocaleDateString('th-TH')} เวลา: ${new Date().toLocaleTimeString('th-TH')}</span>
+              <span>วันที่: ${new Date().toLocaleDateString('en-GB')} เวลา: ${new Date().toLocaleTimeString('th-TH')}</span>
             </div>
           </div>
 

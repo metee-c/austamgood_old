@@ -616,12 +616,12 @@ const PreparedDocumentsTable: React.FC<PreparedDocumentsTableProps> = ({ warehou
                                   </td>
                                   <td className="px-2 py-1 border-b border-r border-gray-200 whitespace-nowrap">
                                     <span className="font-medium text-gray-900 font-thai">
-                                      {item.production_date ? new Date(item.production_date).toLocaleDateString('th-TH') : '-'}
+                                      {item.production_date ? new Date(item.production_date).toLocaleDateString('en-GB') : '-'}
                                     </span>
                                   </td>
                                   <td className="px-2 py-1 border-b border-gray-200 whitespace-nowrap">
                                     <span className="font-medium text-gray-900 font-thai">
-                                      {item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('th-TH') : '-'}
+                                      {item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('en-GB') : '-'}
                                     </span>
                                   </td>
                                 </tr>

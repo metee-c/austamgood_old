@@ -559,7 +559,7 @@ const PicklistsPage = () => {
                           {plan.status === 'approved' ? 'อนุมัติแล้ว' : plan.status === 'published' ? 'เผยแพร่แล้ว' : 'รออนุมัติ'}
                         </Badge>
                         <div className="text-xs text-gray-600">
-                          <span className="font-semibold">{new Date(plan.plan_date).toLocaleDateString('th-TH')}</span>
+                          <span className="font-semibold">{new Date(plan.plan_date).toLocaleDateString('en-GB')}</span>
                           {' • '}
                           <span>{plan.total_trips} คัน</span>
                           {' • '}

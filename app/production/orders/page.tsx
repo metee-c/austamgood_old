@@ -419,8 +419,8 @@ function ProductionOrdersContent() {
                           <td className="px-2 py-1.5 border-r border-gray-100"><span className="text-thai-gray-700 font-thai">{order.sku?.sku_name || order.sku_id}</span></td>
                           <td className="px-2 py-1.5 text-center border-r border-gray-100"><span className="font-bold text-blue-600">{Number(order.quantity).toLocaleString()}</span></td>
                           <td className="px-2 py-1.5 text-center border-r border-gray-100"><span className="font-bold text-green-600">{Number(order.produced_qty || 0).toLocaleString()}</span></td>
-                          <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap"><span className="text-thai-gray-600">{new Date(order.start_date).toLocaleDateString('th-TH')}</span></td>
-                          <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap"><span className="text-thai-gray-600">{new Date(order.due_date).toLocaleDateString('th-TH')}</span></td>
+                          <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap"><span className="text-thai-gray-600">{new Date(order.start_date).toLocaleDateString('en-GB')}</span></td>
+                          <td className="px-2 py-1.5 border-r border-gray-100 whitespace-nowrap"><span className="text-thai-gray-600">{new Date(order.due_date).toLocaleDateString('en-GB')}</span></td>
                           <td className="px-2 py-1.5 border-r border-gray-100">{statusConfig.badge}</td>
                           <td className="px-2 py-1.5 text-center">
                             <div className="flex items-center justify-center gap-1">
@@ -717,7 +717,7 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return '-';
-    return new Date(dateStr).toLocaleDateString('th-TH');
+    return new Date(dateStr).toLocaleDateString('en-GB');
   };
 
   return (

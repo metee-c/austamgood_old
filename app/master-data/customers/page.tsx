@@ -95,9 +95,9 @@ const CustomersPage = () => {
       if (!response.ok) {
         throw new Error('Failed to fetch data');
       }
-      const data = await response.json();
-      if (Array.isArray(data)) {
-        setCustomers(data);
+      const result = await response.json();
+      if (result.data && Array.isArray(result.data)) {
+        setCustomers(result.data);
       } else {
         setCustomers([]);
       }

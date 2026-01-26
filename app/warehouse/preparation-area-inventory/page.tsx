@@ -525,8 +525,8 @@ const InventoryBalancesPage = () => {
           'ชื่อสินค้า': item.master_sku?.sku_name || item.sku_name || '-',
           'รหัสพาเลท': item.pallet_id || '-',
           'Lot No': item.lot_no || '-',
-          'วันผลิต': item.production_date ? new Date(item.production_date).toLocaleDateString('th-TH') : '-',
-          'วันหมดอายุ': item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('th-TH') : '-',
+          'วันผลิต': item.production_date ? new Date(item.production_date).toLocaleDateString('en-GB') : '-',
+          'วันหมดอายุ': item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('en-GB') : '-',
           'จำนวนแพ็ค': item.total_pack_qty || 0,
           'จำนวนชิ้น': item.total_piece_qty || 0,
           'จองแพ็ค': item.reserved_pack_qty || 0,
@@ -548,7 +548,7 @@ const InventoryBalancesPage = () => {
           baseData['ร้านค้า'] = doc.shop_name || '-';
           baseData['จังหวัด'] = doc.province || '-';
           baseData['จำนวนหยิบ'] = doc.quantity_picked || 0;
-          baseData['วันส่ง'] = doc.delivery_date ? new Date(doc.delivery_date).toLocaleDateString('th-TH') : '-';
+          baseData['วันส่ง'] = doc.delivery_date ? new Date(doc.delivery_date).toLocaleDateString('en-GB') : '-';
         }
 
         return baseData;
@@ -1536,7 +1536,7 @@ const InventoryBalancesPage = () => {
                           </td>
                           <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                             <span className="font-medium text-gray-900 font-thai">
-                              {balance.production_date ? new Date(balance.production_date).toLocaleDateString('th-TH') : '-'}
+                              {balance.production_date ? new Date(balance.production_date).toLocaleDateString('en-GB') : '-'}
                             </span>
                           </td>
                           <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
@@ -1545,7 +1545,7 @@ const InventoryBalancesPage = () => {
                                 <span className={`font-thai ${isExpired(balance.expiry_date) ? 'text-red-600 font-bold' :
                                   isExpiringSoon(balance.expiry_date) ? 'text-orange-600 font-medium' : 'text-gray-900'
                                   }`}>
-                                  {new Date(balance.expiry_date).toLocaleDateString('th-TH')}
+                                  {new Date(balance.expiry_date).toLocaleDateString('en-GB')}
                                 </span>
                                 {isExpired(balance.expiry_date) && (
                                   <Badge variant="danger" size="sm" className="whitespace-nowrap"><span className="text-[10px]">หมดอายุ</span></Badge>
@@ -1693,7 +1693,7 @@ const InventoryBalancesPage = () => {
                 <div>
                   <span className="text-sm text-thai-gray-600 font-thai">วันผลิต:</span>
                   <p className="text-sm font-thai font-medium">
-                    {selectedBalance.production_date ? new Date(selectedBalance.production_date).toLocaleDateString('th-TH') : '-'}
+                    {selectedBalance.production_date ? new Date(selectedBalance.production_date).toLocaleDateString('en-GB') : '-'}
                   </p>
                 </div>
                 <div>
@@ -1701,7 +1701,7 @@ const InventoryBalancesPage = () => {
                   <p className={`text-sm font-thai font-medium ${isExpired(selectedBalance.expiry_date) ? 'text-red-600' :
                     isExpiringSoon(selectedBalance.expiry_date) ? 'text-orange-600' : ''
                     }`}>
-                    {selectedBalance.expiry_date ? new Date(selectedBalance.expiry_date).toLocaleDateString('th-TH') : '-'}
+                    {selectedBalance.expiry_date ? new Date(selectedBalance.expiry_date).toLocaleDateString('en-GB') : '-'}
                   </p>
                 </div>
               </div>

@@ -269,7 +269,7 @@ const FaceSheetsPage = () => {
     if (Number.isNaN(parsed.getTime())) {
       return date;
     }
-    return parsed.toLocaleDateString('th-TH');
+    return parsed.toLocaleDateString('en-GB');
   };
 
   const fetchPreviewOrders = async (date: string) => {
@@ -572,7 +572,7 @@ const FaceSheetsPage = () => {
 
       doc.text(`ใบปะหน้าสินค้า: ${details.face_sheet_no}`, 14, 20);
       doc.setFontSize(12);
-      doc.text(`วันที่สร้าง: ${new Date(details.created_date).toLocaleDateString('th-TH')}`, 14, 28);
+      doc.text(`วันที่สร้าง: ${new Date(details.created_date).toLocaleDateString('en-GB')}`, 14, 28);
       doc.text(`จำนวนออเดอร์: ${details.total_orders}`, 14, 36);
       doc.text(`แพ็ครวม: ${details.total_packages}`, 80, 36);
 

@@ -283,7 +283,7 @@ export default function ProductsPage() {
                       )}
                     </td>
                     <td className="py-1.5 px-3 text-thai-gray-600 font-thai">
-                      {new Date(product.created_at).toLocaleDateString('th-TH')}
+                      {new Date(product.created_at).toLocaleDateString('en-GB')}
                     </td>
                     <td className="py-1.5 px-3 text-center">
                       <div className="flex items-center justify-center gap-1">

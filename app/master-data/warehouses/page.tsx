@@ -304,7 +304,7 @@ const WarehousesPage = () => {
                               {warehouse.warehouse_name}
                             </div>
                             <div className="text-xs text-thai-gray-500">
-                              สร้างเมื่อ: {new Date(warehouse.created_at).toLocaleDateString('th-TH')}
+                              สร้างเมื่อ: {new Date(warehouse.created_at).toLocaleDateString('en-GB')}
                             </div>
                           </div>
                         </Table.Cell>

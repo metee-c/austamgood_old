@@ -1077,7 +1077,7 @@ const ActualProductionPage = () => {
                       <tr key={record.record_id} className="hover:bg-blue-50/30 transition-colors duration-150">
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">
                           <span className="text-thai-gray-600 font-thai">
-                            {new Date(record.production_date).toLocaleDateString('th-TH')}
+                            {new Date(record.production_date).toLocaleDateString('en-GB')}
                           </span>
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">
@@ -1387,7 +1387,7 @@ const ActualProductionPage = () => {
                       <div className="px-3 py-2 flex-1">
                         <span className="font-thai text-gray-900 text-sm font-semibold">
                           {selectedOrder.production_date 
-                            ? new Date(selectedOrder.production_date).toLocaleDateString('th-TH')
+                            ? new Date(selectedOrder.production_date).toLocaleDateString('en-GB')
                             : '-'
                           }
                         </span>
@@ -1398,7 +1398,7 @@ const ActualProductionPage = () => {
                       <div className="px-3 py-2 flex-1">
                         <span className="font-thai text-gray-900 text-sm font-semibold">
                           {selectedOrder.expiry_date 
-                            ? new Date(selectedOrder.expiry_date).toLocaleDateString('th-TH')
+                            ? new Date(selectedOrder.expiry_date).toLocaleDateString('en-GB')
                             : '-'
                           }
                         </span>
@@ -1639,7 +1639,7 @@ const ActualProductionPage = () => {
                       <div className="px-3 py-2 flex-1">
                         <span className="font-thai text-gray-900 text-sm font-semibold">
                           {editingReceipt.production_order?.production_date 
-                            ? new Date(editingReceipt.production_order.production_date).toLocaleDateString('th-TH')
+                            ? new Date(editingReceipt.production_order.production_date).toLocaleDateString('en-GB')
                             : '-'
                           }
                         </span>
@@ -1650,7 +1650,7 @@ const ActualProductionPage = () => {
                       <div className="px-3 py-2 flex-1">
                         <span className="font-thai text-gray-900 text-sm font-semibold">
                           {editingReceipt.production_order?.expiry_date 
-                            ? new Date(editingReceipt.production_order.expiry_date).toLocaleDateString('th-TH')
+                            ? new Date(editingReceipt.production_order.expiry_date).toLocaleDateString('en-GB')
                             : '-'
                           }
                         </span>

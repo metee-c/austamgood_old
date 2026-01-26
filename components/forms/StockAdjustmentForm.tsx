@@ -685,10 +685,10 @@ export default function StockAdjustmentForm({
                                           {(balance.expiry_date || balance.production_date) && (
                                             <div className="text-xs text-gray-500 font-thai mt-1">
                                               {balance.production_date && (
-                                                <span>ผลิต: {new Date(balance.production_date).toLocaleDateString('th-TH')}</span>
+                                                <span>ผลิต: {new Date(balance.production_date).toLocaleDateString('en-GB')}</span>
                                               )}
                                               {balance.expiry_date && (
-                                                <span className="ml-2">หมดอายุ: {new Date(balance.expiry_date).toLocaleDateString('th-TH')}</span>
+                                                <span className="ml-2">หมดอายุ: {new Date(balance.expiry_date).toLocaleDateString('en-GB')}</span>
                                               )}
                                             </div>
                                           )}

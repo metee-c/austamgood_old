@@ -357,7 +357,7 @@ const BonusFaceSheetsPage = () => {
     if (Number.isNaN(parsed.getTime())) {
       return date;
     }
-    return parsed.toLocaleDateString('th-TH');
+    return parsed.toLocaleDateString('en-GB');
   };
 
   const fetchPreviewOrders = async (date: string) => {
@@ -1002,7 +1002,7 @@ const BonusFaceSheetsPage = () => {
       <html>
       <head>
         <meta charset="utf-8">
-        <title>ใบนับสต็อกของแถม ${zoneLabel} - ${new Date().toLocaleDateString('th-TH')}</title>
+        <title>ใบนับสต็อกของแถม ${zoneLabel} - ${new Date().toLocaleDateString('en-GB')}</title>
         <style>
           @page { size: A4; margin: 10mm; }
           body { font-family: 'Sarabun', sans-serif; font-size: 11px; margin: 0; padding: 10px; }

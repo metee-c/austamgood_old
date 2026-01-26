@@ -504,7 +504,7 @@ const AssetsPage = () => {
                           <div className="flex items-center justify-center space-x-1">
                             <Calendar className="w-3 h-3 text-thai-gray-400" />
                             <span className="text-xs font-medium">
-                              {new Date(asset.purchase_date).toLocaleDateString('th-TH')}
+                              {new Date(asset.purchase_date).toLocaleDateString('en-GB')}
                             </span>
                           </div>
                         ) : (

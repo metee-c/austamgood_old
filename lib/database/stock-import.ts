@@ -101,7 +101,7 @@ export class StockImportService {
       .from('wms_stock_import_batches')
       .insert({
         batch_id: batchId,
-        batch_name: batchName || `นำเข้าสต็อก ${new Date().toLocaleDateString('th-TH')}`,
+        batch_name: batchName || `นำเข้าสต็อก ${new Date().toLocaleDateString('en-GB')}`,
         warehouse_id: warehouseId,
         file_name: fileName,
         file_size: fileSize,
