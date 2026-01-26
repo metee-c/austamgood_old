@@ -248,7 +248,9 @@ async function handlePost(request: NextRequest, context: any) {
         }
 
         // ✅ FIX: รองรับ Virtual Pallet และ Preparation Area อนุญาตให้ติดลบ
-        const isVirtualPallet = balance.pallet_id && balance.pallet_id.startsWith('VIRTUAL-');
+        // รองรับทั้ง "VIRTUAL-" และ "VIRT-" prefix รวมถึง location "VIRTUAL-PALLET"
+        const isVirtualPallet = (balance.pallet_id && (balance.pallet_id.startsWith('VIRTUAL-') || balance.pallet_id.startsWith('VIRT-'))) ||
+                                (balance.location_id && balance.location_id === 'VIRTUAL-PALLET');
 
         // ตรวจสอบว่ามีสต็อคเพียงพอ
         if (balance.total_piece_qty < qtyToDeduct) {
@@ -268,7 +270,7 @@ async function handlePost(request: NextRequest, context: any) {
 
           // ✅ Virtual Pallet หรือ Preparation Area - อนุญาตให้ติดลบ
           if (isVirtualPallet) {
-            console.log(`⚠️ Virtual Pallet (${balance.pallet_id}): อนุญาตหักติดลบ ${qtyToDeduct - balance.total_piece_qty} ชิ้น`);
+            console.log(`⚠️ Virtual Pallet (${balance.pallet_id || balance.location_id}): อนุญาตหักติดลบ ${qtyToDeduct - balance.total_piece_qty} ชิ้น`);
           } else {
             console.log(`⚠️ Prep Area (${balance.location_id}): อนุญาตหักติดลบ ${qtyToDeduct - balance.total_piece_qty} ชิ้น`);
           }

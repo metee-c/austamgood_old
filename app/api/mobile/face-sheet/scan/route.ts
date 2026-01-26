@@ -211,7 +211,9 @@ async function handlePost(request: NextRequest, context: any) {
         }
 
         // ✅ FIX: Check if this is a Virtual Pallet
-        const isVirtualPallet = balance.pallet_id && balance.pallet_id.startsWith('VIRTUAL-');
+        // รองรับทั้ง "VIRTUAL-" และ "VIRT-" prefix รวมถึง location "VIRTUAL-PALLET"
+        const isVirtualPallet = (balance.pallet_id && (balance.pallet_id.startsWith('VIRTUAL-') || balance.pallet_id.startsWith('VIRT-'))) ||
+                                (balance.location_id && balance.location_id === 'VIRTUAL-PALLET');
         
         // ✅ FIX: ถ้า balance มีสต็อค 0 แล้ว (อาจถูกหักไปแล้วจากการ scan ซ้ำ) ให้ข้ามไป
         // แต่ถ้าเป็น Virtual Pallet ให้ดำเนินการต่อ (อนุญาตให้ติดลบ)
