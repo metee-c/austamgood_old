@@ -378,6 +378,7 @@ async function handlePost(request: NextRequest, context: any) {
 
       let sourceLocationId: string | null = null;
       let sourceLocationCode: string = 'Unknown';
+      let isFromDefaultLocation = false; // ✅ Track if source is from SKU's default_location
 
       if (prepAreaMapping?.preparation_area) {
         const prepArea = prepAreaMapping.preparation_area as any;
@@ -385,18 +386,45 @@ async function handlePost(request: NextRequest, context: any) {
         sourceLocationCode = prepArea.area_code;
         console.log(`✅ Found prep area: ${sourceLocationCode} (location_id: ${sourceLocationId})`);
       } else {
-        // Fallback: ใช้ Dispatch ถ้าไม่มี prep area mapping
-        const { data: dispatchLoc } = await supabase
-          .from('master_location')
-          .select('location_id, location_code')
-          .eq('location_code', 'Dispatch')
-          .eq('warehouse_id', warehouseId)
+        // Fallback 1: ใช้ master_sku.default_location ถ้าไม่มี prep area mapping
+        const { data: skuData } = await supabase
+          .from('master_sku')
+          .select('default_location')
+          .eq('sku_id', item.sku_id)
           .single();
-        
-        if (dispatchLoc) {
-          sourceLocationId = dispatchLoc.location_id;
-          sourceLocationCode = dispatchLoc.location_code;
-          console.log(`⚠️ No prep area mapping, using Dispatch as source`);
+
+        if (skuData?.default_location) {
+          // ดึงข้อมูล location จาก default_location
+          const { data: defaultLoc } = await supabase
+            .from('master_location')
+            .select('location_id, location_code, location_type')
+            .eq('location_code', skuData.default_location)
+            .eq('warehouse_id', warehouseId)
+            .eq('active_status', 'active')
+            .single();
+
+          if (defaultLoc) {
+            sourceLocationId = defaultLoc.location_id;
+            sourceLocationCode = defaultLoc.location_code;
+            isFromDefaultLocation = true; // ✅ Mark as from default_location
+            console.log(`✅ Using master_sku.default_location: ${sourceLocationCode} (type: ${defaultLoc.location_type})`);
+          }
+        }
+
+        // Fallback 2: ใช้ Dispatch ถ้าไม่มี default_location
+        if (!sourceLocationId) {
+          const { data: dispatchLoc } = await supabase
+            .from('master_location')
+            .select('location_id, location_code')
+            .eq('location_code', 'Dispatch')
+            .eq('warehouse_id', warehouseId)
+            .single();
+
+          if (dispatchLoc) {
+            sourceLocationId = dispatchLoc.location_id;
+            sourceLocationCode = dispatchLoc.location_code;
+            console.log(`⚠️ No prep area mapping or default_location, using Dispatch as source`);
+          }
         }
       }
 
@@ -491,74 +519,184 @@ async function handlePost(request: NextRequest, context: any) {
         }
       }
 
-      // ✅ ตรวจสอบว่ามีสต็อคเพียงพอ - รองรับ Prep Area อนุญาตให้ติดลบ
-      const newPieceQty = currentPieceQty - quantity_picked;
-      const newPackQtyVal = currentPackQty - packQty;
+      // ✅ ตรวจสอบว่ามีสต็อคเพียงพอ - ถ้าไม่พอให้ใช้ Virtual Pallet
+      const isPrepAreaLocation = await isPreparationArea(supabase, sourceLocationId);
 
-      // ถ้าสต็อคไม่พอ ให้ตรวจสอบว่าเป็น Prep Area หรือไม่
-      if (currentPieceQty < quantity_picked) {
-        const isPrepAreaLocation = await isPreparationArea(supabase, sourceLocationId);
+      // คำนวณจำนวนที่หักได้จาก source location จริง
+      const qtyFromSource = Math.min(currentPieceQty, quantity_picked);
+      const packFromSource = qtyFromSource / qtyPerPack;
+      const shortfall = quantity_picked - qtyFromSource; // จำนวนที่ขาด
+      const shortfallPack = shortfall / qtyPerPack;
 
-        if (!isPrepAreaLocation) {
-          // 🔴 ไม่ใช่ Preparation Area - ไม่อนุญาตติดลบ
-          console.error(`🔴 Block negative: ${sourceLocationCode} is not a Prep Area`);
-          return NextResponse.json({
-            success: false,
-            error: `สต็อคไม่พอ: ต้องการ ${quantity_picked} แต่มีเพียง ${currentPieceQty} ชิ้น`,
-            error_code: 'INSUFFICIENT_STOCK',
-            location_id: sourceLocationId
-          }, { status: 400 });
+      if (shortfall > 0 && !isPrepAreaLocation) {
+        // ✅ สต็อคไม่พอและไม่ใช่ Prep Area → ใช้ Virtual Pallet
+        console.log(`⚠️ Stock insufficient at ${sourceLocationCode}: have ${currentPieceQty}, need ${quantity_picked}, shortfall ${shortfall}`);
+        console.log(`✅ Using Virtual Pallet for shortfall ${shortfall} pieces`);
+
+        const faceSheetNo = (item.bonus_face_sheets as any).face_sheet_no;
+        const virtualPalletId = `VIRT-BFS-${faceSheetNo}-${item.sku_id}`;
+
+        // หาหรือสร้าง Virtual Pallet balance
+        const { data: virtualBalance } = await supabase
+          .from('wms_inventory_balances')
+          .select('balance_id, total_piece_qty, total_pack_qty')
+          .eq('warehouse_id', warehouseId)
+          .eq('location_id', 'VIRTUAL-PALLET')
+          .eq('sku_id', item.sku_id)
+          .eq('pallet_id', virtualPalletId)
+          .maybeSingle();
+
+        let virtualBalanceId: number;
+        let virtualCurrentPiece = 0;
+        let virtualCurrentPack = 0;
+
+        if (virtualBalance) {
+          virtualBalanceId = virtualBalance.balance_id;
+          virtualCurrentPiece = virtualBalance.total_piece_qty || 0;
+          virtualCurrentPack = virtualBalance.total_pack_qty || 0;
+          console.log(`✅ Found existing Virtual Pallet balance: ${virtualBalanceId}`);
+        } else {
+          // สร้าง Virtual Pallet balance ใหม่
+          const { data: newVirtualBalance, error: virtualInsertError } = await supabase
+            .from('wms_inventory_balances')
+            .insert({
+              warehouse_id: warehouseId,
+              location_id: 'VIRTUAL-PALLET',
+              sku_id: item.sku_id,
+              pallet_id: virtualPalletId,
+              pallet_id_external: null,
+              lot_no: null,
+              production_date: null,
+              expiry_date: null,
+              total_pack_qty: 0,
+              total_piece_qty: 0,
+              reserved_pack_qty: 0,
+              reserved_piece_qty: 0,
+              last_movement_at: now
+            })
+            .select('balance_id')
+            .single();
+
+          if (virtualInsertError || !newVirtualBalance) {
+            console.error('❌ Error creating Virtual Pallet balance:', virtualInsertError);
+            return NextResponse.json(
+              { error: 'ไม่สามารถสร้าง Virtual Pallet ได้', details: virtualInsertError?.message },
+              { status: 500 }
+            );
+          }
+          virtualBalanceId = newVirtualBalance.balance_id;
+          console.log(`✅ Created new Virtual Pallet balance: ${virtualBalanceId}`);
         }
 
-        // ✅ Preparation Area - อนุญาตให้ติดลบ
-        console.log(`⚠️ Prep Area (${sourceLocationCode}): อนุญาตหักติดลบ ${quantity_picked - currentPieceQty} ชิ้น`);
+        // หักจาก Virtual Pallet (ติดลบได้)
+        const newVirtualPiece = virtualCurrentPiece - shortfall;
+        const newVirtualPack = virtualCurrentPack - shortfallPack;
+
+        console.log(`🔄 Deducting from Virtual Pallet:`, {
+          before: { piece: virtualCurrentPiece, pack: virtualCurrentPack },
+          deduct: { piece: shortfall, pack: shortfallPack },
+          after: { piece: newVirtualPiece, pack: newVirtualPack }
+        });
+
+        const { error: updateVirtualError } = await supabase
+          .from('wms_inventory_balances')
+          .update({
+            total_piece_qty: newVirtualPiece,
+            total_pack_qty: newVirtualPack,
+            updated_at: now
+          })
+          .eq('balance_id', virtualBalanceId);
+
+        if (updateVirtualError) {
+          console.error('❌ Error updating Virtual Pallet:', updateVirtualError);
+          return NextResponse.json(
+            { error: 'ไม่สามารถอัปเดต Virtual Pallet ได้', details: updateVirtualError.message },
+            { status: 500 }
+          );
+        }
+
+        // บันทึก ledger: OUT จาก Virtual Pallet
+        ledgerEntries.push({
+          movement_at: now,
+          transaction_type: 'pick',
+          direction: 'out',
+          warehouse_id: warehouseId,
+          location_id: 'VIRTUAL-PALLET',
+          sku_id: item.sku_id,
+          pallet_id: virtualPalletId,
+          pack_qty: shortfallPack,
+          piece_qty: shortfall,
+          production_date: null,
+          expiry_date: null,
+          reference_no: faceSheetNo,
+          reference_doc_type: 'bonus_face_sheet',
+          reference_doc_id: bonus_face_sheet_id,
+          order_item_id: item.order_item_id,
+          remarks: `หยิบของแถมจาก Virtual Pallet (ขาด ${shortfall} ชิ้น)`,
+          created_by: userId,
+          skip_balance_sync: true
+        });
+
+        console.log(`✅ Virtual Pallet deducted: ${shortfall} pieces (balance now: ${newVirtualPiece})`);
+      } else if (shortfall > 0 && isPrepAreaLocation) {
+        // Prep Area - อนุญาตให้ติดลบ
+        console.log(`⚠️ Prep Area (${sourceLocationCode}): อนุญาตหักติดลบ ${shortfall} ชิ้น`);
       }
 
-      console.log(`🔄 Deducting from prep area ${sourceLocationCode}:`, {
-        before: { piece: currentPieceQty, pack: currentPackQty },
-        deduct: { piece: quantity_picked, pack: packQty },
-        after: { piece: newPieceQty, pack: newPackQtyVal }
-      });
+      // หักจาก source location (ถ้ามีสต็อค)
+      if (qtyFromSource > 0 || (shortfall > 0 && isPrepAreaLocation)) {
+        // ถ้าเป็น Prep Area หักทั้งหมด (รวมติดลบ), ถ้าไม่ใช่หักเท่าที่มี
+        const actualDeduct = isPrepAreaLocation ? quantity_picked : qtyFromSource;
+        const actualDeductPack = actualDeduct / qtyPerPack;
+        const newPieceQty = currentPieceQty - actualDeduct;
+        const newPackQtyVal = currentPackQty - actualDeductPack;
 
-      const { error: updatePrepError } = await supabase
-        .from('wms_inventory_balances')
-        .update({
-          total_piece_qty: newPieceQty, // ✅ อนุญาตติดลบ (checked above)
-          total_pack_qty: newPackQtyVal, // ✅ อนุญาตติดลบ (checked above)
-          updated_at: now
-        })
-        .eq('balance_id', balanceId);
+        console.log(`🔄 Deducting from ${sourceLocationCode}:`, {
+          before: { piece: currentPieceQty, pack: currentPackQty },
+          deduct: { piece: actualDeduct, pack: actualDeductPack },
+          after: { piece: newPieceQty, pack: newPackQtyVal }
+        });
 
-      if (updatePrepError) {
-        console.error('❌ Error updating prep area balance:', updatePrepError);
-        return NextResponse.json(
-          { error: 'ไม่สามารถอัปเดตสต็อคบ้านหยิบได้', details: updatePrepError.message },
-          { status: 500 }
-        );
+        const { error: updatePrepError } = await supabase
+          .from('wms_inventory_balances')
+          .update({
+            total_piece_qty: newPieceQty,
+            total_pack_qty: newPackQtyVal,
+            updated_at: now
+          })
+          .eq('balance_id', balanceId);
+
+        if (updatePrepError) {
+          console.error('❌ Error updating source balance:', updatePrepError);
+          return NextResponse.json(
+            { error: 'ไม่สามารถอัปเดตสต็อคต้นทางได้', details: updatePrepError.message },
+            { status: 500 }
+          );
+        }
+
+        console.log(`✅ Source balance updated successfully`);
+
+        // บันทึก ledger: OUT จาก source location
+        ledgerEntries.push({
+          movement_at: now,
+          transaction_type: 'pick',
+          direction: 'out',
+          warehouse_id: warehouseId,
+          location_id: sourceLocationId,
+          sku_id: item.sku_id,
+          pack_qty: actualDeductPack,
+          piece_qty: actualDeduct,
+          production_date: sourceProductionDate || null,
+          expiry_date: sourceExpiryDate || null,
+          reference_no: (item.bonus_face_sheets as any).face_sheet_no,
+          reference_doc_type: 'bonus_face_sheet',
+          reference_doc_id: bonus_face_sheet_id,
+          order_item_id: item.order_item_id,
+          remarks: `หยิบของแถมจาก ${sourceLocationCode} (ไม่มี reservation)`,
+          created_by: userId,
+          skip_balance_sync: true
+        });
       }
-
-      console.log(`✅ Prep area balance updated successfully`);
-
-      // บันทึก ledger: OUT จากบ้านหยิบ
-      ledgerEntries.push({
-        movement_at: now,
-        transaction_type: 'pick',
-        direction: 'out',
-        warehouse_id: warehouseId,
-        location_id: sourceLocationId,
-        sku_id: item.sku_id,
-        pack_qty: packQty,
-        piece_qty: quantity_picked,
-        production_date: sourceProductionDate || null,
-        expiry_date: sourceExpiryDate || null,
-        reference_no: (item.bonus_face_sheets as any).face_sheet_no,
-        reference_doc_type: 'bonus_face_sheet',
-        reference_doc_id: bonus_face_sheet_id,
-        order_item_id: item.order_item_id,
-        remarks: `หยิบของแถมจากบ้านหยิบ ${sourceLocationCode} (ไม่มี reservation)`,
-        created_by: userId,
-        skip_balance_sync: true
-      });
 
       remainingQty = 0; // หักครบแล้ว
     }
