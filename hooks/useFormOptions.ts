@@ -203,7 +203,9 @@ export const useCustomers = () => {
         }
         
         // API returns { data: [...] }, filter for active customers
+        console.log('📋 Customers API response:', { total: result.data?.length || 0 });
         const activeCustomers = (result.data || []).filter((c: Customer) => c.status === 'active');
+        console.log('📋 Active customers:', activeCustomers.length);
         setCustomers(activeCustomers);
         setError(null);
       } catch (err) {

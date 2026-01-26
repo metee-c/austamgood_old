@@ -17,11 +17,21 @@ export async function GET(request: NextRequest) {
       query = query.eq('status', status);
     }
 
-    const { data, error } = await query;
+    const { data: sessions, error } = await query;
 
     if (error) throw error;
 
-    return NextResponse.json({ success: true, data });
+    // ใช้ค่าจากตารางโดยตรง (matched_count และ mismatched_count ถูกอัพเดทโดย trigger)
+    const sessionsWithStats = (sessions || []).map((session) => ({
+      ...session,
+      total_locations: 1, // PPC นับที่โลเคชั่นเดียว
+      matched_count: session.matched_count || 0,
+      mismatched_count: session.mismatched_count || 0,
+      empty_count: 0, // PPC ไม่มีสถานะว่าง
+      extra_count: 0, // PPC ไม่มีสถานะเพิ่มเติม
+    }));
+
+    return NextResponse.json({ success: true, data: sessionsWithStats });
   } catch (error) {
     console.error('Error fetching sessions:', error);
     return NextResponse.json(

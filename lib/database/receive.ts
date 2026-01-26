@@ -432,13 +432,11 @@ export class ReceiveService {
           const isNumber = !isNaN(searchNum);
 
           const conditions = [
-            // Text fields
+            // Text fields only (exclude enum fields: receive_type, status)
             `receive_no.ilike.%${filters.searchTerm}%`,
             `reference_doc.ilike.%${filters.searchTerm}%`,
             `warehouse_id.ilike.%${filters.searchTerm}%`,
-            `receive_type.ilike.%${filters.searchTerm}%`,
-            `status.ilike.%${filters.searchTerm}%`,
-            `remarks.ilike.%${filters.searchTerm}%`,
+            `notes.ilike.%${filters.searchTerm}%`,
             `supplier_id.ilike.%${filters.searchTerm}%`,
             `customer_id.ilike.%${filters.searchTerm}%`,
           ];

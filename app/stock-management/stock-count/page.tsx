@@ -13,13 +13,14 @@ interface Session {
   id: number;
   session_code: string;
   warehouse_id: string;
-  count_type?: 'standard' | 'prep_area' | 'premium_ocr';
+  count_type?: 'standard' | 'prep_area' | 'premium_ocr' | 'premium_package';
   status: 'in_progress' | 'completed' | 'cancelled';
   total_locations: number;
   matched_count: number;
   mismatched_count: number;
   empty_count: number;
   extra_count: number;
+  total_packages?: number; // สำหรับ premium_package
   created_at: string;
   completed_at: string | null;
   counted_by: string | null;
@@ -45,8 +46,25 @@ interface CountItem {
   notes: string | null;
 }
 
+// Premium Package Count Item (บ้านหยิบพรีเมี่ยม)
+interface PremiumPackageCountItem {
+  id: number;
+  session_id: number;
+  package_id: number;
+  barcode_id: string;
+  face_sheet_no: string;
+  pack_no: string;
+  shop_name: string;
+  hub: string;
+  expected_location: string;
+  actual_location: string;
+  location_match: boolean;
+  counted_by: string;
+  created_at: string;
+}
+
 type SessionStatus = 'in_progress' | 'completed' | 'cancelled' | 'all';
-type CountType = 'standard' | 'prep_area' | 'premium_ocr' | 'all';
+type CountType = 'standard' | 'prep_area' | 'premium_ocr' | 'premium_package' | 'all';
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
@@ -102,24 +120,32 @@ function SessionsListView({
       fetch(`/api/stock-count/premium-packages/sessions?${premiumParams.toString()}`)
         .then(res => res.json())
         .then(result => {
+          console.log('[PPC] API Response:', result);
           if (result.success && result.data) {
             // Map premium package sessions to Session interface
-            const mappedSessions: Session[] = result.data.map((ps: any) => ({
-              id: ps.id,
-              session_code: ps.session_code,
-              warehouse_id: 'WH001',
-              count_type: 'premium_ocr' as const,
-              status: ps.status,
-              total_locations: 1,
-              matched_count: ps.total_packages || 0,
-              mismatched_count: 0,
-              empty_count: 0,
-              extra_count: 0,
-              created_at: ps.created_at,
-              completed_at: ps.completed_at,
-              counted_by: ps.counted_by,
-              location_code: ps.location_code,
-            }));
+            const mappedSessions: Session[] = result.data.map((ps: any) => {
+              console.log('[PPC] Mapping session:', ps.session_code, {
+                matched: ps.matched_count,
+                mismatched: ps.mismatched_count
+              });
+              return {
+                id: ps.id,
+                session_code: ps.session_code,
+                warehouse_id: 'WH001',
+                count_type: 'premium_ocr' as const,
+                status: ps.status,
+                total_locations: ps.total_locations || 1,
+                matched_count: ps.matched_count || 0,
+                mismatched_count: ps.mismatched_count || 0,
+                empty_count: 0, // PPC ไม่มีสถานะว่าง
+                extra_count: 0, // PPC ไม่มีสถานะเพิ่มเติม
+                created_at: ps.created_at,
+                completed_at: ps.completed_at,
+                counted_by: ps.counted_by,
+                location_code: ps.location_code,
+              };
+            });
+            console.log('[PPC] Mapped sessions:', mappedSessions);
             setPremiumSessions(mappedSessions);
           }
         })
@@ -204,23 +230,31 @@ function SessionsListView({
             fetch(`/api/stock-count/premium-packages/sessions?${premiumParams.toString()}`)
               .then(res => res.json())
               .then(result => {
+                console.log('[PPC Refresh] API Response:', result);
                 if (result.success && result.data) {
-                  const mappedSessions: Session[] = result.data.map((ps: any) => ({
-                    id: ps.id,
-                    session_code: ps.session_code,
-                    warehouse_id: 'WH001',
-                    count_type: 'premium_ocr' as const,
-                    status: ps.status,
-                    total_locations: 1,
-                    matched_count: ps.total_packages || 0,
-                    mismatched_count: 0,
-                    empty_count: 0,
-                    extra_count: 0,
-                    created_at: ps.created_at,
-                    completed_at: ps.completed_at,
-                    counted_by: ps.counted_by,
-                    location_code: ps.location_code,
-                  }));
+                  const mappedSessions: Session[] = result.data.map((ps: any) => {
+                    console.log('[PPC Refresh] Mapping session:', ps.session_code, {
+                      matched: ps.matched_count,
+                      mismatched: ps.mismatched_count
+                    });
+                    return {
+                      id: ps.id,
+                      session_code: ps.session_code,
+                      warehouse_id: 'WH001',
+                      count_type: 'premium_ocr' as const,
+                      status: ps.status,
+                      total_locations: ps.total_locations || 1,
+                      matched_count: ps.matched_count || 0,
+                      mismatched_count: ps.mismatched_count || 0,
+                      empty_count: 0, // PPC ไม่มีสถานะว่าง
+                      extra_count: 0, // PPC ไม่มีสถานะเพิ่มเติม
+                      created_at: ps.created_at,
+                      completed_at: ps.completed_at,
+                      counted_by: ps.counted_by,
+                      location_code: ps.location_code,
+                    };
+                  });
+                  console.log('[PPC Refresh] Mapped sessions:', mappedSessions);
                   setPremiumSessions(mappedSessions);
                 }
               })
@@ -403,6 +437,14 @@ function SessionDetailView({ sessionId, onBack }: { sessionId: number; onBack: (
 
   const isPrepArea = session.count_type === 'prep_area';
   const isPremiumOcr = session.count_type === 'premium_ocr';
+  const isPremiumPackage = session.count_type === 'premium_package';
+
+  console.log('Session detail:', { 
+    sessionId, 
+    count_type: session.count_type, 
+    itemsCount: items.length,
+    isPremiumPackage 
+  });
 
   const handleExportExcel = () => {
     if (!session || items.length === 0) {
@@ -411,25 +453,46 @@ function SessionDetailView({ sessionId, onBack }: { sessionId: number; onBack: (
     }
 
     // เตรียมข้อมูลสำหรับ Excel
-    const excelData = items.map((item: any, index: number) => ({
-      'ลำดับ': index + 1,
-      'โลเคชั่น': item.location_code || '-',
-      'พาเลท (คาดหวัง)': item.expected_pallet_id || '-',
-      'พาเลท (สแกน)': item.scanned_pallet_id || '-',
-      'SKU (คาดหวัง)': item.expected_sku_code || '-',
-      'ชื่อสินค้า (คาดหวัง)': item.expected_sku_name || '-',
-      'จำนวน (คาดหวัง)': item.expected_quantity || 0,
-      'SKU (จริง)': item.actual_sku_code || item.sku_code || '-',
-      'ชื่อสินค้า (จริง)': item.actual_sku_name || item.sku_name || '-',
-      'จำนวน (จริง)': item.actual_quantity ?? item.quantity ?? 0,
-      'สถานะ': item.status === 'matched' ? 'ถูกต้อง' :
-               item.status === 'mismatched' ? 'ไม่ตรง' :
-               item.status === 'empty' ? 'ว่าง' :
-               item.status === 'extra' ? 'เพิ่มเติม' : 'รอนับ',
-      'เวลานับ': item.counted_at ? format(new Date(item.counted_at), 'dd/MM/yyyy HH:mm:ss') : '-',
-      'ผู้นับ': item.counted_by || '-',
-      'หมายเหตุ': item.notes || '-',
-    }));
+    const excelData = items.map((item: any, index: number) => {
+      if (isPremiumPackage) {
+        // Premium Package items
+        return {
+          'ลำดับ': index + 1,
+          'โลเคชั่น': item.actual_location || '-',
+          'บาร์โค้ด': item.barcode_id || '-',
+          'Face Sheet': item.face_sheet_no || '-',
+          'แพ็ค': item.pack_no || '-',
+          'ร้านค้า': item.shop_name || '-',
+          'Hub': item.hub || '-',
+          'โลเคชั่น (คาดหวัง)': item.expected_location || '-',
+          'โลเคชั่น (จริง)': item.actual_location || '-',
+          'สถานะ': item.location_match ? 'ถูกต้อง' : 'ไม่ตรง',
+          'เวลานับ': item.created_at ? format(new Date(item.created_at), 'dd/MM/yyyy HH:mm:ss') : '-',
+          'ผู้นับ': item.counted_by || '-',
+        };
+      } else {
+        // Standard items
+        return {
+          'ลำดับ': index + 1,
+          'โลเคชั่น': item.location_code || '-',
+          'พาเลท (คาดหวัง)': item.expected_pallet_id || '-',
+          'พาเลท (สแกน)': item.scanned_pallet_id || '-',
+          'SKU (คาดหวัง)': item.expected_sku_code || '-',
+          'ชื่อสินค้า (คาดหวัง)': item.expected_sku_name || '-',
+          'จำนวน (คาดหวัง)': item.expected_quantity || 0,
+          'SKU (จริง)': item.actual_sku_code || item.sku_code || '-',
+          'ชื่อสินค้า (จริง)': item.actual_sku_name || item.sku_name || '-',
+          'จำนวน (จริง)': item.actual_quantity ?? item.quantity ?? 0,
+          'สถานะ': item.status === 'matched' ? 'ถูกต้อง' :
+                   item.status === 'mismatched' ? 'ไม่ตรง' :
+                   item.status === 'empty' ? 'ว่าง' :
+                   item.status === 'extra' ? 'เพิ่มเติม' : 'รอนับ',
+          'เวลานับ': item.counted_at ? format(new Date(item.counted_at), 'dd/MM/yyyy HH:mm:ss') : '-',
+          'ผู้นับ': item.counted_by || '-',
+          'หมายเหตุ': item.notes || '-',
+        };
+      }
+    });
 
     // สร้าง workbook และ worksheet
     const wb = XLSX.utils.book_new();
@@ -476,6 +539,7 @@ function SessionDetailView({ sessionId, onBack }: { sessionId: number; onBack: (
               <h1 className="text-lg font-semibold text-gray-900">รายละเอียดรอบนับ: {session.session_code}</h1>
               {isPrepArea && <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-orange-100 text-orange-700">บ้านหยิบ</span>}
               {isPremiumOcr && <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700">OCR แพ็คพรีเมียม</span>}
+              {isPremiumPackage && <span className="px-2 py-0.5 rounded text-[10px] font-medium bg-blue-100 text-blue-700">บ้านหยิบพรีเมี่ยม</span>}
             </div>
             <p className="text-xs text-gray-500">คลัง: {session.warehouse_id} | สร้างเมื่อ: {format(new Date(session.created_at), 'dd/MM/yyyy HH:mm')}</p>
           </div>
@@ -511,35 +575,74 @@ function SessionDetailView({ sessionId, onBack }: { sessionId: number; onBack: (
             <thead className="bg-gray-100 sticky top-0">
               <tr>
                 <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600">#</th>
-                <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600">โลเคชั่น</th>
-                <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600">พาเลท (คาดหวัง)</th>
-                <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600">พาเลท (สแกน)</th>
-                <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600">SKU</th>
-                <th className="px-3 py-2 text-right text-[10px] font-medium text-gray-600">จำนวน (คาดหวัง)</th>
-                <th className="px-3 py-2 text-right text-[10px] font-medium text-gray-600">จำนวน (จริง)</th>
+                <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600">
+                  {isPremiumPackage ? 'โลเคชั่น' : 'โลเคชั่น'}
+                </th>
+                {isPremiumPackage ? (
+                  <>
+                    <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600">บาร์โค้ด</th>
+                    <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600">Face Sheet</th>
+                    <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600">แพ็ค</th>
+                    <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600">ร้านค้า</th>
+                    <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600">Hub</th>
+                    <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600">โลเคชั่น (คาดหวัง)</th>
+                    <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600">โลเคชั่น (จริง)</th>
+                  </>
+                ) : (
+                  <>
+                    <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600">พาเลท (คาดหวัง)</th>
+                    <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600">พาเลท (สแกน)</th>
+                    <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600">SKU</th>
+                    <th className="px-3 py-2 text-right text-[10px] font-medium text-gray-600">จำนวน (คาดหวัง)</th>
+                    <th className="px-3 py-2 text-right text-[10px] font-medium text-gray-600">จำนวน (จริง)</th>
+                  </>
+                )}
                 <th className="px-3 py-2 text-center text-[10px] font-medium text-gray-600">สถานะ</th>
                 <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600">เวลานับ</th>
                 <th className="px-3 py-2 text-left text-[10px] font-medium text-gray-600">หมายเหตุ</th>
               </tr>
             </thead>
             <tbody>
-              {paginatedItems.length > 0 ? paginatedItems.map((item: any, idx: number) => (
-                <tr key={item.id || idx} className={`border-t border-gray-100 hover:bg-gray-50 ${item.status === 'mismatched' || item.status === 'empty' ? 'bg-red-50/30' : ''}`}>
-                  <td className="px-3 py-2 text-[10px] text-gray-500">{(detailPage - 1) * detailPageSize + idx + 1}</td>
-                  <td className="px-3 py-2 text-xs font-mono text-gray-900">{item.location_code || '-'}</td>
-                  <td className="px-3 py-2 text-xs font-mono text-gray-700">{item.expected_pallet_id || '-'}</td>
-                  <td className="px-3 py-2 text-xs font-mono text-gray-700">{item.scanned_pallet_id || '-'}</td>
-                  <td className="px-3 py-2">
-                    <div className="text-xs text-gray-900">{item.expected_sku_name || item.actual_sku_name || item.sku_name || '-'}</div>
-                    <div className="text-[10px] text-gray-500">{item.expected_sku_code || item.actual_sku_code || item.sku_code || ''}</div>
-                  </td>
-                  <td className="px-3 py-2 text-xs text-right font-mono">{item.expected_quantity?.toLocaleString() || '-'}</td>
-                  <td className="px-3 py-2 text-xs text-right font-mono font-bold">{(item.actual_quantity ?? item.quantity)?.toLocaleString() || '-'}</td>
-                  <td className="px-3 py-2 text-center">{getItemStatusBadge(item.status || 'pending')}</td>
-                  <td className="px-3 py-2 text-[10px] text-gray-500">{item.counted_at ? format(new Date(item.counted_at), 'HH:mm:ss') : '-'}</td>
-                  <td className="px-3 py-2 text-[10px] text-gray-500 max-w-[150px] truncate">{item.notes || '-'}</td>
-                </tr>
-              )) : (
+              {paginatedItems.length > 0 ? paginatedItems.map((item: any, idx: number) => {
+                // สำหรับ Premium Package items
+                if (isPremiumPackage) {
+                  return (
+                    <tr key={item.id || idx} className={`border-t border-gray-100 hover:bg-gray-50 ${!item.location_match ? 'bg-red-50/30' : ''}`}>
+                      <td className="px-3 py-2 text-[10px] text-gray-500">{(detailPage - 1) * detailPageSize + idx + 1}</td>
+                      <td className="px-3 py-2 text-xs font-mono text-gray-900">{item.actual_location || '-'}</td>
+                      <td className="px-3 py-2 text-xs font-mono text-gray-700">{item.barcode_id || '-'}</td>
+                      <td className="px-3 py-2 text-xs font-mono text-gray-700">{item.face_sheet_no || '-'}</td>
+                      <td className="px-3 py-2 text-xs text-gray-700">{item.pack_no || '-'}</td>
+                      <td className="px-3 py-2 text-xs text-gray-900">{item.shop_name || '-'}</td>
+                      <td className="px-3 py-2 text-xs text-gray-700">{item.hub || '-'}</td>
+                      <td className="px-3 py-2 text-xs font-mono text-gray-700">{item.expected_location || '-'}</td>
+                      <td className="px-3 py-2 text-xs font-mono text-gray-900">{item.actual_location || '-'}</td>
+                      <td className="px-3 py-2 text-center">{getItemStatusBadge(item.location_match ? 'matched' : 'mismatched')}</td>
+                      <td className="px-3 py-2 text-[10px] text-gray-500">{item.created_at ? format(new Date(item.created_at), 'HH:mm:ss') : '-'}</td>
+                      <td className="px-3 py-2 text-[10px] text-gray-500 max-w-[150px] truncate">{item.counted_by || '-'}</td>
+                    </tr>
+                  );
+                }
+                
+                // สำหรับ Standard items
+                return (
+                  <tr key={item.id || idx} className={`border-t border-gray-100 hover:bg-gray-50 ${item.status === 'mismatched' || item.status === 'empty' ? 'bg-red-50/30' : ''}`}>
+                    <td className="px-3 py-2 text-[10px] text-gray-500">{(detailPage - 1) * detailPageSize + idx + 1}</td>
+                    <td className="px-3 py-2 text-xs font-mono text-gray-900">{item.location_code || '-'}</td>
+                    <td className="px-3 py-2 text-xs font-mono text-gray-700">{item.expected_pallet_id || '-'}</td>
+                    <td className="px-3 py-2 text-xs font-mono text-gray-700">{item.scanned_pallet_id || '-'}</td>
+                    <td className="px-3 py-2">
+                      <div className="text-xs text-gray-900">{item.expected_sku_name || item.actual_sku_name || item.sku_name || '-'}</div>
+                      <div className="text-[10px] text-gray-500">{item.expected_sku_code || item.actual_sku_code || item.sku_code || ''}</div>
+                    </td>
+                    <td className="px-3 py-2 text-xs text-right font-mono">{item.expected_quantity?.toLocaleString() || '-'}</td>
+                    <td className="px-3 py-2 text-xs text-right font-mono font-bold">{(item.actual_quantity ?? item.quantity)?.toLocaleString() || '-'}</td>
+                    <td className="px-3 py-2 text-center">{getItemStatusBadge(item.status || 'pending')}</td>
+                    <td className="px-3 py-2 text-[10px] text-gray-500">{item.counted_at ? format(new Date(item.counted_at), 'HH:mm:ss') : '-'}</td>
+                    <td className="px-3 py-2 text-[10px] text-gray-500 max-w-[150px] truncate">{item.notes || '-'}</td>
+                  </tr>
+                );
+              }) : (
                 <tr>
                   <td colSpan={10} className="px-4 py-8 text-center text-gray-400">
                     {detailSearch ? 'ไม่พบรายการที่ค้นหา' : 'ยังไม่มีรายการที่สแกน'}

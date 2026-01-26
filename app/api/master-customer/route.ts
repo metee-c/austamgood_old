@@ -10,8 +10,8 @@ async function handleGet(request: NextRequest, context: any) {
   const search = searchParams.get('search');
   const supabase = await createClient();
   
-  // Build query with count
-  let query = supabase.from('master_customer').select('*');
+  // Build query with count - ไม่มี limit เพื่อโหลดทั้งหมด
+  let query = supabase.from('master_customer').select('*').limit(5000);
 
   if (search) {
     const hasSpecialChars = /[|,()\\]/.test(search);
@@ -20,10 +20,9 @@ async function handleGet(request: NextRequest, context: any) {
     }
   }
 
-  // Apply pagination
-  query = query;
-
   const { data: customers, error } = await query;
+
+  console.log('[API master-customer] Loaded customers:', customers?.length || 0);
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });

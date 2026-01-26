@@ -10,13 +10,52 @@ export async function GET(
     const { id } = await params;
     const supabase = await createClient();
 
-    const { data: session, error: sessionError } = await supabase
-      .from('wms_stock_count_sessions')
+    // ลองดูจาก premium_package_count_sessions ก่อน (สำหรับ premium packages)
+    let { data: premiumSession, error: premiumError } = await supabase
+      .from('premium_package_count_sessions')
       .select('*')
       .eq('id', id)
-      .single();
+      .maybeSingle();
 
-    if (sessionError) throw sessionError;
+    let session: any = null;
+    let sessionError: any = null;
+
+    if (premiumSession && !premiumError) {
+      // แปลงโครงสร้างให้ตรงกับ wms_stock_count_sessions
+      session = {
+        ...premiumSession,
+        count_type: 'premium_package',
+        warehouse_id: 'WH001',
+        counted_by: premiumSession.counted_by || 'system',
+        total_locations: 0,
+        matched_count: 0,
+        mismatched_count: 0,
+        empty_count: 0,
+        extra_count: 0,
+        total_packages: premiumSession.total_packages || 0
+      };
+      console.log(`[API] Found premium session ${id}: ${session.session_code}`);
+    } else {
+      // ลองดูจาก wms_stock_count_sessions (standard sessions)
+      const { data: standardSession, error: standardError } = await supabase
+        .from('wms_stock_count_sessions')
+        .select('*')
+        .eq('id', id)
+        .single();
+
+      if (standardError) {
+        if (standardError.code === 'PGRST116') {
+          return NextResponse.json(
+            { error: 'Session not found' },
+            { status: 404 }
+          );
+        }
+        throw standardError;
+      }
+
+      session = standardSession;
+      console.log(`[API] Found standard session ${id}: ${session.session_code}`);
+    }
 
     // ตรวจสอบ count_type เพื่อดึงข้อมูลจากตารางที่ถูกต้อง
     let items: unknown[] = [];
@@ -41,6 +80,17 @@ export async function GET(
 
       if (ocrError) throw ocrError;
       items = ocrItems || [];
+    } else if (session.count_type === 'premium_package') {
+      // ดึงจาก premium_package_count_items (บ้านหยิบพรีเมี่ยม)
+      const { data: premiumItems, error: premiumError } = await supabase
+        .from('premium_package_count_items')
+        .select('*')
+        .eq('session_id', id)
+        .order('created_at', { ascending: false });
+
+      if (premiumError) throw premiumError;
+      items = premiumItems || [];
+      console.log(`[API] Found ${items.length} premium items for session ${id}`);
     } else {
       // ดึงจาก wms_stock_count_items (standard)
       const { data: stdItems, error: itemsError } = await supabase

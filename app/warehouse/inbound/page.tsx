@@ -21,13 +21,15 @@ import {
   QrCode,
   Save,
   ChevronUp as ChevronUpIcon,
-  ChevronsUpDown
+  ChevronsUpDown,
+  Upload
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
 import Modal from '@/components/ui/Modal';
 import AddReceiveForm from '@/components/forms/AddReceiveForm';
+import ImportReturnForm from '@/components/forms/ImportReturnForm';
 import PalletLabelPrint from '@/components/warehouse/PalletLabelPrint';
 import { PaginationBar } from '@/components/ui/page-components';
 // Define a more accurate type for the data received from the hook
@@ -51,6 +53,7 @@ const InboundPage = () => {
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showImportReturnModal, setShowImportReturnModal] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [selectedReceive, setSelectedReceive] = useState<ReceiveWithItems | null>(null);
   const [expandedRows, setExpandedRows] = useState<Record<number, boolean>>({});
@@ -509,6 +512,15 @@ const InboundPage = () => {
                 </option>
               ))}
             </select>
+            <Button 
+              variant="secondary" 
+              size="sm"
+              icon={Upload}
+              onClick={() => setShowImportReturnModal(true)}
+              className="text-xs py-1 px-2"
+            >
+              รับสินค้าคืน
+            </Button>
             <Button 
               variant="primary" 
               size="sm"
@@ -991,6 +1003,16 @@ const InboundPage = () => {
           isEditMode={true}
         />
       )}
+
+      {/* Import Return Modal */}
+      <ImportReturnForm
+        isOpen={showImportReturnModal}
+        onClose={() => setShowImportReturnModal(false)}
+        onSuccess={() => {
+          setShowImportReturnModal(false);
+          refetch();
+        }}
+      />
 
       {/* Production Order Linking Modal - Loading Spinner */}
       {showLinkingModal && (
