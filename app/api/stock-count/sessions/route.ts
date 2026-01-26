@@ -7,7 +7,8 @@ export async function GET(request: NextRequest) {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
     const status = searchParams.get('status');
-    
+    const countType = searchParams.get('count_type');
+
     // ✅ REMOVED PAGINATION: เอาการจำกัดออกเพื่อความเร็ว
 
     let query = supabase
@@ -17,6 +18,10 @@ export async function GET(request: NextRequest) {
 
     if (status) {
       query = query.eq('status', status);
+    }
+
+    if (countType) {
+      query = query.eq('count_type', countType);
     }
 
     // ✅ REMOVED PAGINATION: ดึงข้อมูลทั้งหมด

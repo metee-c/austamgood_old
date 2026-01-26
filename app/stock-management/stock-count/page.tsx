@@ -46,18 +46,21 @@ interface CountItem {
 }
 
 type SessionStatus = 'in_progress' | 'completed' | 'cancelled' | 'all';
+type CountType = 'standard' | 'prep_area' | 'premium_ocr' | 'all';
 
 const fetcher = (url: string) => fetch(url).then(res => res.json());
 
-function SessionsListView({ 
-  onViewDetail, 
-  viewMode, 
+function SessionsListView({
+  onViewDetail,
+  viewMode,
   onViewModeChange,
   searchTerm: externalSearchTerm,
   onSearchChange,
   statusFilter: externalStatusFilter,
-  onStatusChange
-}: { 
+  onStatusChange,
+  countTypeFilter: externalCountTypeFilter,
+  onCountTypeChange
+}: {
   onViewDetail: (id: number) => void;
   viewMode: 'sessions' | 'items' | 'detail';
   onViewModeChange: (mode: 'sessions' | 'items' | 'detail') => void;
@@ -65,25 +68,78 @@ function SessionsListView({
   onSearchChange: (term: string) => void;
   statusFilter: SessionStatus;
   onStatusChange: (status: SessionStatus) => void;
+  countTypeFilter: CountType;
+  onCountTypeChange: (countType: CountType) => void;
 }) {
   const [currentPage, setCurrentPage] = useState(1);
+  const [premiumSessions, setPremiumSessions] = useState<Session[]>([]);
+  const [loadingPremium, setLoadingPremium] = useState(false);
   const pageSize = 20;
+
+  // Determine which API to call based on count type filter
+  const isPremiumOcr = externalCountTypeFilter === 'premium_ocr';
 
   const queryParams = new URLSearchParams();
   if (externalStatusFilter !== 'all') queryParams.set('status', externalStatusFilter);
+  if (externalCountTypeFilter !== 'all' && externalCountTypeFilter !== 'premium_ocr') {
+    queryParams.set('count_type', externalCountTypeFilter);
+  }
   if (externalSearchTerm) queryParams.set('search', externalSearchTerm);
 
+  // Fetch regular sessions (when not premium_ocr)
   const { data, isLoading, error, mutate } = useSWR<{ success: boolean; data: Session[] }>(
-    `/api/stock-count/sessions?${queryParams.toString()}`,
+    !isPremiumOcr ? `/api/stock-count/sessions?${queryParams.toString()}` : null,
     fetcher
   );
 
-  const sessions = data?.data || [];
+  // Fetch premium package sessions
+  useEffect(() => {
+    if (isPremiumOcr) {
+      setLoadingPremium(true);
+      const premiumParams = new URLSearchParams();
+      if (externalStatusFilter !== 'all') premiumParams.set('status', externalStatusFilter);
+
+      fetch(`/api/stock-count/premium-packages/sessions?${premiumParams.toString()}`)
+        .then(res => res.json())
+        .then(result => {
+          if (result.success && result.data) {
+            // Map premium package sessions to Session interface
+            const mappedSessions: Session[] = result.data.map((ps: any) => ({
+              id: ps.id,
+              session_code: ps.session_code,
+              warehouse_id: 'WH001',
+              count_type: 'premium_ocr' as const,
+              status: ps.status,
+              total_locations: 1,
+              matched_count: ps.total_packages || 0,
+              mismatched_count: 0,
+              empty_count: 0,
+              extra_count: 0,
+              created_at: ps.created_at,
+              completed_at: ps.completed_at,
+              counted_by: ps.counted_by,
+              location_code: ps.location_code,
+            }));
+            setPremiumSessions(mappedSessions);
+          }
+        })
+        .catch(err => console.error('Error fetching premium sessions:', err))
+        .finally(() => setLoadingPremium(false));
+    }
+  }, [isPremiumOcr, externalStatusFilter]);
+
+  const sessions = isPremiumOcr ? premiumSessions : (data?.data || []);
   const statusOptions = [
     { value: 'all', label: 'ทุกสถานะ' },
     { value: 'in_progress', label: 'กำลังนับ' },
     { value: 'completed', label: 'เสร็จสิ้น' },
     { value: 'cancelled', label: 'ยกเลิก' },
+  ];
+  const countTypeOptions = [
+    { value: 'all', label: 'ทุกประเภท' },
+    { value: 'standard', label: 'มาตรฐาน' },
+    { value: 'prep_area', label: 'บ้านหยิบ' },
+    { value: 'premium_ocr', label: 'OCR พรีเมี่ยม' },
   ];
 
   const getStatusBadge = (status: string) => {
@@ -115,6 +171,7 @@ function SessionsListView({
       <PageHeaderWithFilters title="รายงานนับสต็อก (Stock Count)">
         <SearchInput value={externalSearchTerm} onChange={onSearchChange} placeholder="ค้นหาเลขที่รอบนับ..." />
         <FilterSelect value={externalStatusFilter} onChange={(v) => onStatusChange(v as SessionStatus)} options={statusOptions} />
+        <FilterSelect value={externalCountTypeFilter} onChange={(v) => onCountTypeChange(v as CountType)} options={countTypeOptions} />
         {/* Toggle View Buttons */}
         <div className="flex rounded-lg border border-gray-200 overflow-hidden">
           <button
@@ -138,7 +195,40 @@ function SessionsListView({
             มุมมองรายการ
           </button>
         </div>
-        <Button variant="secondary" size="sm" icon={RefreshCw} onClick={() => mutate()} className="text-xs py-1 px-3">รีเฟรช</Button>
+        <Button variant="secondary" size="sm" icon={RefreshCw} onClick={() => {
+          if (isPremiumOcr) {
+            // Refresh premium sessions
+            setLoadingPremium(true);
+            const premiumParams = new URLSearchParams();
+            if (externalStatusFilter !== 'all') premiumParams.set('status', externalStatusFilter);
+            fetch(`/api/stock-count/premium-packages/sessions?${premiumParams.toString()}`)
+              .then(res => res.json())
+              .then(result => {
+                if (result.success && result.data) {
+                  const mappedSessions: Session[] = result.data.map((ps: any) => ({
+                    id: ps.id,
+                    session_code: ps.session_code,
+                    warehouse_id: 'WH001',
+                    count_type: 'premium_ocr' as const,
+                    status: ps.status,
+                    total_locations: 1,
+                    matched_count: ps.total_packages || 0,
+                    mismatched_count: 0,
+                    empty_count: 0,
+                    extra_count: 0,
+                    created_at: ps.created_at,
+                    completed_at: ps.completed_at,
+                    counted_by: ps.counted_by,
+                    location_code: ps.location_code,
+                  }));
+                  setPremiumSessions(mappedSessions);
+                }
+              })
+              .finally(() => setLoadingPremium(false));
+          } else {
+            mutate();
+          }
+        }} className="text-xs py-1 px-3">รีเฟรช</Button>
         <Button variant="primary" size="sm" icon={ClipboardList} onClick={() => window.open('/mobile/stock-count', '_blank')} className="text-xs py-1 px-3 bg-blue-500 hover:bg-blue-600 shadow-lg">
           เริ่มนับสต็อก (Mobile)
         </Button>
@@ -170,7 +260,7 @@ function SessionsListView({
       )}
 
       <div className="flex-1 min-h-0 bg-white border rounded-lg shadow-sm flex flex-col overflow-hidden">
-        {isLoading ? (
+        {(isLoading || loadingPremium) ? (
           <div className="flex flex-col items-center justify-center flex-1 text-gray-400 py-12">
             <div className="w-8 h-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
             <p className="text-sm">กำลังโหลดข้อมูล...</p>
@@ -470,6 +560,7 @@ export default function StockCountReportPage() {
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<SessionStatus>('all');
+  const [countTypeFilter, setCountTypeFilter] = useState<CountType>('all');
 
   // Items view state
   const [itemsData, setItemsData] = useState<CountItem[]>([]);
@@ -570,14 +661,16 @@ export default function StockCountReportPage() {
   // Sessions List View
   if (viewMode === 'sessions') {
     return (
-      <SessionsListView 
-        onViewDetail={handleViewDetail} 
+      <SessionsListView
+        onViewDetail={handleViewDetail}
         viewMode={viewMode}
         onViewModeChange={setViewMode}
         searchTerm={searchTerm}
         onSearchChange={setSearchTerm}
         statusFilter={statusFilter}
         onStatusChange={setStatusFilter}
+        countTypeFilter={countTypeFilter}
+        onCountTypeChange={setCountTypeFilter}
       />
     );
   }

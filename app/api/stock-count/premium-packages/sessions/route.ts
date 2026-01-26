@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
       query = query.eq('status', status);
     }
 
-    const { data, error } = await query.limit(10);
+    const { data, error } = await query;
 
     if (error) throw error;
 
