@@ -705,74 +705,104 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
 
   const skuIds = skus.map(s => s.sku_id);
 
-  // 2. ดึงยอดสต็อกรวมจากคลังหลัก (ไม่รวม Preparation Areas)
-  // ใช้ Chunking เพื่อหลีกเลี่ยง Limit Rows (Supabase/PostgREST default limit)
+  // 2. ดึงยอดสต็อกรวมเฉพาะ Zone Selective Rack และ Zone Block Stack
+  // ไม่รวมบ้านหยิบ (preparation_area)
+  // ใช้ pagination เพื่อดึง location_id ทั้งหมด
+  
+  // ดึงรายการ preparation areas (บ้านหยิบ) ที่ต้อง exclude
   const { data: prepAreas } = await supabase
     .from('preparation_area')
     .select('area_code')
     .eq('status', 'active');
+  const excludeLocationIds = new Set((prepAreas || []).map(p => p.area_code));
   
-  const excludeLocations = [
-    'Delivery-In-Progress',
-    'ADJ-LOSS',
-    'Dispatch',
-    'Expired',
-    'Return',
-    'Receiving',
-    'Repair',
-    ...(prepAreas?.map(p => p.area_code) || [])
-  ];
+  const allowedLocationIds = new Set<string>();
+  
+  // ดึง Zone Selective Rack ทีละ 1000
+  for (let page = 0; page < 3; page++) {
+    const { data: locs } = await supabase
+      .from('master_location')
+      .select('location_id')
+      .eq('zone', 'Zone Selective Rack')
+      .range(page * 1000, (page + 1) * 1000 - 1);
+    if (!locs || locs.length === 0) break;
+    // กรองไม่รวมบ้านหยิบ
+    locs.forEach(l => {
+      if (!excludeLocationIds.has(l.location_id)) {
+        allowedLocationIds.add(l.location_id);
+      }
+    });
+  }
+  
+  // ดึง Zone Block Stack (มี ~61 locations)
+  const { data: blockStackLocs } = await supabase
+    .from('master_location')
+    .select('location_id')
+    .eq('zone', 'Zone Block Stack')
+    .limit(1000);
+  (blockStackLocs || []).forEach(l => {
+    if (!excludeLocationIds.has(l.location_id)) {
+      allowedLocationIds.add(l.location_id);
+    }
+  });
+  
+  // ดึง Zone Selective Rack variants (like Zone Selective Rack A09-01-001)
+  const { data: selectiveRackVariantLocs } = await supabase
+    .from('master_location')
+    .select('location_id')
+    .like('zone', 'Zone Selective Rack %')
+    .limit(1000);
+  (selectiveRackVariantLocs || []).forEach(l => {
+    if (!excludeLocationIds.has(l.location_id)) {
+      allowedLocationIds.add(l.location_id);
+    }
+  });
 
   const chunkSize = 20; // แบ่งทีละ 20 SKUs
   const balancePromises = [];
 
   for (let i = 0; i < skuIds.length; i += chunkSize) {
     const chunkSkus = skuIds.slice(i, i + chunkSize);
-    let query = supabase
+    const query = supabase
       .from('wms_inventory_balances')
       .select('sku_id, total_piece_qty, reserved_piece_qty, location_id, pallet_id')
       .in('sku_id', chunkSkus);
-    
-    // Exclude locations
-    excludeLocations.forEach(loc => {
-      query = query.neq('location_id', loc);
-    });
     
     balancePromises.push(query.limit(100000));
   }
 
   const balanceResults = await Promise.all(balancePromises);
 
-  // รวมผลลัพธ์จากทุก Chunk
+  // รวมผลลัพธ์จากทุก Chunk และกรองเฉพาะ location ที่อยู่ใน Zone Selective Rack และ Zone Block Stack
   const balances: any[] = [];
   balanceResults.forEach(res => {
-    if (res.data) balances.push(...res.data);
+    if (res.data) {
+      // กรองเฉพาะ location ที่อยู่ใน allowedLocationIds
+      const filtered = res.data.filter((b: any) => allowedLocationIds.has(b.location_id));
+      balances.push(...filtered);
+    }
     if (res.error) console.error('Error fetching balance chunk:', res.error);
   });
 
   // รวมยอดสต็อกตาม SKU (แยก total และ available)
-  // นับเฉพาะ pallet_id ที่ไม่ซ้ำกัน เพราะพาเลทเดียวกันอาจถูกแยกไปหลายโลเคชั่น
-  const stockBySkuId: Record<string, { total: number; available: number; pallets: Set<string> }> = {};
+  // นับทุก balance record เพราะแต่ละ record คือสต็อกที่แยกกัน
+  const stockBySkuId: Record<string, { total: number; available: number }> = {};
   
-  // นับสต็อกจากคลังหลัก (ไม่รวม prep areas)
+  // นับสต็อกจากทุก location (ไม่รวม excluded locations)
   (balances || []).forEach(b => {
     const totalQty = Number(b.total_piece_qty || 0);
     const reservedQty = Number(b.reserved_piece_qty || 0);
     const availableQty = totalQty - reservedQty;
-    const palletId = b.pallet_id || `no_pallet_${b.location_id}_${b.sku_id}`;
 
     if (!stockBySkuId[b.sku_id]) {
-      stockBySkuId[b.sku_id] = { total: 0, available: 0, pallets: new Set() };
+      stockBySkuId[b.sku_id] = { total: 0, available: 0 };
     }
     
-    // นับเฉพาะครั้งแรกที่เจอ pallet_id นี้
-    if (!stockBySkuId[b.sku_id].pallets.has(palletId)) {
-      stockBySkuId[b.sku_id].pallets.add(palletId);
-      stockBySkuId[b.sku_id].total += totalQty;
-      stockBySkuId[b.sku_id].available += availableQty;
-    }
+    // นับทุก balance record
+    stockBySkuId[b.sku_id].total += totalQty;
+    stockBySkuId[b.sku_id].available += availableQty;
   });
-
+  
   // 3. ดึงข้อมูลการจ่ายสินค้า (ship) ย้อนหลัง 90 วัน
   const ninetyDaysAgo = new Date();
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);

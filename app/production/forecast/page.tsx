@@ -20,7 +20,9 @@ import {
   HelpCircle,
   X,
   ChevronDown,
-  ChevronRight as ChevronRightIcon
+  ChevronRight as ChevronRightIcon,
+  Filter,
+  RotateCcw
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
@@ -80,6 +82,21 @@ const ForecastPage = () => {
   const [selectedPriority, setSelectedPriority] = useState('all');
   const [selectedSubCategory, setSelectedSubCategory] = useState('all');
 
+  // Advanced filters
+  const [showFilters, setShowFilters] = useState(false);
+  interface AdvancedFilters {
+    sku_id?: string;
+    sku_name?: string;
+    category?: string;
+    brand?: string;
+    min_stock?: string;
+    max_stock?: string;
+    min_dos?: string;
+    max_dos?: string;
+  }
+  const [advancedFilters, setAdvancedFilters] = useState<AdvancedFilters>({});
+  const [tempAdvancedFilters, setTempAdvancedFilters] = useState<AdvancedFilters>({});
+
   // Pagination state
   const [currentPage, setCurrentPage] = useState(1);
   const [totalCount, setTotalCount] = useState(0);
@@ -99,6 +116,28 @@ const ForecastPage = () => {
   const [showAvgDailyShipTooltip, setShowAvgDailyShipTooltip] = useState(false);
   const [showPriorityScoreTooltip, setShowPriorityScoreTooltip] = useState(false);
 
+  // Sort state
+  type SortField = 'sku_id' | 'sku_name' | 'sub_category' | 'total_stock' | 'avg_daily_ship' | 'days_of_supply' | 'pending_order_qty' | 'adjusted_days_of_supply' | 'ship_trend' | 'confidence_level' | 'calculated_safety_stock' | 'suggested_production' | 'priority_score' | 'last_ship_date';
+  type SortDirection = 'asc' | 'desc';
+  const [sortField, setSortField] = useState<SortField>('total_stock');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+
+  const handleSort = (field: SortField) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('desc');
+    }
+  };
+
+  const getSortIcon = (field: SortField) => {
+    if (sortField !== field) return <ChevronDown className="w-3 h-3 text-gray-300" />;
+    return sortDirection === 'asc' 
+      ? <ChevronDown className="w-3 h-3 text-blue-600 rotate-180" />
+      : <ChevronDown className="w-3 h-3 text-blue-600" />;
+  };
+
 
   // Debounce search term
   useEffect(() => {
@@ -111,7 +150,64 @@ const ForecastPage = () => {
   // Fetch data when debounced search or filters change
   useEffect(() => {
     fetchForecastData(1);
-  }, [debouncedSearchTerm, selectedPriority, selectedSubCategory]);
+  }, [debouncedSearchTerm, selectedPriority, selectedSubCategory, advancedFilters]);
+
+  // Helper function to check if value matches any of comma-separated search terms
+  const matchesMultiValue = (value: string | null | undefined, searchTerms: string): boolean => {
+    if (!value || !searchTerms) return false;
+    const terms = searchTerms.split(',').map(t => t.trim().toLowerCase()).filter(t => t);
+    if (terms.length === 0) return false;
+    const valueLower = value.toLowerCase();
+    return terms.some(term => valueLower.includes(term));
+  };
+
+  // Apply advanced filters
+  const applyFilters = () => {
+    setAdvancedFilters(tempAdvancedFilters);
+    setShowFilters(false);
+  };
+
+  // Reset all filters
+  const resetAllFilters = () => {
+    setTempAdvancedFilters({});
+    setAdvancedFilters({});
+    setSearchTerm('');
+    setSelectedPriority('all');
+    setSelectedSubCategory('all');
+  };
+
+  // Filter data with advanced filters (client-side)
+  const filteredForecastData = forecastData.filter(item => {
+    // Advanced filters
+    if (advancedFilters.sku_id && !matchesMultiValue(item.sku_id, advancedFilters.sku_id)) return false;
+    if (advancedFilters.sku_name && !matchesMultiValue(item.sku_name, advancedFilters.sku_name)) return false;
+    if (advancedFilters.category && !matchesMultiValue(item.category, advancedFilters.category)) return false;
+    if (advancedFilters.brand && !matchesMultiValue(item.brand, advancedFilters.brand)) return false;
+    
+    // Numeric filters
+    if (advancedFilters.min_stock && item.total_stock < parseFloat(advancedFilters.min_stock)) return false;
+    if (advancedFilters.max_stock && item.total_stock > parseFloat(advancedFilters.max_stock)) return false;
+    if (advancedFilters.min_dos && item.days_of_supply < parseFloat(advancedFilters.min_dos)) return false;
+    if (advancedFilters.max_dos && item.days_of_supply > parseFloat(advancedFilters.max_dos)) return false;
+    
+    return true;
+  }).sort((a, b) => {
+    // Sort data
+    let aVal: any = a[sortField];
+    let bVal: any = b[sortField];
+    
+    // Handle null/undefined
+    if (aVal === null || aVal === undefined) aVal = sortDirection === 'asc' ? Infinity : -Infinity;
+    if (bVal === null || bVal === undefined) bVal = sortDirection === 'asc' ? Infinity : -Infinity;
+    
+    // Handle string comparison
+    if (typeof aVal === 'string' && typeof bVal === 'string') {
+      return sortDirection === 'asc' ? aVal.localeCompare(bVal) : bVal.localeCompare(aVal);
+    }
+    
+    // Handle number comparison
+    return sortDirection === 'asc' ? aVal - bVal : bVal - aVal;
+  });
 
   const fetchForecastData = async (page: number = 1) => {
     try {
@@ -1091,6 +1187,15 @@ const ForecastPage = () => {
               <option value="medium">ความสำคัญปานกลาง</option>
               <option value="low">ความสำคัญต่ำ</option>
             </select>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              icon={Filter} 
+              onClick={() => setShowFilters(!showFilters)} 
+              className={`text-xs py-1 px-2 ${Object.keys(advancedFilters).some(k => advancedFilters[k as keyof AdvancedFilters]) ? 'bg-blue-50 border-blue-300 text-blue-700' : ''}`}
+            >
+              ตัวกรองเพิ่มเติม
+            </Button>
             <Button
               variant="outline"
               size="sm"
@@ -1110,6 +1215,108 @@ const ForecastPage = () => {
               รีเฟรช
             </Button>
           </div>
+
+          {/* Advanced Filters Panel */}
+          {showFilters && (
+            <div className="mt-2 pt-2 border-t border-gray-200">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">รหัสสินค้า</label>
+                  <input
+                    type="text"
+                    value={tempAdvancedFilters.sku_id || ''}
+                    onChange={(e) => setTempAdvancedFilters({ ...tempAdvancedFilters, sku_id: e.target.value })}
+                    placeholder="SKU001, SKU002..."
+                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">ชื่อสินค้า</label>
+                  <input
+                    type="text"
+                    value={tempAdvancedFilters.sku_name || ''}
+                    onChange={(e) => setTempAdvancedFilters({ ...tempAdvancedFilters, sku_name: e.target.value })}
+                    placeholder="ชื่อสินค้า..."
+                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">หมวดหมู่</label>
+                  <input
+                    type="text"
+                    value={tempAdvancedFilters.category || ''}
+                    onChange={(e) => setTempAdvancedFilters({ ...tempAdvancedFilters, category: e.target.value })}
+                    placeholder="หมวดหมู่..."
+                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">แบรนด์</label>
+                  <input
+                    type="text"
+                    value={tempAdvancedFilters.brand || ''}
+                    onChange={(e) => setTempAdvancedFilters({ ...tempAdvancedFilters, brand: e.target.value })}
+                    placeholder="แบรนด์..."
+                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">สต็อกขั้นต่ำ</label>
+                  <input
+                    type="number"
+                    value={tempAdvancedFilters.min_stock || ''}
+                    onChange={(e) => setTempAdvancedFilters({ ...tempAdvancedFilters, min_stock: e.target.value })}
+                    placeholder="0"
+                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">สต็อกสูงสุด</label>
+                  <input
+                    type="number"
+                    value={tempAdvancedFilters.max_stock || ''}
+                    onChange={(e) => setTempAdvancedFilters({ ...tempAdvancedFilters, max_stock: e.target.value })}
+                    placeholder="999999"
+                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">DoS ขั้นต่ำ (วัน)</label>
+                  <input
+                    type="number"
+                    value={tempAdvancedFilters.min_dos || ''}
+                    onChange={(e) => setTempAdvancedFilters({ ...tempAdvancedFilters, min_dos: e.target.value })}
+                    placeholder="0"
+                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1 font-thai">DoS สูงสุด (วัน)</label>
+                  <input
+                    type="number"
+                    value={tempAdvancedFilters.max_dos || ''}
+                    onChange={(e) => setTempAdvancedFilters({ ...tempAdvancedFilters, max_dos: e.target.value })}
+                    placeholder="999"
+                    className="w-full px-2 py-1 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-2 mt-2">
+                <Button variant="primary" size="sm" onClick={applyFilters} className="text-xs py-1 px-3">
+                  ใช้ตัวกรอง
+                </Button>
+                <Button variant="outline" size="sm" icon={RotateCcw} onClick={resetAllFilters} className="text-xs py-1 px-3">
+                  ล้างทั้งหมด
+                </Button>
+                <Button variant="ghost" size="sm" icon={X} onClick={() => setShowFilters(false)} className="text-xs py-1 px-2">
+                  ปิด
+                </Button>
+                <div className="text-xs text-gray-500 font-thai ml-2">
+                  💡 รองรับการค้นหาหลายค่า เช่น: SKU001, SKU002, SKU003
+                </div>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Data Table */}
@@ -1128,7 +1335,7 @@ const ForecastPage = () => {
                   ลองใหม่
                 </Button>
               </div>
-            ) : forecastData.length === 0 ? (
+            ) : filteredForecastData.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-thai-gray-500 gap-4">
                 <FileText className="w-12 h-12" />
                 <div className="text-center">
@@ -1145,92 +1352,114 @@ const ForecastPage = () => {
                 <table className="w-full border-collapse text-sm min-w-[1400px]">
                   <thead className="sticky top-0 z-10 bg-gray-100">
                     <tr>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
-                        รหัสสินค้า
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('sku_id')}>
+                        <div className="flex items-center gap-1">
+                          <span>รหัสสินค้า</span>
+                          {getSortIcon('sku_id')}
+                        </div>
                       </th>
-                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
-                        ชื่อสินค้า
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('sku_name')}>
+                        <div className="flex items-center gap-1">
+                          <span>ชื่อสินค้า</span>
+                          {getSortIcon('sku_name')}
+                        </div>
                       </th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
-                        ประเภท
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('sub_category')}>
+                        <div className="flex items-center justify-center gap-1">
+                          <span>ประเภท</span>
+                          {getSortIcon('sub_category')}
+                        </div>
                       </th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
-                        สต็อกปัจจุบัน
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('total_stock')}>
+                        <div className="flex items-center justify-center gap-1">
+                          <span>สต็อกปัจจุบัน</span>
+                          {getSortIcon('total_stock')}
+                        </div>
                       </th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('avg_daily_ship')}>
                         <div className="flex items-center justify-center gap-1">
                           <span>จ่ายเฉลี่ย/วัน</span>
+                          {getSortIcon('avg_daily_ship')}
                           <button
-                            onClick={() => setShowAvgDailyShipTooltip(true)}
+                            onClick={(e) => { e.stopPropagation(); setShowAvgDailyShipTooltip(true); }}
                             className="text-gray-400 hover:text-primary-600 transition-colors"
                           >
                             <HelpCircle className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('days_of_supply')}>
                         <div className="flex items-center justify-center gap-1">
                           <span>Days of Supply</span>
+                          {getSortIcon('days_of_supply')}
                           <button
-                            onClick={() => setShowDosTooltip(true)}
+                            onClick={(e) => { e.stopPropagation(); setShowDosTooltip(true); }}
                             className="text-gray-400 hover:text-primary-600 transition-colors"
                           >
                             <HelpCircle className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('pending_order_qty')}>
                         <div className="flex items-center justify-center gap-1">
                           <span>ยอดรอส่ง</span>
+                          {getSortIcon('pending_order_qty')}
                           <button
-                            onClick={() => setShowPendingTooltip(true)}
+                            onClick={(e) => { e.stopPropagation(); setShowPendingTooltip(true); }}
                             className="text-gray-400 hover:text-primary-600 transition-colors"
                           >
                             <HelpCircle className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('adjusted_days_of_supply')}>
                         <div className="flex items-center justify-center gap-1">
                           <span>DoS หลังหัก</span>
+                          {getSortIcon('adjusted_days_of_supply')}
                           <button
-                            onClick={() => setShowPendingTooltip(true)}
+                            onClick={(e) => { e.stopPropagation(); setShowPendingTooltip(true); }}
                             className="text-gray-400 hover:text-primary-600 transition-colors"
                           >
                             <HelpCircle className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('ship_trend')}>
                         <div className="flex items-center justify-center gap-1">
                           <span>แนวโน้ม</span>
+                          {getSortIcon('ship_trend')}
                           <button
-                            onClick={() => setShowTrendTooltip(true)}
+                            onClick={(e) => { e.stopPropagation(); setShowTrendTooltip(true); }}
                             className="text-gray-400 hover:text-primary-600 transition-colors"
                           >
                             <HelpCircle className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
-                        ความเชื่อมั่น
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('confidence_level')}>
+                        <div className="flex items-center justify-center gap-1">
+                          <span>ความเชื่อมั่น</span>
+                          {getSortIcon('confidence_level')}
+                        </div>
                       </th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('calculated_safety_stock')}>
                         <div className="flex items-center justify-center gap-1">
                           <span>Safety Stock</span>
+                          {getSortIcon('calculated_safety_stock')}
                           <button
-                            onClick={() => setShowSafetyStockTooltip(true)}
+                            onClick={(e) => { e.stopPropagation(); setShowSafetyStockTooltip(true); }}
                             className="text-gray-400 hover:text-primary-600 transition-colors"
                           >
                             <HelpCircle className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       </th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('suggested_production')}>
                         <div className="flex items-center justify-center gap-1">
                           <span>แนะนำผลิต</span>
+                          {getSortIcon('suggested_production')}
                           <button
-                            onClick={() => setShowProductionTooltip(true)}
+                            onClick={(e) => { e.stopPropagation(); setShowProductionTooltip(true); }}
                             className="text-gray-400 hover:text-primary-600 transition-colors"
                           >
                             <HelpCircle className="w-3.5 h-3.5" />
@@ -1248,11 +1477,17 @@ const ForecastPage = () => {
                           </button>
                         </div>
                       </th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
-                        คะแนน
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('priority_score')}>
+                        <div className="flex items-center justify-center gap-1">
+                          <span>คะแนน</span>
+                          {getSortIcon('priority_score')}
+                        </div>
                       </th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">
-                        จ่ายล่าสุด
+                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('last_ship_date')}>
+                        <div className="flex items-center justify-center gap-1">
+                          <span>จ่ายล่าสุด</span>
+                          {getSortIcon('last_ship_date')}
+                        </div>
                       </th>
                       <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap">
                         จัดการ
@@ -1260,7 +1495,7 @@ const ForecastPage = () => {
                     </tr>
                   </thead>
                   <tbody className="bg-white text-[11px]">
-                    {forecastData.map((record) => {
+                    {filteredForecastData.map((record) => {
                       const isExpanded = expandedRows.has(record.sku_id);
                       const isLoadingBalance = loadingBalances.has(record.sku_id);
                       const balances = balanceDetails[record.sku_id] || [];
