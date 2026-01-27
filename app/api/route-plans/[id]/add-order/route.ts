@@ -71,7 +71,6 @@ export async function POST(
         order_no,
         customer_id,
         shop_name,
-        address,
         province,
         total_weight,
         status,
@@ -180,7 +179,7 @@ export async function POST(
         plan_id: Number(planId),
         order_id: orderId,
         stop_name: order.shop_name || customerData?.customer_name || order.customer_id,
-        address: order.address || customerData?.address || null,
+        address: order.text_field_long_1 || customerData?.address || null,
         latitude: customerData?.latitude || null,
         longitude: customerData?.longitude || null,
         demand_weight_kg: totalWeight,
@@ -197,7 +196,7 @@ export async function POST(
 
     // 8. สร้าง stop ใหม่
     const stopName = order.shop_name || customerData?.customer_name || order.customer_id || `ออเดอร์ ${order.order_no}`;
-    const stopAddress = order.address || customerData?.address || order.province || null;
+    const stopAddress = order.text_field_long_1 || customerData?.address || order.province || null;
 
     const { data: newStop, error: stopError } = await supabase
       .from('receiving_route_stops')
