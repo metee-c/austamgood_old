@@ -33,10 +33,13 @@ export class MasterSkuService {
 
       // Apply filters
       if (filters.search) {
-        const hasSpecialChars = /[|,()\\]/.test(filters.search);
-        if (!hasSpecialChars) {
-          query = query.or(`sku_name.ilike.%${filters.search}%,sku_id.ilike.%${filters.search}%,barcode.ilike.%${filters.search}%`)
-        }
+        // Escape LIKE wildcards only (% and _)
+        // Note: | is NOT a special character in PostgREST filter syntax
+        const escapedSearch = filters.search
+          .replace(/\\/g, '\\\\')  // Escape backslash first
+          .replace(/%/g, '\\%')    // Escape percent (LIKE wildcard)
+          .replace(/_/g, '\\_')    // Escape underscore (LIKE single char wildcard)
+        query = query.or(`sku_name.ilike.%${escapedSearch}%,sku_id.ilike.%${escapedSearch}%,barcode.ilike.%${escapedSearch}%`)
       }
 
       if (filters.category) {
