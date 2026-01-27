@@ -277,17 +277,20 @@ export async function GET(request: NextRequest) {
       }
 
       // Check in wms_loadlist_bonus_face_sheets for special orders
+      // ✅ FIX: ต้องตรวจสอบ matched_package_ids ด้วย เพื่อให้แสดง loadlist ที่ถูกต้อง
       const { data: loadlistBonusData, error: loadlistBonusError } = await supabase
         .from('wms_loadlist_bonus_face_sheets')
         .select(`
           bonus_face_sheet_id,
           loadlist_id,
+          matched_package_ids,
           loadlists!loadlist_id (
             loadlist_code,
             status
           ),
           bonus_face_sheets!bonus_face_sheet_id (
             bonus_face_sheet_packages!inner (
+              id,
               order_id
             )
           )
@@ -300,10 +303,13 @@ export async function GET(request: NextRequest) {
           const loadlist = Array.isArray(loadlistData) ? loadlistData[0] : loadlistData;
           const bonusFaceSheetData = llb.bonus_face_sheets;
           const bonusFaceSheet = Array.isArray(bonusFaceSheetData) ? bonusFaceSheetData[0] : bonusFaceSheetData;
+          const matchedPackageIds = llb.matched_package_ids || [];
 
           if (loadlist?.loadlist_code && bonusFaceSheet?.bonus_face_sheet_packages) {
             bonusFaceSheet.bonus_face_sheet_packages.forEach((pkg: any) => {
-              if (pkg.order_id && orderIds.includes(pkg.order_id)) {
+              // ✅ FIX: ตรวจสอบว่า package นี้อยู่ใน matched_package_ids ของ loadlist นี้หรือไม่
+              const isPackageMatched = matchedPackageIds.includes(pkg.id);
+              if (pkg.order_id && orderIds.includes(pkg.order_id) && isPackageMatched) {
                 loadlistsMap.set(pkg.order_id, {
                   loadlist_code: loadlist.loadlist_code,
                   loadlist_status: loadlist.status
