@@ -24,8 +24,11 @@ export async function POST(request: NextRequest) {
       balance_id,
       to_location_id,
       notes,
-      force_move = false
+      force_move = false,
+      partial_quantities = null // { [sku_id]: qty } - สำหรับย้ายบางส่วน
     } = body
+
+    const isPartialMove = partial_quantities && Object.keys(partial_quantities).length > 0
 
     // Validate input
     if (!pallet_id && !balance_id) {
@@ -265,24 +268,33 @@ export async function POST(request: NextRequest) {
 
     // Insert move items for all balance records
     console.log('DEBUG: move.move_id =', move.move_id, 'type:', typeof move.move_id)
-    const moveItems = balanceRecords.map(balance => ({
-      move_id: move.move_id,
-      sku_id: balance.sku_id,
-      ...(balance.pallet_id ? { pallet_id: balance.pallet_id } : {}),
-      move_method: balance.pallet_id ? 'pallet' : 'individual',
-      status: 'completed',
-      from_location_id,
-      to_location_id,
-      requested_pack_qty: balance.total_pack_qty || 0,
-      requested_piece_qty: balance.total_piece_qty || 0,
-      confirmed_pack_qty: balance.total_pack_qty || 0,
-      confirmed_piece_qty: balance.total_piece_qty || 0,
-      production_date: balance.production_date,
-      expiry_date: balance.expiry_date,
-      created_by: userId, // ✅ Use user_id
-      executed_by: userId, // ✅ Use user_id
-      completed_at: new Date().toISOString()
-    }))
+    console.log('DEBUG: isPartialMove =', isPartialMove, 'partial_quantities =', partial_quantities)
+    
+    const moveItems = balanceRecords.map(balance => {
+      // ถ้าเป็น partial move ให้ใช้จำนวนที่ระบุ
+      const moveQty = isPartialMove && partial_quantities[balance.sku_id] !== undefined
+        ? partial_quantities[balance.sku_id]
+        : balance.total_piece_qty || 0
+      
+      return {
+        move_id: move.move_id,
+        sku_id: balance.sku_id,
+        ...(balance.pallet_id ? { pallet_id: balance.pallet_id } : {}),
+        move_method: balance.pallet_id ? 'pallet' : 'individual',
+        status: 'completed',
+        from_location_id,
+        to_location_id,
+        requested_pack_qty: balance.total_pack_qty || 0,
+        requested_piece_qty: moveQty,
+        confirmed_pack_qty: balance.total_pack_qty || 0,
+        confirmed_piece_qty: moveQty,
+        production_date: balance.production_date,
+        expiry_date: balance.expiry_date,
+        created_by: userId,
+        executed_by: userId,
+        completed_at: new Date().toISOString()
+      }
+    })
 
     const { error: moveItemError } = await supabase
       .from('wms_move_items')

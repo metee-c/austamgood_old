@@ -174,6 +174,10 @@ function MobileTransferListPage() {
   const [showCapacityError, setShowCapacityError] = useState(false);
   const [capacityErrorMessage, setCapacityErrorMessage] = useState('');
   
+  // Partial Move State - ย้ายแบบแบ่งชิ้น
+  const [isPartialMove, setIsPartialMove] = useState(false);
+  const [partialQty, setPartialQty] = useState<{ [skuId: string]: number }>({});
+  
   // Picking Home Error Modal State
   const [pickingHomeError, setPickingHomeError] = useState<{
     skuId: string;
@@ -240,6 +244,8 @@ function MobileTransferListPage() {
     setLocationCode('');
     setQuickMoveError(null);
     setPalletDetails([]);
+    setIsPartialMove(false);
+    setPartialQty({});
   };
 
   const handleScanPallet = async () => {
@@ -396,11 +402,14 @@ function MobileTransferListPage() {
         // Continue with cached data if fetch fails
       }
 
-      // Calculate total quantity and weight from pallet
-      const palletQty = palletDetails.reduce((sum, item) => sum + (item.total_piece_qty || 0), 0);
+      // Calculate total quantity and weight from pallet (use partial qty if enabled)
+      const palletQty = isPartialMove
+        ? Object.values(partialQty).reduce((sum, qty) => sum + qty, 0)
+        : palletDetails.reduce((sum, item) => sum + (item.total_piece_qty || 0), 0);
       const palletWeight = palletDetails.reduce((sum, item) => {
         const weightPerPiece = item.master_sku?.weight_per_piece_kg || 0;
-        return sum + ((item.total_piece_qty || 0) * weightPerPiece);
+        const qty = isPartialMove ? (partialQty[item.sku_id] || 0) : (item.total_piece_qty || 0);
+        return sum + (qty * weightPerPiece);
       }, 0);
 
       // Get current quantity and weight in the location
@@ -584,7 +593,8 @@ function MobileTransferListPage() {
         locationIdToUse,
         selectedLocation.location_code,
         palletDetails,
-        'Quick move from mobile'
+        'Quick move from mobile',
+        isPartialMove ? partialQty : undefined // ส่ง partial quantities ถ้าเป็นการย้ายบางส่วน
       );
 
       if (!success) {
@@ -1614,8 +1624,33 @@ function MobileTransferListPage() {
                     {/* Pallet Details - Compact */}
                     {palletDetails.length > 0 && (
                       <div className="mt-2 pt-2 border-t border-sky-200">
-                        <p className="text-[10px] font-semibold text-sky-700 mb-1.5 font-thai">รายละเอียด:</p>
-                        <div className="space-y-1.5 max-h-28 overflow-y-auto">
+                        {/* Partial Move Toggle */}
+                        <div className="flex items-center justify-between mb-2">
+                          <p className="text-[10px] font-semibold text-sky-700 font-thai">รายละเอียด:</p>
+                          <label className="flex items-center gap-1.5 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={isPartialMove}
+                              onChange={(e) => {
+                                setIsPartialMove(e.target.checked);
+                                if (!e.target.checked) {
+                                  setPartialQty({});
+                                } else {
+                                  // Initialize with current quantities
+                                  const initialQty: { [key: string]: number } = {};
+                                  palletDetails.forEach(item => {
+                                    initialQty[item.sku_id] = item.total_piece_qty || 0;
+                                  });
+                                  setPartialQty(initialQty);
+                                }
+                              }}
+                              className="w-3.5 h-3.5 text-sky-600 rounded border-gray-300 focus:ring-sky-500"
+                            />
+                            <span className="text-[10px] text-sky-700 font-thai font-medium">ย้ายบางส่วน</span>
+                          </label>
+                        </div>
+                        
+                        <div className="space-y-1.5 max-h-36 overflow-y-auto">
                           {palletDetails.map((item, idx) => (
                             <div key={idx} className="bg-white rounded p-1.5 text-[10px]">
                               <div className="flex items-start justify-between gap-1">
@@ -1628,8 +1663,33 @@ function MobileTransferListPage() {
                                   </p>
                                 </div>
                                 <div className="text-right flex-shrink-0">
-                                  <p className="font-bold text-green-600">{item.total_piece_qty}</p>
-                                  <p className="text-gray-500">ชิ้น</p>
+                                  {isPartialMove ? (
+                                    <div className="flex items-center gap-1">
+                                      <input
+                                        type="number"
+                                        min="1"
+                                        max={item.total_piece_qty}
+                                        value={partialQty[item.sku_id] || 0}
+                                        onChange={(e) => {
+                                          const val = Math.min(
+                                            Math.max(1, parseInt(e.target.value) || 0),
+                                            item.total_piece_qty
+                                          );
+                                          setPartialQty(prev => ({
+                                            ...prev,
+                                            [item.sku_id]: val
+                                          }));
+                                        }}
+                                        className="w-14 px-1 py-0.5 text-center border border-gray-300 rounded text-[10px] font-bold text-sky-600 focus:outline-none focus:ring-1 focus:ring-sky-500"
+                                      />
+                                      <span className="text-gray-500">/ {item.total_piece_qty}</span>
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <p className="font-bold text-green-600">{item.total_piece_qty}</p>
+                                      <p className="text-gray-500">ชิ้น</p>
+                                    </>
+                                  )}
                                 </div>
                               </div>
                             </div>
@@ -1637,10 +1697,20 @@ function MobileTransferListPage() {
                         </div>
                         <div className="mt-1.5 pt-1.5 border-t border-sky-200">
                           <p className="text-[10px] text-sky-700 font-thai">
-                            รวม: <span className="font-bold">{palletDetails.length}</span> รายการ,
-                            <span className="font-bold ml-1">
-                              {palletDetails.reduce((sum, item) => sum + (item.total_piece_qty || 0), 0)}
-                            </span> ชิ้น
+                            {isPartialMove ? (
+                              <>
+                                ย้าย: <span className="font-bold text-sky-600">
+                                  {Object.values(partialQty).reduce((sum, qty) => sum + qty, 0)}
+                                </span> / {palletDetails.reduce((sum, item) => sum + (item.total_piece_qty || 0), 0)} ชิ้น
+                              </>
+                            ) : (
+                              <>
+                                รวม: <span className="font-bold">{palletDetails.length}</span> รายการ,
+                                <span className="font-bold ml-1">
+                                  {palletDetails.reduce((sum, item) => sum + (item.total_piece_qty || 0), 0)}
+                                </span> ชิ้น
+                              </>
+                            )}
                           </p>
                         </div>
                       </div>

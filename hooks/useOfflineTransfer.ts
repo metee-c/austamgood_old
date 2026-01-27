@@ -277,7 +277,8 @@ export function useOfflineTransfer(options: UseOfflineTransferOptions = {}) {
     toLocationId: string,
     toLocationCode: string,
     palletDetails: any[],
-    notes?: string
+    notes?: string,
+    partialQuantities?: { [skuId: string]: number } // สำหรับย้ายบางส่วน
   ): Promise<{
     success: boolean;
     offline: boolean;
@@ -297,6 +298,7 @@ export function useOfflineTransfer(options: UseOfflineTransferOptions = {}) {
             pallet_id: palletId,
             to_location_id: toLocationId,
             notes: notes || 'Quick move from mobile',
+            partial_quantities: partialQuantities || null,
           }),
         });
 

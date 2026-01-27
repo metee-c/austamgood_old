@@ -59,7 +59,42 @@ export async function GET(request: NextRequest) {
 
     if (palletId) {
       // ค้นหาทั้ง pallet_id และ pallet_id_external
-      query = query.or(`pallet_id.eq.${palletId},pallet_id_external.eq.${palletId}`);
+      // ใช้ filter แยกเพื่อรองรับค่าที่มีอักขระพิเศษ เช่น วงเล็บ
+      const { data: palletData, error: palletError } = await supabase
+        .from('wms_inventory_balances')
+        .select(`
+          *,
+          master_sku (
+            sku_id,
+            sku_name,
+            weight_per_piece_kg,
+            default_location
+          ),
+          master_location (
+            location_id,
+            location_code,
+            location_name,
+            location_type,
+            zone
+          )
+        `)
+        .gt('total_piece_qty', 0)
+        .or(`pallet_id.eq."${palletId}",pallet_id_external.eq."${palletId}"`)
+        .order('sku_id', { ascending: true })
+        .order('production_date', { ascending: true });
+
+      if (palletError) {
+        console.error('Inventory balances fetch error:', palletError);
+        return NextResponse.json(
+          { error: palletError.message },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({
+        data: palletData || [],
+        error: null
+      });
     }
 
     // Apply pagination
