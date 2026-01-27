@@ -1629,9 +1629,10 @@ const LoadlistsPage = () => {
                       deliveryNumbers = picklistCodes.length > 0 ? picklistCodes : [loadlist.delivery_number || '-'];
                       deliveryNumberStyle = 'text-blue-600 font-medium';
                     } else if (hasFaceSheets) {
-                      // Face Sheet (ไม่มี BFS): แสดง face_sheet_no
-                      const faceSheet = (loadlist as any).face_sheets[0];
-                      deliveryNumbers = [faceSheet?.face_sheet_no || loadlist.delivery_number || '-'];
+                      // Face Sheet (ไม่มี BFS): แสดง face_sheet_no ทั้งหมด
+                      const fsList = (loadlist as any).face_sheets || [];
+                      const fsNos = fsList.map((fs: any) => fs.face_sheet_no).filter(Boolean);
+                      deliveryNumbers = fsNos.length > 0 ? [...new Set(fsNos)] as string[] : [loadlist.delivery_number || '-'];
                       deliveryNumberStyle = 'text-orange-600 font-medium';
                     }
 

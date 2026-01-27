@@ -803,54 +803,69 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
     stockBySkuId[b.sku_id].available += availableQty;
   });
   
-  // 3. ดึงข้อมูลการจ่ายสินค้า (ship) ย้อนหลัง 90 วัน
+  // 3. ดึงข้อมูลจาก Orders ย้อนหลัง 90 วัน (ใช้ยอดจาก orders แทน ship ledger)
   const ninetyDaysAgo = new Date();
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+  const ninetyDaysAgoStr = ninetyDaysAgo.toISOString().split('T')[0];
 
-  // ใช้ Chunking สำหรับ Ledger เพราะข้อมูลเยอะมาก
-  const ledgerChunkSize = 10; // แบ่งทีละ 10 SKUs
-  const ledgerPromises = [];
+  // ดึงข้อมูลจาก wms_order_items ที่ join กับ wms_orders
+  // ใช้ทุกสถานะยกเว้น draft (ที่ยังไม่ยืนยัน)
+  const validStatuses = ['confirmed', 'in_picking', 'picked', 'loaded', 'in_transit', 'delivered'];
 
-  for (let i = 0; i < skuIds.length; i += ledgerChunkSize) {
-    const chunkSkus = skuIds.slice(i, i + ledgerChunkSize);
-    ledgerPromises.push(
+  const orderChunkSize = 20; // แบ่งทีละ 20 SKUs
+  const orderPromises = [];
+
+  for (let i = 0; i < skuIds.length; i += orderChunkSize) {
+    const chunkSkus = skuIds.slice(i, i + orderChunkSize);
+    orderPromises.push(
       supabase
-        .from('wms_inventory_ledger')
-        .select('sku_id, piece_qty, movement_at')
+        .from('wms_order_items')
+        .select(`
+          sku_id,
+          order_qty,
+          wms_orders!inner (
+            status,
+            order_date,
+            delivery_date
+          )
+        `)
         .in('sku_id', chunkSkus)
-        .eq('transaction_type', 'ship')
-        .eq('direction', 'out')
-        .gte('movement_at', ninetyDaysAgo.toISOString())
-        .order('movement_at', { ascending: true })
+        .in('wms_orders.status', validStatuses)
+        .gte('wms_orders.order_date', ninetyDaysAgoStr)
         .limit(50000)
     );
   }
 
-  const ledgerResults = await Promise.all(ledgerPromises);
-  const shipments: any[] = [];
-  ledgerResults.forEach(res => {
-    if (res.data) shipments.push(...res.data);
-    if (res.error) console.error('Error fetching ledger chunk:', res.error);
+  const orderResults = await Promise.all(orderPromises);
+  const orderItems: any[] = [];
+  orderResults.forEach(res => {
+    if (res.data) orderItems.push(...res.data);
+    if (res.error) console.error('Error fetching order items chunk:', res.error);
   });
 
-  // จัดกลุ่มข้อมูลการจ่ายตาม SKU และวัน
+  // จัดกลุ่มข้อมูล Orders ตาม SKU และวัน
   const shipDataBySkuId: Record<string, { dailyShips: number[], lastShipDate: string | null, totalDays: number }> = {};
 
   skuIds.forEach(skuId => {
     shipDataBySkuId[skuId] = { dailyShips: [], lastShipDate: null, totalDays: 0 };
   });
 
-  // จัดกลุ่มตามวัน
+  // จัดกลุ่มตามวัน (ใช้ delivery_date หรือ order_date)
   const shipBySkuAndDate: Record<string, Record<string, number>> = {};
-  (shipments || []).forEach(s => {
-    const date = new Date(s.movement_at).toISOString().split('T')[0];
-    if (!shipBySkuAndDate[s.sku_id]) {
-      shipBySkuAndDate[s.sku_id] = {};
+  (orderItems || []).forEach((item: any) => {
+    // ใช้ delivery_date ถ้ามี ไม่งั้นใช้ order_date
+    const orderData = item.wms_orders;
+    const date = orderData?.delivery_date || orderData?.order_date;
+    if (!date) return;
+
+    const dateStr = date.split('T')[0]; // รองรับทั้ง date และ timestamp format
+    if (!shipBySkuAndDate[item.sku_id]) {
+      shipBySkuAndDate[item.sku_id] = {};
     }
-    shipBySkuAndDate[s.sku_id][date] = (shipBySkuAndDate[s.sku_id][date] || 0) + Number(s.piece_qty || 0);
+    shipBySkuAndDate[item.sku_id][dateStr] = (shipBySkuAndDate[item.sku_id][dateStr] || 0) + Number(item.order_qty || 0);
   });
 
-  // สร้าง array ของยอดจ่ายรายวัน (รวมวันที่ไม่มีการจ่าย = 0)
+  // สร้าง array ของยอด Orders รายวัน (รวมวันที่ไม่มี order = 0)
   const shipToday = new Date();
   skuIds.forEach(skuId => {
     const skuShips = shipBySkuAndDate[skuId] || {};
@@ -859,7 +874,7 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
     if (dates.length > 0) {
       shipDataBySkuId[skuId].lastShipDate = dates[dates.length - 1];
 
-      // สร้าง array รายวันตั้งแต่วันแรกที่มีการจ่ายจนถึงวันนี้
+      // สร้าง array รายวันตั้งแต่วันแรกที่มี order จนถึงวันนี้
       const firstDate = new Date(dates[0]);
       const dailyShips: number[] = [];
 
