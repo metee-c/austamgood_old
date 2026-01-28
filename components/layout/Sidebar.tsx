@@ -280,12 +280,6 @@ const menuItems = [
         englishLabel: 'Import Orders'
       },
       {
-        path: '/online-packing/products',
-        icon: Box,
-        label: 'จัดการสินค้า',
-        englishLabel: 'Products'
-      },
-      {
         path: '/online-packing/promotions',
         icon: Gift,
         label: 'จัดการโปรโมชั่น',
@@ -302,12 +296,6 @@ const menuItems = [
         icon: Settings,
         label: 'ตั้งค่ากล่อง',
         englishLabel: 'Box Settings'
-      },
-      {
-        path: '/online-packing/users',
-        icon: Users,
-        label: 'จัดการผู้ใช้',
-        englishLabel: 'User Management'
       },
       {
         path: '/online-packing/erp',

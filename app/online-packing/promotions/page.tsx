@@ -5,15 +5,9 @@ import { createClient } from '@/lib/supabase/client'
 import { Gift, Plus, X, Trash2, Pencil, FileText } from 'lucide-react'
 import { PageContainer, PageHeaderWithFilters, SearchInput } from '@/components/ui/page-components'
 import Button from '@/components/ui/Button'
+import type { Product } from '@/types/online-packing'
 
 // Types
-interface Product {
-  id: number
-  parent_sku: string
-  product_name: string
-  barcode: string
-  is_sample: boolean
-}
 
 interface PromotionFreebie {
   id: number
@@ -183,16 +177,24 @@ export default function PromotionsPage() {
         setFreebies(freebiesData || [])
       }
 
-      // Load products
+      // Load products from master_sku
       const { data: productsData, error: productsError } = await supabase
-        .from('packing_products')
-        .select('*')
-        .order('product_name')
+        .from('master_sku')
+        .select('sku_id, sku_name, ecommerce_name, barcode, is_sample')
+        .not('ecommerce_name', 'is', null)
+        .order('ecommerce_name')
 
       if (productsError) {
         console.error('Error loading products:', productsError)
       } else {
-        setProducts(productsData || [])
+        // Transform to include backward compatible properties
+        const transformedProducts = (productsData || []).map(p => ({
+          ...p,
+          id: p.sku_id,
+          parent_sku: p.sku_id,
+          product_name: p.ecommerce_name || p.sku_name
+        }))
+        setProducts(transformedProducts)
       }
 
     } catch (error) {
@@ -434,7 +436,7 @@ export default function PromotionsPage() {
     setFilteredProducts([])
   }
 
-  const removeSelectedProduct = (productId: number) => {
+  const removeSelectedProduct = (productId: string) => {
     setSelectedProducts(selectedProducts.filter(p => p.id !== productId))
   }
 
@@ -1117,7 +1119,7 @@ export default function PromotionsPage() {
                                   <p className="text-sm text-green-600 font-mono">{product.barcode}</p>
                                 </div>
                                 <button
-                                  onClick={() => removeSelectedProduct(product.id)}
+                                  onClick={() => removeSelectedProduct(product.id!)}
                                   className="text-green-600 hover:text-red-600 transition-colors"
                                   title="ลบสินค้านี้"
                                 >
@@ -1540,7 +1542,7 @@ export default function PromotionsPage() {
                                   <p className="text-sm text-green-600 font-mono">{product.barcode}</p>
                                 </div>
                                 <button
-                                  onClick={() => removeSelectedProduct(product.id)}
+                                  onClick={() => removeSelectedProduct(product.id!)}
                                   className="text-green-600 hover:text-red-600 transition-colors"
                                   title="ลบสินค้านี้"
                                 >

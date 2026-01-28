@@ -23,13 +23,18 @@ export interface Order {
 }
 
 export interface Product {
-  id: string
-  parent_sku: string
-  product_name: string
+  // New master_sku columns
+  sku_id: string
+  sku_name: string
+  ecommerce_name?: string | null
   barcode?: string | null
-  is_sample: boolean
-  created_at: string
-  updated_at: string
+  is_sample?: boolean | null
+  // Computed/alias properties for backward compatibility
+  id?: string
+  parent_sku?: string
+  product_name?: string | null
+  created_at?: string
+  updated_at?: string
 }
 
 export interface PackingOrder {

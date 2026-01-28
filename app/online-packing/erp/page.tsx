@@ -106,8 +106,8 @@ export default function ERPPage() {
       console.log('🔄 กำลังดึงข้อมูล products จาก Supabase...')
       
       const productsResult = await supabase
-        .from('packing_products')
-        .select('*')
+        .from('master_sku')
+        .select('sku_id, sku_name, ecommerce_name, barcode, is_sample')
 
       console.log('🏪 Products Result:', productsResult)
 
@@ -122,7 +122,14 @@ export default function ERPPage() {
         console.log('🔍 Products ตัวอย่าง:', productsResult.data.slice(0, 3))
       }
 
-      setProducts(productsResult.data || [])
+      // Transform to include backward compatible properties
+      const transformedProducts = (productsResult.data || []).map(p => ({
+        ...p,
+        id: p.sku_id,
+        parent_sku: p.sku_id,
+        product_name: p.ecommerce_name || p.sku_name
+      }))
+      setProducts(transformedProducts)
     } catch (error) {
       console.error('💥 Error fetching products:', error)
     }

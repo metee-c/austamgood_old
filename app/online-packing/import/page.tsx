@@ -225,7 +225,7 @@ export default function ImportPage() {
     setProcessingStatus('เตรียมข้อมูล...')
 
     setProcessingStatus('กำลังโหลดข้อมูลสินค้า...')
-    const { data: products, error: productsError } = await supabase.from('packing_products').select('product_name, parent_sku')
+    const { data: products, error: productsError } = await supabase.from('master_sku').select('ecommerce_name, sku_id').not('ecommerce_name', 'is', null)
 
     if (productsError) {
       setImportResult({
@@ -239,8 +239,8 @@ export default function ImportPage() {
 
     const productMap = new Map<string, string | null>()
     products?.forEach(p => {
-      if (p.product_name) {
-        productMap.set(p.product_name.trim(), p.parent_sku)
+      if (p.ecommerce_name) {
+        productMap.set(p.ecommerce_name.trim(), p.sku_id)
       }
     })
 

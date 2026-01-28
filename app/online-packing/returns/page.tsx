@@ -5,7 +5,7 @@ import { createClient } from '@/lib/supabase/client'
 import { RotateCcw, Plus, Search } from 'lucide-react'
 import { PageContainer, PageHeaderWithFilters, SearchInput } from '@/components/ui/page-components'
 import Button from '@/components/ui/Button'
-import type { Order } from '@/types/online-packing'
+import type { Order, Product } from '@/types/online-packing'
 
 // Type definitions
 type ReturnRequest = {
@@ -25,16 +25,6 @@ type ReturnRequest = {
   processed_by: string | null
   processed_at: string | null
   confirmation_images?: string[]
-  created_at: string
-  updated_at: string
-}
-
-type Product = {
-  id: number
-  product_name: string | null
-  parent_sku: string | null
-  barcode: string | null
-  is_sample: boolean | null
   created_at: string
   updated_at: string
 }
@@ -253,9 +243,16 @@ export default function ReturnsPage() {
       const returnsData = await fetchAllReturns()
       setReturns(returnsData || [])
 
-      const { data: productsData, error: productsError } = await supabase.from('packing_products').select('*')
+      const { data: productsData, error: productsError } = await supabase.from('master_sku').select('sku_id, sku_name, ecommerce_name, barcode, is_sample').not('ecommerce_name', 'is', null)
       if (productsError) throw productsError
-      setProducts(productsData || [])
+      // Transform to include backward compatible properties
+      const transformedProducts = (productsData || []).map(p => ({
+        ...p,
+        id: p.sku_id,
+        parent_sku: p.sku_id,
+        product_name: p.ecommerce_name || p.sku_name
+      }))
+      setProducts(transformedProducts)
 
     } catch (error) {
       console.error('Error fetching data:', error)

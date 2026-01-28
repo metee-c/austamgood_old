@@ -68,5 +68,81 @@ async function handlePatch(
   }
 }
 
+async function handleDelete(
+  request: NextRequest,
+  context: { params?: Promise<{ id: string }>; user: any }
+) {
+  try {
+    const supabase = await createClient();
+    const { id } = await context.params!;
+    const orderId = parseInt(id);
+
+    // 1. ตรวจสอบว่า order มีอยู่จริงและสถานะอนุญาตให้ลบได้
+    const { data: order, error: fetchError } = await supabase
+      .from('wms_orders')
+      .select('order_id, order_no, status')
+      .eq('order_id', orderId)
+      .single();
+
+    if (fetchError || !order) {
+      return NextResponse.json(
+        { error: 'Order not found' },
+        { status: 404 }
+      );
+    }
+
+    // ไม่อนุญาตให้ลบ order ที่มีสถานะ completed หรือ shipped
+    if (['completed', 'shipped', 'delivered'].includes(order.status)) {
+      return NextResponse.json(
+        { error: `Cannot delete order with status: ${order.status}` },
+        { status: 400 }
+      );
+    }
+
+    // 2. ลบ order_items ก่อน (foreign key constraint)
+    const { error: itemsError } = await supabase
+      .from('wms_order_items')
+      .delete()
+      .eq('order_id', orderId);
+
+    if (itemsError) {
+      console.error('Error deleting order items:', itemsError);
+      return NextResponse.json(
+        { error: `Failed to delete order items: ${itemsError.message}` },
+        { status: 500 }
+      );
+    }
+
+    // 3. ลบ order
+    const { error: deleteError } = await supabase
+      .from('wms_orders')
+      .delete()
+      .eq('order_id', orderId);
+
+    if (deleteError) {
+      console.error('Error deleting order:', deleteError);
+      return NextResponse.json(
+        { error: `Failed to delete order: ${deleteError.message}` },
+        { status: 500 }
+      );
+    }
+
+    console.log(`[DELETE] Order ${order.order_no} (ID: ${orderId}) deleted successfully`);
+
+    return NextResponse.json({
+      success: true,
+      message: `Order ${order.order_no} deleted successfully`
+    });
+
+  } catch (error) {
+    console.error('Error in DELETE /api/orders/[id]:', error);
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    );
+  }
+}
+
 // Export with auth wrapper
 export const PATCH = withAuth(handlePatch);
+export const DELETE = withAuth(handleDelete);

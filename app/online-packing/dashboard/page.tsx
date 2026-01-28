@@ -3,7 +3,6 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import * as XLSX from 'xlsx'
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface PackingOrder {
   id: string
@@ -50,20 +49,7 @@ interface ShippingStats {
   percentage: number
 }
 
-interface ProductStats {
-  parent_sku: string
-  product_name: string
-  total_quantity: number
-  total_orders: number
-}
 
-interface HourlyStats {
-  hour: string
-  orders: number
-  packed_orders: number
-  total_items: number
-  productivity_rate: number
-}
 
 export default function DashboardPage() {
   const supabase = createClient()
@@ -96,9 +82,6 @@ export default function DashboardPage() {
   })
   const [platformStats, setPlatformStats] = useState<PlatformStats[]>([])
   const [shippingStats, setShippingStats] = useState<ShippingStats[]>([])
-  const [topProducts, setTopProducts] = useState<ProductStats[]>([])
-  const [hourlyStats, setHourlyStats] = useState<HourlyStats[]>([])
-  const [hourlyStatsForTable, setHourlyStatsForTable] = useState<HourlyStats[]>([])
   const [recentOrders, setRecentOrders] = useState<PackingOrder[]>([])
   const [isLoading, setIsLoading] = useState(true)
 
@@ -317,100 +300,6 @@ export default function DashboardPage() {
 
       setShippingStats(shippingStatsData)
 
-      const productMap = new Map<string, { name: string; quantity: number; orders: number }>()
-      ordersData.forEach(order => {
-        const sku = order.parent_sku || 'Unknown'
-        const name = order.product_name || 'Unknown Product'
-        const current = productMap.get(sku) || { name, quantity: 0, orders: 0 }
-        current.quantity += order.quantity || 0
-        current.orders += 1
-        current.name = name
-        productMap.set(sku, current)
-      })
-
-      const topProductsData: ProductStats[] = Array.from(productMap.entries())
-        .map(([sku, data]) => ({
-          parent_sku: sku,
-          product_name: data.name,
-          total_quantity: data.quantity,
-          total_orders: data.orders
-        }))
-        .sort((a, b) => b.total_quantity - a.total_quantity)
-        .slice(0, 10)
-
-      setTopProducts(topProductsData)
-
-      const { data: backupOrders, error: backupError } = await supabase
-        .from('packing_backup_orders')
-        .select('packed_at, tracking_number')
-        .gte('packed_at', startOfDay)
-        .lte('packed_at', endOfDay);
-
-      if (backupError) {
-        console.error('Error fetching backup orders:', backupError);
-      }
-      const backupOrdersData = backupOrders || [];
-
-      const hourlyPackedMap = new Map<number, Set<string>>();
-      for (let i = 6; i <= 17; i++) { hourlyPackedMap.set(i, new Set()); }
-
-      backupOrdersData.forEach(order => {
-        if (!order.packed_at) return;
-        const orderHour = new Date(order.packed_at).getHours();
-        const orderIdentifier = order.tracking_number;
-        if (orderIdentifier) {
-          const hourSet = hourlyPackedMap.get(orderHour);
-          if (hourSet) {
-            hourSet.add(orderIdentifier);
-          }
-        }
-      });
-
-      const chartHourlyStats: HourlyStats[] = [];
-      for (let i = 6; i <= 17; i++) {
-        const packedSet = hourlyPackedMap.get(i);
-        const packedCount = packedSet ? packedSet.size : 0;
-        chartHourlyStats.push({
-          hour: `${i.toString().padStart(2, '0')}:00`,
-          orders: 0,
-          packed_orders: packedCount,
-          total_items: 0,
-          productivity_rate: 0
-        });
-      }
-      setHourlyStats(chartHourlyStats.sort((a, b) => a.hour.localeCompare(b.hour)));
-
-      const packedTrackingNumbers = new Set(
-        (backupOrdersData || []).map(o => o.tracking_number).filter(Boolean)
-      );
-
-      const tableHourlyMap = new Map<number, { orders: number; packed: number }>();
-      for (let i = 6; i <= 17; i++) { tableHourlyMap.set(i, { orders: 0, packed: 0 }); }
-
-      uniqueOrdersArray.forEach(order => {
-        const orderHour = new Date(order.created_at).getHours();
-        const bucket = tableHourlyMap.get(orderHour);
-        if (bucket) {
-          bucket.orders += 1;
-          if (order.tracking_number && packedTrackingNumbers.has(order.tracking_number)) {
-            bucket.packed += 1;
-          }
-        }
-      });
-
-      const tableHourlyStats: HourlyStats[] = Array.from(tableHourlyMap.entries())
-        .map(([hour, data]) => ({
-          hour: `${hour.toString().padStart(2, '0')}:00`,
-          orders: data.orders,
-          packed_orders: data.packed,
-          total_items: 0,
-          productivity_rate: data.orders > 0 ? Math.round((data.packed / data.orders) * 100) : 0
-        }))
-        .filter(item => item.orders > 0 || item.packed_orders > 0)
-        .sort((a, b) => a.hour.localeCompare(b.hour));
-
-      setHourlyStatsForTable(tableHourlyStats);
-
       if (!isSearchPerformed) {
         setRecentOrders([])
       }
@@ -449,277 +338,169 @@ export default function DashboardPage() {
     return (
       <div className="h-full flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin w-12 h-12 border-4 border-primary-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-          <p className="text-lg font-semibold text-gray-800 font-thai">กำลังโหลดข้อมูล...</p>
+          <div className="animate-spin w-8 h-8 border-4 border-primary-500 border-t-transparent rounded-full mx-auto mb-2"></div>
+          <p className="text-sm font-semibold text-gray-800 font-thai">กำลังโหลดข้อมูล...</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="h-full overflow-auto bg-gradient-to-br from-blue-50 to-white font-thai">
+    <div className="h-full overflow-auto bg-white font-thai">
       {/* Page Header */}
-      <div className="bg-white shadow-sm border-b border-gray-200 px-6 py-4">
+      <div className="bg-white border-b border-gray-200 px-4 py-3">
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <div className="bg-gradient-to-r from-primary-500 to-primary-600 p-2 rounded-lg shadow">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="flex items-center space-x-2">
+            <div className="bg-primary-500 p-1.5 rounded-lg">
+              <svg className="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
             </div>
             <div>
-              <h1 className="text-xl font-bold text-primary-600 font-thai">สรุปรายงาน</h1>
-              <p className="text-sm text-gray-500 font-thai">Dashboard & Analytics</p>
+              <h1 className="text-base font-bold text-gray-800 font-thai">สรุปรายงาน</h1>
+              <p className="text-xs text-gray-500 font-thai">Dashboard & Analytics</p>
             </div>
           </div>
 
-          <div className="flex items-center space-x-2 bg-white px-3 py-2 rounded-lg border border-gray-200 shadow-sm">
-            <svg className="w-4 h-4 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <div className="flex items-center space-x-2 bg-gray-50 px-2 py-1.5 rounded-lg border border-gray-200">
+            <svg className="w-3.5 h-3.5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
             </svg>
             <input
               type="date"
               value={selectedDate}
               onChange={(e) => setSelectedDate(e.target.value)}
-              className="bg-transparent text-sm font-medium text-gray-700 font-thai focus:outline-none"
+              className="bg-transparent text-xs font-medium text-gray-700 font-thai focus:outline-none"
             />
           </div>
         </div>
       </div>
 
-      <main className="px-6 py-6">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-3xl font-bold text-primary-600 font-thai">{stats.total_orders}</div>
-            </div>
-            <div className="text-sm text-gray-700 font-thai font-medium">ออเดอร์ทั้งหมด</div>
-            <div className="text-xs text-gray-600 font-thai mt-1">{stats.total_items} รายการ</div>
-          </div>
-
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-3xl font-bold text-primary-600 font-thai">{stats.packed_orders}</div>
-            </div>
-            <div className="text-sm text-gray-700 font-thai font-medium">แพ็คเสร็จแล้ว</div>
-            <div className="text-xs text-gray-600 font-thai mt-1">{stats.packed_items} รายการ</div>
-          </div>
-
-          <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-xl border border-yellow-200 shadow-sm p-6 hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-3xl font-bold text-yellow-600 font-thai">{stats.unscanned_orders}</div>
-            </div>
-            <div className="text-sm text-gray-700 font-thai font-medium">ยังไม่สแกน</div>
-            <div className="text-xs text-gray-600 font-thai mt-1">รอการสแกนสินค้า</div>
-          </div>
-
-          <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl border border-green-200 shadow-sm p-6 hover:shadow-md transition-shadow">
-            <div className="flex items-center justify-between mb-4">
-              <div className="text-3xl font-bold text-green-600 font-thai">{stats.scanned_orders}</div>
-            </div>
-            <div className="text-sm text-gray-700 font-thai font-medium">สแกนแล้ว</div>
-            <div className="text-xs text-gray-600 font-thai mt-1">สแกนสินค้าเรียบร้อย</div>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-            <h3 className="text-lg font-bold text-gray-800 font-thai mb-4">ออเดอร์ต่อแพลตฟอร์ม</h3>
+      <main className="px-4 py-4">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 mb-4">
+          <div className="bg-white rounded-lg border border-gray-200 p-3">
+            <h3 className="text-sm font-bold text-gray-800 font-thai mb-2">ออเดอร์ต่อแพลตฟอร์ม</h3>
             {platformStats.length > 0 ? (
-              <div className="space-y-3">
+              <div className="space-y-1.5">
                 {platformStats.map((platform) => (
-                  <div key={platform.platform} className="flex items-center justify-between p-3 bg-primary-50/30 rounded-lg">
+                  <div key={platform.platform} className="flex items-center justify-between p-2 bg-primary-50/30 rounded">
+                    <span className="text-xs font-medium text-gray-700 font-thai">{platform.platform}</span>
                     <div className="flex items-center space-x-3">
-                      <span className="font-medium text-gray-700 font-thai">{platform.platform}</span>
-                    </div>
-                    <div className="flex items-center space-x-4">
                       <div className="text-right">
-                        <div className="text-sm font-bold text-gray-800 font-thai">{platform.total_orders}</div>
-                        <div className="text-xs text-gray-500 font-thai">{platform.packed_orders} แพ็คแล้ว</div>
+                        <div className="text-xs font-bold text-gray-800 font-thai">{platform.total_orders}</div>
+                        <div className="text-[10px] text-gray-500 font-thai">{platform.packed_orders} แพ็คแล้ว</div>
                       </div>
-                      <div className="text-right">
-                        <div className="text-sm font-bold text-primary-600 font-thai">{platform.percentage}%</div>
-                      </div>
+                      <div className="text-xs font-bold text-primary-600 font-thai min-w-[40px] text-right">{platform.percentage}%</div>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="text-center py-8 text-gray-500">
-                <div className="text-4xl mb-2">📱</div>
-                <p className="font-thai">ไม่มีข้อมูลแพลตฟอร์ม</p>
+              <div className="text-center py-4 text-gray-400">
+                <p className="text-xs font-thai">ไม่มีข้อมูลแพลตฟอร์ม</p>
               </div>
             )}
           </div>
 
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-            <h3 className="text-lg font-bold text-gray-800 font-thai mb-4">ออเดอร์ต่อบริษัทขนส่ง</h3>
+          <div className="bg-white rounded-lg border border-gray-200 p-3">
+            <h3 className="text-sm font-bold text-gray-800 font-thai mb-2">ออเดอร์ต่อบริษัทขนส่ง</h3>
             {shippingStats.length > 0 ? (
-              <div className="space-y-3">
+              <div className="space-y-1.5">
                 {shippingStats.map((shipping) => (
-                  <div key={shipping.provider} className="flex items-center justify-between p-3 bg-purple-50/30 rounded-lg">
+                  <div key={shipping.provider} className="flex items-center justify-between p-2 bg-purple-50/30 rounded">
+                    <span className="text-xs font-medium text-gray-700 font-thai">{shipping.provider}</span>
                     <div className="flex items-center space-x-3">
-                      <span className="font-medium text-gray-700 font-thai">{shipping.provider}</span>
-                    </div>
-                    <div className="flex items-center space-x-4">
                       <div className="text-right">
-                        <div className="text-sm font-bold text-gray-800 font-thai">{shipping.total_orders}</div>
-                        <div className="text-xs text-gray-500 font-thai">ออเดอร์</div>
+                        <div className="text-xs font-bold text-gray-800 font-thai">{shipping.total_orders}</div>
+                        <div className="text-[10px] text-gray-500 font-thai">ออเดอร์</div>
                       </div>
-                      <div className="text-right">
-                        <div className="text-sm font-bold text-purple-600 font-thai">{shipping.percentage}%</div>
-                      </div>
+                      <div className="text-xs font-bold text-purple-600 font-thai min-w-[40px] text-right">{shipping.percentage}%</div>
                     </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <div className="text-center py-8 text-gray-500">
-                <div className="text-4xl mb-2">🚚</div>
-                <p className="font-thai">ไม่มีข้อมูลขนส่ง</p>
+              <div className="text-center py-4 text-gray-400">
+                <p className="text-xs font-thai">ไม่มีข้อมูลขนส่ง</p>
               </div>
             )}
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
-          <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-            <h3 className="text-lg font-bold text-gray-800 font-thai mb-4">ผลิตภาพรายชั่วโมง (แพ็คแล้ว)</h3>
-            {hourlyStats.length > 0 ? (
-              <div style={{ width: '100%', height: 300 }}>
-                <ResponsiveContainer>
-                  <AreaChart data={hourlyStats} margin={{ top: 10, right: 30, left: 0, bottom: 20 }}>
-                    <defs>
-                      <linearGradient id="colorPacked" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#3B82F6" stopOpacity={0.8}/>
-                        <stop offset="95%" stopColor="#3B82F6" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="hour" angle={-45} textAnchor="end" height={60} tick={{ fontSize: 12 }} />
-                    <YAxis allowDecimals={false} />
-                    <Tooltip contentStyle={{ borderRadius: '0.75rem', borderColor: '#E5E7EB', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                    <Area type="monotone" dataKey="packed_orders" stroke="#3B82F6" fillOpacity={1} fill="url(#colorPacked)" name="แพ็คแล้ว" />
-                  </AreaChart>
-                </ResponsiveContainer>
+        <div className="bg-white rounded-lg border border-gray-200 p-3 mb-4">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-bold text-gray-800 font-thai">รายงานออเดอร์รายวัน</h3>
+            <div className="flex items-center space-x-3">
+              <div className="flex items-center space-x-1.5">
+                <span className="w-2 h-2 bg-yellow-400 rounded-full"></span>
+                <span className="text-xs font-thai">ยังไม่สแกน</span>
               </div>
-            ) : (
-              <div className="h-72 flex items-center justify-center text-gray-500">
-                <div className="text-center">
-                  <div className="text-4xl mb-4">📊</div>
-                  <p className="font-thai">ไม่มีข้อมูลรายชั่วโมง</p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6">
-            <h3 className="text-lg font-bold text-gray-800 font-thai mb-4">อัตรารายเฉลี่ยผลิตภาพ</h3>
-            {hourlyStatsForTable.length > 0 ? (
-              <div className="space-y-2">
-                <div className="grid grid-cols-4 gap-2 text-xs font-medium text-gray-600 font-thai pb-2 border-b border-gray-200">
-                  <span>เวลา</span>
-                  <span className="text-center">ออเดอร์</span>
-                  <span className="text-center">แพ็คแล้ว</span>
-                  <span className="text-center">ประสิทธิภาพ</span>
-                </div>
-                {hourlyStatsForTable.slice(0, 8).map((hour) => (
-                  <div key={hour.hour} className="grid grid-cols-4 gap-2 text-sm font-thai py-2 hover:bg-primary-50/30 rounded">
-                    <span className="text-primary-600 font-medium">{hour.hour}</span>
-                    <span className="text-center font-bold text-gray-600">{hour.orders}</span>
-                    <span className="text-center font-bold text-primary-600">{hour.packed_orders}</span>
-                    <span className={`text-center font-medium ${
-                      hour.productivity_rate >= 80 ? 'text-green-600' :
-                      hour.productivity_rate >= 60 ? 'text-yellow-600' : 'text-red-500'
-                    }`}>
-                      {hour.productivity_rate}%
-                    </span>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-gray-500">
-                <div className="text-4xl mb-2">⏰</div>
-                <p className="font-thai">ไม่มีข้อมูลรายชั่วโมง</p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-6 mb-8">
-          <div className="flex items-center justify-between mb-6">
-            <h3 className="text-lg font-bold text-gray-800 font-thai">รายงานออเดอร์รายวัน</h3>
-            <div className="flex items-center space-x-4">
-              <div className="flex items-center space-x-2">
-                <span className="w-3 h-3 bg-yellow-400 rounded-full"></span>
-                <span className="text-sm font-thai">ยังไม่สแกน</span>
-              </div>
-              <div className="flex items-center space-x-2">
-                <span className="w-3 h-3 bg-green-500 rounded-full"></span>
-                <span className="text-sm font-thai">สแกนแล้ว</span>
+              <div className="flex items-center space-x-1.5">
+                <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+                <span className="text-xs font-thai">สแกนแล้ว</span>
               </div>
             </div>
           </div>
 
-          <div className="bg-gray-50 rounded-lg p-4 mb-6">
-            <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-9 gap-4 items-end">
+          <div className="bg-gray-50 rounded-lg p-3 mb-3">
+            <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-9 gap-2 items-end">
               <div>
-                <label className="block text-sm font-medium text-gray-700 font-thai mb-2">วันที่เริ่มต้น</label>
+                <label className="block text-xs font-medium text-gray-700 font-thai mb-1">วันที่เริ่มต้น</label>
                 <input
                   type="date"
                   value={searchFilters.startDate}
                   onChange={(e) => setSearchFilters(prev => ({ ...prev, startDate: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm font-thai"
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-xs font-thai"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 font-thai mb-2">เวลาเริ่มต้น</label>
+                <label className="block text-xs font-medium text-gray-700 font-thai mb-1">เวลาเริ่มต้น</label>
                 <input
                   type="time"
                   value={searchFilters.startTime}
                   onChange={(e) => setSearchFilters(prev => ({ ...prev, startTime: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm font-thai"
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-xs font-thai"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 font-thai mb-2">วันที่สิ้นสุด</label>
+                <label className="block text-xs font-medium text-gray-700 font-thai mb-1">วันที่สิ้นสุด</label>
                 <input
                   type="date"
                   value={searchFilters.endDate}
                   onChange={(e) => setSearchFilters(prev => ({ ...prev, endDate: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm font-thai"
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-xs font-thai"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 font-thai mb-2">เวลาสิ้นสุด</label>
+                <label className="block text-xs font-medium text-gray-700 font-thai mb-1">เวลาสิ้นสุด</label>
                 <input
                   type="time"
                   value={searchFilters.endTime}
                   onChange={(e) => setSearchFilters(prev => ({ ...prev, endTime: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm font-thai"
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-xs font-thai"
                 />
               </div>
 
               <div className="lg:col-span-2">
-                <label className="block text-sm font-medium text-gray-700 font-thai mb-2">SKU / ชื่อสินค้า</label>
+                <label className="block text-xs font-medium text-gray-700 font-thai mb-1">SKU / ชื่อสินค้า</label>
                 <input
                   type="text"
                   value={searchFilters.skuOrName}
                   onChange={(e) => setSearchFilters(prev => ({ ...prev, skuOrName: e.target.value }))}
                   placeholder="ค้นหา..."
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm font-thai"
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-xs font-thai"
                 />
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 font-thai mb-2">แพลตฟอร์ม</label>
+                <label className="block text-xs font-medium text-gray-700 font-thai mb-1">แพลตฟอร์ม</label>
                 <select
                   value={searchFilters.platform}
                   onChange={(e) => setSearchFilters(prev => ({ ...prev, platform: e.target.value }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm font-thai"
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-xs font-thai"
                 >
                   <option value="all">ทั้งหมด</option>
                   {platformStats.map(p => (
@@ -729,11 +510,11 @@ export default function DashboardPage() {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-700 font-thai mb-2">สถานะการสแกน</label>
+                <label className="block text-xs font-medium text-gray-700 font-thai mb-1">สถานะการสแกน</label>
                 <select
                   value={searchFilters.scanStatus}
                   onChange={(e) => setSearchFilters(prev => ({ ...prev, scanStatus: e.target.value as 'all' | 'scanned' | 'unscanned' }))}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-sm font-thai"
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-xs font-thai"
                 >
                   <option value="all">ทั้งหมด</option>
                   <option value="unscanned">ยังไม่สแกน</option>
@@ -741,18 +522,18 @@ export default function DashboardPage() {
                 </select>
               </div>
 
-              <div className="flex flex-col space-y-2">
+              <div className="flex flex-col space-y-1.5">
                 <button
                   onClick={handleSearch}
-                  className="bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-md text-sm font-thai font-medium transition-colors"
+                  className="bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-md text-xs font-thai font-medium transition-colors"
                 >
                   ค้นหา
                 </button>
                 <button
                   onClick={exportToExcel}
-                  className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-md text-sm font-thai font-medium transition-colors flex items-center justify-center space-x-2"
+                  className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-md text-xs font-thai font-medium transition-colors flex items-center justify-center space-x-1.5"
                 >
-                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                   </svg>
                   <span>Excel</span>
@@ -765,18 +546,18 @@ export default function DashboardPage() {
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="border-b border-gray-200">
-                    <th className="text-left py-3 px-2 font-medium text-gray-600 text-sm font-thai">Order Number</th>
-                    <th className="text-left py-3 px-2 font-medium text-gray-600 text-sm font-thai">Tracking Number</th>
-                    <th className="text-left py-3 px-2 font-medium text-gray-600 text-sm font-thai">ผู้ซื้อ</th>
-                    <th className="text-left py-3 px-2 font-medium text-gray-600 text-sm font-thai">SKU</th>
-                    <th className="text-left py-3 px-2 font-medium text-gray-600 text-sm font-thai">สินค้า</th>
-                    <th className="text-center py-3 px-2 font-medium text-gray-600 text-sm font-thai">จำนวน</th>
-                    <th className="text-center py-3 px-2 font-medium text-gray-600 text-sm font-thai">สถานะ</th>
-                    <th className="text-center py-3 px-2 font-medium text-gray-600 text-sm font-thai">สถานะแพ็ค</th>
-                    <th className="text-left py-3 px-2 font-medium text-gray-600 text-sm font-thai">เวลาสแกนสินค้า</th>
-                    <th className="text-left py-3 px-2 font-medium text-gray-600 text-sm font-thai">แพลตฟอร์ม</th>
-                    <th className="text-left py-3 px-2 font-medium text-gray-600 text-sm font-thai">วันที่สร้าง</th>
+                  <tr className="border-b border-gray-200 bg-gray-50">
+                    <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">Order Number</th>
+                    <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">Tracking Number</th>
+                    <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">ผู้ซื้อ</th>
+                    <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">SKU</th>
+                    <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">สินค้า</th>
+                    <th className="text-center py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">จำนวน</th>
+                    <th className="text-center py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">สถานะ</th>
+                    <th className="text-center py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">สถานะแพ็ค</th>
+                    <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">เวลาสแกนสินค้า</th>
+                    <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">แพลตฟอร์ม</th>
+                    <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">วันที่สร้าง</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -784,39 +565,39 @@ export default function DashboardPage() {
                     const isScanned = order.packing_status === 'completed' || ['packed', 'shipped', 'delivered'].includes(order.fulfillment_status);
                     return (
                       <tr key={order.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
-                        <td className="py-3 px-2">
-                          <span className="font-mono text-sm font-medium text-gray-700">{order.order_number}</span>
+                        <td className="py-1.5 px-2">
+                          <span className="font-mono text-xs font-medium text-gray-700">{order.order_number}</span>
                         </td>
-                        <td className="py-3 px-2">
-                          <span className="font-mono text-sm font-medium text-primary-600">{order.tracking_number || '-'}</span>
+                        <td className="py-1.5 px-2">
+                          <span className="font-mono text-xs font-medium text-primary-600">{order.tracking_number || '-'}</span>
                         </td>
-                        <td className="py-3 px-2">
-                          <span className="font-medium text-gray-800 font-thai">{order.buyer_name}</span>
+                        <td className="py-1.5 px-2">
+                          <span className="text-xs font-medium text-gray-800 font-thai">{order.buyer_name}</span>
                         </td>
-                        <td className="py-3 px-2">
-                          <span className="font-mono text-sm text-gray-600">{order.parent_sku || '-'}</span>
+                        <td className="py-1.5 px-2">
+                          <span className="font-mono text-xs text-gray-600">{order.parent_sku || '-'}</span>
                         </td>
-                        <td className="py-3 px-2">
-                          <span className="text-sm text-gray-700 font-thai">{order.product_name || '-'}</span>
+                        <td className="py-1.5 px-2">
+                          <span className="text-xs text-gray-700 font-thai">{order.product_name || '-'}</span>
                         </td>
-                        <td className="py-3 px-2 text-center">
-                          <span className="font-bold text-gray-800">{order.quantity || 0}</span>
+                        <td className="py-1.5 px-2 text-center">
+                          <span className="text-xs font-bold text-gray-800">{order.quantity || 0}</span>
                         </td>
-                        <td className="py-3 px-2 text-center">
-                          <span className={`inline-flex px-2 py-1 rounded-full text-xs font-medium font-thai ${getStatusColor(order.fulfillment_status)}`}>
+                        <td className="py-1.5 px-2 text-center">
+                          <span className={`inline-flex px-1.5 py-0.5 rounded-full text-[10px] font-medium font-thai ${getStatusColor(order.fulfillment_status)}`}>
                             {getStatusText(order.fulfillment_status)}
                           </span>
                         </td>
-                        <td className="py-3 px-2 text-center">
+                        <td className="py-1.5 px-2 text-center">
                           <div className="flex items-center justify-center">
-                            <span className={`w-3 h-3 rounded-full ${isScanned ? 'bg-green-500' : 'bg-yellow-400'}`}></span>
-                            <span className={`ml-2 text-xs font-medium font-thai ${isScanned ? 'text-green-700' : 'text-yellow-700'}`}>
+                            <span className={`w-2 h-2 rounded-full ${isScanned ? 'bg-green-500' : 'bg-yellow-400'}`}></span>
+                            <span className={`ml-1.5 text-[10px] font-medium font-thai ${isScanned ? 'text-green-700' : 'text-yellow-700'}`}>
                               {isScanned ? 'สแกนแล้ว' : 'ยังไม่สแกน'}
                             </span>
                           </div>
                         </td>
-                        <td className="py-3 px-2">
-                          <span className="text-sm text-gray-600">
+                        <td className="py-1.5 px-2">
+                          <span className="text-xs text-gray-600">
                             {order.packed_at ? new Date(order.packed_at).toLocaleString('th-TH', {
                               timeZone: 'Asia/Bangkok',
                               year: 'numeric',
@@ -828,11 +609,11 @@ export default function DashboardPage() {
                             }) : '-'}
                           </span>
                         </td>
-                        <td className="py-3 px-2">
-                          <span className="text-sm font-medium text-gray-700 font-thai">{order.platform}</span>
+                        <td className="py-1.5 px-2">
+                          <span className="text-xs font-medium text-gray-700 font-thai">{order.platform}</span>
                         </td>
-                        <td className="py-3 px-2">
-                          <span className="text-sm text-gray-600">
+                        <td className="py-1.5 px-2">
+                          <span className="text-xs text-gray-600">
                             {new Date(order.created_at).toLocaleDateString('th-TH', {
                               year: 'numeric',
                               month: 'short',
@@ -849,17 +630,16 @@ export default function DashboardPage() {
               </table>
             </div>
           ) : (
-            <div className="text-center py-12 text-gray-500">
-              <div className="text-6xl mb-4">🔍</div>
+            <div className="text-center py-8 text-gray-400">
               {!isSearchPerformed ? (
                 <>
-                  <p className="text-lg font-medium font-thai">เลือกเงื่อนไขและกดค้นหา</p>
-                  <p className="text-sm mt-1 font-thai">กรุณาเลือกวันที่และสถานะการสแกน แล้วกดปุ่มค้นหา</p>
+                  <p className="text-sm font-medium font-thai">เลือกเงื่อนไขและกดค้นหา</p>
+                  <p className="text-xs mt-1 font-thai">กรุณาเลือกวันที่และสถานะการสแกน แล้วกดปุ่มค้นหา</p>
                 </>
               ) : (
                 <>
-                  <p className="text-lg font-medium font-thai">ไม่พบข้อมูล</p>
-                  <p className="text-sm mt-1 font-thai">ไม่พบออเดอร์ที่ตรงกับเงื่อนไขการค้นหา</p>
+                  <p className="text-sm font-medium font-thai">ไม่พบข้อมูล</p>
+                  <p className="text-xs mt-1 font-thai">ไม่พบออเดอร์ที่ตรงกับเงื่อนไขการค้นหา</p>
                 </>
               )}
             </div>

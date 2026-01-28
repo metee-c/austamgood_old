@@ -93,7 +93,7 @@ export default function SettingsPage() {
       ] = await Promise.all([
         supabase.from('packing_boxes').select('*').order('box_code'),
         supabase.from('packing_product_weight_profiles').select('*').order('weight_kg'),
-        supabase.from('packing_packing_rules').select('*'),
+        supabase.from('packing_rules').select('*'),
         supabase.from('packing_box_stocks').select('*').order('box_code'),
         supabase.from('packing_box_stock_history').select('*').order('created_at', { ascending: false }).limit(100)
       ])
@@ -223,14 +223,14 @@ export default function SettingsPage() {
       {/* Header */}
       <PageHeaderWithFilters title="ตั้งค่ากล่อง">
         <div className="flex items-center gap-2 ml-auto">
-          <span className="text-xs text-thai-gray-600 font-thai">Box Configuration & Stock</span>
+          <span className="text-[10px] text-gray-600 font-thai">Box Configuration & Stock</span>
         </div>
       </PageHeaderWithFilters>
 
       {/* Main Content */}
       <div className="flex-1 min-h-0 bg-white border rounded-lg shadow-sm flex flex-col overflow-hidden">
         {/* Tabs */}
-        <div className="flex border-b border-thai-gray-200 flex-shrink-0 px-2">
+        <div className="flex border-b border-gray-200 flex-shrink-0 px-2">
           {[
             { id: 'stock', name: 'สต็อกกล่อง' },
             { id: 'rules', name: 'กฎการแพ็ค' },
@@ -241,10 +241,10 @@ export default function SettingsPage() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`py-2 px-3 text-xs font-thai font-medium transition-all ${
+              className={`py-1.5 px-2 text-[10px] font-thai font-medium transition-all ${
                 activeTab === tab.id
                   ? 'border-b-2 border-primary-500 text-primary-600'
-                  : 'border-b-2 border-transparent text-thai-gray-500 hover:text-thai-gray-700'
+                  : 'border-b-2 border-transparent text-gray-500 hover:text-gray-700'
               }`}
             >
               {tab.name}
@@ -252,12 +252,12 @@ export default function SettingsPage() {
           ))}
         </div>
 
-        <div className="flex-1 overflow-auto p-4">
+        <div className="flex-1 overflow-auto p-3">
           {isLoading ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-center">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary-600 mx-auto mb-4"></div>
-                <p className="text-thai-gray-600 font-thai text-sm">กำลังโหลดข้อมูล...</p>
+                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600 mx-auto mb-2"></div>
+                <p className="text-gray-600 font-thai text-xs">กำลังโหลดข้อมูล...</p>
               </div>
             </div>
           ) : (
@@ -314,14 +314,14 @@ const BoxStockTab = ({ boxStocks, setBoxStocks, currentUser, onDataRefresh }: { 
         currentUser={currentUser}
         onDataRefresh={onDataRefresh}
       />
-      <div className="flex justify-between items-start mb-6">
+      <div className="flex justify-between items-start mb-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800 mb-2">สต็อกกล่องทุกไซด์</h2>
-          <p className="text-sm text-gray-500">จัดการสต็อกกล่องคงเหลือผ่านปุ่ม "จัดการสต็อก"</p>
+          <h2 className="text-base font-bold text-gray-800 mb-1 font-thai">สต็อกกล่องทุกไซด์</h2>
+          <p className="text-xs text-gray-500 font-thai">จัดการสต็อกกล่องคงเหลือผ่านปุ่ม "จัดการสต็อก"</p>
         </div>
         <button
           onClick={() => setIsModalOpen(true)}
-          className="bg-primary-500 hover:bg-primary-600 text-white px-6 py-3 rounded-xl font-medium transition-all duration-300 shadow-lg hover:shadow-xl"
+          className="bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg font-medium text-xs font-thai transition-colors"
         >
           จัดการสต็อก
         </button>
@@ -330,13 +330,13 @@ const BoxStockTab = ({ boxStocks, setBoxStocks, currentUser, onDataRefresh }: { 
       <div className="overflow-x-auto">
         <table className="w-full table-auto border-collapse">
           <thead>
-            <tr className="bg-gray-100">
-              <th className="p-4 text-left font-semibold text-gray-600 border-b-2 border-gray-200">รหัสกล่อง</th>
-              <th className="p-4 text-left font-semibold text-gray-600 border-b-2 border-gray-200">ชื่อกล่อง</th>
-              <th className="p-4 text-center font-semibold text-gray-600 border-b-2 border-gray-200">สต็อกปัจจุบัน</th>
-              <th className="p-4 text-center font-semibold text-gray-600 border-b-2 border-gray-200">แจ้งเตือนเมื่อต่ำกว่า</th>
-              <th className="p-4 text-center font-semibold text-gray-600 border-b-2 border-gray-200">สถานะ</th>
-              <th className="p-4 text-center font-semibold text-gray-600 border-b-2 border-gray-200">การจัดการ</th>
+            <tr className="bg-gray-50 border-b border-gray-200">
+              <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">รหัสกล่อง</th>
+              <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">ชื่อกล่อง</th>
+              <th className="text-center py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">สต็อกปัจจุบัน</th>
+              <th className="text-center py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">แจ้งเตือนเมื่อต่ำกว่า</th>
+              <th className="text-center py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">สถานะ</th>
+              <th className="text-center py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">การจัดการ</th>
             </tr>
           </thead>
           <tbody>
@@ -345,49 +345,49 @@ const BoxStockTab = ({ boxStocks, setBoxStocks, currentUser, onDataRefresh }: { 
               const isEditing = editingStock === stock.id
 
               return (
-                <tr key={stock.id} className={`hover:bg-primary-50/50 border-b border-gray-100 ${isLowStock ? 'bg-red-50/30' : ''}`}>
-                  <td className="p-4 font-mono text-primary-600 font-semibold">{stock.box_code}</td>
-                  <td className="p-4 text-gray-800">{stock.box_name}</td>
-                  <td className="p-4 text-center">
+                <tr key={stock.id} className={`hover:bg-gray-50 border-b border-gray-100 transition-colors ${isLowStock ? 'bg-red-50/30' : ''}`}>
+                  <td className="py-1.5 px-2"><span className="font-mono text-xs font-medium text-primary-600">{stock.box_code}</span></td>
+                  <td className="py-1.5 px-2"><span className="text-xs text-gray-800 font-thai">{stock.box_name}</span></td>
+                  <td className="py-1.5 px-2 text-center">
                     {isEditing ? (
                       <input
                         type="number"
                         value={tempStock}
                         onChange={(e) => setTempStock(parseInt(e.target.value) || 0)}
-                        className="w-20 px-2 py-1 border border-gray-300 rounded text-center"
+                        className="w-16 px-1.5 py-0.5 border border-gray-300 rounded text-center text-xs"
                         autoFocus
                       />
                     ) : (
-                      <span className={`text-xl font-bold ${isLowStock ? 'text-red-600' : 'text-gray-800'}`}>{stock.current_stock}</span>
+                      <span className={`text-sm font-bold ${isLowStock ? 'text-red-600' : 'text-gray-800'}`}>{stock.current_stock}</span>
                     )}
                   </td>
-                  <td className="p-4 text-center">
+                  <td className="py-1.5 px-2 text-center">
                     {isEditing ? (
                       <input
                         type="number"
                         value={tempMinAlert}
                         onChange={(e) => setTempMinAlert(parseInt(e.target.value) || 10)}
-                        className="w-20 px-2 py-1 border border-gray-300 rounded text-center"
+                        className="w-16 px-1.5 py-0.5 border border-gray-300 rounded text-center text-xs"
                       />
                     ) : (
-                      <span className="text-gray-600">{stock.min_stock_alert}</span>
+                      <span className="text-xs text-gray-600">{stock.min_stock_alert}</span>
                     )}
                   </td>
-                  <td className="p-4 text-center">
+                  <td className="py-1.5 px-2 text-center">
                     {isLowStock ? (
-                      <span className="inline-flex items-center px-2 py-1 bg-red-100 text-red-800 text-xs font-semibold rounded-full">สต็อกต่ำ</span>
+                      <span className="inline-flex items-center px-1.5 py-0.5 bg-red-100 text-red-800 text-[10px] font-semibold font-thai rounded-full">สต็อกต่ำ</span>
                     ) : (
-                      <span className="inline-flex items-center px-2 py-1 bg-green-100 text-green-800 text-xs font-semibold rounded-full">ปกติ</span>
+                      <span className="inline-flex items-center px-1.5 py-0.5 bg-green-100 text-green-800 text-[10px] font-semibold font-thai rounded-full">ปกติ</span>
                     )}
                   </td>
-                  <td className="p-4 text-center">
+                  <td className="py-1.5 px-2 text-center">
                     {isEditing ? (
-                      <div className="flex items-center justify-center gap-2">
-                        <button onClick={() => updateStock(stock.id, tempStock, tempMinAlert)} className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded text-xs">✓</button>
-                        <button onClick={() => setEditingStock(null)} className="bg-gray-500 hover:bg-gray-600 text-white px-3 py-1 rounded text-xs">✕</button>
+                      <div className="flex items-center justify-center gap-1">
+                        <button onClick={() => updateStock(stock.id, tempStock, tempMinAlert)} className="bg-green-500 hover:bg-green-600 text-white px-2 py-0.5 rounded text-[10px]">✓</button>
+                        <button onClick={() => setEditingStock(null)} className="bg-gray-500 hover:bg-gray-600 text-white px-2 py-0.5 rounded text-[10px]">✕</button>
                       </div>
                     ) : (
-                      <button onClick={() => { setEditingStock(stock.id); setTempStock(stock.current_stock); setTempMinAlert(stock.min_stock_alert); }} className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded text-sm">แก้ไข</button>
+                      <button onClick={() => { setEditingStock(stock.id); setTempStock(stock.current_stock); setTempMinAlert(stock.min_stock_alert); }} className="bg-blue-500 hover:bg-blue-600 text-white px-2 py-0.5 rounded text-[10px] font-thai">แก้ไข</button>
                     )}
                   </td>
                 </tr>
@@ -669,26 +669,26 @@ const StockUpdateModal = ({ isOpen, onClose, boxStocks, currentUser, onDataRefre
 
 const BoxDimensionsTab = ({ boxes }: { boxes: Box[] }) => (
   <div>
-    <h2 className="text-2xl font-bold text-gray-800 mb-6">ขนาดกล่องทั้งหมด</h2>
+    <h2 className="text-base font-bold text-gray-800 mb-4 font-thai">ขนาดกล่องทั้งหมด</h2>
     <div className="overflow-x-auto">
       <table className="w-full table-auto border-collapse">
         <thead>
-          <tr className="bg-gray-100">
-            <th className="p-4 text-left font-semibold text-gray-600 border-b-2 border-gray-200">รหัสกล่อง</th>
-            <th className="p-4 text-left font-semibold text-gray-600 border-b-2 border-gray-200">ชื่อกล่อง</th>
-            <th className="p-4 text-center font-semibold text-gray-600 border-b-2 border-gray-200">กว้าง (cm)</th>
-            <th className="p-4 text-center font-semibold text-gray-600 border-b-2 border-gray-200">ยาว (cm)</th>
-            <th className="p-4 text-center font-semibold text-gray-600 border-b-2 border-gray-200">สูง (cm)</th>
+          <tr className="bg-gray-50 border-b border-gray-200">
+            <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">รหัสกล่อง</th>
+            <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">ชื่อกล่อง</th>
+            <th className="text-center py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">กว้าง (cm)</th>
+            <th className="text-center py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">ยาว (cm)</th>
+            <th className="text-center py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">สูง (cm)</th>
           </tr>
         </thead>
         <tbody>
           {boxes.map(box => (
-            <tr key={box.id} className="hover:bg-primary-50/50 border-b border-gray-100">
-              <td className="p-4 font-mono text-primary-600 font-semibold">{box.box_code}</td>
-              <td className="p-4 text-gray-800">{box.box_name}</td>
-              <td className="p-4 text-center text-gray-600">{box.dimensions_width}</td>
-              <td className="p-4 text-center text-gray-600">{box.dimensions_length}</td>
-              <td className="p-4 text-center text-gray-600">{box.dimensions_height}</td>
+            <tr key={box.id} className="hover:bg-gray-50 border-b border-gray-100 transition-colors">
+              <td className="py-1.5 px-2"><span className="font-mono text-xs font-medium text-primary-600">{box.box_code}</span></td>
+              <td className="py-1.5 px-2"><span className="text-xs text-gray-800 font-thai">{box.box_name}</span></td>
+              <td className="py-1.5 px-2 text-center"><span className="text-xs text-gray-600">{box.dimensions_width}</span></td>
+              <td className="py-1.5 px-2 text-center"><span className="text-xs text-gray-600">{box.dimensions_length}</span></td>
+              <td className="py-1.5 px-2 text-center"><span className="text-xs text-gray-600">{box.dimensions_height}</span></td>
             </tr>
           ))}
         </tbody>
@@ -699,26 +699,26 @@ const BoxDimensionsTab = ({ boxes }: { boxes: Box[] }) => (
 
 const ProductProfilesTab = ({ profiles }: { profiles: ProductWeightProfile[] }) => (
   <div>
-    <h2 className="text-2xl font-bold text-gray-800 mb-6">ขนาดสินค้าตามน้ำหนัก</h2>
+    <h2 className="text-base font-bold text-gray-800 mb-4 font-thai">ขนาดสินค้าตามน้ำหนัก</h2>
     <div className="overflow-x-auto">
       <table className="w-full table-auto border-collapse">
         <thead>
-          <tr className="bg-gray-100">
-            <th className="p-4 text-left font-semibold text-gray-600 border-b-2 border-gray-200">รหัสประเภท</th>
-            <th className="p-4 text-center font-semibold text-gray-600 border-b-2 border-gray-200">น้ำหนัก (kg)</th>
-            <th className="p-4 text-center font-semibold text-gray-600 border-b-2 border-gray-200">กว้าง (cm)</th>
-            <th className="p-4 text-center font-semibold text-gray-600 border-b-2 border-gray-200">ยาว (cm)</th>
-            <th className="p-4 text-center font-semibold text-gray-600 border-b-2 border-gray-200">สูง (cm)</th>
+          <tr className="bg-gray-50 border-b border-gray-200">
+            <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">รหัสประเภท</th>
+            <th className="text-center py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">น้ำหนัก (kg)</th>
+            <th className="text-center py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">กว้าง (cm)</th>
+            <th className="text-center py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">ยาว (cm)</th>
+            <th className="text-center py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">สูง (cm)</th>
           </tr>
         </thead>
         <tbody>
           {profiles.map(profile => (
-            <tr key={profile.id} className="hover:bg-primary-50/50 border-b border-gray-100">
-              <td className="p-4 font-mono text-primary-600 font-semibold">{profile.product_type_code}</td>
-              <td className="p-4 text-center font-bold text-gray-800">{profile.weight_kg}</td>
-              <td className="p-4 text-center text-gray-600">{profile.dimensions_width}</td>
-              <td className="p-4 text-center text-gray-600">{profile.dimensions_length}</td>
-              <td className="p-4 text-center text-gray-600">{profile.dimensions_height}</td>
+            <tr key={profile.id} className="hover:bg-gray-50 border-b border-gray-100 transition-colors">
+              <td className="py-1.5 px-2"><span className="font-mono text-xs font-medium text-primary-600">{profile.product_type_code}</span></td>
+              <td className="py-1.5 px-2 text-center"><span className="text-xs font-bold text-gray-800">{profile.weight_kg}</span></td>
+              <td className="py-1.5 px-2 text-center"><span className="text-xs text-gray-600">{profile.dimensions_width}</span></td>
+              <td className="py-1.5 px-2 text-center"><span className="text-xs text-gray-600">{profile.dimensions_length}</span></td>
+              <td className="py-1.5 px-2 text-center"><span className="text-xs text-gray-600">{profile.dimensions_height}</span></td>
             </tr>
           ))}
         </tbody>
@@ -827,25 +827,25 @@ const PackingRulesTab = ({ rules, boxes, profiles, setRules }: { rules: PackingR
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-gray-800 mb-2">ตารางกฎการแพ็คสินค้า</h2>
-      <p className="text-sm text-gray-500 mb-6">ตารางนี้แสดงจำนวนชิ้นสูงสุดที่แต่ละกล่องสามารถใส่ได้สำหรับสินค้าแต่ละประเภท <span className="text-blue-600 font-medium">• คลิกที่ช่องเพื่อแก้ไขข้อมูล</span></p>
+      <h2 className="text-base font-bold text-gray-800 mb-1 font-thai">ตารางกฎการแพ็คสินค้า</h2>
+      <p className="text-xs text-gray-500 mb-3 font-thai">ตารางนี้แสดงจำนวนชิ้นสูงสุดที่แต่ละกล่องสามารถใส่ได้สำหรับสินค้าแต่ละประเภท <span className="text-blue-600 font-medium">• คลิกที่ช่องเพื่อแก้ไขข้อมูล</span></p>
       <div className="overflow-x-auto border border-gray-200 rounded-lg">
         <table className="w-full table-fixed border-collapse min-w-[1200px]">
-          <thead className="bg-gray-100">
+          <thead className="bg-gray-50">
             <tr>
-              <th className="p-3 text-left font-semibold text-gray-700 border-b-2 border-gray-200 w-40">กล่อง / สินค้า</th>
+              <th className="py-1.5 px-2 text-left font-semibold text-gray-700 text-[10px] font-thai border-b border-gray-200 w-40">กล่อง / สินค้า</th>
               {sortedProfiles.map(profile => (
-                <th key={profile.id} className="p-3 text-center font-semibold text-gray-700 border-b-2 border-gray-200 border-l border-gray-200">
+                <th key={profile.id} className="py-1.5 px-2 text-center font-semibold text-gray-700 text-[10px] font-thai border-b border-gray-200 border-l border-gray-200">
                   <div>{profile.product_type_code}</div>
-                  <div className="text-xs font-normal text-gray-500">({profile.weight_kg} kg)</div>
+                  <div className="text-[9px] font-normal text-gray-500">({profile.weight_kg} kg)</div>
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
             {sortedBoxes.map(box => (
-              <tr key={box.id} className="hover:bg-primary-50/50 border-b border-gray-100">
-                <td className="p-3 font-mono text-primary-600 font-semibold border-r border-gray-200 bg-gray-50">{box.box_code}</td>
+              <tr key={box.id} className="hover:bg-gray-50 border-b border-gray-100 transition-colors">
+                <td className="py-1.5 px-2 font-mono text-xs text-primary-600 font-semibold border-r border-gray-200 bg-gray-50">{box.box_code}</td>
                 {sortedProfiles.map(profile => {
                   const rule = gridData.get(box.box_code)?.get(profile.product_type_code)
                   const isMix = rule?.rule_code.includes('+')
@@ -944,18 +944,18 @@ const PackingRulesTab = ({ rules, boxes, profiles, setRules }: { rules: PackingR
           </tbody>
         </table>
       </div>
-      <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-        <h3 className="font-bold text-gray-700 mb-2">คำอธิบายสัญลักษณ์</h3>
-        <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-gray-600 mb-4">
-          <div className="flex items-center gap-2"><div className="w-4 h-4 rounded bg-white border border-gray-300"></div><span>ปกติ</span></div>
-          <div className="flex items-center gap-2"><div className="w-4 h-4 rounded bg-blue-50"></div><span>ใส่คละไซส์</span></div>
-          <div className="flex items-center gap-2"><div className="w-4 h-4 rounded bg-yellow-50"></div><span>มีเงื่อนไขพิเศษ</span></div>
-          <div className="flex items-center gap-2"><span className="text-gray-400 font-semibold">–</span><span>ใส่ไม่ได้</span></div>
-          <div className="flex items-center gap-2"><span className="text-gray-300 font-semibold">?</span><span>ยังไม่มีข้อมูล</span></div>
+      <div className="mt-4 p-3 bg-gray-50 rounded-lg border border-gray-200">
+        <h3 className="font-bold text-gray-700 mb-2 text-xs font-thai">คำอธิบายสัญลักษณ์</h3>
+        <div className="flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-gray-600 mb-3 font-thai">
+          <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-white border border-gray-300"></div><span>ปกติ</span></div>
+          <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-blue-50"></div><span>ใส่คละไซส์</span></div>
+          <div className="flex items-center gap-1.5"><div className="w-3 h-3 rounded bg-yellow-50"></div><span>มีเงื่อนไขพิเศษ</span></div>
+          <div className="flex items-center gap-1.5"><span className="text-gray-400 font-semibold">–</span><span>ใส่ไม่ได้</span></div>
+          <div className="flex items-center gap-1.5"><span className="text-gray-300 font-semibold">?</span><span>ยังไม่มีข้อมูล</span></div>
         </div>
-        <div className="border-t border-gray-300 pt-3">
-          <h4 className="font-semibold text-blue-700 mb-2">💡 วิธีการแก้ไข</h4>
-          <div className="text-sm text-blue-700 space-y-1">
+        <div className="border-t border-gray-300 pt-2">
+          <h4 className="font-semibold text-blue-700 mb-1.5 text-xs font-thai">💡 วิธีการแก้ไข</h4>
+          <div className="text-xs text-blue-700 space-y-0.5 font-thai">
             <p>• <strong>คลิกที่ช่องใดช่องหนึ่ง</strong> เพื่อเข้าสู่โหมดแก้ไข</p>
             <p>• <strong>ใส่รหัสกฎ:</strong> เช่น "5" (ใส่ได้ 5 ชิ้น), "3+2" (คละไซส์), "–" (ใส่ไม่ได้)</p>
             <p>• <strong>หมายเหตุ:</strong> ระบุเงื่อนไขพิเศษได้ (ถ้ามี)</p>
@@ -1013,16 +1013,16 @@ const BoxStockHistoryTab = ({ history, onDataRefresh }: { history: BoxStockHisto
   if (!history || history.length === 0) {
     return (
       <div>
-        <h2 className="text-2xl font-bold text-gray-800 mb-6">ประวัติการตัดสต็อก</h2>
-        <div className="text-center p-8 bg-gray-50 rounded-lg">
-          <div className="flex flex-col items-center gap-4">
-            <div className="w-16 h-16 bg-gray-200 rounded-full flex items-center justify-center">
-              <svg className="w-8 h-8 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <h2 className="text-base font-bold text-gray-800 mb-4 font-thai">ประวัติการตัดสต็อก</h2>
+        <div className="text-center p-6 bg-gray-50 rounded-lg">
+          <div className="flex flex-col items-center gap-3">
+            <div className="w-12 h-12 bg-gray-200 rounded-full flex items-center justify-center">
+              <svg className="w-6 h-6 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
               </svg>
             </div>
-            <p className="text-gray-500">ยังไม่มีข้อมูลประวัติการตัดสต็อก</p>
-            <p className="text-gray-400 text-sm">เมื่อมีการตัดสต็อกจะแสดงข้อมูลที่นี่</p>
+            <p className="text-gray-500 text-xs font-thai">ยังไม่มีข้อมูลประวัติการตัดสต็อก</p>
+            <p className="text-gray-400 text-[10px] font-thai">เมื่อมีการตัดสต็อกจะแสดงข้อมูลที่นี่</p>
           </div>
         </div>
       </div>
@@ -1031,9 +1031,9 @@ const BoxStockHistoryTab = ({ history, onDataRefresh }: { history: BoxStockHisto
 
   const getQuantityChangeDisplay = (change: number) => {
     if (change > 0) {
-      return <span className="text-green-600 font-bold">+{change}</span>
+      return <span className="text-green-600 font-bold text-xs">+{change}</span>
     } else {
-      return <span className="text-red-600 font-bold">{change}</span>
+      return <span className="text-red-600 font-bold text-xs">{change}</span>
     }
   }
 
@@ -1109,26 +1109,26 @@ const BoxStockHistoryTab = ({ history, onDataRefresh }: { history: BoxStockHisto
 
   return (
     <div>
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex justify-between items-center mb-4">
         <div>
-          <h2 className="text-2xl font-bold text-gray-800">ประวัติการตัดสต็อก</h2>
-          <p className="text-gray-600 text-sm mt-1">ข้อมูล {history.length} รายการล่าสุด</p>
+          <h2 className="text-base font-bold text-gray-800 font-thai">ประวัติการตัดสต็อก</h2>
+          <p className="text-gray-600 text-xs mt-0.5 font-thai">ข้อมูล {history.length} รายการล่าสุด</p>
         </div>
         <div className="flex gap-2">
           <button
             onClick={onDataRefresh}
-            className="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow-lg hover:shadow-xl flex items-center gap-2"
+            className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1.5 rounded-lg font-medium text-xs font-thai transition-colors flex items-center gap-1.5"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
             </svg>
             รีเฟรช
           </button>
           <button
             onClick={handleExportCSV}
-            className="bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-lg font-medium transition-all duration-300 shadow-lg hover:shadow-xl flex items-center gap-2"
+            className="bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg font-medium text-xs font-thai transition-colors flex items-center gap-1.5"
           >
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
             </svg>
             ส่งออกข้อมูล CSV
@@ -1136,62 +1136,64 @@ const BoxStockHistoryTab = ({ history, onDataRefresh }: { history: BoxStockHisto
         </div>
       </div>
 
-      <div className="bg-white rounded-lg shadow-sm border border-gray-200 overflow-hidden">
+      <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full table-auto">
-            <thead className="bg-gradient-to-r from-primary-500 to-primary-600 text-white">
+            <thead className="bg-gray-50 border-b border-gray-200">
               <tr>
-                <th className="p-4 text-left font-semibold">📅 เวลาตัด</th>
-                <th className="p-4 text-left font-semibold">📦 รหัสกล่อง</th>
-                <th className="p-4 text-center font-semibold">🔢 จำนวนเปลี่ยนแปลง</th>
-                <th className="p-4 text-left font-semibold">🏷️ ประเภทการตัด</th>
-                <th className="p-4 text-left font-semibold">👨‍💼 ผู้ตัดสต็อก</th>
-                <th className="p-4 text-left font-semibold">📄 เลขเอกสาร</th>
-                <th className="p-4 text-center font-semibold">🔧 การจัดการ</th>
+                <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">เวลาตัด</th>
+                <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">รหัสกล่อง</th>
+                <th className="text-center py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">จำนวนเปลี่ยนแปลง</th>
+                <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">ประเภทการตัด</th>
+                <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">ผู้ตัดสต็อก</th>
+                <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">เลขเอกสาร</th>
+                <th className="text-center py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">การจัดการ</th>
               </tr>
             </thead>
             <tbody>
               {history.map((entry, index) => (
-                <tr key={entry.id} className={`border-b border-gray-100 hover:bg-primary-50/30 transition-colors ${index % 2 === 0 ? 'bg-white' : 'bg-gray-50/50'}`}>
-                  <td className="p-4 text-gray-600 text-sm">
-                    {new Date(entry.created_at).toLocaleString('th-TH', {
-                      year: 'numeric',
-                      month: '2-digit',
-                      day: '2-digit',
-                      hour: '2-digit',
-                      minute: '2-digit'
-                    })}
+                <tr key={entry.id} className="border-b border-gray-100 hover:bg-gray-50 transition-colors">
+                  <td className="py-1.5 px-2">
+                    <span className="text-xs text-gray-600">
+                      {new Date(entry.created_at).toLocaleString('th-TH', {
+                        year: 'numeric',
+                        month: '2-digit',
+                        day: '2-digit',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })}
+                    </span>
                   </td>
-                  <td className="p-4 font-mono text-primary-600 font-semibold">{entry.box_code}</td>
-                  <td className="p-4 text-center text-lg">
+                  <td className="py-1.5 px-2"><span className="font-mono text-xs text-primary-600 font-semibold">{entry.box_code}</span></td>
+                  <td className="py-1.5 px-2 text-center">
                     {getQuantityChangeDisplay(entry.quantity_change)}
                   </td>
-                  <td className="p-4 text-gray-800 font-medium">
-                    <span className="inline-flex px-3 py-1 rounded-full text-sm bg-blue-100 text-blue-800">
+                  <td className="py-1.5 px-2">
+                    <span className="inline-flex px-1.5 py-0.5 rounded-full text-[10px] font-thai bg-blue-100 text-blue-800">
                       {entry.reason}
                     </span>
                   </td>
-                  <td className="p-4 text-gray-700">{entry.created_by_name}</td>
-                  <td className="p-4 text-gray-600 font-mono text-sm">
+                  <td className="py-1.5 px-2"><span className="text-xs text-gray-700 font-thai">{entry.created_by_name}</span></td>
+                  <td className="py-1.5 px-2">
                     {entry.notes ? (
-                      <div className="max-w-xs truncate" title={entry.notes}>
+                      <div className="max-w-xs truncate text-xs text-gray-600 font-mono" title={entry.notes}>
                         {entry.notes.includes('เลขเอกสาร:') ?
                           entry.notes.split('.')[0].replace('เลขเอกสาร: ', '') :
                           entry.notes
                         }
                       </div>
                     ) : (
-                      <span className="text-gray-400">-</span>
+                      <span className="text-xs text-gray-400">-</span>
                     )}
                   </td>
-                  <td className="p-4 text-center">
-                    <div className="flex justify-center gap-2">
+                  <td className="py-1.5 px-2 text-center">
+                    <div className="flex justify-center gap-1">
                       <button
                         onClick={() => handleViewDetails(entry)}
-                        className="bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-1"
+                        className="bg-blue-500 hover:bg-blue-600 text-white px-2 py-0.5 rounded text-[10px] font-thai transition-colors flex items-center gap-0.5"
                         title="ดูรายละเอียด"
                       >
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
                         </svg>
@@ -1199,20 +1201,20 @@ const BoxStockHistoryTab = ({ history, onDataRefresh }: { history: BoxStockHisto
                       </button>
                       <button
                         onClick={() => handleEditEntry(entry)}
-                        className="bg-yellow-500 hover:bg-yellow-600 text-white px-3 py-1 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-1"
+                        className="bg-yellow-500 hover:bg-yellow-600 text-white px-2 py-0.5 rounded text-[10px] font-thai transition-colors flex items-center gap-0.5"
                         title="แก้ไข"
                       >
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
                         </svg>
                         แก้ไข
                       </button>
                       <button
                         onClick={() => handleDeleteEntry(entry)}
-                        className="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded-lg text-xs font-medium transition-all duration-200 flex items-center gap-1"
+                        className="bg-red-500 hover:bg-red-600 text-white px-2 py-0.5 rounded text-[10px] font-thai transition-colors flex items-center gap-0.5"
                         title="ลบ"
                       >
-                        <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <svg className="w-2.5 h-2.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                         </svg>
                         ลบ
@@ -1226,18 +1228,18 @@ const BoxStockHistoryTab = ({ history, onDataRefresh }: { history: BoxStockHisto
         </div>
       </div>
 
-      <div className="mt-6 p-4 bg-blue-50 rounded-lg border border-blue-200">
-        <h3 className="font-semibold text-blue-800 mb-2">💡 คำอธิบายข้อมูล</h3>
-        <div className="grid md:grid-cols-2 gap-4 text-sm">
+      <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+        <h3 className="font-semibold text-blue-800 mb-1.5 text-xs font-thai">💡 คำอธิบายข้อมูล</h3>
+        <div className="grid md:grid-cols-2 gap-3 text-xs">
           <div>
-            <p className="text-blue-700"><strong>จำนวนเปลี่ยนแปลง:</strong></p>
-            <p className="text-blue-600">• <span className="text-red-600">ติดลบ (-)</span> = ตัดออกจากสต็อก</p>
-            <p className="text-blue-600">• <span className="text-green-600">บวก (+)</span> = เพิ่มเข้าสต็อก</p>
+            <p className="text-blue-700 font-thai"><strong>จำนวนเปลี่ยนแปลง:</strong></p>
+            <p className="text-blue-600 font-thai">• <span className="text-red-600">ติดลบ (-)</span> = ตัดออกจากสต็อก</p>
+            <p className="text-blue-600 font-thai">• <span className="text-green-600">บวก (+)</span> = เพิ่มเข้าสต็อก</p>
           </div>
           <div>
-            <p className="text-blue-700"><strong>ประเภทการตัด:</strong></p>
-            <p className="text-blue-600">• แสดงเหตุผลการเปลี่ยนแปลงสต็อก</p>
-            <p className="text-blue-600">• ข้อมูลจากการกรอกฟอร์มตัดสต็อก</p>
+            <p className="text-blue-700 font-thai"><strong>ประเภทการตัด:</strong></p>
+            <p className="text-blue-600 font-thai">• แสดงเหตุผลการเปลี่ยนแปลงสต็อก</p>
+            <p className="text-blue-600 font-thai">• ข้อมูลจากการกรอกฟอร์มตัดสต็อก</p>
           </div>
         </div>
       </div>
