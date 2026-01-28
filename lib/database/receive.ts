@@ -157,7 +157,8 @@ export class ReceiveService {
     }
   }
 
-  // Generate unique pallet_id in format ATG{YYYY}{MM}{DD}{9-digit-running-number}
+  // Generate unique pallet_id in format ATG{YYYY}{MM}{DD}{3-digit-running-number}
+  // Example: ATG20260128001
   // IMPORTANT: Checks both wms_receive_items AND wms_move_items.new_pallet_id to prevent duplicates
   async generatePalletId(): Promise<{ data: string | null; error: string | null }> {
     try {
@@ -203,7 +204,7 @@ export class ReceiveService {
         }
       }
 
-      const palletId = `${datePrefix}${String(runningNo).padStart(9, '0')}`;
+      const palletId = `${datePrefix}${String(runningNo).padStart(3, '0')}`;
       return { data: palletId, error: null };
     } catch (err) {
       console.error('Error generating pallet_id:', err);
@@ -212,6 +213,7 @@ export class ReceiveService {
   }
 
   // Generate multiple unique pallet_ids in batch (optimized version)
+  // Example: ATG20260128001, ATG20260128002, ...
   // IMPORTANT: Checks both wms_receive_items AND wms_move_items.new_pallet_id to prevent duplicates
   async generateMultiplePalletIds(count: number): Promise<{ data: string[] | null; error: string | null }> {
     try {
@@ -258,7 +260,7 @@ export class ReceiveService {
 
       const palletIds = [];
       for (let i = 0; i < count; i++) {
-        const palletId = `${datePrefix}${String(runningNo + i).padStart(9, '0')}`;
+        const palletId = `${datePrefix}${String(runningNo + i).padStart(3, '0')}`;
         palletIds.push(palletId);
       }
 

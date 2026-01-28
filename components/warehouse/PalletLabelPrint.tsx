@@ -328,6 +328,13 @@ const PalletLabelPrint: React.FC<PalletLabelPrintProps> = ({ data, size = 'sm' }
               </div>
             </div>
 
+            {/* Large Pallet ID Section */}
+            <div style={{ border: '2px solid black', padding: '12px', marginTop: '3px', textAlign: 'center', background: '#f5f5f5' }}>
+              <div style={{ fontSize: '28px', fontWeight: 'bold', letterSpacing: '1px', fontFamily: "'Courier New', monospace" }}>
+                {data.barcode}
+              </div>
+            </div>
+
           </div>
         </div>
       </div>

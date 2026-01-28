@@ -202,11 +202,9 @@ export const useCustomers = () => {
           throw new Error(result.error);
         }
         
-        // API returns { data: [...] }, filter for active customers
+        // API returns { data: [...] }, already filtered for active customers by RPC function
         console.log('📋 Customers API response:', { total: result.data?.length || 0 });
-        const activeCustomers = (result.data || []).filter((c: Customer) => c.status === 'active');
-        console.log('📋 Active customers:', activeCustomers.length);
-        setCustomers(activeCustomers);
+        setCustomers(result.data || []);
         setError(null);
       } catch (err) {
         const errorMessage = err instanceof Error ? err.message : 'An unknown error occurred';

@@ -6,30 +6,56 @@ import { withAuth, withAdminAuth } from '@/lib/api/with-auth';
 async function handleGet(request: NextRequest, context: any) {
   const { searchParams } = new URL(request.url);
     
-    // ✅ REMOVED PAGINATION: เอาการจำกัดออกเพื่อความเร็ว
   const search = searchParams.get('search');
+  console.log('[API master-customer] Search term:', search);
   const supabase = await createClient();
   
-  // Build query with count - ไม่มี limit เพื่อโหลดทั้งหมด
-  let query = supabase.from('master_customer').select('*').limit(5000);
+  // ดึงข้อมูลหลายรอบเพื่อ bypass limit 1000 ของ Supabase
+  const allCustomers: any[] = [];
+  const batchSize = 1000;
+  let offset = 0;
+  let hasMore = true;
 
-  if (search) {
-    const hasSpecialChars = /[|,()\\]/.test(search);
-    if (!hasSpecialChars) {
-      query = query.or(`customer_code.ilike.%${search}%,customer_name.ilike.%${search}%`);
+  while (hasMore) {
+    let query = supabase
+      .from('master_customer')
+      .select('*')
+      .eq('status', 'active')
+      .order('customer_name')
+      .range(offset, offset + batchSize - 1);
+
+    if (search) {
+      const hasSpecialChars = /[|,()\\]/.test(search);
+      if (!hasSpecialChars) {
+        query = query.or(`customer_code.ilike.%${search}%,customer_name.ilike.%${search}%`);
+      }
+    }
+
+    const { data: batch, error } = await query;
+    
+    if (error) {
+      console.error('[API master-customer] Query Error:', error);
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    if (batch && batch.length > 0) {
+      allCustomers.push(...batch);
+      offset += batchSize;
+      hasMore = batch.length === batchSize;
+    } else {
+      hasMore = false;
+    }
+
+    // Safety limit - max 10 batches (10000 records)
+    if (offset >= 10000) {
+      hasMore = false;
     }
   }
 
-  const { data: customers, error } = await query;
-
-  console.log('[API master-customer] Loaded customers:', customers?.length || 0);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
+  console.log('[API master-customer] Loaded customers:', allCustomers.length);
 
   return NextResponse.json({
-    data: customers
+    data: allCustomers
   });
 }
 

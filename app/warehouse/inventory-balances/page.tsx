@@ -50,6 +50,12 @@ interface InventoryBalance {
   location_name?: string;
 }
 
+// Receive info for Zone Receiving
+interface ReceiveInfo {
+  receive_date: string | null;
+  receiver_name: string | null;
+}
+
 interface MasterLocation {
   location_id: string;
   location_name: string;
@@ -155,6 +161,9 @@ const InventoryBalancesPage = () => {
   // BFS packages state
   const [bfsPackagesByLocation, setBfsPackagesByLocation] = useState<Map<string, BFSPackageInfo[]>>(new Map());
   const [expandedBFSPackages, setExpandedBFSPackages] = useState<Set<number>>(new Set());
+
+  // Receive info state for Zone Receiving
+  const [receiveInfoByPalletId, setReceiveInfoByPalletId] = useState<Map<string, ReceiveInfo>>(new Map());
 
   const toggleBFSPackageExpansion = (packageId: number) => {
     setExpandedBFSPackages(prev => {
@@ -543,6 +552,58 @@ const InventoryBalancesPage = () => {
     }
   };
 
+  // Fetch receive info for Zone Receiving pallets
+  const fetchReceiveInfo = async (palletIds: string[]) => {
+    if (palletIds.length === 0) return;
+
+    try {
+      const supabase = createClient();
+
+      // Query wms_receive_items joined with wms_receives and master_employee
+      const { data, error } = await supabase
+        .from('wms_receive_items')
+        .select(`
+          pallet_id,
+          wms_receives!inner (
+            receive_date,
+            received_by,
+            master_employee!received_by (
+              first_name,
+              last_name
+            )
+          )
+        `)
+        .in('pallet_id', palletIds);
+
+      if (error) {
+        console.error('Error fetching receive info:', error);
+        return;
+      }
+
+      // Map pallet_id to receive info
+      const infoMap = new Map<string, ReceiveInfo>();
+      data?.forEach((item: any) => {
+        if (item.pallet_id && item.wms_receives) {
+          const receive = item.wms_receives;
+          const employee = receive.master_employee;
+          const receiverName = employee
+            ? `${employee.first_name || ''} ${employee.last_name || ''}`.trim()
+            : null;
+
+          infoMap.set(item.pallet_id, {
+            receive_date: receive.receive_date,
+            receiver_name: receiverName || null
+          });
+        }
+      });
+
+      setReceiveInfoByPalletId(infoMap);
+      console.log(`[Receive Info] Loaded info for ${infoMap.size} pallets`);
+    } catch (err) {
+      console.error('Error fetching receive info:', err);
+    }
+  };
+
   const handleViewBalance = (balance: InventoryBalance) => {
     setSelectedBalance(balance);
     setViewModalOpen(true);
@@ -616,7 +677,7 @@ const InventoryBalancesPage = () => {
 
   // Filter and group data by zone and location
   const groupedByZone = useMemo(() => {
-    // Locations to exclude (removed Dispatch from exclusion list)
+    // Locations to exclude (รวม preparation areas เพราะข้อมูลอยู่ในตาราง preparation_area_inventory)
     const excludeLocations = new Set([
       ...preparationAreaCodes,
       'Delivery-In-Progress',
@@ -708,10 +769,23 @@ const InventoryBalancesPage = () => {
     });
 
     // Filter out zones with no locations (after filtering)
+    // แต่ให้ MR และ PQ แสดงเสมอเพราะจะแสดง BFS packages แทน
     const zonesWithData = Array.from(zoneGroups.keys()).filter(zone => {
       const locations = zoneGroups.get(zone) || [];
+      // MR และ PQ แสดงเสมอ
+      if (['MR', 'PQ'].includes(zone)) return true;
       return locations.length > 0;
     });
+    
+    // เพิ่ม MR และ PQ ถ้ายังไม่มี (กรณีไม่มี locations เลย)
+    if (!zoneGroups.has('MR')) {
+      zoneGroups.set('MR', []);
+    }
+    if (!zoneGroups.has('PQ')) {
+      zoneGroups.set('PQ', []);
+    }
+    if (!zonesWithData.includes('MR')) zonesWithData.push('MR');
+    if (!zonesWithData.includes('PQ')) zonesWithData.push('PQ');
 
     // Sort zones by priority
     const sortedZones = zonesWithData.sort((a, b) => {
@@ -739,6 +813,24 @@ const InventoryBalancesPage = () => {
       setExpandedZones(new Set(groupedByZone.zones));
     }
   }, [advancedFilters, showLowStock, showExpiringSoon, groupedByZone.zones, searchParams]);
+
+  // Fetch receive info for Zone Receiving pallets
+  useEffect(() => {
+    const zoneReceivingLocations = groupedByZone.groups.get('Zone Receiving') || [];
+    const palletIds: string[] = [];
+
+    zoneReceivingLocations.forEach(({ balances }) => {
+      balances.forEach(balance => {
+        if (balance.pallet_id) {
+          palletIds.push(balance.pallet_id);
+        }
+      });
+    });
+
+    if (palletIds.length > 0) {
+      fetchReceiveInfo(palletIds);
+    }
+  }, [groupedByZone.groups]);
 
   // Calculate totals
   const totals = useMemo(() => {
@@ -1063,7 +1155,7 @@ const InventoryBalancesPage = () => {
               </div>
             ) : (
               <div className="flex-1 overflow-auto thin-scrollbar">
-                <table className="w-full border-collapse text-sm">
+                <table className="min-w-[1400px] w-full border-collapse text-sm">
                   <thead className="sticky top-0 z-10 bg-gray-100">
                     <tr>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap w-8"></th>
@@ -1078,16 +1170,38 @@ const InventoryBalancesPage = () => {
                       <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">พร้อมใช้</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันผลิต</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันหมดอายุ</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันที่รับ</th>
+                      <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชื่อผู้รับ</th>
                       <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap">จัดการ</th>
                     </tr>
                   </thead>
-                  <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
+                  <tbody className="bg-white divide-y divide-gray-100 text-[11px] [&_td]:whitespace-nowrap">
                     {groupedByZone.zones.map(zone => {
                       const locations = groupedByZone.groups.get(zone) || [];
                       const isExpanded = expandedZones.has(zone);
-                      const zoneTotalPieces = locations.reduce((sum, { balances }) => 
-                        sum + balances.reduce((s, b) => s + (b.total_piece_qty || 0), 0), 0);
-                      const zoneOccupied = locations.filter(l => l.balances.length > 0).length;
+                      
+                      // สำหรับ zone MR/PQ คำนวณ total pieces จาก BFS packages
+                      let zoneTotalPieces = 0;
+                      let zoneOccupied = 0;
+                      
+                      if (['MR', 'PQ'].includes(zone)) {
+                        // คำนวณจาก BFS packages
+                        const bfsZoneLocations = Array.from(bfsPackagesByLocation.keys()).filter(loc => loc.startsWith(zone.substring(0, 2)));
+                        bfsZoneLocations.forEach(loc => {
+                          const packages = bfsPackagesByLocation.get(loc) || [];
+                          if (packages.length > 0) zoneOccupied++;
+                          packages.forEach(pkg => {
+                            pkg.items.forEach(item => {
+                              zoneTotalPieces += Number(item.quantity) || 0;
+                            });
+                          });
+                        });
+                      } else {
+                        // คำนวณจาก wms_inventory_balances
+                        zoneTotalPieces = locations.reduce((sum, { balances }) => 
+                          sum + balances.reduce((s, b) => s + (b.total_piece_qty || 0), 0), 0);
+                        zoneOccupied = locations.filter(l => l.balances.length > 0).length;
+                      }
 
                       return (
                         <React.Fragment key={zone}>
@@ -1107,12 +1221,16 @@ const InventoryBalancesPage = () => {
                             <td className="px-2 py-1.5 text-center border-r border-gray-200">
                               <span className="font-bold text-green-600">{zoneTotalPieces.toLocaleString()}</span>
                             </td>
-                            <td className="px-2 py-1.5 border-r border-gray-200" colSpan={4}></td>
+                            <td className="px-2 py-1.5 border-r border-gray-200" colSpan={6}></td>
                             <td className="px-2 py-1.5"></td>
                           </tr>
 
                           {/* Location Rows (when expanded) */}
                           {isExpanded && locations.map(({ location, balances }) => {
+                            // สำหรับ zone MR และ PQ ไม่แสดงโลเคชั่นย่อยเลย เพราะจะแสดงเฉพาะ BFS packages แทน
+                            if (['MR', 'PQ'].includes(zone)) {
+                              return null;
+                            }
                             if (balances.length === 0) {
                               // Empty location row
                               return (
@@ -1131,6 +1249,8 @@ const InventoryBalancesPage = () => {
                                   <td className="px-2 py-0.5 text-center border-r border-gray-100 text-gray-400">0</td>
                                   <td className="px-2 py-0.5 text-center border-r border-gray-100 text-gray-400">0</td>
                                   <td className="px-2 py-0.5 text-center border-r border-gray-100 text-gray-400">0</td>
+                                  <td className="px-2 py-0.5 border-r border-gray-100 text-gray-400">-</td>
+                                  <td className="px-2 py-0.5 border-r border-gray-100 text-gray-400">-</td>
                                   <td className="px-2 py-0.5 border-r border-gray-100 text-gray-400">-</td>
                                   <td className="px-2 py-0.5 border-r border-gray-100 text-gray-400">-</td>
                                   <td className="px-2 py-0.5 text-center text-gray-400">-</td>
@@ -1205,6 +1325,22 @@ const InventoryBalancesPage = () => {
                                     </div>
                                   ) : <span className="text-gray-400">-</span>}
                                 </td>
+                                <td className="px-2 py-0.5 border-r border-gray-100">
+                                  {zone === 'Zone Receiving' && balance.pallet_id ? (
+                                    <span className="font-thai text-gray-700">
+                                      {receiveInfoByPalletId.get(balance.pallet_id)?.receive_date
+                                        ? new Date(receiveInfoByPalletId.get(balance.pallet_id)!.receive_date!).toLocaleDateString('en-GB')
+                                        : '-'}
+                                    </span>
+                                  ) : <span className="text-gray-400">-</span>}
+                                </td>
+                                <td className="px-2 py-0.5 border-r border-gray-100">
+                                  {zone === 'Zone Receiving' && balance.pallet_id ? (
+                                    <span className="font-thai text-gray-700 text-[10px]">
+                                      {receiveInfoByPalletId.get(balance.pallet_id)?.receiver_name || '-'}
+                                    </span>
+                                  ) : <span className="text-gray-400">-</span>}
+                                </td>
                                 <td className="px-2 py-0.5 text-center">
                                   <button
                                     className="p-1 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors"
@@ -1256,7 +1392,7 @@ const InventoryBalancesPage = () => {
                                         <span className="text-gray-700">{pkg.shop_name}</span>
                                       </td>
                                       <td className="px-2 py-0.5 text-center border-r border-gray-100" colSpan={3}></td>
-                                      <td className="px-2 py-0.5 border-r border-gray-100" colSpan={2}></td>
+                                      <td className="px-2 py-0.5 border-r border-gray-100" colSpan={4}></td>
                                       <td className="px-2 py-0.5 text-center text-purple-600">
                                         {pkg.items.length} รายการ
                                       </td>
@@ -1275,7 +1411,7 @@ const InventoryBalancesPage = () => {
                                         <td className="px-2 py-0.5 text-center border-r border-gray-100">
                                           <span className="font-bold text-purple-600">{Number(item.quantity).toLocaleString()}</span>
                                         </td>
-                                        <td className="px-2 py-0.5 border-r border-gray-100" colSpan={4}></td>
+                                        <td className="px-2 py-0.5 border-r border-gray-100" colSpan={6}></td>
                                         <td className="px-2 py-0.5"></td>
                                       </tr>
                                     ))}

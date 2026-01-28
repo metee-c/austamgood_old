@@ -1,9 +1,9 @@
 import { createClient } from '@/lib/supabase/client';
 
 /**
- * Generates an automatic Pallet ID in the format: ATG{YYYY}{MM}{DD}{10-digit-sequence}
- * Example: ATG20250922000000001
- * The sequence resets every year and continues incrementally throughout the year
+ * Generates an automatic Pallet ID in the format: ATG{YYYY}{MM}{DD}{3-digit-sequence}
+ * Example: ATG20260128001
+ * The sequence resets every day and continues incrementally throughout the day
  * IMPORTANT: Checks both wms_receive_items AND wms_move_items.new_pallet_id to prevent duplicates
  */
 export class PalletIdGenerator {
@@ -55,7 +55,7 @@ export class PalletIdGenerator {
       // Check receive_items
       const receivePalletData = Array.isArray(lastReceivePallet) ? lastReceivePallet[0] : lastReceivePallet;
       if (receivePalletData?.pallet_id) {
-        const lastSequenceStr = receivePalletData.pallet_id.slice(-10);
+        const lastSequenceStr = receivePalletData.pallet_id.slice(-3);
         const lastSequence = parseInt(lastSequenceStr, 10);
         if (!isNaN(lastSequence) && lastSequence >= nextSequence) {
           nextSequence = lastSequence + 1;
@@ -65,15 +65,15 @@ export class PalletIdGenerator {
       // Check move_items (new_pallet_id)
       const movePalletData = Array.isArray(lastMovePallet) ? lastMovePallet[0] : lastMovePallet;
       if (movePalletData?.new_pallet_id) {
-        const lastSequenceStr = movePalletData.new_pallet_id.slice(-10);
+        const lastSequenceStr = movePalletData.new_pallet_id.slice(-3);
         const lastSequence = parseInt(lastSequenceStr, 10);
         if (!isNaN(lastSequence) && lastSequence >= nextSequence) {
           nextSequence = lastSequence + 1;
         }
       }
 
-      // Format sequence as 10-digit string
-      const sequenceStr = String(nextSequence).padStart(10, '0');
+      // Format sequence as 3-digit string
+      const sequenceStr = String(nextSequence).padStart(3, '0');
       
       // Create full pallet ID
       const palletId = `${datePrefix}${sequenceStr}`;
