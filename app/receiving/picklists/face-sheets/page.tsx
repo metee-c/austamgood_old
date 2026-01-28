@@ -353,6 +353,13 @@ const FaceSheetsPage = () => {
       return;
     }
 
+    // ✅ Limit max orders to prevent timeout (max 60 orders per batch)
+    const MAX_ORDERS_PER_BATCH = 60;
+    if (selectedOrderIds.length > MAX_ORDERS_PER_BATCH) {
+      setError(`จำนวนออเดอร์เกินกำหนด (สูงสุด ${MAX_ORDERS_PER_BATCH} ออเดอร์ต่อครั้ง) คุณเลือก ${selectedOrderIds.length} ออเดอร์ กรุณาเลือกไม่เกิน ${MAX_ORDERS_PER_BATCH} ออเดอร์`);
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
@@ -721,7 +728,7 @@ const FaceSheetsPage = () => {
     }
   };
 
-  const isCreateDisabled = loading || !creationDate || previewLoading || previewOrders.length === 0 || selectedOrderIds.length === 0;
+  const isCreateDisabled = loading || !creationDate || previewLoading || previewOrders.length === 0 || selectedOrderIds.length === 0 || selectedOrderIds.length > 60;
 
   // Handle hub input change
   const handleHubChange = (customerId: string, hub: string) => {
@@ -1081,8 +1088,9 @@ const FaceSheetsPage = () => {
                 <p className="text-xs text-gray-500 mt-1">เลือกออเดอร์ที่ต้องการสร้างใบปะหน้าสินค้า</p>
               </div>
               {creationDate && !previewLoading && previewOrders.length > 0 && (
-                <span className="text-xs font-medium text-blue-600">
+                <span className={`text-xs font-medium ${selectedOrderIds.length > 60 ? 'text-red-600' : 'text-blue-600'}`}>
                   เลือก {selectedOrderIds.length} จาก {previewOrders.length} ออเดอร์
+                  {selectedOrderIds.length > 60 && ' (เกินกำหนด สูงสุด 60)'}
                 </span>
               )}
             </div>

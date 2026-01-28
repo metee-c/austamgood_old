@@ -1,10 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { withAuth } from '@/lib/api/with-auth';
 
 async function handlePost(request: NextRequest, context: any) {
   try {
     const supabase = await createClient();
+    
+    // ✅ FIX: Use service role client with longer timeout for heavy operations
+    const supabaseAdmin = createSupabaseClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!,
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        },
+        db: {
+          schema: 'public'
+        },
+        global: {
+          fetch: (url, options = {}) => {
+            return fetch(url, {
+              ...options,
+              signal: AbortSignal.timeout(120000) // 120 seconds timeout
+            });
+          }
+        }
+      }
+    );
     const body = await request.json();
     const { warehouse_id = 'WH001', created_by, delivery_date, order_ids } = body;
 
@@ -19,6 +43,20 @@ async function handlePost(request: NextRequest, context: any) {
     if (order_ids && (!Array.isArray(order_ids) || order_ids.length === 0)) {
       return NextResponse.json(
         { error: 'กรุณาเลือกอย่างน้อย 1 ออเดอร์เพื่อสร้างใบปะหน้าสินค้า' },
+        { status: 400 }
+      );
+    }
+
+    // ✅ Limit max orders to prevent timeout (max 60 orders per batch)
+    const MAX_ORDERS_PER_BATCH = 60;
+    if (order_ids && order_ids.length > MAX_ORDERS_PER_BATCH) {
+      return NextResponse.json(
+        { 
+          error: `จำนวนออเดอร์เกินกำหนด (สูงสุด ${MAX_ORDERS_PER_BATCH} ออเดอร์ต่อครั้ง)`,
+          details: `คุณเลือก ${order_ids.length} ออเดอร์ กรุณาเลือกไม่เกิน ${MAX_ORDERS_PER_BATCH} ออเดอร์เพื่อป้องกันการ timeout`,
+          max_allowed: MAX_ORDERS_PER_BATCH,
+          selected_count: order_ids.length
+        },
         { status: 400 }
       );
     }
@@ -199,9 +237,10 @@ async function handlePost(request: NextRequest, context: any) {
     }
 
     // ✅ FIX (BUG-002): Use atomic function - single transaction for all operations
+    // ✅ FIX: Use supabaseAdmin with longer timeout for heavy RPC operations
     console.log('📦 Creating face sheet with atomic transaction...');
     
-    const { data, error } = await supabase.rpc('create_face_sheet_with_reservation', {
+    const { data, error } = await supabaseAdmin.rpc('create_face_sheet_with_reservation', {
       p_warehouse_id: warehouse_id,
       p_delivery_date: delivery_date,
       p_order_ids: body.order_ids && body.order_ids.length > 0 ? body.order_ids : null,
