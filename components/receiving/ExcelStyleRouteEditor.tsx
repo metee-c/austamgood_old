@@ -314,11 +314,46 @@ export default function ExcelStyleRouteEditor({
     setHasChanges(true);
   }, []);
 
-  // Handle stop sequence change
+  // Handle stop sequence change - properly reorder all stops
   const handleSequenceChange = useCallback((rowId: string, newSequence: number) => {
-    setRows(prev => prev.map(row => 
-      row.rowId === rowId ? { ...row, stopSequence: newSequence } : row
-    ));
+    setRows(prev => {
+      // Find the row being moved
+      const movingRow = prev.find(r => r.rowId === rowId);
+      if (!movingRow) return prev;
+
+      const oldSequence = movingRow.stopSequence;
+      const tripNumber = movingRow.tripNumber;
+
+      // If sequence didn't change, do nothing
+      if (oldSequence === newSequence) return prev;
+
+      // Get all rows in the same trip (excluding splits), sorted by sequence
+      const tripRows = prev
+        .filter(r => r.tripNumber === tripNumber && !r.isSplit)
+        .sort((a, b) => a.stopSequence - b.stopSequence);
+
+      // Create reordered array: remove the moving row and insert at new position
+      const reordered = tripRows.filter(r => r.rowId !== rowId);
+      const insertIndex = Math.max(0, Math.min(newSequence - 1, reordered.length));
+      reordered.splice(insertIndex, 0, movingRow);
+
+      // Create a map of rowId -> new sequence
+      const newSequenceMap = new Map<string, number>();
+      reordered.forEach((row, index) => {
+        newSequenceMap.set(row.rowId, index + 1);
+      });
+
+      // Update all rows with new sequences
+      return prev.map(row => {
+        if (row.tripNumber === tripNumber && !row.isSplit) {
+          const newSeq = newSequenceMap.get(row.rowId);
+          if (newSeq !== undefined) {
+            return { ...row, stopSequence: newSeq };
+          }
+        }
+        return row;
+      });
+    });
     setHasChanges(true);
   }, []);
 

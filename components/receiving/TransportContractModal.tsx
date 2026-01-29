@@ -932,12 +932,16 @@ const TransportContractDocument: React.FC<TransportContractDocumentProps> = ({ p
                             allocated_weight_kg: stop.load_weight_kg,
                             load_units: stop.load_units || 0,
                             total_qty: 0,
-                            note: stop.order_data?.notes || stop.order?.notes || null
+                            note: stop.order_data?.notes || stop.order?.notes || null,
+                            province: stop.order_data?.province || stop.order?.province || null
                           }] : []);
 
-                      // Extract province from address (if available)
-                      const address = stop.address || '';
-                      const province = address.split(',').pop()?.trim() || '-';
+                      // Get province from order data (priority: order.province > stop.order_data.province)
+                      const firstOrder = orders[0];
+                      const province = firstOrder?.province
+                        || stop.order_data?.province
+                        || stop.order?.province
+                        || '-';
 
                       // Format coordinates
                       const coordinates = stop.latitude && stop.longitude
