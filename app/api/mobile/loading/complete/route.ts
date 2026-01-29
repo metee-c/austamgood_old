@@ -791,7 +791,33 @@ async function handlePost(request: NextRequest, context: any) {
           }
         }
 
-        // 4. ตรวจสอบ Dispatch (legacy data)
+        // 4. ✅ FIX: ตรวจสอบ MR/PQ locations ทั้งหมด (กรณีสต็อกอยู่ที่ MR/PQ แต่ package ไม่มี storage_location)
+        if (!sourceBalance && prepAreaLocations && prepAreaLocations.length > 0) {
+          console.log(`🔍 Checking ALL MR/PQ locations for ${item.sku_id}`);
+          
+          for (const prepLoc of prepAreaLocations) {
+            const { data: prepBalances, error: prepError } = await supabase
+              .from('wms_inventory_balances')
+              .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
+              .eq('warehouse_id', 'WH001')
+              .eq('location_id', prepLoc.location_id)
+              .eq('sku_id', item.sku_id)
+              .gt('total_piece_qty', 0);
+
+            const prepAvailableQty = (prepBalances || []).reduce((sum, b) => sum + Number(b.total_piece_qty || 0), 0);
+            const prepBalance = prepBalances?.[0] || null;
+
+            if (!prepError && prepAvailableQty >= qty) {
+              sourceBalance = prepBalance;
+              sourceLocationId = prepLoc.location_id;
+              sourceLocationName = prepLoc.location_code;
+              console.log(`✅ Found stock at ${prepLoc.location_code}: ${prepAvailableQty} pieces`);
+              break; // พบแล้ว หยุดค้นหา
+            }
+          }
+        }
+
+        // 5. ตรวจสอบ Dispatch (legacy data)
         if (!sourceBalance) {
           console.log(`🔍 Checking Dispatch balance for ${item.sku_id}`);
           const { data: dispatchBonusBalances, error: dispatchError } = await supabase
