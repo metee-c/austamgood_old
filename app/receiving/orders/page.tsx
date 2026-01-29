@@ -781,6 +781,56 @@ const OrdersPage = () => {
     setShowRollbackModal(true);
   };
 
+  // Handle item-level rollback
+  const handleItemRollback = async (orderId: number, orderItemId: number, skuId: string) => {
+    const reason = window.prompt(`กรุณาระบุเหตุผลในการ Rollback รายการ ${skuId}:`);
+    if (!reason || reason.trim().length === 0) return;
+
+    try {
+      const response = await fetch(`/api/orders/${orderId}/items/${orderItemId}/rollback`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ reason: reason.trim() })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Rollback ไม่สำเร็จ');
+      }
+
+      alert(`Rollback รายการ ${skuId} สำเร็จ`);
+      refetch();
+    } catch (error: any) {
+      console.error('Error rolling back item:', error);
+      alert(`เกิดข้อผิดพลาด: ${error.message}`);
+    }
+  };
+
+  // Handle item-level delete
+  const handleItemDelete = async (orderId: number, orderItemId: number, skuId: string) => {
+    const confirmed = window.confirm(`ยืนยันการลบรายการ ${skuId}?\n\nรายการนี้ถูก Rollback แล้ว การลบจะไม่สามารถกู้คืนได้`);
+    if (!confirmed) return;
+
+    try {
+      const response = await fetch(`/api/orders/${orderId}/items/${orderItemId}`, {
+        method: 'DELETE'
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'ลบไม่สำเร็จ');
+      }
+
+      alert(`ลบรายการ ${skuId} สำเร็จ`);
+      refetch();
+    } catch (error: any) {
+      console.error('Error deleting item:', error);
+      alert(`เกิดข้อผิดพลาด: ${error.message}`);
+    }
+  };
+
   // Open edit modal
   const openEditModal = (orderId: string) => {
     setSelectedOrderIdForEdit(orderId);
@@ -1767,6 +1817,12 @@ const OrdersPage = () => {
                                       <th className="px-2 py-1 text-xs font-semibold text-gray-700 uppercase text-center whitespace-nowrap">
                                         หยิบแล้ว
                                       </th>
+                                      <th className="px-2 py-1 text-xs font-semibold text-gray-700 uppercase text-center whitespace-nowrap">
+                                        สถานะ
+                                      </th>
+                                      <th className="px-2 py-1 text-xs font-semibold text-gray-700 uppercase text-center whitespace-nowrap">
+                                        จัดการ
+                                      </th>
                                     </tr>
                                   </thead>
                                   <tbody className="divide-y divide-gray-200">
@@ -1806,6 +1862,39 @@ const OrdersPage = () => {
                                           <span className={item.picked_qty === item.order_qty ? 'text-green-600 font-semibold' : ''}>
                                             {isNaN(item.picked_qty) ? 0 : item.picked_qty}
                                           </span>
+                                        </td>
+                                        <td className="px-2 py-1 text-xs text-center whitespace-nowrap">
+                                          {item.voided_at ? (
+                                            <span className="inline-block px-1.5 py-0.5 rounded bg-red-100 text-red-700 font-thai text-[10px]">
+                                              ยกเลิกแล้ว
+                                            </span>
+                                          ) : (
+                                            <span className="inline-block px-1.5 py-0.5 rounded bg-green-100 text-green-700 font-thai text-[10px]">
+                                              ปกติ
+                                            </span>
+                                          )}
+                                        </td>
+                                        <td className="px-2 py-1 text-xs text-center whitespace-nowrap">
+                                          <div className="flex items-center justify-center gap-1">
+                                            {!item.voided_at && order.status !== 'draft' && order.status !== 'cancelled' && (
+                                              <button
+                                                className="p-0.5 text-orange-500 hover:bg-orange-50 rounded"
+                                                title="Rollback รายการนี้"
+                                                onClick={() => handleItemRollback(order.order_id, item.order_item_id, item.sku_id)}
+                                              >
+                                                <RotateCcw className="w-3 h-3" />
+                                              </button>
+                                            )}
+                                            {item.voided_at && (
+                                              <button
+                                                className="p-0.5 text-red-500 hover:bg-red-50 rounded"
+                                                title="ลบรายการนี้"
+                                                onClick={() => handleItemDelete(order.order_id, item.order_item_id, item.sku_id)}
+                                              >
+                                                <Trash2 className="w-3 h-3" />
+                                              </button>
+                                            )}
+                                          </div>
                                         </td>
                                       </tr>
                                     ))}
