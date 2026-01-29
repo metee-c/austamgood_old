@@ -106,7 +106,42 @@ async function handlePost(request: NextRequest, context: any) {
 
     const picklistIds = picklistLinks?.map(lp => lp.picklist_id) || [];
     const faceSheetIds = faceSheetLinks?.map(fs => fs.face_sheet_id) || [];
-    const bonusFaceSheetIds = bonusFaceSheetLinks?.map(bfs => bfs.bonus_face_sheet_id) || [];
+    let bonusFaceSheetIds = bonusFaceSheetLinks?.map(bfs => bfs.bonus_face_sheet_id) || [];
+
+    // ✅ FIX: หา BFS ที่แมพกับ PL/FS ที่อยู่ใน loadlist นี้ (จาก loadlist อื่น)
+    // เพื่อให้ process BFS items ด้วยเมื่อโหลด PL/FS
+    let relatedBfsMappingsFromPL: any[] = [];
+    let relatedBfsMappingsFromFS: any[] = [];
+
+    if (picklistIds.length > 0) {
+      const { data: bfsMappings } = await supabase
+        .from('wms_loadlist_bonus_face_sheets')
+        .select('bonus_face_sheet_id, matched_package_ids, loadlist_id, mapping_type')
+        .in('mapped_picklist_id', picklistIds)
+        .is('loaded_at', null); // เฉพาะที่ยังไม่ได้โหลด
+
+      relatedBfsMappingsFromPL = bfsMappings || [];
+      console.log(`🔍 Found ${relatedBfsMappingsFromPL.length} BFS mappings from PL (unloaded)`);
+    }
+
+    if (faceSheetIds.length > 0) {
+      const { data: bfsMappings } = await supabase
+        .from('wms_loadlist_bonus_face_sheets')
+        .select('bonus_face_sheet_id, matched_package_ids, loadlist_id, mapping_type')
+        .in('mapped_face_sheet_id', faceSheetIds)
+        .is('loaded_at', null); // เฉพาะที่ยังไม่ได้โหลด
+
+      relatedBfsMappingsFromFS = bfsMappings || [];
+      console.log(`🔍 Found ${relatedBfsMappingsFromFS.length} BFS mappings from FS (unloaded)`);
+    }
+
+    // รวม BFS IDs และ matched_package_ids จากทั้ง loadlist ปัจจุบันและที่แมพกับ PL/FS
+    const allRelatedBfsMappings = [...relatedBfsMappingsFromPL, ...relatedBfsMappingsFromFS];
+    const relatedBfsIds = allRelatedBfsMappings.map(m => m.bonus_face_sheet_id);
+    const relatedLoadlistIds = [...new Set(allRelatedBfsMappings.map(m => m.loadlist_id))];
+
+    // เพิ่ม BFS IDs ที่แมพกับ PL/FS เข้าไปด้วย
+    bonusFaceSheetIds = [...new Set([...bonusFaceSheetIds, ...relatedBfsIds])];
 
     // ✅ FIX: ตรวจสอบสถานะการโหลดของ Picklists และ Face Sheets
     let allPicklistsLoaded = true;
@@ -220,9 +255,11 @@ async function handlePost(request: NextRequest, context: any) {
 
     // ✅ FIX: ใช้ matched_package_ids จาก wms_loadlist_bonus_face_sheets แทนการใช้ trip_number
     // เพื่อให้แสดงเฉพาะ packages ที่ถูกแมพกับ loadlist นี้จริงๆ
-    let matchedPackageIds = new Set<number>(
-      bonusFaceSheetLinks?.flatMap(bfs => bfs.matched_package_ids || []) || []
-    );
+    // ✅ FIX: รวม matched_package_ids จากทั้ง loadlist ปัจจุบันและ BFS ที่แมพกับ PL/FS
+    let matchedPackageIds = new Set<number>([
+      ...(bonusFaceSheetLinks?.flatMap(bfs => bfs.matched_package_ids || []) || []),
+      ...allRelatedBfsMappings.flatMap(m => m.matched_package_ids || [])
+    ]);
 
     // ✅ FIX (edit10): Fallback สำหรับ loadlist เก่าที่ไม่มี matched_package_ids
     // ให้ดึงทุก packages จาก BFS แทน
@@ -922,14 +959,50 @@ async function handlePost(request: NextRequest, context: any) {
         .eq('loadlist_id', loadlist.id);
     }
 
-    // Update all bonus face sheets loaded_at
+    // Update all bonus face sheets loaded_at (including related BFS mapped to PL/FS)
     if (bonusFaceSheetIds.length > 0) {
       console.log(`🔄 Updating ${bonusFaceSheetIds.length} bonus face sheets loaded_at...`);
+
+      // อัปเดต BFS ใน loadlist ปัจจุบัน
       await supabase
         .from('wms_loadlist_bonus_face_sheets')
         .update({ loaded_at: now })
         .in('bonus_face_sheet_id', bonusFaceSheetIds)
         .eq('loadlist_id', loadlist.id);
+
+      // ✅ FIX: อัปเดต loaded_at สำหรับ BFS ที่แมพกับ PL/FS (จาก loadlist อื่น)
+      if (relatedLoadlistIds.length > 0) {
+        console.log(`🔄 Updating loaded_at for ${relatedLoadlistIds.length} related BFS loadlists...`);
+
+        // อัปเดต BFS mappings ที่แมพกับ PL ที่เพิ่งโหลด
+        if (picklistIds.length > 0) {
+          await supabase
+            .from('wms_loadlist_bonus_face_sheets')
+            .update({ loaded_at: now })
+            .in('mapped_picklist_id', picklistIds)
+            .is('loaded_at', null);
+        }
+
+        // อัปเดต BFS mappings ที่แมพกับ FS ที่เพิ่งโหลด
+        if (faceSheetIds.length > 0) {
+          await supabase
+            .from('wms_loadlist_bonus_face_sheets')
+            .update({ loaded_at: now })
+            .in('mapped_face_sheet_id', faceSheetIds)
+            .is('loaded_at', null);
+        }
+
+        // อัปเดตสถานะ loadlist ที่เกี่ยวข้องให้เป็น loaded ด้วย
+        await supabase
+          .from('loadlists')
+          .update({
+            status: 'loaded',
+            updated_at: now,
+            checker_employee_id: checker_employee_id || null
+          })
+          .in('id', relatedLoadlistIds)
+          .eq('status', 'pending');
+      }
     }
 
     // ✅ Ledger entries already created by database function - no need to insert here

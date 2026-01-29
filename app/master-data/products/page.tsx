@@ -68,6 +68,8 @@ interface MasterSku {
   humidity_max_percent?: number;
   reorder_point?: number;
   safety_stock?: number;
+  ecommerce_name?: string;
+  is_sample?: boolean;
   created_at?: string;
   updated_at?: string;
   created_by?: string;
@@ -287,6 +289,7 @@ const ProductsPage = () => {
                   <tr>
                     <th className="px-2 py-2 text-left text-xs font-semibold border-b whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('sku_id')}>รหัส SKU{getSortIcon('sku_id')}</th>
                     <th className="px-2 py-2 text-left text-xs font-semibold border-b whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('sku_name')}>ชื่อสินค้า{getSortIcon('sku_name')}</th>
+                    <th className="px-2 py-2 text-left text-xs font-semibold border-b whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('ecommerce_name')}>ชื่ออีคอมเมิร์ซ{getSortIcon('ecommerce_name')}</th>
                     <th className="px-2 py-2 text-left text-xs font-semibold border-b whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('sku_description')}>คำอธิบาย{getSortIcon('sku_description')}</th>
                     <th className="px-2 py-2 text-left text-xs font-semibold border-b whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('category')}>หมวดหมู่{getSortIcon('category')}</th>
                     <th className="px-2 py-2 text-left text-xs font-semibold border-b whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('sub_category')}>หมวดหมู่ย่อย{getSortIcon('sub_category')}</th>
@@ -323,6 +326,7 @@ const ProductsPage = () => {
                     <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('humidity_max_percent')}>ความชื้นสูงสุด(%){getSortIcon('humidity_max_percent')}</th>
                     <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('reorder_point')}>จุดสั่งซื้อใหม่{getSortIcon('reorder_point')}</th>
                     <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('safety_stock')}>สต็อคปลอดภัย{getSortIcon('safety_stock')}</th>
+                    <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('is_sample')}>ตัวอย่าง{getSortIcon('is_sample')}</th>
                     <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap cursor-pointer hover:bg-gray-200" onClick={() => handleSort('status')}>สถานะ{getSortIcon('status')}</th>
                     <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap">การดำเนินการ</th>
                   </tr>
@@ -332,6 +336,7 @@ const ProductsPage = () => {
                     <tr key={product.sku_id} className="hover:bg-blue-50/30 transition-colors duration-150">
                       <td className="px-2 py-0.5 text-[11px] border-r border-gray-100 font-mono font-semibold text-blue-600 whitespace-nowrap">{product.sku_id}</td>
                       <td className="px-2 py-0.5 text-[11px] border-r border-gray-100 text-gray-700 whitespace-nowrap">{product.sku_name}</td>
+                      <td className="px-2 py-0.5 text-[11px] border-r border-gray-100 text-gray-700 whitespace-nowrap">{product.ecommerce_name || '-'}</td>
                       <td className="px-2 py-0.5 text-[11px] border-r border-gray-100 text-gray-700">{product.sku_description || '-'}</td>
                       <td className="px-2 py-0.5 text-[11px] border-r border-gray-100 text-gray-700 whitespace-nowrap">{product.category || '-'}</td>
                       <td className="px-2 py-0.5 text-[11px] border-r border-gray-100 text-gray-700 whitespace-nowrap">{product.sub_category || '-'}</td>
@@ -368,6 +373,13 @@ const ProductsPage = () => {
                       <td className="px-2 py-0.5 text-[11px] border-r border-gray-100 text-center whitespace-nowrap">{product.humidity_max_percent || '-'}</td>
                       <td className="px-2 py-0.5 text-[11px] border-r border-gray-100 text-center whitespace-nowrap">{product.reorder_point || '-'}</td>
                       <td className="px-2 py-0.5 text-[11px] border-r border-gray-100 text-center whitespace-nowrap">{product.safety_stock || '-'}</td>
+                      <td className="px-2 py-0.5 text-[11px] border-r border-gray-100 text-center whitespace-nowrap">
+                        <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                          product.is_sample ? 'bg-purple-100 text-purple-700' : 'bg-gray-100 text-gray-500'
+                        }`}>
+                          {product.is_sample ? 'ใช่' : 'ไม่'}
+                        </span>
+                      </td>
                       <td className="px-2 py-0.5 text-[11px] border-r border-gray-100 text-center whitespace-nowrap">
                         <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-semibold ${
                           product.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'

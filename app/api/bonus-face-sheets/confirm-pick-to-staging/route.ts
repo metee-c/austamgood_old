@@ -401,8 +401,22 @@ async function handlePost(request: NextRequest, context: any) {
           .maybeSingle();
 
         if (sourceBalance) {
+          // 🔴 CRITICAL: PRE-VALIDATION - ตรวจสอบสต็อกก่อนย้าย
+          if (sourceBalance.total_piece_qty < quantity) {
+            console.error(`🔴 CRITICAL: Insufficient stock at ${storageLocation} for SKU ${skuId}: need ${quantity}, have ${sourceBalance.total_piece_qty}`);
+            return NextResponse.json({
+              success: false,
+              error: `สต็อกไม่พอที่ ${storageLocation}: ต้องการ ${quantity} ชิ้น มีเพียง ${sourceBalance.total_piece_qty} ชิ้น`,
+              error_code: 'INSUFFICIENT_STOCK',
+              location: storageLocation,
+              sku_id: skuId,
+              required: quantity,
+              available: sourceBalance.total_piece_qty
+            }, { status: 400 });
+          }
+
           // Update source balance
-          await supabase
+          const { error: sourceUpdateError } = await supabase
             .from('wms_inventory_balances')
             .update({
               total_piece_qty: sourceBalance.total_piece_qty - quantity,
@@ -410,6 +424,16 @@ async function handlePost(request: NextRequest, context: any) {
               updated_at: now
             })
             .eq('balance_id', sourceBalance.balance_id);
+
+          if (sourceUpdateError) {
+            console.error(`🔴 CRITICAL: Failed to update source balance at ${storageLocation}:`, sourceUpdateError);
+            return NextResponse.json({
+              success: false,
+              error: `ไม่สามารถอัปเดตสต็อกต้นทางที่ ${storageLocation} ได้`,
+              error_code: 'SOURCE_UPDATE_FAILED',
+              details: sourceUpdateError.message
+            }, { status: 500 });
+          }
 
           // Ledger OUT from source
           ledgerEntries.push({
@@ -464,7 +488,7 @@ async function handlePost(request: NextRequest, context: any) {
           const { data: destBalance } = await destBalanceQuery.maybeSingle();
 
           if (destBalance) {
-            await supabase
+            const { error: destUpdateError } = await supabase
               .from('wms_inventory_balances')
               .update({
                 total_piece_qty: destBalance.total_piece_qty + quantity,
@@ -473,8 +497,20 @@ async function handlePost(request: NextRequest, context: any) {
                 updated_at: now
               })
               .eq('balance_id', destBalance.balance_id);
+
+            if (destUpdateError) {
+              console.error(`🔴 CRITICAL: Failed to update destination balance at ${stagingLocation}:`, destUpdateError);
+              return NextResponse.json({
+                success: false,
+                error: `ไม่สามารถอัปเดตสต็อกปลายทางที่ ${stagingLocation} ได้ กรุณาติดต่อผู้ดูแลระบบ`,
+                error_code: 'DESTINATION_UPDATE_FAILED',
+                details: destUpdateError.message,
+                critical: true,
+                message: `สต็อกถูกหักจาก ${storageLocation} แล้วแต่ไม่เพิ่มที่ ${stagingLocation}`
+              }, { status: 500 });
+            }
           } else {
-            await supabase
+            const { error: destInsertError } = await supabase
               .from('wms_inventory_balances')
               .insert({
                 warehouse_id: warehouseId,
@@ -489,6 +525,18 @@ async function handlePost(request: NextRequest, context: any) {
                 lot_no: sourceBalance.lot_no,
                 last_movement_at: now
               });
+
+            if (destInsertError) {
+              console.error(`🔴 CRITICAL: Failed to insert destination balance at ${stagingLocation}:`, destInsertError);
+              return NextResponse.json({
+                success: false,
+                error: `ไม่สามารถสร้างสต็อกปลายทางที่ ${stagingLocation} ได้ กรุณาติดต่อผู้ดูแลระบบ`,
+                error_code: 'DESTINATION_INSERT_FAILED',
+                details: destInsertError.message,
+                critical: true,
+                message: `สต็อกถูกหักจาก ${storageLocation} แล้วแต่ไม่เพิ่มที่ ${stagingLocation}`
+              }, { status: 500 });
+            }
           }
 
           // Ledger IN to destination
@@ -517,13 +565,23 @@ async function handlePost(request: NextRequest, context: any) {
     }
 
     // 7. Insert ledger entries
+    // 🔴 CRITICAL FIX: Ledger error ต้อง FAIL request ทันที
+    // เพราะสต็อกถูกย้ายแล้ว แต่ไม่มี audit trail = data integrity issue
     if (ledgerEntries.length > 0) {
       const { error: ledgerError } = await supabase
         .from('wms_inventory_ledger')
         .insert(ledgerEntries);
 
       if (ledgerError) {
-        console.error('Error inserting ledger:', ledgerError);
+        console.error('🔴 CRITICAL: Ledger insert failed! Stock has been moved but no audit trail.', ledgerError);
+        return NextResponse.json({
+          success: false,
+          error: 'ไม่สามารถบันทึกประวัติการเคลื่อนย้ายสต็อกได้ กรุณาติดต่อผู้ดูแลระบบ',
+          error_code: 'LEDGER_INSERT_FAILED',
+          details: ledgerError.message,
+          critical: true,
+          message: 'สต็อกอาจถูกย้ายแล้วแต่ไม่มีบันทึก กรุณาตรวจสอบ'
+        }, { status: 500 });
       }
     }
 
