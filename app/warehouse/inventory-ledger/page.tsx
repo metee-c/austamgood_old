@@ -341,7 +341,8 @@ const InventoryLedgerPage = () => {
           ),
           wms_move_items (
             parent_pallet_id,
-            new_pallet_id
+            new_pallet_id,
+            to_location_id
           ),
           master_system_user (
             username,
@@ -1028,6 +1029,10 @@ const InventoryLedgerPage = () => {
                             <span className="font-mono text-thai-gray-700 text-xs">
                               {(ledger as any).master_location?.location_name || ledger.location_id || '-'}
                             </span>
+                          ) : ledger.direction === 'out' && ledger.transaction_type === 'move' && (ledger as any).wms_move_items?.to_location_id ? (
+                            <span className="font-mono text-thai-gray-700 text-xs">
+                              {getLocationName((ledger as any).wms_move_items.to_location_id)}
+                            </span>
                           ) : (
                             <span className="text-gray-400">-</span>
                           )}
@@ -1037,14 +1042,6 @@ const InventoryLedgerPage = () => {
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">
                           <span className="font-mono text-thai-gray-700">{ledger.receive_item_id || '-'}</span>
-                        </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          <span className="font-mono font-semibold text-thai-gray-700">{ledger.sku_id}</span>
-                        </td>
-                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
-                          <span className="text-thai-gray-700 font-thai text-[11px]">
-                            {(ledger as any).master_sku?.sku_name || '-'}
-                          </span>
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">
                           {ledger.transaction_type === 'transfer' && ledger.direction === 'in' ? (
