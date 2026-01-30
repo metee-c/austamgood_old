@@ -1,5 +1,6 @@
 'use client';
 import React, { useState, useMemo, useEffect } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   ShoppingCart,
   Plus,
@@ -23,7 +24,8 @@ import {
   X,
   Filter,
   Download,
-  RefreshCw
+  RefreshCw,
+  Calendar
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
@@ -65,6 +67,10 @@ type Order = {
 const OrdersPage = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [expandedOrders, setExpandedOrders] = useState<Set<number>>(new Set());
+  // อ่าน query parameter จาก URL (สำหรับกรองจากหน้าอื่น)
+  const searchParams = useSearchParams();
+  const initialSearch = searchParams.get('search') || '';
+
   const [selectedType, setSelectedType] = useState<OrderType | 'all'>('all');
   const [selectedLocationFilter, setSelectedLocationFilter] = useState<'all' | 'has_location' | 'no_location'>('all');
   const [selectedStatus, setSelectedStatus] = useState<OrderStatus | 'all'>('all');
@@ -115,7 +121,7 @@ const OrdersPage = () => {
     shop_name: 120,
     province: 80,
     order_date: 80,
-    delivery_date: 100,
+    delivery_date: 130,
     plan_code: 90,
     address: 100,
     remarks: 80,
@@ -209,6 +215,13 @@ const OrdersPage = () => {
     setStartDate('');
     setEndDate('');
   };
+
+  // Set search term from URL parameter (เมื่อมาจากหน้าอื่น เช่น routes)
+  useEffect(() => {
+    if (initialSearch) {
+      setSearchTerm(initialSearch);
+    }
+  }, [initialSearch]);
 
   // Fetcher function for SWR
   const fetcher = async (url: string) => {
@@ -1459,34 +1472,32 @@ const OrdersPage = () => {
             {/* Bulk Delivery Date */}
             <div className="flex items-center gap-2">
               <label className="text-xs font-thai text-gray-600">แผนส่ง:</label>
-              <select
-                value={bulkDeliveryDate === 'PENDING' ? 'PENDING' : (bulkDeliveryDate ? 'DATE' : '')}
-                onChange={(e) => {
-                  if (e.target.value === 'PENDING') {
-                    setBulkDeliveryDate('PENDING');
-                  } else if (e.target.value === '') {
-                    setBulkDeliveryDate('');
-                  }
-                }}
-                className="px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+              <button
+                type="button"
+                onClick={() => setBulkDeliveryDate('PENDING')}
+                className={`px-2 py-1 border rounded text-xs focus:outline-none ${
+                  bulkDeliveryDate === 'PENDING' 
+                    ? 'bg-yellow-100 border-yellow-400 text-yellow-700 font-medium' 
+                    : 'border-gray-300 text-gray-600 hover:bg-gray-50'
+                }`}
               >
-                <option value="">เลือก...</option>
-                <option value="PENDING">รอตัดสินใจ</option>
-                <option value="DATE">เลือกวันที่</option>
-              </select>
-              {bulkDeliveryDate && bulkDeliveryDate !== 'PENDING' && (
+                รอตัดสินใจ
+              </button>
+              <span className="text-xs text-gray-400">หรือ</span>
+              <label className="relative flex items-center gap-1 px-2 py-1 border border-gray-300 rounded text-xs cursor-pointer hover:bg-gray-50">
+                <Calendar className="w-3 h-3 text-gray-500" />
+                <span className="text-gray-600">
+                  {bulkDeliveryDate && bulkDeliveryDate !== 'PENDING' 
+                    ? new Date(bulkDeliveryDate).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' })
+                    : 'เลือกวันที่'}
+                </span>
                 <input
                   type="date"
-                  value={bulkDeliveryDate}
-                  onChange={(e) => setBulkDeliveryDate(e.target.value)}
-                  className="px-2 py-1 border border-gray-300 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  value={bulkDeliveryDate && bulkDeliveryDate !== 'PENDING' ? bulkDeliveryDate : ''}
+                  onChange={(e) => setBulkDeliveryDate(e.target.value || '')}
+                  className="absolute inset-0 opacity-0 cursor-pointer"
                 />
-              )}
-              {bulkDeliveryDate === 'PENDING' && (
-                <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs font-medium">
-                  รอตัดสินใจ
-                </span>
-              )}
+              </label>
               {bulkDeliveryDate && (
                 <button
                   onClick={() => setBulkDeliveryDate('')}

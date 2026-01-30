@@ -1,8 +1,16 @@
 'use client';
 
 import React from 'react';
+import { MapPinOff } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import type { DraftOrder } from '../../types';
+
+// Helper function to check if order has valid coordinates
+export function hasValidCoordinates(order: DraftOrder): boolean {
+  const lat = order.customer_latitude ?? order.customer?.latitude;
+  const lng = order.customer_longitude ?? order.customer?.longitude;
+  return lat != null && lng != null && lat !== 0 && lng !== 0;
+}
 
 interface OrderSelectionProps {
   draftOrders: DraftOrder[];
@@ -91,7 +99,10 @@ export function OrderSelection({
             </thead>
             <tbody className="divide-y divide-gray-200">
               {filteredOrders.map(order => (
-                <tr key={order.order_id} className="hover:bg-gray-50">
+                <tr 
+                  key={order.order_id} 
+                  className={`hover:bg-gray-50 ${!hasValidCoordinates(order) ? 'bg-red-50' : ''}`}
+                >
                   <td className="px-4 py-2">
                     <input
                       type="checkbox"
@@ -99,7 +110,16 @@ export function OrderSelection({
                       onChange={() => onSelectOrder(order.order_id)}
                     />
                   </td>
-                  <td className="px-4 py-2">{order.order_no}</td>
+                  <td className="px-4 py-2">
+                    <div className="flex items-center gap-1">
+                      {order.order_no}
+                      {!hasValidCoordinates(order) && (
+                        <span title="ไม่มีพิกัด">
+                          <MapPinOff className="w-3 h-3 text-red-500" />
+                        </span>
+                      )}
+                    </div>
+                  </td>
                   <td className="px-4 py-2">{order.shop_name || '-'}</td>
                   <td className="px-4 py-2">{order.province || '-'}</td>
                   <td className="px-4 py-2 text-right">{order.total_weight || 0} kg</td>
