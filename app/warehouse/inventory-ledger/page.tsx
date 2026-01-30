@@ -1044,6 +1044,12 @@ const InventoryLedgerPage = () => {
                           <span className="font-mono text-thai-gray-700">{ledger.receive_item_id || '-'}</span>
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">
+                          <span className="font-mono text-thai-gray-700">{ledger.sku_id || '-'}</span>
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">
+                          <span className="text-thai-gray-700 font-thai">{(ledger as any).master_sku?.sku_name || '-'}</span>
+                        </td>
+                        <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap align-top">
                           {ledger.transaction_type === 'transfer' && ledger.direction === 'in' ? (
                             (ledger as any).wms_move_items?.parent_pallet_id ? (
                               <details className="cursor-pointer">

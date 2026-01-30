@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { getCurrentUserFromCookie } from '@/lib/auth/simple-auth'
+import { receiveService } from '@/lib/database/receive'
 
 export async function POST(request: NextRequest) {
   try {
@@ -270,16 +271,35 @@ export async function POST(request: NextRequest) {
     console.log('DEBUG: move.move_id =', move.move_id, 'type:', typeof move.move_id)
     console.log('DEBUG: isPartialMove =', isPartialMove, 'partial_quantities =', partial_quantities)
     
+    // สำหรับ partial move ต้องสร้าง pallet_id ใหม่
+    let newPalletId: string | null = null
+    if (isPartialMove && pallet_id) {
+      // Generate new pallet ID for partial move using receiveService
+      const { data: generatedPalletId, error: palletIdError } = await receiveService.generatePalletId()
+      if (!palletIdError && generatedPalletId) {
+        newPalletId = generatedPalletId
+        console.log('DEBUG: Generated new pallet ID for partial move:', newPalletId)
+      } else {
+        console.error('Failed to generate new pallet ID:', palletIdError)
+      }
+    }
+    
     const moveItems = balanceRecords.map(balance => {
       // ถ้าเป็น partial move ให้ใช้จำนวนที่ระบุ
       const moveQty = isPartialMove && partial_quantities[balance.sku_id] !== undefined
         ? partial_quantities[balance.sku_id]
         : balance.total_piece_qty || 0
       
+      // ถ้าเป็น partial move ให้ใช้ new_pallet_id และเก็บ parent_pallet_id
+      const usePalletId = isPartialMove && newPalletId ? newPalletId : balance.pallet_id
+      const parentPalletId = isPartialMove && newPalletId ? balance.pallet_id : null
+      
       return {
         move_id: move.move_id,
         sku_id: balance.sku_id,
-        ...(balance.pallet_id ? { pallet_id: balance.pallet_id } : {}),
+        ...(usePalletId ? { pallet_id: usePalletId } : {}),
+        ...(parentPalletId ? { parent_pallet_id: parentPalletId } : {}),
+        ...(newPalletId ? { new_pallet_id: newPalletId } : {}),
         move_method: balance.pallet_id ? 'pallet' : 'individual',
         status: 'completed',
         from_location_id,
