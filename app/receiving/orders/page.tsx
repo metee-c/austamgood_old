@@ -724,15 +724,21 @@ const OrdersPage = () => {
     }
   };
 
-  // Handle required date change
+  // Handle required date change (รองรับ "รอตัดสินใจ" = PENDING)
   const handleRequiredDateChange = async (orderId: string, newDate: string) => {
     try {
+      // ถ้าเลือก "รอตัดสินใจ" ให้ส่งค่า null หรือ PENDING
+      const deliveryDate = newDate === 'PENDING' ? null : newDate;
+      
       const response = await fetch(`/api/orders/${orderId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ delivery_date: newDate }),
+        body: JSON.stringify({ 
+          delivery_date: deliveryDate,
+          delivery_date_pending: newDate === 'PENDING' // flag สำหรับบอกว่ารอตัดสินใจ
+        }),
       });
 
       if (!response.ok) {
@@ -942,7 +948,7 @@ const OrdersPage = () => {
     const confirmed = window.confirm(
       `ยืนยันการอัพเดท ${selectedOrderIds.size} ออเดอร์?\n\n` +
       (bulkOrderType ? `ประเภท: ${getTypeText(bulkOrderType)}\n` : '') +
-      (bulkDeliveryDate ? `วันที่แผนส่ง: ${bulkDeliveryDate}` : '')
+      (bulkDeliveryDate ? `แผนส่ง: ${bulkDeliveryDate === 'PENDING' ? 'รอตัดสินใจ' : bulkDeliveryDate}` : '')
     );
 
     if (!confirmed) return;
@@ -958,7 +964,8 @@ const OrdersPage = () => {
         updateData.order_type = bulkOrderType;
       }
       if (bulkDeliveryDate) {
-        updateData.delivery_date = bulkDeliveryDate;
+        // ถ้าเลือก "รอตัดสินใจ" ให้ส่งค่า null
+        updateData.delivery_date = bulkDeliveryDate === 'PENDING' ? null : bulkDeliveryDate;
       }
 
       const response = await fetch('/api/orders/batch-update', {
@@ -1451,18 +1458,40 @@ const OrdersPage = () => {
 
             {/* Bulk Delivery Date */}
             <div className="flex items-center gap-2">
-              <label className="text-xs font-thai text-gray-600">วันที่แผนส่ง:</label>
-              <input
-                type="date"
-                value={bulkDeliveryDate}
-                onChange={(e) => setBulkDeliveryDate(e.target.value)}
-                className="px-2 py-1 border border-gray-300 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
-              />
+              <label className="text-xs font-thai text-gray-600">แผนส่ง:</label>
+              <select
+                value={bulkDeliveryDate === 'PENDING' ? 'PENDING' : (bulkDeliveryDate ? 'DATE' : '')}
+                onChange={(e) => {
+                  if (e.target.value === 'PENDING') {
+                    setBulkDeliveryDate('PENDING');
+                  } else if (e.target.value === '') {
+                    setBulkDeliveryDate('');
+                  }
+                }}
+                className="px-2 py-1 border border-gray-300 rounded text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+              >
+                <option value="">เลือก...</option>
+                <option value="PENDING">รอตัดสินใจ</option>
+                <option value="DATE">เลือกวันที่</option>
+              </select>
+              {bulkDeliveryDate && bulkDeliveryDate !== 'PENDING' && (
+                <input
+                  type="date"
+                  value={bulkDeliveryDate}
+                  onChange={(e) => setBulkDeliveryDate(e.target.value)}
+                  className="px-2 py-1 border border-gray-300 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-blue-500"
+                />
+              )}
+              {bulkDeliveryDate === 'PENDING' && (
+                <span className="px-2 py-1 bg-yellow-100 text-yellow-700 rounded text-xs font-medium">
+                  รอตัดสินใจ
+                </span>
+              )}
               {bulkDeliveryDate && (
                 <button
                   onClick={() => setBulkDeliveryDate('')}
                   className="p-0.5 text-gray-400 hover:text-gray-600"
-                  title="ล้างวันที่"
+                  title="ล้าง"
                 >
                   <X className="w-3 h-3" />
                 </button>
@@ -1670,13 +1699,41 @@ const OrdersPage = () => {
                           <span className="font-mono">{formatDate(order.order_date)}</span>
                         </ResizableCell>
                         <ResizableCell columnKey="delivery_date">
-                          <input
-                            type="date"
-                            value={order.delivery_date || ''}
-                            onChange={(e) => handleRequiredDateChange(order.order_id, e.target.value)}
-                            className="px-1 py-0 border border-gray-200 rounded text-[10px] font-mono focus:outline-none cursor-pointer w-full"
-                            onClick={(e) => e.stopPropagation()}
-                          />
+                          {order.delivery_date ? (
+                            <div className="flex items-center gap-1">
+                              <input
+                                type="date"
+                                value={order.delivery_date}
+                                onChange={(e) => handleRequiredDateChange(order.order_id, e.target.value)}
+                                className="px-1 py-0 border border-gray-200 rounded text-[10px] font-mono focus:outline-none cursor-pointer flex-1"
+                                onClick={(e) => e.stopPropagation()}
+                              />
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRequiredDateChange(order.order_id, 'PENDING');
+                                }}
+                                className="text-[9px] text-yellow-600 hover:text-yellow-800 whitespace-nowrap"
+                                title="เปลี่ยนเป็นรอตัดสินใจ"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1">
+                              <span className="px-1.5 py-0.5 bg-yellow-100 text-yellow-700 rounded text-[10px] font-medium">
+                                รอตัดสินใจ
+                              </span>
+                              <input
+                                type="date"
+                                value=""
+                                onChange={(e) => handleRequiredDateChange(order.order_id, e.target.value)}
+                                className="px-1 py-0 border border-gray-200 rounded text-[10px] font-mono focus:outline-none cursor-pointer w-6 opacity-50"
+                                onClick={(e) => e.stopPropagation()}
+                                title="คลิกเพื่อเลือกวันที่"
+                              />
+                            </div>
+                          )}
                         </ResizableCell>
                         <ResizableCell columnKey="plan_code">
                           {order.order_type === 'special' || order.order_type === 'express' ? (
