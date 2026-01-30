@@ -369,6 +369,12 @@ export async function GET(
         };
       });
       
+      // ตรวจสอบว่า trip นี้มี picklist หรือไม่
+      const hasPicklist = trip.picklists && trip.picklists.length > 0;
+      const picklistCodes = hasPicklist 
+        ? trip.picklists.map((pl: any) => pl.picklist_code).filter(Boolean)
+        : [];
+
       return {
         ...trip,
         loading_door_number: loadingDoorNumber,
@@ -380,7 +386,9 @@ export async function GET(
         checker_employee_name: checkerEmployeeName,
         checker_employee: checkerEmployee || null,
         loadlist_code: loadlistData?.loadlist_code || null,
-        stops: processedStops
+        stops: processedStops,
+        has_picklist: hasPicklist,
+        picklist_codes: picklistCodes
       };
     });
 

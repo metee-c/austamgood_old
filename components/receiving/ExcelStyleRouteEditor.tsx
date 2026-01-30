@@ -220,6 +220,24 @@ export default function ExcelStyleRouteEditor({
   const [expandedTrips, setExpandedTrips] = useState<Set<number>>(new Set(trips.map((_, i) => i + 1)));
   const [saveError, setSaveError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [showPicklistWarning, setShowPicklistWarning] = useState(false);
+
+  // ตรวจสอบว่ามี trip ที่มี picklist หรือไม่
+  const tripsWithPicklist = useMemo(() => {
+    return trips.filter((trip: any) => trip.has_picklist === true);
+  }, [trips]);
+
+  const hasAnyPicklist = tripsWithPicklist.length > 0;
+
+  // สร้าง map ของ tripNumber -> has_picklist
+  const tripPicklistMap = useMemo(() => {
+    const map = new Map<number, boolean>();
+    trips.forEach((trip: any, i: number) => {
+      const tripNumber = trip.daily_trip_number || trip.trip_sequence || i + 1;
+      map.set(tripNumber, trip.has_picklist === true);
+    });
+    return map;
+  }, [trips]);
 
   // State สำหรับเพิ่มออเดอร์ร่าง
   const [showAddOrderPanel, setShowAddOrderPanel] = useState(false);
@@ -299,6 +317,18 @@ export default function ExcelStyleRouteEditor({
 
   // Handle trip number change
   const handleTripChange = useCallback((rowId: string, newTripNumber: number) => {
+    // ตรวจสอบว่า trip ต้นทางหรือปลายทางมี picklist หรือไม่
+    const currentRow = rows.find(r => r.rowId === rowId);
+    if (currentRow) {
+      const sourceTripHasPicklist = tripPicklistMap.get(currentRow.tripNumber);
+      const targetTripHasPicklist = tripPicklistMap.get(newTripNumber);
+      
+      if (sourceTripHasPicklist || targetTripHasPicklist) {
+        setShowPicklistWarning(true);
+        return;
+      }
+    }
+
     setRows(prev => {
       const updated = prev.map(row => {
         if (row.rowId === rowId) {
@@ -312,10 +342,17 @@ export default function ExcelStyleRouteEditor({
       return updated;
     });
     setHasChanges(true);
-  }, []);
+  }, [rows, tripPicklistMap]);
 
   // Handle stop sequence change - properly reorder all stops
   const handleSequenceChange = useCallback((rowId: string, newSequence: number) => {
+    // ตรวจสอบว่า trip มี picklist หรือไม่
+    const currentRow = rows.find(r => r.rowId === rowId);
+    if (currentRow && tripPicklistMap.get(currentRow.tripNumber)) {
+      setShowPicklistWarning(true);
+      return;
+    }
+
     setRows(prev => {
       // Find the row being moved
       const movingRow = prev.find(r => r.rowId === rowId);
@@ -359,6 +396,12 @@ export default function ExcelStyleRouteEditor({
 
   // Open split modal
   const handleOpenSplit = useCallback((row: OrderRow) => {
+    // ตรวจสอบว่า trip มี picklist หรือไม่
+    if (tripPicklistMap.get(row.tripNumber)) {
+      setShowPicklistWarning(true);
+      return;
+    }
+
     console.log('🔍 Opening split modal for row:', {
       orderId: row.orderId,
       orderNo: row.orderNo,
@@ -377,7 +420,7 @@ export default function ExcelStyleRouteEditor({
       splitItems: initialSplitItems
     });
     setShowSplitModal(true);
-  }, [tripNumbers]);
+  }, [tripNumbers, tripPicklistMap]);
 
   // Handle split confirm
   const handleSplitConfirm = useCallback(() => {
@@ -535,9 +578,16 @@ export default function ExcelStyleRouteEditor({
 
   // Delete row (cancel stop)
   const handleDeleteRow = useCallback((rowId: string) => {
+    // ตรวจสอบว่า trip มี picklist หรือไม่
+    const currentRow = rows.find(r => r.rowId === rowId);
+    if (currentRow && tripPicklistMap.get(currentRow.tripNumber)) {
+      setShowPicklistWarning(true);
+      return;
+    }
+
     setRows(prev => prev.filter(r => r.rowId !== rowId));
     setHasChanges(true);
-  }, []);
+  }, [rows, tripPicklistMap]);
 
   // Toggle trip expansion
   const toggleTripExpand = useCallback((tripNumber: number) => {
@@ -968,7 +1018,7 @@ export default function ExcelStyleRouteEditor({
                 <React.Fragment key={tripNum}>
                   {/* Trip header row */}
                   <tr 
-                    className="bg-blue-100 cursor-pointer hover:bg-blue-200"
+                    className={`cursor-pointer hover:bg-blue-200 ${tripPicklistMap.get(tripNum) ? 'bg-yellow-100' : 'bg-blue-100'}`}
                     onClick={() => toggleTripExpand(tripNum)}
                   >
                     <td colSpan={10} className="border px-3 py-2">
@@ -979,6 +1029,11 @@ export default function ExcelStyleRouteEditor({
                           <span className="text-gray-600">
                             ({summary?.uniqueCustomers || 0} ร้าน / {summary?.totalStops || 0} จุด)
                           </span>
+                          {tripPicklistMap.get(tripNum) && (
+                            <span className="text-xs bg-yellow-500 text-white px-2 py-0.5 rounded-full font-medium">
+                              🔒 มี PL แล้ว
+                            </span>
+                          )}
                         </div>
                         <span className="font-semibold">
                           {summary?.totalWeight.toFixed(1) || 0} kg
@@ -988,16 +1043,19 @@ export default function ExcelStyleRouteEditor({
                   </tr>
                   
                   {/* Trip rows */}
-                  {isExpanded && tripRows.map(row => (
+                  {isExpanded && tripRows.map(row => {
+                    const rowTripHasPicklist = tripPicklistMap.get(row.tripNumber);
+                    return (
                     <tr 
                       key={row.rowId}
-                      className={`hover:bg-gray-50 ${row.isSplit ? 'bg-yellow-50' : ''}`}
+                      className={`hover:bg-gray-50 ${row.isSplit ? 'bg-yellow-50' : ''} ${rowTripHasPicklist ? 'bg-yellow-50/50' : ''}`}
                     >
                       <td className="border px-2 py-1">
                         <select
                           value={row.tripNumber}
                           onChange={(e) => handleTripChange(row.rowId, parseInt(e.target.value))}
-                          className="w-full border rounded px-2 py-1 text-sm"
+                          className={`w-full border rounded px-2 py-1 text-sm ${rowTripHasPicklist ? 'bg-gray-100 cursor-not-allowed opacity-60' : ''}`}
+                          disabled={rowTripHasPicklist}
                         >
                           {tripNumbers.map(n => (
                             <option key={n} value={n}>คัน {n}</option>
@@ -1009,7 +1067,8 @@ export default function ExcelStyleRouteEditor({
                         <select
                           value={row.stopSequence}
                           onChange={(e) => handleSequenceChange(row.rowId, parseInt(e.target.value))}
-                          className="w-full border rounded px-2 py-1 text-sm"
+                          className={`w-full border rounded px-2 py-1 text-sm ${rowTripHasPicklist ? 'bg-gray-100 cursor-not-allowed opacity-60' : ''}`}
+                          disabled={rowTripHasPicklist}
                         >
                           {getAvailableSequences(row.tripNumber).map(seq => (
                             <option key={seq} value={seq}>{seq}</option>
@@ -1084,7 +1143,8 @@ export default function ExcelStyleRouteEditor({
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  );
+                  })}
                 </React.Fragment>
               );
             })}
@@ -1269,6 +1329,66 @@ export default function ExcelStyleRouteEditor({
           </div>
         </div>
       )}
+
+      {/* Picklist Warning Modal */}
+      <Modal
+        isOpen={showPicklistWarning}
+        onClose={() => setShowPicklistWarning(false)}
+        title="ไม่สามารถแก้ไขได้"
+        size="md"
+      >
+        <div className="space-y-4">
+          <div className="flex items-start gap-3 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <AlertTriangle className="w-6 h-6 text-yellow-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <p className="font-semibold text-yellow-800">
+                คันรถนี้มีใบ Picklist แล้ว
+              </p>
+              <p className="text-sm text-yellow-700 mt-1">
+                ไม่สามารถย้ายจุดส่ง, เปลี่ยนลำดับ, แบ่งออเดอร์ หรือลบจุดส่งได้
+              </p>
+            </div>
+          </div>
+
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg">
+            <p className="text-sm text-blue-800">
+              <strong>ต้องการแก้ไขเส้นทางขนส่ง?</strong>
+            </p>
+            <p className="text-sm text-blue-700 mt-1">
+              หลังสร้างใบ PL แล้ว ต้องแจ้ง<strong>พี่โย</strong>ให้ช่วยแก้ไขนะจ๊ะ 😊
+            </p>
+          </div>
+
+          {/* แสดงรายการ trips ที่มี picklist */}
+          {tripsWithPicklist.length > 0 && (
+            <div className="text-sm">
+              <p className="font-medium text-gray-700 mb-2">คันรถที่มี Picklist:</p>
+              <ul className="space-y-1">
+                {tripsWithPicklist.map((trip: any, idx: number) => {
+                  const tripNum = trip.daily_trip_number || trip.trip_sequence || idx + 1;
+                  return (
+                    <li key={trip.trip_id} className="flex items-center gap-2 text-gray-600">
+                      <span className="w-2 h-2 bg-yellow-500 rounded-full"></span>
+                      คันที่ {tripNum}
+                      {trip.picklist_codes?.length > 0 && (
+                        <span className="text-xs text-gray-500">
+                          (PL: {trip.picklist_codes.join(', ')})
+                        </span>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+
+          <div className="flex justify-end">
+            <Button variant="primary" onClick={() => setShowPicklistWarning(false)}>
+              เข้าใจแล้ว
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
