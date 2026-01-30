@@ -12,6 +12,11 @@ export async function GET(request: NextRequest) {
 
     // Get route plans with status 'approved' only
     // approved = อนุมัติแล้ว (ผู้จัดการอนุมัติใบว่าจ้างแล้ว - พร้อมสร้าง Picklist)
+    // กรองเฉพาะ plans ใน 7 วันล่าสุด เพื่อไม่ให้แสดง plans เก่าเกินไป
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+    const minPlanDate = sevenDaysAgo.toISOString().split('T')[0];
+    
     const { data: plans, error } = await supabase
       .from('receiving_route_plans')
       .select(`
@@ -30,6 +35,7 @@ export async function GET(request: NextRequest) {
         )
       `, { count: 'exact' })
       .eq('status', 'approved')
+      .gte('plan_date', minPlanDate)
       .order('plan_date', { ascending: false })
       .order('plan_code', { ascending: false });
 
@@ -41,58 +47,92 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Fetch trip_ids where orders are already picked/loaded/in_transit/delivered
-    // Check directly from route stops and their order status
-    const { data: stopsWithProcessedOrders } = await supabase
-      .from('receiving_route_stops')
-      .select('trip_id, order_id, tags, wms_orders(status)')
-      .not('order_id', 'is', null);
-
-    // Also get all stops to check tags.order_ids
-    const { data: allStops } = await supabase
-      .from('receiving_route_stops')
-      .select('trip_id, tags');
-
-    const tripIdsWithPicklist = new Set<number>();
-
-    // Check stops with direct order_id
-    (stopsWithProcessedOrders || []).forEach((stop: any) => {
-      if (stop.wms_orders && ['picked', 'loaded', 'in_transit', 'delivered'].includes(stop.wms_orders.status)) {
-        tripIdsWithPicklist.add(stop.trip_id);
+    // ✅ FIX: แทนที่จะกรอง trips ที่มี orders picked ออก 
+    // ให้ตรวจสอบว่า trip มี stop_items ที่ยังไม่มีใน picklist หรือไม่
+    // เพื่อรองรับการสร้าง Supplementary Picklist สำหรับ orders ที่เพิ่มใหม่
+    
+    // ดึง stop_items ทั้งหมดที่มีใน picklist แล้ว (เฉพาะ trips ของ approved plans)
+    const planIds = (plans || []).map(p => p.plan_id);
+    
+    // ดึง picklist_items ที่มีอยู่แล้ว (ไม่รวม items ที่ถูก void)
+    // ใช้ pagination เพื่อดึงข้อมูลทั้งหมด (default limit ของ Supabase คือ 1000)
+    let allPicklistItems: any[] = [];
+    let picklistOffset = 0;
+    const batchSize = 1000;
+    
+    while (true) {
+      const { data: batch, error } = await supabase
+        .from('picklist_items')
+        .select('order_item_id, stop_id')
+        .is('voided_at', null)
+        .range(picklistOffset, picklistOffset + batchSize - 1);
+      
+      if (error) {
+        console.error('❌ [DEBUG] Error fetching picklist_items:', error);
+        break;
+      }
+      
+      if (!batch || batch.length === 0) break;
+      allPicklistItems = allPicklistItems.concat(batch);
+      picklistOffset += batchSize;
+      
+      if (batch.length < batchSize) break;
+    }
+    
+    console.log('🔍 [DEBUG] existingPicklistItems count:', allPicklistItems.length);
+    
+    // สร้าง Set ของ order_item_id + stop_id ที่มีใน picklist แล้ว
+    const pickedItemKeys = new Set<string>();
+    allPicklistItems.forEach((item: any) => {
+      if (item.order_item_id && item.stop_id) {
+        pickedItemKeys.add(`${item.order_item_id}-${item.stop_id}`);
       }
     });
-
-    // Check stops with order_ids in tags
-    if (allStops) {
-      const orderIdsToCheck = new Set<number>();
-      const tripOrderMap = new Map<number, number>(); // order_id -> trip_id
-
-      allStops.forEach((stop: any) => {
-        if (stop.tags?.order_ids && Array.isArray(stop.tags.order_ids)) {
-          stop.tags.order_ids.forEach((orderId: number) => {
-            orderIdsToCheck.add(orderId);
-            tripOrderMap.set(orderId, stop.trip_id);
-          });
-        }
-      });
-
-      if (orderIdsToCheck.size > 0) {
-        const { data: ordersInTags } = await supabase
-          .from('wms_orders')
-          .select('order_id, status')
-          .in('order_id', Array.from(orderIdsToCheck))
-          .in('status', ['picked', 'loaded', 'in_transit', 'delivered']);
-
-        (ordersInTags || []).forEach((order: any) => {
-          const tripId = tripOrderMap.get(order.order_id);
-          if (tripId) {
-            tripIdsWithPicklist.add(tripId);
-          }
-        });
+    
+    console.log('🔍 [DEBUG] pickedItemKeys count:', pickedItemKeys.size);
+    
+    // ดึง stop_items ทั้งหมดของ trips ใน approved plans
+    let allStopItems: any[] = [];
+    let stopItemsOffset = 0;
+    
+    while (true) {
+      const { data: batch, error } = await supabase
+        .from('receiving_route_stop_items')
+        .select('stop_item_id, stop_id, trip_id, order_item_id')
+        .in('plan_id', planIds)
+        .range(stopItemsOffset, stopItemsOffset + batchSize - 1);
+      
+      if (error) {
+        console.error('❌ [DEBUG] Error fetching stop_items:', error);
+        break;
       }
+      
+      if (!batch || batch.length === 0) break;
+      allStopItems = allStopItems.concat(batch);
+      stopItemsOffset += batchSize;
+      
+      if (batch.length < batchSize) break;
     }
-
-    console.log('🚫 Filtered out trip IDs (picked/loaded/in_transit/delivered):', Array.from(tripIdsWithPicklist));
+    
+    console.log('🔍 [DEBUG] allStopItems count:', allStopItems.length);
+    
+    // หา trips ที่มี stop_items ที่ยังไม่ได้หยิบ
+    // ข้าม items ที่ไม่มี order_item_id เพราะไม่สามารถ match กับ picklist_items ได้
+    const tripsWithUnpickedItems = new Set<number>();
+    let unpickedCount = 0;
+    (allStopItems || []).forEach((item: any) => {
+      // ข้าม items ที่ไม่มี order_item_id
+      if (!item.order_item_id) return;
+      
+      const key = `${item.order_item_id}-${item.stop_id}`;
+      if (!pickedItemKeys.has(key)) {
+        tripsWithUnpickedItems.add(item.trip_id);
+        unpickedCount++;
+      }
+    });
+    
+    console.log('🔍 [DEBUG] Total unpicked items:', unpickedCount);
+    console.log('✅ Trips with unpicked items (available for picklist):', Array.from(tripsWithUnpickedItems));
 
     // For each plan, fetch trips with their stops and orders
     const plansWithTrips = await Promise.all(
@@ -208,9 +248,9 @@ export async function GET(request: NextRequest) {
 
           console.log(`✅ Created ${insertedTrips?.length || 0} trips from optimizedTrips for plan ${plan.plan_code}`);
 
-          // ใช้ trips ที่เพิ่ง insert
+          // ใช้ trips ที่เพิ่ง insert - แสดงเฉพาะ trips ที่มี items ยังไม่ได้หยิบ
           const availableTrips = (insertedTrips || []).filter(
-            (trip: any) => !tripIdsWithPicklist.has(trip.trip_id)
+            (trip: any) => tripsWithUnpickedItems.has(trip.trip_id)
           );
 
           // Fetch stops with orders for newly created trips
@@ -297,9 +337,9 @@ export async function GET(request: NextRequest) {
           return { ...plan, trips: tripsWithStops };
         }
 
-        // Filter out trips that already have picklists
+        // แสดงเฉพาะ trips ที่มี items ยังไม่ได้หยิบ (รองรับ Supplementary Picklist)
         const availableTrips = (trips || []).filter(
-          trip => !tripIdsWithPicklist.has(trip.trip_id)
+          trip => tripsWithUnpickedItems.has(trip.trip_id)
         );
 
         // For each trip, fetch stops with orders

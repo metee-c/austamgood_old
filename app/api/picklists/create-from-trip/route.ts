@@ -30,38 +30,30 @@ export async function POST(request: NextRequest) {
 
     // ============================================================
     // ✅ CHECK: ตรวจสอบว่ามี picklist สำหรับ trip นี้แล้วหรือยัง
+    // ✅ UPDATED: รองรับ Supplementary Picklist — ดึงทุก picklist + เก็บ order_item_ids ที่มีแล้ว
     // ============================================================
-    const { data: existingPicklistForTrip } = await supabase
+    const { data: existingPicklistsForTrip } = await supabase
       .from('picklists')
       .select('id, picklist_code, status')
-      .eq('trip_id', trip_id)
-      .maybeSingle();
+      .eq('trip_id', trip_id);
 
-    if (existingPicklistForTrip) {
-      // ถ้ามี picklist อยู่แล้ว ให้ลบงานเติมเก่าก่อน แล้ว return picklist เดิม
-      console.log(`⚠️ Picklist already exists for trip ${trip_id}: ${existingPicklistForTrip.picklist_code}`);
-      
-      // ลบงานเติมเก่าที่ยังไม่ได้ทำ
-      const { data: deletedReplen } = await supabase
-        .from('replenishment_queue')
-        .delete()
-        .eq('trigger_reference', existingPicklistForTrip.picklist_code)
-        .eq('status', 'pending')
-        .select();
-      
-      if (deletedReplen && deletedReplen.length > 0) {
-        console.log(`✅ Deleted ${deletedReplen.length} old pending replenishment tasks`);
-      }
+    const existingOrderItemIds = new Set<number>();
+    const existingStopIds = new Set<number>();
 
-      return NextResponse.json({
-        success: true,
-        picklist_id: existingPicklistForTrip.id,
-        picklist_code: existingPicklistForTrip.picklist_code,
-        picklist_no: existingPicklistForTrip.picklist_code,
-        already_exists: true,
-        message: `ใบหยิบ ${existingPicklistForTrip.picklist_code} มีอยู่แล้วสำหรับเที่ยวนี้`,
-        deleted_old_replenishments: deletedReplen?.length || 0
+    if (existingPicklistsForTrip && existingPicklistsForTrip.length > 0) {
+      // ดึง order_item_ids และ stop_ids ที่อยู่ใน picklist เดิมทั้งหมด
+      const existingPicklistIds = existingPicklistsForTrip.map(p => p.id);
+      const { data: existingItems } = await supabase
+        .from('picklist_items')
+        .select('order_item_id, stop_id')
+        .in('picklist_id', existingPicklistIds);
+
+      (existingItems || []).forEach(item => {
+        if (item.order_item_id) existingOrderItemIds.add(item.order_item_id);
+        if (item.stop_id) existingStopIds.add(item.stop_id);
       });
+
+      console.log(`📋 Found ${existingPicklistsForTrip.length} existing picklist(s) with ${existingOrderItemIds.size} items, ${existingStopIds.size} stops for trip ${trip_id}`);
     }
 
     // 1. Fetch trip details with plan info
@@ -210,11 +202,18 @@ export async function POST(request: NextRequest) {
         // ✅ CASE 1: Stop has split items - use receiving_route_stop_items
         console.log(`📦 Stop ${stop.stop_id} has ${stopSplitItems.length} split items`);
         
+        // Track which order_ids have split items
+        const orderIdsWithSplitItems = new Set<number>();
+        
         for (const splitItem of stopSplitItems) {
+          orderIdsWithSplitItems.add(splitItem.order_id);
+          
           const sku = skuMap.get(splitItem.sku_id);
           if (!sku) {
             missingLocationSkus.push({
               sku_id: splitItem.sku_id,
+              order_item_id: splitItem.order_item_id,
+              stop_id: stop.stop_id,
               reason: 'SKU not found in master_sku'
             });
             continue;
@@ -224,6 +223,8 @@ export async function POST(request: NextRequest) {
             missingLocationSkus.push({
               sku_id: splitItem.sku_id,
               sku_name: sku.sku_name,
+              order_item_id: splitItem.order_item_id,
+              stop_id: stop.stop_id,
               reason: 'SKU does not have preparation area (default_location) configured'
             });
             continue;
@@ -243,6 +244,64 @@ export async function POST(request: NextRequest) {
             qty_per_pack: sku.qty_per_pack || 1
           });
         }
+        
+        // ✅ FIX: Check for orders in tags.order_ids that don't have split items
+        // These orders may have been missed when split items were created
+        const allStopOrderIds = new Set<number>();
+        if (stop.order_id) allStopOrderIds.add(stop.order_id);
+        if (stop.tags?.order_ids) {
+          stop.tags.order_ids.forEach((id: number) => allStopOrderIds.add(id));
+        }
+        
+        const ordersWithoutSplitItems = Array.from(allStopOrderIds).filter(
+          orderId => !orderIdsWithSplitItems.has(orderId)
+        );
+        
+        if (ordersWithoutSplitItems.length > 0) {
+          console.log(`📦 Stop ${stop.stop_id} has ${ordersWithoutSplitItems.length} orders without split items, using wms_order_items`);
+          
+          for (const orderId of ordersWithoutSplitItems) {
+            const orderItemsForOrder = (orderItems || []).filter(item => item.order_id === orderId);
+            
+            for (const item of orderItemsForOrder) {
+              const sku = skuMap.get(item.sku_id);
+              if (!sku) {
+                missingLocationSkus.push({
+                  sku_id: item.sku_id,
+                  order_item_id: item.order_item_id,
+                  stop_id: stop.stop_id,
+                  reason: 'SKU not found in master_sku'
+                });
+                continue;
+              }
+
+              if (!sku.default_location) {
+                missingLocationSkus.push({
+                  sku_id: item.sku_id,
+                  sku_name: sku.sku_name,
+                  order_item_id: item.order_item_id,
+                  stop_id: stop.stop_id,
+                  reason: 'SKU does not have preparation area (default_location) configured'
+                });
+                continue;
+              }
+
+              const order = orderMap.get(item.order_id);
+              itemsToInsert.push({
+                order_item_id: item.order_item_id,
+                sku_id: item.sku_id,
+                sku_name: sku.sku_name || item.sku_id,
+                uom: sku.uom_base || 'ชิ้น',
+                order_no: order?.order_no || '-',
+                order_id: item.order_id,
+                stop_id: stop.stop_id,
+                quantity_to_pick: item.order_qty,
+                source_location_id: sku.default_location,
+                qty_per_pack: sku.qty_per_pack || 1
+              });
+            }
+          }
+        }
       } else {
         // ✅ CASE 2: Stop has no split items - use wms_order_items (original logic)
         // ✅ FIX: Deduplicate order IDs within the same stop to prevent duplicate items
@@ -255,12 +314,14 @@ export async function POST(request: NextRequest) {
 
         for (const orderId of stopOrderIds) {
           const orderItemsForOrder = (orderItems || []).filter(item => item.order_id === orderId);
-          
+
           for (const item of orderItemsForOrder) {
             const sku = skuMap.get(item.sku_id);
             if (!sku) {
               missingLocationSkus.push({
                 sku_id: item.sku_id,
+                order_item_id: item.order_item_id,
+                stop_id: stop.stop_id,
                 reason: 'SKU not found in master_sku'
               });
               continue;
@@ -270,6 +331,8 @@ export async function POST(request: NextRequest) {
               missingLocationSkus.push({
                 sku_id: item.sku_id,
                 sku_name: sku.sku_name,
+                order_item_id: item.order_item_id,
+                stop_id: stop.stop_id,
                 reason: 'SKU does not have preparation area (default_location) configured'
               });
               continue;
@@ -293,17 +356,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // ❌ FAIL if any SKU missing source_location
-    if (missingLocationSkus.length > 0) {
-      console.error('❌ Cannot create picklist: SKUs missing preparation area:', missingLocationSkus);
-      const skuList = missingLocationSkus.map(s => s.sku_name || s.sku_id).join(', ');
-      return NextResponse.json({
-        error: `สินค้าไม่มีพื้นที่จัดเตรียม (Preparation Area): ${skuList}`,
-        missing_locations: missingLocationSkus,
-        instructions: 'กรุณาตั้งค่า default_location สำหรับสินค้าเหล่านี้ที่หน้า /master-data/products'
-      }, { status: 400 });
-    }
-
     // ✅ FIX: Deduplicate items by order_item_id (prevent unique constraint violation)
     // If same order_item_id appears multiple times, keep only the first occurrence
     const seenOrderItemIds = new Set<number>();
@@ -318,8 +370,66 @@ export async function POST(request: NextRequest) {
 
     console.log(`📦 Items after deduplication: ${deduplicatedItems.length} (was ${itemsToInsert.length})`);
 
-    // Use deduplicated items for the rest of the process
-    const finalItemsToInsert = deduplicatedItems;
+    // ============================================================
+    // ✅ Supplementary Picklist: กรอง items ที่อยู่ใน picklist เดิมแล้ว
+    // ============================================================
+    const newItemsOnly = deduplicatedItems.filter(item =>
+      !existingOrderItemIds.has(item.order_item_id)
+    );
+
+    if (newItemsOnly.length < deduplicatedItems.length) {
+      console.log(`📋 Filtered out ${deduplicatedItems.length - newItemsOnly.length} items already in existing picklist(s). New items: ${newItemsOnly.length}`);
+    }
+
+    if (newItemsOnly.length === 0 && existingPicklistsForTrip && existingPicklistsForTrip.length > 0) {
+      // ทุก items ครอบคลุมแล้ว — return picklist เดิม
+      const latestPicklist = existingPicklistsForTrip[existingPicklistsForTrip.length - 1];
+
+      // ลบงานเติมเก่าที่ยังไม่ได้ทำ
+      const { data: deletedReplen } = await supabase
+        .from('replenishment_queue')
+        .delete()
+        .eq('trigger_reference', latestPicklist.picklist_code)
+        .eq('status', 'pending')
+        .select();
+
+      if (deletedReplen && deletedReplen.length > 0) {
+        console.log(`✅ Deleted ${deletedReplen.length} old pending replenishment tasks`);
+      }
+
+      return NextResponse.json({
+        success: true,
+        picklist_id: latestPicklist.id,
+        picklist_code: latestPicklist.picklist_code,
+        picklist_no: latestPicklist.picklist_code,
+        already_exists: true,
+        message: `ใบหยิบ ${latestPicklist.picklist_code} ครอบคลุมทุกออเดอร์แล้ว`,
+        deleted_old_replenishments: deletedReplen?.length || 0
+      });
+    }
+
+    // Use filtered items for the rest of the process
+    const finalItemsToInsert = newItemsOnly;
+
+    // ❌ FAIL if any NEW item's SKU is missing source_location
+    // (เฉพาะ items ใหม่ที่ยังไม่อยู่ใน picklist เดิม)
+    // ✅ FIX: ใช้ทั้ง order_item_id และ stop_id เพราะบาง items มี order_item_id = null
+    const newItemMissingSkus = missingLocationSkus.filter(m => {
+      // ถ้า order_item_id มีค่าและอยู่ใน picklist เดิม → ข้าม
+      if (m.order_item_id && existingOrderItemIds.has(m.order_item_id)) return false;
+      // ถ้า stop_id อยู่ใน picklist เดิม → ข้าม (สำหรับ items ที่มี order_item_id = null)
+      if (m.stop_id && existingStopIds.has(m.stop_id)) return false;
+      return true;
+    });
+    if (newItemMissingSkus.length > 0) {
+      console.error('❌ Cannot create picklist: new items have SKUs missing preparation area:', newItemMissingSkus);
+      const skuList = newItemMissingSkus.map(s => s.sku_name || s.sku_id).join(', ');
+      return NextResponse.json({
+        error: `สินค้าไม่มีพื้นที่จัดเตรียม (Preparation Area): ${skuList}`,
+        missing_locations: newItemMissingSkus,
+        instructions: 'กรุณาตั้งค่า default_location สำหรับสินค้าเหล่านี้ที่หน้า /master-data/products'
+      }, { status: 400 });
+    }
 
     // ============================================================
     // ✅ FIX #2: Check stock availability and create replenishment if needed
@@ -733,6 +843,7 @@ export async function POST(request: NextRequest) {
       picklist_id: picklist.id,
       picklist_code: picklistCode,
       picklist_no: picklistCode,
+      is_supplementary: existingPicklistsForTrip && existingPicklistsForTrip.length > 0,
       total_items: finalItemsToInsert.length,
       total_quantity: totalQuantity,
       reservations_created: reservationsToInsert.length,

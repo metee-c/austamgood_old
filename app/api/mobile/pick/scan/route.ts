@@ -120,10 +120,19 @@ async function handlePost(request: NextRequest, context: any) {
     }
 
     // ✅ CHECK: ถ้าเป็น SKU สติ๊กเกอร์ ให้ข้ามการย้ายสต็อก แค่อัพเดทสถานะเป็น picked
+    // ⚠️ FIX: ต้องไม่นับ "No Sticker" หรือ "NS|" เป็นสติ๊กเกอร์
     const skuName = item.master_sku?.sku_name || item.sku_name || '';
-    const isSticker = skuName.toLowerCase().includes('สติ๊กเกอร์') || 
-                      skuName.toLowerCase().includes('sticker') ||
-                      item.sku_id.toLowerCase().includes('sticker');
+    const skuNameLower = skuName.toLowerCase();
+    const skuIdLower = item.sku_id.toLowerCase();
+    
+    // ตรวจจับว่าเป็นสติ๊กเกอร์จริงๆ (ไม่ใช่ "No Sticker")
+    const hasSticker = skuNameLower.includes('สติ๊กเกอร์') || 
+                       skuNameLower.includes('sticker') ||
+                       skuIdLower.includes('sticker');
+    const hasNoSticker = skuNameLower.includes('no sticker') || 
+                         skuNameLower.includes('[no sticker]') ||
+                         skuIdLower.includes('|ns|');  // NS = No Sticker
+    const isSticker = hasSticker && !hasNoSticker;
     
     if (isSticker) {
       console.log(`🏷️ SKU สติ๊กเกอร์ detected: ${item.sku_id} - ข้ามการย้ายสต็อก`);

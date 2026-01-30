@@ -16,6 +16,65 @@ export async function POST(request: NextRequest) {
 
     const supabase = await createClient();
 
+    // ตรวจสอบว่า orders เหล่านี้มีอยู่ใน plan อื่นที่ยัง active อยู่หรือไม่
+    const orderIds = body.map(input => input.order_id).filter(Boolean);
+    const planId = body[0]?.plan_id;
+    
+    if (orderIds.length > 0) {
+      // ดึง orders ที่มี stop_items ใน plans อื่นที่ยังไม่ complete
+      const { data: existingStopItems } = await supabase
+        .from('receiving_route_stop_items')
+        .select(`
+          order_id,
+          stop_id,
+          receiving_route_stops!inner (
+            trip_id,
+            receiving_route_trips!inner (
+              plan_id,
+              receiving_route_plans!inner (
+                plan_id,
+                plan_code,
+                status
+              )
+            )
+          )
+        `)
+        .in('order_id', orderIds);
+
+      // กรองเฉพาะ orders ที่อยู่ใน plans อื่นที่ยัง active (ไม่ใช่ completed, cancelled)
+      const conflictingOrders = new Map<number, { planCode: string; planId: number; status: string }>();
+      
+      (existingStopItems || []).forEach((item: any) => {
+        const plan = item.receiving_route_stops?.receiving_route_trips?.receiving_route_plans;
+        if (plan && plan.plan_id !== Number(planId)) {
+          const activeStatuses = ['draft', 'published', 'optimizing', 'approved', 'in_progress'];
+          if (activeStatuses.includes(plan.status)) {
+            conflictingOrders.set(item.order_id, {
+              planCode: plan.plan_code,
+              planId: plan.plan_id,
+              status: plan.status
+            });
+          }
+        }
+      });
+
+      if (conflictingOrders.size > 0) {
+        const conflicts = Array.from(conflictingOrders.entries()).map(([orderId, info]) => ({
+          order_id: orderId,
+          existing_plan_code: info.planCode,
+          existing_plan_id: info.planId,
+          existing_plan_status: info.status
+        }));
+        
+        console.warn('⚠️ Orders already exist in other active plans:', conflicts);
+        return NextResponse.json({
+          error: `ออเดอร์บางรายการมีอยู่ในแผนอื่นที่ยัง active อยู่ กรุณาลบออกจากแผนเดิมก่อน หรือใช้ฟังก์ชันย้ายออเดอร์ข้ามแผน`,
+          conflicting_orders: conflicts,
+          data: null
+        }, { status: 400 });
+      }
+    }
+
     // Validate required fields for each input
     const validatedInputs = body.map(input => ({
       plan_id: input.plan_id,

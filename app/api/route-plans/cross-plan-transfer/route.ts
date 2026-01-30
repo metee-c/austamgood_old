@@ -313,15 +313,55 @@ async function performPartialTransfer(
     })
     .eq('stop_id', body.source_stop_id);
 
-  // 6. สร้าง stop_items สำหรับ stop ใหม่
+  // 6. สร้าง stop_items สำหรับ stop ใหม่ และอัพเดท/ลบ items เดิมใน source stop
+  // ดึง stop_items เดิมของ source stop
+  const { data: existingSourceItems } = await supabase
+    .from('receiving_route_stop_items')
+    .select('*')
+    .eq('stop_id', body.source_stop_id);
+
   for (const item of items) {
+    // สร้าง stop_item ใหม่ใน target stop
     await supabase.from('receiving_route_stop_items').insert({
       stop_id: newStop.stop_id,
       trip_id: targetTripId,
+      plan_id: body.target_plan_id,
+      order_id: body.order_id,
       order_item_id: item.orderItemId,
       allocated_weight_kg: item.moveWeightKg,
-      allocated_qty: item.moveQuantity,
+      allocated_quantity: item.moveQuantity,
+      notes: `ย้ายจากแผน ${body.source_plan_id}`
     });
+
+    // อัพเดท/ลบ stop_item เดิมใน source stop
+    const existingItem = (existingSourceItems || []).find(
+      (ei: any) => ei.order_item_id === item.orderItemId
+    );
+
+    if (existingItem) {
+      const newQty = (existingItem.allocated_quantity || 0) - (item.moveQuantity || 0);
+      const newWeight = (existingItem.allocated_weight_kg || 0) - (item.moveWeightKg || 0);
+
+      if (newQty <= 0) {
+        // ลบ record ถ้าไม่มี quantity เหลือ
+        await supabase
+          .from('receiving_route_stop_items')
+          .delete()
+          .eq('stop_item_id', existingItem.stop_item_id);
+      } else {
+        // อัพเดท quantity ที่เหลือ
+        await supabase
+          .from('receiving_route_stop_items')
+          .update({
+            allocated_quantity: newQty,
+            allocated_weight_kg: newWeight,
+            notes: existingItem.notes 
+              ? `${existingItem.notes} [ย้ายบางส่วนไปแผน ${body.target_plan_id}]`
+              : `[ย้ายบางส่วนไปแผน ${body.target_plan_id}]`
+          })
+          .eq('stop_item_id', existingItem.stop_item_id);
+      }
+    }
   }
 
   // 7. บันทึก transfer log

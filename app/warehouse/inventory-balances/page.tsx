@@ -493,10 +493,7 @@ const InventoryBalancesPage = () => {
         }
         
         console.log('[BFS] Total items fetched:', itemsData.length);
-        if (itemsData.length > 0) {
-          console.log('[BFS] Sample item:', itemsData[0]);
-        }
-      }
+      } // Add closing brace here
 
       // 5. Group items by package_id
       const itemsByPackage = new Map<number, any[]>();
@@ -506,18 +503,15 @@ const InventoryBalancesPage = () => {
           itemsByPackage.set(pkgId, []);
         }
         itemsByPackage.get(pkgId)!.push(item);
-      });
-      console.log('[BFS] itemsByPackage keys (first 10):', Array.from(itemsByPackage.keys()).slice(0, 10));
-      console.log('[BFS] Package 609 items:', itemsByPackage.get(609)?.length || 0);
-      console.log('[BFS] Package 713 items:', itemsByPackage.get(713)?.length || 0);
+      }); // Add closing brace here
 
       // 6. Group packages by storage_location
       const packagesByLocation = new Map<string, BFSPackageInfo[]>();
       filteredPackages.forEach((pkg: any) => {
-        let loc = pkg.storage_location;
+        const loc = pkg.storage_location;
+        
         if (!loc || loc.trim() === '') {
-          const orderNo = pkg.order_no || '';
-          loc = orderNo.startsWith('MR') ? 'MRTD' : 'PQTD';
+          return; // Skip packages without storage_location
         }
         
         if (!packagesByLocation.has(loc)) {

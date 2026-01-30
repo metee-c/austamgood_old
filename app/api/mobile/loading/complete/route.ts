@@ -900,13 +900,21 @@ async function handlePost(request: NextRequest, context: any) {
     let itemsProcessed = 0;
 
     try {
-      // ✅ FIX (Migration 243): Use new function that handles BOTH release AND deduct
-      // This ensures we deduct from the correct balance that has the reservation
+      // ✅ V3: Use ATOMIC function with Rollback, Idempotency, and Concurrent Lock
+      // Generate idempotency key from loadlist_id + timestamp (rounded to minute)
+      const idempotencyKey = `loading_${loadlist.id}_${Math.floor(Date.now() / 60000)}`;
+      const lockedBy = `api_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      
       console.log(`🔓 Processing loading complete for loadlist ${loadlist.id}...`);
+      console.log(`🔑 Idempotency key: ${idempotencyKey}`);
+      console.log(`🔒 Lock ID: ${lockedBy}`);
+      
       const { data: processResult, error: processError } = await supabase
-        .rpc('process_loadlist_loading_complete', {
+        .rpc('process_loadlist_loading_complete_atomic', {
           p_loadlist_id: loadlist.id,
-          p_delivery_location_id: deliveryLocation.location_id
+          p_delivery_location_id: deliveryLocation.location_id,
+          p_idempotency_key: idempotencyKey,
+          p_locked_by: lockedBy
         });
 
       if (processError) {
@@ -917,24 +925,56 @@ async function handlePost(request: NextRequest, context: any) {
         );
       }
 
+      // ✅ V3: Handle atomic function result
+      const functionSuccess = processResult?.[0]?.success ?? false;
       const processedCount = processResult?.[0]?.processed_count || 0;
       const totalQtyMoved = processResult?.[0]?.total_qty_moved || 0;
       const errorMessage = processResult?.[0]?.error_message;
+      const isDuplicate = processResult?.[0]?.is_duplicate ?? false;
 
-      if (errorMessage) {
-        console.error(`⚠️ Function completed with errors: ${errorMessage}`);
+      // ✅ Check if this is a duplicate request (idempotency)
+      if (isDuplicate) {
+        console.log(`⚠️ Duplicate request detected - returning cached result`);
+        return NextResponse.json({
+          success: true,
+          message: 'ยืนยันการโหลดสินค้าเสร็จสิ้น (จาก cache)',
+          loadlist_code: loadlist.loadlist_code,
+          items_moved: processedCount,
+          total_qty_moved: totalQtyMoved,
+          is_duplicate: true
+        });
       }
 
-      console.log(`✅ Processed ${processedCount} reservations (${totalQtyMoved} pieces total)`);
+      // ✅ Check if function failed (with automatic rollback)
+      if (!functionSuccess) {
+        console.error(`❌ Atomic function failed: ${errorMessage}`);
+        return NextResponse.json(
+          { 
+            error: 'ไม่สามารถดำเนินการโหลดสินค้าได้', 
+            details: errorMessage,
+            rollback: true  // ระบุว่า transaction ถูก rollback แล้ว
+          },
+          { status: 500 }
+        );
+      }
 
-      // ✅ Function already handled:
-      // 1. Released reservations (status: picked → loaded)
-      // 2. Decremented reserved_piece_qty in source balance
-      // 3. Deducted total_piece_qty from source balance
-      // 4. Added stock to Delivery-In-Progress
-      // 5. Created ledger entries (OUT + IN)
+      if (errorMessage) {
+        console.error(`⚠️ Function completed with warnings: ${errorMessage}`);
+      }
 
-      // No need to manually process items - function did everything!
+      console.log(`✅ Processed ${processedCount} items (${totalQtyMoved} pieces total)`);
+
+      // ✅ V3 Atomic Function features:
+      // 1. Idempotency - ป้องกัน process ซ้ำ
+      // 2. Distributed Lock - ป้องกัน concurrent access
+      // 3. Row-level Lock (FOR UPDATE) - ป้องกัน race condition
+      // 4. Automatic Rollback - ถ้า error กลางทาง transaction จะ rollback ทั้งหมด
+
+      // ✅ VALIDATION: ตรวจสอบว่า function ทำงานสำเร็จจริง
+      if (processedCount === 0 && itemsToProcess.length > 0) {
+        console.warn(`⚠️ Warning: No items were processed by database function, but ${itemsToProcess.length} items were expected`);
+        console.warn(`⚠️ This may indicate stock is not at Staging locations (Dispatch/MRTD/PQTD)`);
+      }
     } catch (processError: any) {
       console.error(`❌ Error during loading complete:`, processError);
       throw processError;
@@ -953,11 +993,12 @@ async function handlePost(request: NextRequest, context: any) {
       updateData.checker_employee_id = checker_employee_id;
     }
 
+    // ✅ FIX: อัปเดต loadlist ไม่ว่าจะ status เป็นอะไร (ยกเว้น loaded/voided)
     const { error: updateStatusError } = await supabase
       .from('loadlists')
       .update(updateData)
       .eq('id', loadlist.id)
-      .eq('status', 'pending'); // Only update if still 'pending'
+      .not('status', 'in', '(loaded,voided)');
 
     if (updateStatusError) {
       console.error(`❌ Error updating loadlist status:`, updateStatusError);

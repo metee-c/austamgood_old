@@ -99,6 +99,16 @@ export async function POST(
       );
     }
 
+    // ✅ FIX: ตรวจสอบว่า items ที่จะ split ยังไม่ถูก split ไปแล้ว
+    const splitOutItemIds = sourceStop.tags?.split_out_item_ids || [];
+    const alreadySplitItems = items.filter(item => splitOutItemIds.includes(item.orderItemId));
+    if (alreadySplitItems.length > 0) {
+      return NextResponse.json(
+        { error: `รายการที่เลือกถูก split ไปแล้ว: ${alreadySplitItems.map(i => i.orderItemId).join(', ')}` },
+        { status: 400 }
+      );
+    }
+
     // Calculate total weight and quantity being moved
     const totalMoveWeight = items.reduce((sum, item) => sum + item.moveWeightKg, 0);
     const totalMoveQty = items.reduce((sum, item) => sum + (item.moveQuantity || 0), 0);
