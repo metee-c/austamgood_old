@@ -28,6 +28,8 @@ interface Trip {
   trip_status?: string;
   is_overweight?: boolean;
   capacity_utilization?: number;
+  shop_names_summary?: string;
+  stops_count?: number;
 }
 
 interface ExpandedTripsProps {
@@ -93,12 +95,6 @@ export function ExpandedTrips({ trips, isLoading }: ExpandedTripsProps) {
                       น้ำหนัก
                     </th>
                     <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">
-                      ปริมาตร
-                    </th>
-                    <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">
-                      พาเลท
-                    </th>
-                    <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">
                       ราคาเริ่มต้น
                     </th>
                     <th className="text-center px-2 py-2 text-xs font-semibold text-gray-700 uppercase">
@@ -153,13 +149,21 @@ export function ExpandedTrips({ trips, isLoading }: ExpandedTripsProps) {
                         <td className="px-2 py-2 text-xs">
                           <div className="flex items-center gap-2">
                             <TruckIcon className="w-3 h-3 text-blue-600" />
-                            <span className="font-semibold text-blue-700">{trip.trip_code}</span>
+                            <span className="font-semibold text-blue-700">
+                              คันที่ {trip.daily_trip_number || trip.trip_sequence || idx + 1}
+                            </span>
                           </div>
                         </td>
-                        <td className="px-2 py-2 text-xs text-gray-600">{trip.notes || '-'}</td>
+                        <td className="px-2 py-2 text-xs text-gray-600 max-w-[400px]">
+                          <div className="whitespace-pre-wrap break-words leading-relaxed" title={trip.shop_names_summary || trip.notes || '-'}>
+                            {trip.shop_names_summary 
+                              ? trip.shop_names_summary.split(' + ').join('\n') 
+                              : trip.notes || '-'}
+                          </div>
+                        </td>
                         <td className="px-2 py-2 text-xs text-center">
                           <span className="font-medium text-gray-700">
-                            คันที่ {trip.daily_trip_number || trip.trip_sequence || '-'}
+                            {trip.daily_trip_number || trip.trip_sequence || idx + 1}
                           </span>
                         </td>
                         <td className="px-2 py-2 text-xs text-center text-gray-600">
@@ -178,12 +182,6 @@ export function ExpandedTrips({ trips, isLoading }: ExpandedTripsProps) {
                         </td>
                         <td className="px-2 py-2 text-xs text-center text-gray-700">
                           {trip.total_weight_kg ? `${trip.total_weight_kg.toFixed(0)} kg` : '-'}
-                        </td>
-                        <td className="px-2 py-2 text-xs text-center text-gray-700">
-                          {trip.total_volume_cbm ? `${trip.total_volume_cbm.toFixed(2)} m³` : '-'}
-                        </td>
-                        <td className="px-2 py-2 text-xs text-center text-gray-700">
-                          {trip.total_pallets ? `${trip.total_pallets.toFixed(1)}` : '-'}
                         </td>
                         <td className="px-2 py-2 text-xs text-center text-gray-700">
                           {trip.base_price

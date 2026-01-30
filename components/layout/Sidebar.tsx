@@ -220,6 +220,12 @@ const menuItems = [
         englishLabel: 'Production Report'
       },
       {
+        path: '/reports/shipping-cost',
+        icon: TruckIcon,
+        label: 'รายงานค่าขนส่ง',
+        englishLabel: 'Shipping Cost Report'
+      },
+      {
         path: '/warehouse/misplaced-inventory',
         icon: PackageSearch,
         label: 'บ้านหยิบผิดตำแหน่ง',
