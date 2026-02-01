@@ -21,14 +21,20 @@ const notoSansThai = Noto_Sans_Thai({
 });
 
 export const metadata: Metadata = {
-  title: 'AustamGood WMS - ระบบจัดการคลังสินค้า',
+  title: 'WMS - ระบบจัดการคลังสินค้า',
   description: 'ระบบจัดการคลังสินค้าสำหรับธุรกิจขนาดกลางและขนาดใหญ่',
-  keywords: 'WMS, Warehouse Management, คลังสินค้า, จัดการสินค้า, AustamGood',
+  keywords: 'WMS, Warehouse Management, คลังสินค้า, จัดการสินค้า',
   manifest: '/manifest.json',
+  icons: {
+    icon: [
+      { url: '/images/favicon-v2.svg', type: 'image/svg+xml' },
+    ],
+    apple: '/images/favicon-v2.svg',
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
-    title: 'Mobile WMS',
+    title: 'WMS',
   },
   other: {
     charset: 'UTF-8',

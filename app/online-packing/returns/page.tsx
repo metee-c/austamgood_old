@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { RotateCcw, Plus, Search } from 'lucide-react'
 import { PageContainer, PageHeaderWithFilters, SearchInput } from '@/components/ui/page-components'
+import Table from '@/components/ui/Table'
 import Button from '@/components/ui/Button'
 import type { Order, Product } from '@/types/online-packing'
 
@@ -616,44 +617,55 @@ export default function ReturnsPage() {
         <div className="flex-1 overflow-auto p-4">
           {activeTab === 'create' && (
             <div>
-              <div className="flex justify-between items-center mb-8">
-                <div className="flex-grow">
-                  <label className="block text-sm font-semibold text-gray-700 mb-3 font-thai">
-                    {isManualEntry ? 'กรอกข้อมูลออเดอร์ด้วยตนเอง' : 'ค้นหาออเดอร์ที่จัดส่งแล้ว'}
-                  </label>
-                  {!isManualEntry && (
+              {/* Search bar - compact style matching receiving/orders */}
+              {!isManualEntry && (
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="flex-1 min-w-[200px] max-w-[500px] relative">
+                    <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3.5 h-3.5 text-thai-gray-400" />
                     <input
                       type="text"
                       value={searchTerm}
                       onChange={(e) => setSearchTerm(e.target.value)}
                       placeholder="ค้นหาด้วยหมายเลขออเดอร์, ชื่อผู้ซื้อ, เลขติดตาม, หรือ SKU..."
-                      className="w-full px-5 py-4 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-primary-500/20 focus:border-primary-500 font-thai bg-white/90 backdrop-blur-sm shadow-sm transition-all duration-300"
+                      className="w-full pl-7 pr-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50"
                       suppressHydrationWarning
                     />
-                  )}
+                  </div>
+                  <span className="text-[10px] text-gray-400 font-thai">{sortedOrders.length} รายการ</span>
+                  <div className="ml-auto">
+                    <Button
+                      variant="primary"
+                      size="sm"
+                      onClick={() => {
+                        setIsManualEntry(true);
+                        setSelectedOrder(null);
+                      }}
+                      className="text-xs"
+                    >
+                      <Plus className="w-3 h-3 mr-1" />
+                      เพิ่มด้วยตนเอง
+                    </Button>
+                  </div>
                 </div>
-                <div className="ml-4 pt-9">
-                  <button
-                    onClick={() => {
-                      setIsManualEntry(!isManualEntry);
-                      setSelectedOrder(null);
-                    }}
-                    className="px-6 py-4 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl font-thai font-medium transition-all duration-300 shadow-lg hover:shadow-xl"
-                  >
-                    {isManualEntry ? 'ค้นหาจากประวัติ' : 'เพิ่มด้วยตนเอง'}
-                  </button>
-                </div>
-              </div>
+              )}
 
               {isManualEntry ? (
                 <div className="bg-gradient-to-r from-green-50/50 to-blue-50/50 rounded-2xl p-8 border border-green-200/50 shadow-sm">
                   <div className="mb-6">
                     <div className="flex items-center gap-3 mb-3">
-                      <span className="text-2xl">📝</span>
-                      <h3 className="text-xl font-bold text-gray-800">กรอกข้อมูลออเดอร์ด้วยตนเอง</h3>
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => { setIsManualEntry(false); setSelectedOrder(null); }}
+                        className="text-xs"
+                      >
+                        <RotateCcw className="w-3 h-3 mr-1" />
+                        ค้นหาจากประวัติ
+                      </Button>
+                      <h3 className="text-sm font-bold text-gray-800 font-thai">กรอกข้อมูลออเดอร์ด้วยตนเอง</h3>
                     </div>
-                    <p className="text-sm text-gray-600 bg-blue-50 p-3 rounded-lg border-l-4 border-blue-400">
-                      💡 <strong>คำแนะนำ:</strong> ใช้สำหรับออเดอร์ที่ไม่มีในระบบ หรือต้องการเพิ่มข้อมูลเป็นพิเศษ
+                    <p className="text-xs text-gray-600 bg-blue-50 p-2 rounded-lg border-l-4 border-blue-400 font-thai">
+                      ใช้สำหรับออเดอร์ที่ไม่มีในระบบ หรือต้องการเพิ่มข้อมูลเป็นพิเศษ
                     </p>
                   </div>
 
@@ -844,43 +856,52 @@ export default function ReturnsPage() {
                         <p>ไม่พบออเดอร์</p>
                     </div>
                   ) : (
-                    <div className="mb-8">
-                      <h3 className="text-xl font-bold text-gray-800 mb-6 font-thai">ออเดอร์ที่จัดส่งแล้ว <span className="text-primary-600">({sortedOrders.length})</span> รายการ</h3>
-                      <div className="overflow-x-auto rounded-2xl border border-gray-200/50 shadow-sm">
-                        <table className="w-full bg-white/80 backdrop-blur-sm">
-                          <thead className="bg-gradient-to-r from-primary-500 to-primary-600">
+                    <div>
+                      <div className="overflow-x-auto border border-gray-200 rounded-lg shadow-sm">
+                        <Table>
+                          <Table.Header>
                             <tr>
-                              <th className="text-left py-4 px-6 font-semibold text-white"><button onClick={() => requestSort('order_number')} className="flex items-center">หมายเลขออเดอร์{getSortIndicator('order_number')}</button></th>
-                              <th className="text-left py-4 px-6 font-semibold text-white"><button onClick={() => requestSort('buyer_name')} className="flex items-center">ผู้ซื้อ{getSortIndicator('buyer_name')}</button></th>
-                              <th className="text-left py-4 px-6 font-semibold text-white"><button onClick={() => requestSort('product_name')} className="flex items-center">สินค้า{getSortIndicator('product_name')}</button></th>
-                              <th className="text-left py-4 px-6 font-semibold text-white"><button onClick={() => requestSort('quantity')} className="flex items-center">จำนวน{getSortIndicator('quantity')}</button></th>
-                              <th className="text-left py-4 px-6 font-semibold text-white"><button onClick={() => requestSort('platform')} className="flex items-center">แพลตฟอร์ม{getSortIndicator('platform')}</button></th>
-                              <th className="text-center py-4 px-6 font-semibold text-white">การจัดการ</th>
+                              <Table.Head onClick={() => requestSort('order_number')}>
+                                <span className="flex items-center">หมายเลขออเดอร์{getSortIndicator('order_number')}</span>
+                              </Table.Head>
+                              <Table.Head onClick={() => requestSort('buyer_name')}>
+                                <span className="flex items-center">ผู้ซื้อ{getSortIndicator('buyer_name')}</span>
+                              </Table.Head>
+                              <Table.Head onClick={() => requestSort('product_name')}>
+                                <span className="flex items-center">สินค้า{getSortIndicator('product_name')}</span>
+                              </Table.Head>
+                              <Table.Head onClick={() => requestSort('quantity')}>
+                                <span className="flex items-center">จำนวน{getSortIndicator('quantity')}</span>
+                              </Table.Head>
+                              <Table.Head onClick={() => requestSort('platform')}>
+                                <span className="flex items-center">แพลตฟอร์ม{getSortIndicator('platform')}</span>
+                              </Table.Head>
+                              <Table.Head className="text-center">การจัดการ</Table.Head>
                             </tr>
-                          </thead>
-                          <tbody>
+                          </Table.Header>
+                          <Table.Body>
                             {sortedOrders.map((order) => (
-                              <tr key={order.id} className="border-b border-gray-100/50 hover:bg-primary-50/30">
-                                <td className="py-4 px-6">
+                              <Table.Row key={order.id}>
+                                <Table.Cell>
                                   <div className="font-semibold">{order.order_number}</div>
-                                  <div className="text-sm text-gray-500 font-mono">SKU: {order.parent_sku}</div>
-                                  {order.tracking_number && <div className="text-sm text-primary-600">ติดตาม: {order.tracking_number}</div>}
-                                </td>
-                                <td className="py-4 px-6 font-semibold">{order.buyer_name}</td>
-                                <td className="py-4 px-6">{order.product_name}</td>
-                                <td className="py-4 px-6 font-bold text-lg">{order.quantity} ชิ้น</td>
-                                <td className="py-4 px-6">{order.platform}</td>
-                                <td className="py-4 px-6 text-center">
+                                  <div className="text-[10px] text-gray-500 font-mono">SKU: {order.parent_sku}</div>
+                                  {order.tracking_number && <div className="text-[10px] text-primary-600">ติดตาม: {order.tracking_number}</div>}
+                                </Table.Cell>
+                                <Table.Cell className="font-semibold">{order.buyer_name}</Table.Cell>
+                                <Table.Cell>{order.product_name}</Table.Cell>
+                                <Table.Cell className="font-bold">{order.quantity} ชิ้น</Table.Cell>
+                                <Table.Cell>{order.platform}</Table.Cell>
+                                <Table.Cell className="text-center">
                                   <button
                                     onClick={() => setSelectedOrder(order)}
-                                    className={`px-6 py-3 rounded-xl font-medium text-sm shadow-md ${selectedOrder?.id === order.id ? 'primary-button text-white' : 'bg-primary-50 text-primary-600'}`}>
+                                    className={`px-4 py-1.5 rounded-lg font-medium text-xs shadow-sm ${selectedOrder?.id === order.id ? 'primary-button text-white' : 'bg-primary-50 text-primary-600'}`}>
                                     {selectedOrder?.id === order.id ? '✓ เลือกแล้ว' : 'สร้างคำขอ'}
                                   </button>
-                                </td>
-                              </tr>
+                                </Table.Cell>
+                              </Table.Row>
                             ))}
-                          </tbody>
-                        </table>
+                          </Table.Body>
+                        </Table>
                       </div>
                     </div>
                   )}
@@ -959,85 +980,89 @@ export default function ReturnsPage() {
           )}
 
           {activeTab === 'manage' && (
-            <div className="p-8">
-              <h2 className="text-2xl font-bold text-gray-800 mb-8 font-thai">จัดการคำขอตีกลับ</h2>
-              <div className="mb-6">
-                <input
-                  type="text"
-                  value={returnsSearchTerm}
-                  onChange={(e) => setReturnsSearchTerm(e.target.value)}
-                  placeholder="ค้นหาด้วยหมายเลขออเดอร์, ชื่อผู้ซื้อ, สินค้า, SKU, หรือเหตุผล..."
-                  className="w-full px-5 py-4 border-2 border-gray-200 rounded-xl focus:ring-4 focus:ring-primary-500/20 focus:border-primary-500 font-thai bg-white/90 backdrop-blur-sm shadow-sm transition-all duration-300"
-                />
+            <div>
+              {/* Search bar - compact style */}
+              <div className="flex items-center gap-2 mb-3">
+                <div className="flex-1 min-w-[200px] max-w-[500px] relative">
+                  <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3.5 h-3.5 text-thai-gray-400" />
+                  <input
+                    type="text"
+                    value={returnsSearchTerm}
+                    onChange={(e) => setReturnsSearchTerm(e.target.value)}
+                    placeholder="ค้นหาด้วยหมายเลขออเดอร์, ชื่อผู้ซื้อ, สินค้า, SKU, หรือเหตุผล..."
+                    className="w-full pl-7 pr-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500/50"
+                  />
+                </div>
+                <span className="text-[10px] text-gray-400 font-thai">{groupedReturns.length} รายการ</span>
               </div>
 
               {groupedReturns.length === 0 ? (
                 <div className="text-center py-16 text-gray-500"><p>ไม่พบคำขอตีกลับที่ตรงกับคำค้นหา</p></div>
               ) : (
-                <div className="overflow-x-auto rounded-2xl border shadow-sm">
-                  <table className="w-full bg-white/80">
-                    <thead className="bg-gradient-to-r from-primary-500 to-primary-600">
+                <div className="overflow-x-auto border border-gray-200 rounded-lg shadow-sm">
+                  <Table>
+                    <Table.Header>
                       <tr>
-                        <th className="text-left py-4 px-6 font-semibold text-white">หมายเลขออเดอร์</th>
-                        <th className="text-left py-4 px-6 font-semibold text-white">ผู้ซื้อ</th>
-                        <th className="text-left py-4 px-6 font-semibold text-white">สินค้า</th>
-                        <th className="text-left py-4 px-6 font-semibold text-white">จำนวนตีกลับ</th>
-                        <th className="text-left py-4 px-6 font-semibold text-white">เหตุผล</th>
-                        <th className="text-left py-4 px-6 font-semibold text-white">สถานะ</th>
-                        <th className="text-left py-4 px-6 font-semibold text-white">การจัดการ</th>
+                        <Table.Head>หมายเลขออเดอร์</Table.Head>
+                        <Table.Head>ผู้ซื้อ</Table.Head>
+                        <Table.Head>สินค้า</Table.Head>
+                        <Table.Head>จำนวนตีกลับ</Table.Head>
+                        <Table.Head>เหตุผล</Table.Head>
+                        <Table.Head>สถานะ</Table.Head>
+                        <Table.Head>การจัดการ</Table.Head>
                       </tr>
-                    </thead>
-                    <tbody>
+                    </Table.Header>
+                    <Table.Body>
                       {groupedReturns.map((groupedReturn) => (
-                        <tr key={`grouped-${groupedReturn.order_number}`} className="border-b hover:bg-primary-50/30">
-                          <td className="py-4 px-6">
+                        <Table.Row key={`grouped-${groupedReturn.order_number}`}>
+                          <Table.Cell>
                             <div className="font-semibold">{groupedReturn.order_number}</div>
-                            <div className="text-sm text-gray-500 font-mono">SKU: {groupedReturn.parent_sku}</div>
+                            <div className="text-[10px] text-gray-500 font-mono">SKU: {groupedReturn.parent_sku}</div>
                             {groupedReturn.is_grouped && (
-                              <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded mt-1 inline-block">
+                              <div className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded mt-0.5 inline-block">
                                 รวม {groupedReturn.grouped_items.length} รายการ
                               </div>
                             )}
-                          </td>
-                          <td className="py-4 px-6 font-semibold">{groupedReturn.buyer_name}</td>
-                          <td className="py-4 px-6">
+                          </Table.Cell>
+                          <Table.Cell className="font-semibold">{groupedReturn.buyer_name}</Table.Cell>
+                          <Table.Cell>
                             <div>{groupedReturn.product_name}</div>
-                            <div className="text-sm text-gray-500">ต้นฉบับ: {groupedReturn.quantity} ชิ้น</div>
-                          </td>
-                          <td className="py-4 px-6 font-bold text-red-600 text-lg">{groupedReturn.return_quantity} ชิ้น</td>
-                          <td className="py-4 px-6 text-sm">{groupedReturn.return_reason}</td>
-                          <td className="py-4 px-6">
-                            <span className={`inline-flex px-3 py-1 text-xs font-semibold rounded-full border ${getStatusColor(groupedReturn.return_status)}`}>
+                            <div className="text-[10px] text-gray-500">ต้นฉบับ: {groupedReturn.quantity} ชิ้น</div>
+                          </Table.Cell>
+                          <Table.Cell className="font-bold text-red-600">{groupedReturn.return_quantity} ชิ้น</Table.Cell>
+                          <Table.Cell>{groupedReturn.return_reason}</Table.Cell>
+                          <Table.Cell>
+                            <span className={`inline-flex px-2 py-0.5 text-[10px] font-semibold rounded-full border ${getStatusColor(groupedReturn.return_status)}`}>
                               {getStatusText(groupedReturn.return_status)}
                             </span>
-                          </td>
-                          <td className="py-4 px-6">
-                            <div className="flex space-x-2">
+                          </Table.Cell>
+                          <Table.Cell>
+                            <div className="flex space-x-1">
                               {groupedReturn.return_status === 'pending' && (
                                 <>
                                   {groupedReturn.is_grouped ? (
-                                    <div className="text-xs text-gray-500">
+                                    <div className="text-[10px] text-gray-500">
                                       <div>หลายรายการ</div>
                                       <button onClick={() => handleViewReturnDetails(groupedReturn)} className="text-blue-600 underline">ดูรายละเอียด</button>
                                     </div>
                                   ) : (
                                     <>
-                                      <button onClick={() => handleReceiveReturn(groupedReturn)} className="px-4 py-2 primary-button text-white text-sm rounded-lg shadow-md">รับสินค้าคืน</button>
-                                      <button onClick={() => updateReturnStatus(groupedReturn.id, 'rejected')} className="px-4 py-2 bg-gray-400 text-white text-sm rounded-lg shadow-md">ปฏิเสธ</button>
+                                      <button onClick={() => handleReceiveReturn(groupedReturn)} className="px-2 py-1 primary-button text-white text-xs rounded-lg">รับสินค้าคืน</button>
+                                      <button onClick={() => updateReturnStatus(groupedReturn.id, 'rejected')} className="px-2 py-1 bg-gray-400 text-white text-xs rounded-lg">ปฏิเสธ</button>
                                     </>
                                   )}
                                 </>
                               )}
                               {(groupedReturn.return_status === 'completed' || groupedReturn.return_status === 'approved') && (
-                                <button onClick={() => handleViewReturnDetails(groupedReturn)} className="primary-button text-white px-4 py-2 text-sm rounded-lg shadow-md">ดูรายละเอียด</button>
+                                <button onClick={() => handleViewReturnDetails(groupedReturn)} className="primary-button text-white px-2 py-1 text-xs rounded-lg">ดูรายละเอียด</button>
                               )}
-                              {groupedReturn.return_status === 'rejected' && <span className="px-4 py-2 bg-gray-100 text-gray-600 text-sm rounded-lg border">ถูกปฏิเสธ</span>}
+                              {groupedReturn.return_status === 'rejected' && <span className="px-2 py-1 bg-gray-100 text-gray-600 text-[10px] rounded-lg border">ถูกปฏิเสธ</span>}
                             </div>
-                          </td>
-                        </tr>
+                          </Table.Cell>
+                        </Table.Row>
                       ))}
-                    </tbody>
-                  </table>
+                    </Table.Body>
+                  </Table>
                 </div>
               )}
             </div>

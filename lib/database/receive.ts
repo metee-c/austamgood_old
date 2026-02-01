@@ -212,6 +212,70 @@ export class ReceiveService {
     }
   }
 
+  // Generate split pallet ID in format: ORIGINAL_PALLET_ID-01, -02, -03, etc.
+  // Used when doing partial/split pallet moves for traceability
+  async generateSplitPalletId(parentPalletId: string): Promise<{ data: string | null; error: string | null }> {
+    try {
+      // Strip any existing suffix if parent already has one (e.g., ATG2500014400-01 → ATG2500014400)
+      const baseId = parentPalletId.replace(/-\d+$/, '');
+
+      // Query existing split pallet IDs from multiple sources
+      const [fromReceive, fromMoveNew, fromMovePallet, fromBalance] = await Promise.all([
+        this.supabase
+          .from('wms_receive_items')
+          .select('pallet_id')
+          .like('pallet_id', `${baseId}-%`)
+          .order('pallet_id', { ascending: false })
+          .limit(10),
+        this.supabase
+          .from('wms_move_items')
+          .select('new_pallet_id')
+          .like('new_pallet_id', `${baseId}-%`)
+          .order('new_pallet_id', { ascending: false })
+          .limit(10),
+        this.supabase
+          .from('wms_move_items')
+          .select('pallet_id')
+          .like('pallet_id', `${baseId}-%`)
+          .order('pallet_id', { ascending: false })
+          .limit(10),
+        this.supabase
+          .from('wms_inventory_balances')
+          .select('pallet_id')
+          .like('pallet_id', `${baseId}-%`)
+          .order('pallet_id', { ascending: false })
+          .limit(10),
+      ]);
+
+      // Collect all existing suffixes
+      let maxSuffix = 0;
+      const allIds = [
+        ...(fromReceive.data || []).map(r => r.pallet_id),
+        ...(fromMoveNew.data || []).map(r => r.new_pallet_id),
+        ...(fromMovePallet.data || []).map(r => r.pallet_id),
+        ...(fromBalance.data || []).map(r => r.pallet_id),
+      ].filter(Boolean);
+
+      for (const id of allIds) {
+        const match = id.match(new RegExp(`^${baseId.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}-(\\d+)$`));
+        if (match) {
+          const suffix = parseInt(match[1], 10);
+          if (suffix > maxSuffix) {
+            maxSuffix = suffix;
+          }
+        }
+      }
+
+      const nextSuffix = String(maxSuffix + 1).padStart(2, '0');
+      const splitPalletId = `${baseId}-${nextSuffix}`;
+
+      return { data: splitPalletId, error: null };
+    } catch (err) {
+      console.error('Error generating split pallet_id:', err);
+      return { data: null, error: 'Error generating split pallet ID' };
+    }
+  }
+
   // Generate multiple unique pallet_ids in batch (optimized version)
   // Example: ATG20260128001, ATG20260128002, ...
   // IMPORTANT: Checks both wms_receive_items AND wms_move_items.new_pallet_id to prevent duplicates

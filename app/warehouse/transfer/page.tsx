@@ -742,11 +742,12 @@ const TransferPage: React.FC = () => {
           let parentPalletId: string | null = null;
 
           if (isPartialMove) {
-            // Generate new pallet ID for the partial move
+            // Generate split pallet ID (e.g., ATG2500014400-01) for traceability
             try {
               const response = await fetch('/api/receives/generate-pallet-id', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' }
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ parent_pallet_id: item.pallet_id })
               });
               const result = await response.json();
 
@@ -755,7 +756,7 @@ const TransferPage: React.FC = () => {
                 parentPalletId = item.pallet_id;
               }
             } catch (err) {
-              console.error('Failed to generate new pallet ID for partial move:', err);
+              console.error('Failed to generate split pallet ID for partial move:', err);
               // Continue without new pallet ID - will use original
             }
           }

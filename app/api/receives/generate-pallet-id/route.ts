@@ -6,7 +6,23 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => null);
     const count = body?.count;
+    const parentPalletId = body?.parent_pallet_id;
     console.log('📦 Request body:', body);
+
+    // If parent_pallet_id is provided, generate split pallet ID (e.g., ATG2500014400-01)
+    if (parentPalletId && typeof parentPalletId === 'string') {
+      console.log('🔀 Generating split pallet ID from parent:', parentPalletId);
+      const { data, error } = await receiveService.generateSplitPalletId(parentPalletId);
+
+      if (error) {
+        return NextResponse.json(
+          { data: null, error },
+          { status: 500 }
+        );
+      }
+
+      return NextResponse.json({ data, error: null });
+    }
 
     // If count is provided, generate multiple pallet IDs
     if (count && typeof count === 'number' && count > 0) {

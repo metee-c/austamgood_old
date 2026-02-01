@@ -99,36 +99,62 @@ export default function DashboardPage() {
       const startDateTime = `${searchFilters.startDate}T${searchFilters.startTime}:00.000Z`
       const endDateTime = `${searchFilters.endDate}T${searchFilters.endTime}:59.999Z`
 
-      let query = supabase
-        .from('packing_orders')
-        .select('*')
-        .gte('created_at', startDateTime)
-        .lte('created_at', endDateTime)
-        .order('created_at', { ascending: false })
+      const [ordersRes, backupRes] = await Promise.all([
+        supabase
+          .from('packing_orders')
+          .select('*')
+          .gte('created_at', startDateTime)
+          .lte('created_at', endDateTime)
+          .order('created_at', { ascending: false }),
+        // Fetch all backup orders and filter in JS (more reliable)
+        supabase
+          .from('packing_backup_orders')
+          .select('*')
+          .order('packed_at', { ascending: false })
+      ])
+
+      if (ordersRes.error) throw ordersRes.error
+      if (backupRes.error) throw backupRes.error
+
+      const ordersData = ordersRes.data || []
+      const backupData = backupRes.data || []
+      
+      // Filter backup orders to include if either created_at or packed_at is within date range
+      const filteredBackupData = backupData.filter(order => {
+        const createdAt = order.created_at ? new Date(order.created_at) : null
+        const packedAt = order.packed_at ? new Date(order.packed_at) : null
+        const startDate = new Date(startDateTime)
+        const endDate = new Date(endDateTime)
+        
+        const createdInRange = createdAt && createdAt >= startDate && createdAt <= endDate
+        const packedInRange = packedAt && packedAt >= startDate && packedAt <= endDate
+        
+        return createdInRange || packedInRange
+      })
+      
+      let allOrders = [...ordersData, ...filteredBackupData]
 
       if (searchFilters.skuOrName) {
-        query = query.or(`parent_sku.ilike.%${searchFilters.skuOrName}%,product_name.ilike.%${searchFilters.skuOrName}%`)
+        const searchTerm = searchFilters.skuOrName.toLowerCase()
+        allOrders = allOrders.filter(order => 
+          (order.parent_sku && order.parent_sku.toLowerCase().includes(searchTerm)) ||
+          (order.product_name && order.product_name.toLowerCase().includes(searchTerm))
+        )
       }
 
       if (searchFilters.platform !== 'all') {
-        query = query.eq('platform', searchFilters.platform)
+        allOrders = allOrders.filter(order => order.platform === searchFilters.platform)
       }
 
-      const { data: orders, error } = await query;
-
-      if (error) throw error
-
-      let filteredOrders = orders || []
-
       if (searchFilters.scanStatus !== 'all') {
-        filteredOrders = filteredOrders.filter(order => {
+        allOrders = allOrders.filter(order => {
           const isScanned = order.packing_status === 'completed' ||
                           ['packed', 'shipped', 'delivered'].includes(order.fulfillment_status)
           return searchFilters.scanStatus === 'scanned' ? isScanned : !isScanned
         })
       }
 
-      setRecentOrders(filteredOrders)
+      setRecentOrders(allOrders)
     } catch (error) {
       console.error('Error searching orders:', error)
       setRecentOrders([])
@@ -207,18 +233,42 @@ export default function DashboardPage() {
       const startOfDay = `${selectedDate}T00:00:00.000Z`
       const endOfDay = `${selectedDate}T23:59:59.999Z`
 
-      const { data: orders, error } = await supabase
-        .from('packing_orders')
-        .select('*')
-        .gte('created_at', startOfDay)
-        .lte('created_at', endOfDay)
+      // Query orders by created_at (for pending/processing orders)
+      const [ordersRes, backupRes] = await Promise.all([
+        supabase
+          .from('packing_orders')
+          .select('*')
+          .gte('created_at', startOfDay)
+          .lte('created_at', endOfDay),
+        // Fetch all backup orders and filter in JS (more reliable)
+        supabase
+          .from('packing_backup_orders')
+          .select('*')
+      ])
 
-      if (error) throw error
+      if (ordersRes.error) throw ordersRes.error
+      if (backupRes.error) throw backupRes.error
 
-      const ordersData = orders || []
+      const ordersData = ordersRes.data || []
+      const backupData = backupRes.data || []
+      
+      // Filter backup orders to include if either created_at or packed_at is within date range
+      const filteredBackupData = backupData.filter(order => {
+        const createdAt = order.created_at ? new Date(order.created_at) : null
+        const packedAt = order.packed_at ? new Date(order.packed_at) : null
+        const startDate = new Date(startOfDay)
+        const endDate = new Date(endOfDay)
+        
+        const createdInRange = createdAt && createdAt >= startDate && createdAt <= endDate
+        const packedInRange = packedAt && packedAt >= startDate && packedAt <= endDate
+        
+        return createdInRange || packedInRange
+      })
+      
+      const allOrders = [...ordersData, ...filteredBackupData]
 
       const uniqueOrders = new Map<string, any>()
-      ordersData.forEach(order => {
+      allOrders.forEach(order => {
         const key = order.tracking_number || order.order_number || order.id
         if (!uniqueOrders.has(key)) {
           uniqueOrders.set(key, order)
@@ -240,8 +290,8 @@ export default function DashboardPage() {
       ).length
       const unscanned_orders = total_orders - scanned_orders
 
-      const total_items = ordersData.reduce((sum, order) => sum + (order.quantity || 0), 0)
-      const packed_items = ordersData
+      const total_items = allOrders.reduce((sum, order) => sum + (order.quantity || 0), 0)
+      const packed_items = allOrders
         .filter(o => ['packed', 'shipped', 'delivered'].includes(o.fulfillment_status))
         .reduce((sum, order) => sum + (order.quantity || 0), 0)
       const productivity_rate = total_items > 0 ? Math.round((packed_items / total_items) * 100) : 0

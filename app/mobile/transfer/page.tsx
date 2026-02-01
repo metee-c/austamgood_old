@@ -276,22 +276,20 @@ function MobileTransferListPage() {
         console.log('Using cached pallet data (offline mode)');
       }
 
-      // Filter only items with stock > 0 and group by SKU (keep only latest location)
+      // ✅ FIX: Filter items with stock > 0 and group by SKU+Location
+      // ห้าม dedup ข้าม location — เพราะ pallet เดียวกันอาจอยู่หลาย location หลังจากย้ายบางส่วน
       const filteredData = data
         .filter((item: any) => item.total_piece_qty > 0)
         .reduce((acc: any[], item: any) => {
-          // Check if SKU already exists
-          const existingIndex = acc.findIndex(x => x.sku_id === item.sku_id);
+          // ✅ Key = sku_id + location_id (ไม่ใช่แค่ sku_id)
+          const key = `${item.sku_id}__${item.location_id}`;
+          const existingIndex = acc.findIndex(x => `${x.sku_id}__${x.location_id}` === key);
           if (existingIndex === -1) {
-            // New SKU, add it
             acc.push(item);
           } else {
-            // SKU exists, keep the one with more recent updated_at or higher qty
+            // Same SKU at same location - keep the one with higher qty
             const existing = acc[existingIndex];
-            const itemDate = new Date(item.updated_at || item.created_at).getTime();
-            const existingDate = new Date(existing.updated_at || existing.created_at).getTime();
-
-            if (itemDate > existingDate || item.total_piece_qty > existing.total_piece_qty) {
+            if (item.total_piece_qty > existing.total_piece_qty) {
               acc[existingIndex] = item;
             }
           }
@@ -587,6 +585,9 @@ function MobileTransferListPage() {
         // Fallback: If check fails, allow the move but log the error
       }
 
+      // ✅ FIX: ส่ง from_location_id จาก palletDetails เพื่อระบุต้นทางที่ถูกต้อง
+      const sourceLocationId = palletDetails[0]?.location_id || null;
+
       // Execute quick move with offline support
       const { success, offline, error: moveError } = await executeQuickMove(
         palletId.trim(),
@@ -594,7 +595,8 @@ function MobileTransferListPage() {
         selectedLocation.location_code,
         palletDetails,
         'Quick move from mobile',
-        isPartialMove ? partialQty : undefined // ส่ง partial quantities ถ้าเป็นการย้ายบางส่วน
+        isPartialMove ? partialQty : undefined, // ส่ง partial quantities ถ้าเป็นการย้ายบางส่วน
+        sourceLocationId // ✅ ระบุต้นทางชัดเจน ป้องกัน pallet อยู่หลาย location
       );
 
       if (!success) {

@@ -24,6 +24,7 @@ export async function POST(request: NextRequest) {
       pallet_id,
       balance_id,
       to_location_id,
+      from_location_id: client_from_location_id = null, // ✅ รับ from_location_id จาก client เพื่อระบุต้นทางที่ถูกต้อง
       notes,
       force_move = false,
       partial_quantities = null // { [sku_id]: qty } - สำหรับย้ายบางส่วน
@@ -84,10 +85,18 @@ export async function POST(request: NextRequest) {
 
     // Get balance info
     if (pallet_id) {
-      const { data, error } = await supabase
+      let query = supabase
         .from('wms_inventory_balances')
         .select('*')
         .eq('pallet_id', pallet_id)
+
+      // ✅ FIX: Filter by from_location_id if provided by client
+      // This prevents picking the wrong source when a pallet exists at multiple locations
+      if (client_from_location_id) {
+        query = query.eq('location_id', client_from_location_id)
+      }
+
+      const { data, error } = await query
 
       if (error) {
         console.error('Pallet query error:', error)
@@ -99,13 +108,13 @@ export async function POST(request: NextRequest) {
 
       if (!data || data.length === 0) {
         return NextResponse.json(
-          { error: `ไม่พบข้อมูล Pallet ID: ${pallet_id}` },
+          { error: `ไม่พบข้อมูล Pallet ID: ${pallet_id}${client_from_location_id ? ` ที่ตำแหน่ง ${client_from_location_id}` : ''}` },
           { status: 404 }
         )
       }
 
       balanceRecords = data
-      from_location_id = data[0].location_id
+      from_location_id = client_from_location_id || data[0].location_id
       warehouse_id = data[0].warehouse_id || 'WH001' // Get warehouse from balance
     } else if (balance_id) {
       const { data, error } = await supabase
@@ -271,16 +280,16 @@ export async function POST(request: NextRequest) {
     console.log('DEBUG: move.move_id =', move.move_id, 'type:', typeof move.move_id)
     console.log('DEBUG: isPartialMove =', isPartialMove, 'partial_quantities =', partial_quantities)
     
-    // สำหรับ partial move ต้องสร้าง pallet_id ใหม่
+    // สำหรับ partial move ต้องสร้าง pallet_id ใหม่ในรูปแบบ ORIGINAL-01, -02, ...
     let newPalletId: string | null = null
     if (isPartialMove && pallet_id) {
-      // Generate new pallet ID for partial move using receiveService
-      const { data: generatedPalletId, error: palletIdError } = await receiveService.generatePalletId()
+      // Generate split pallet ID based on parent pallet ID for traceability
+      const { data: generatedPalletId, error: palletIdError } = await receiveService.generateSplitPalletId(pallet_id)
       if (!palletIdError && generatedPalletId) {
         newPalletId = generatedPalletId
-        console.log('DEBUG: Generated new pallet ID for partial move:', newPalletId)
+        console.log('DEBUG: Generated split pallet ID for partial move:', newPalletId, 'from parent:', pallet_id)
       } else {
-        console.error('Failed to generate new pallet ID:', palletIdError)
+        console.error('Failed to generate split pallet ID:', palletIdError)
       }
     }
     

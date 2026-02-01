@@ -524,14 +524,24 @@ export default function PackingPage() {
     if (!existingBackup || existingBackup.length === 0) {
       const { error: insertError } = await supabase
         .from('packing_backup_orders')
-        .insert(ordersToBackup.map(o => {
-          const { id, ...orderWithoutId } = o;
-          return {
-            ...orderWithoutId,
-            original_order_id: id,
-            packed_at: new Date().toISOString()
-          };
-        }));
+        .insert(ordersToBackup.map(o => ({
+          original_order_id: o.id,
+          order_number: o.order_number,
+          buyer_name: o.buyer_name,
+          tracking_number: o.tracking_number,
+          parent_sku: o.parent_sku,
+          product_name: o.product_name,
+          quantity: o.quantity,
+          fulfillment_status: o.fulfillment_status,
+          completed_at: o.completed_at,
+          platform: o.platform,
+          shipping_provider: o.shipping_provider,
+          packing_status: o.packing_status,
+          packed_at: o.packed_at,
+          packed_by: o.packed_by,
+          sample_alert: o.sample_alert,
+          moved_to_backup_at: new Date().toISOString()
+        })));
 
       if (insertError && insertError.code !== '23505') {
         console.error('❌ Backup error:', insertError);
@@ -966,7 +976,7 @@ export default function PackingPage() {
                         style={{gridTemplateColumns: '100px 1fr 70px 70px 70px 100px'}}
                       >
                         <div className="flex items-center"><span className="font-mono text-xs font-medium text-primary-600">{item.parent_sku}</span></div>
-                        <div className="flex items-center flex-col items-start">
+                        <div className="flex justify-start items-start text-left">
                           <span className={`text-xs font-medium font-thai ${item.is_completed ? 'line-through' : ''}`}>{item.product_name}</span>
                           {item.bundle_info && (
                             <div className="flex items-center text-[10px] text-orange-600 bg-orange-50 px-1.5 py-0.5 rounded-md mt-0.5">

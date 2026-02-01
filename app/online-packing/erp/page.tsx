@@ -316,7 +316,7 @@ export default function ERPPage() {
           : `${endDate}T23:59:59`
         : null
 
-      const buildBaseQuery = (table: 'orders' | 'backup_orders') => {
+      const buildBaseQuery = (table: 'packing_orders' | 'packing_backup_orders') => {
         let baseQuery = supabase
           .from(table)
           .select('*')
@@ -330,8 +330,8 @@ export default function ERPPage() {
       }
 
       const [ordersResult, backupResult] = await Promise.all([
-        buildBaseQuery('orders').order('created_at', { ascending: false }),
-        buildBaseQuery('backup_orders').order('created_at', { ascending: false })
+        buildBaseQuery('packing_orders').order('created_at', { ascending: false }),
+        buildBaseQuery('packing_backup_orders').order('created_at', { ascending: false })
       ])
 
       if (ordersResult.error) {

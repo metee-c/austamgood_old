@@ -278,7 +278,8 @@ export function useOfflineTransfer(options: UseOfflineTransferOptions = {}) {
     toLocationCode: string,
     palletDetails: any[],
     notes?: string,
-    partialQuantities?: { [skuId: string]: number } // สำหรับย้ายบางส่วน
+    partialQuantities?: { [skuId: string]: number }, // สำหรับย้ายบางส่วน
+    fromLocationId?: string // ✅ ระบุต้นทางที่ถูกต้อง (ป้องกัน pallet อยู่หลาย location)
   ): Promise<{
     success: boolean;
     offline: boolean;
@@ -289,7 +290,7 @@ export function useOfflineTransfer(options: UseOfflineTransferOptions = {}) {
       try {
         const response = await fetch('/api/moves/quick-move', {
           method: 'POST',
-          headers: { 
+          headers: {
             'Content-Type': 'application/json',
             'Cookie': document.cookie
           },
@@ -297,6 +298,7 @@ export function useOfflineTransfer(options: UseOfflineTransferOptions = {}) {
           body: JSON.stringify({
             pallet_id: palletId,
             to_location_id: toLocationId,
+            from_location_id: fromLocationId || null, // ✅ ส่ง from_location_id ไป API
             notes: notes || 'Quick move from mobile',
             partial_quantities: partialQuantities || null,
           }),
@@ -315,8 +317,10 @@ export function useOfflineTransfer(options: UseOfflineTransferOptions = {}) {
           pallet_id: palletId,
           to_location_id: toLocationId,
           to_location_code: toLocationCode,
+          from_location_id: fromLocationId, // ✅
           pallet_details: palletDetails,
           notes,
+          partial_quantities: partialQuantities, // ✅
         });
 
         await updatePendingCount();
@@ -329,8 +333,10 @@ export function useOfflineTransfer(options: UseOfflineTransferOptions = {}) {
         pallet_id: palletId,
         to_location_id: toLocationId,
         to_location_code: toLocationCode,
+        from_location_id: fromLocationId, // ✅
         pallet_details: palletDetails,
         notes,
+        partial_quantities: partialQuantities, // ✅
       });
 
       await updatePendingCount();

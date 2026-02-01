@@ -467,11 +467,11 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle, isHovered, onH
       {/* Header - h-10 to match main Header */}
       <div className="flex-shrink-0 h-10 flex items-center justify-between px-3 border-b border-thai-gray-200">
         <div className={`flex items-center ${!isCollapsed || isHovered ? 'gap-2' : ''}`}>
-          <div className="w-7 h-7 bg-primary-500 rounded-lg flex items-center justify-center flex-shrink-0">
-            <Warehouse className="w-4 h-4 text-white" />
+          <div className="w-6 h-6 bg-primary-500 rounded flex items-center justify-center flex-shrink-0">
+            <span className="text-white text-base font-bold font-sans">W</span>
           </div>
-          <h1 className={`text-xl font-bold text-thai-gray-800 font-thai truncate overflow-hidden transition-all duration-700 ${isCollapsed && !isHovered ? 'max-w-0 opacity-0' : 'max-w-xs opacity-100'}`}>
-            WMS
+          <h1 className={`text-[12px] text-thai-gray-400 font-thai truncate overflow-hidden transition-all duration-700 ${isCollapsed && !isHovered ? 'max-w-0 opacity-0' : 'max-w-xs opacity-100'}`}>
+            Austam Good Corp., Ltd
           </h1>
         </div>
         <button
@@ -484,13 +484,6 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, onToggle, isHovered, onH
             <ChevronLeft className="w-4 h-4 text-thai-gray-500" />
           )}
         </button>
-      </div>
-
-      {/* Company Name - below header, aligned with WMS text */}
-      <div className={`flex-shrink-0 px-3 py-1.5 bg-thai-gray-50/50 overflow-hidden transition-all duration-700 ${isCollapsed && !isHovered ? 'h-0 py-0 opacity-0 border-0' : 'opacity-100 border-b border-thai-gray-100'}`}>
-        <p className="text-[11px] text-thai-gray-500 font-thai ml-9">
-          Austam Good Corp., Ltd
-        </p>
       </div>
 
       {/* Navigation Menu */}

@@ -24,8 +24,10 @@ export interface PendingMove {
   pallet_id: string;
   to_location_id: string;
   to_location_code: string;
+  from_location_id?: string; // ✅ ต้นทางที่ถูกต้อง
   pallet_details: any[];
   notes?: string;
+  partial_quantities?: { [skuId: string]: number }; // ✅ สำหรับย้ายบางส่วน
   created_at: number;
   status: 'pending' | 'syncing' | 'synced' | 'error';
   error_message?: string;
@@ -170,7 +172,7 @@ export async function createPendingMove(move: Omit<PendingMove, 'local_id' | 'cr
 
   await putToStore(STORES.PENDING_MOVES, pendingMove);
 
-  // Add to sync queue
+  // Add to sync queue — ✅ รวม partial_quantities และ from_location_id
   await addToSyncQueue({
     url: '/api/moves/quick-move',
     method: 'POST',
@@ -178,7 +180,9 @@ export async function createPendingMove(move: Omit<PendingMove, 'local_id' | 'cr
     data: {
       pallet_id: move.pallet_id,
       to_location_id: move.to_location_id,
+      from_location_id: move.from_location_id || null,
       notes: move.notes || 'Quick move from mobile (offline)',
+      partial_quantities: move.partial_quantities || null,
     },
     timestamp: Date.now(),
     retryCount: 0,
