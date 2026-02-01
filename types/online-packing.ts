@@ -88,26 +88,6 @@ export interface Box {
   updated_at: string
 }
 
-export interface ProductWeightProfile {
-  id: string
-  weight_kg: number
-  description: string
-  is_default: boolean
-  created_at: string
-  updated_at: string
-}
-
-export interface PackingRule {
-  id: string
-  product_weight_profile_id: string
-  box_id: string
-  min_quantity: number
-  max_quantity: number
-  priority: number
-  created_at: string
-  updated_at: string
-}
-
 export interface BoxStock {
   box_code: string
   stock_quantity: number

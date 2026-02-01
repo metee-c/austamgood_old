@@ -142,6 +142,10 @@ export default function PromotionsPage() {
 
   // Report state
   const [isLoadingReport, setIsLoadingReport] = useState(false)
+  const [showPreviewModal, setShowPreviewModal] = useState(false)
+  const [previewReportData, setPreviewReportData] = useState<{platform: string, items: FreebieReportItem[], totalQuantity: number, totalItems: number} | null>(null)
+  const [isCreatingPicklist, setIsCreatingPicklist] = useState(false)
+  const [createdPicklist, setCreatedPicklist] = useState<any>(null)
 
   useEffect(() => {
     loadData()
@@ -605,8 +609,19 @@ export default function PromotionsPage() {
         return
       }
 
-      // Generate print document
-      generatePrintDocument(reportItems, platform)
+      // Calculate totals
+      const totalQuantity = reportItems.reduce((sum, item) => sum + item.total_quantity, 0)
+      const totalItems = reportItems.length
+
+      // Show preview modal instead of directly printing
+      setPreviewReportData({
+        platform,
+        items: reportItems,
+        totalQuantity,
+        totalItems
+      })
+      setCreatedPicklist(null)
+      setShowPreviewModal(true)
 
     } catch (error) {
       console.error('Error generating report:', error)
@@ -614,6 +629,68 @@ export default function PromotionsPage() {
     } finally {
       setIsLoadingReport(false)
     }
+  }
+
+  const handleCreateBonusPicklist = async () => {
+    if (!previewReportData) return
+
+    setIsCreatingPicklist(true)
+
+    try {
+      // Create picklist items from report data
+      const picklistItems = previewReportData.items.map((item: FreebieReportItem) => ({
+        sku_id: item.product_barcode,
+        sku_name: item.display_name || item.freebie_name,
+        quantity: item.total_quantity
+      }))
+
+      // Get platform abbreviation
+      const platformAbbr = previewReportData.platform.includes('Shopee') ? 'SH-BONUS' :
+                          previewReportData.platform.includes('TikTok') ? 'TK-BONUS' :
+                          previewReportData.platform.includes('Lazada') ? 'LZ-BONUS' : 'BONUS'
+
+      const response = await fetch('/api/online-picklists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          platform: platformAbbr,
+          picklist_type: 'bonus',
+          items: picklistItems,
+          notes: `ใบหยิบของแถมออนไลน์ - ${previewReportData.platform} - ${new Date().toLocaleString('th-TH')}`
+        })
+      })
+
+      const result = await response.json()
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'Failed to create bonus picklist')
+      }
+
+      setCreatedPicklist(result.data)
+      alert('สร้างใบหยิบสินค้าของแถมออนไลน์เรียบร้อยแล้ว')
+
+    } catch (error: any) {
+      console.error('Error creating bonus picklist:', error)
+      alert(`เกิดข้อผิดพลาด: ${error.message}`)
+    } finally {
+      setIsCreatingPicklist(false)
+    }
+  }
+
+  const handlePrintBonusPicklist = () => {
+    if (!createdPicklist) return
+    window.open(`/online-packing/picklists/${createdPicklist.id}/print`, '_blank')
+  }
+
+  const handlePrintReport = () => {
+    if (!previewReportData) return
+    generatePrintDocument(previewReportData.items, previewReportData.platform)
+  }
+
+  const handleClosePreviewModal = () => {
+    setShowPreviewModal(false)
+    setPreviewReportData(null)
+    setCreatedPicklist(null)
   }
 
   const generatePrintDocument = (reportItems: FreebieReportItem[], platform: string) => {
@@ -1861,6 +1938,113 @@ export default function PromotionsPage() {
               >
                 บันทึกการแก้ไข
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Preview Modal for Bonus Picklist */}
+      {showPreviewModal && previewReportData && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="px-4 py-3 border-b flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-800">พรีวิวใบหยิบสินค้าของแถมออนไลน์</h2>
+              <button
+                onClick={handleClosePreviewModal}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-auto p-4">
+              <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="text-sm text-gray-600">แพลตฟอร์ม:</span>
+                    <span className="ml-2 font-semibold text-primary-600">{previewReportData.platform}</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="text-sm text-gray-600">{previewReportData.totalItems} รายการ | </span>
+                    <span className="font-bold text-lg text-primary-600">{previewReportData.totalQuantity} ชิ้น</span>
+                  </div>
+                </div>
+              </div>
+
+              <table className="w-full text-[11px] border">
+                <thead className="bg-gray-100">
+                  <tr>
+                    <th className="px-2 py-1.5 text-left border-b">#</th>
+                    <th className="px-2 py-1.5 text-left border-b">ชื่อของแถม</th>
+                    <th className="px-2 py-1.5 text-left border-b">สินค้าที่ซื้อ</th>
+                    <th className="px-2 py-1.5 text-center border-b">จำนวนออเดอร์</th>
+                    <th className="px-2 py-1.5 text-center border-b">จำนวนชิ้น</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {previewReportData.items.map((item: FreebieReportItem, idx: number) => (
+                    <tr key={idx} className="border-b hover:bg-gray-50">
+                      <td className="px-2 py-1.5 text-gray-500">{idx + 1}</td>
+                      <td className="px-2 py-1.5 font-medium">{item.display_name || item.freebie_name}</td>
+                      <td className="px-2 py-1.5 text-gray-600">{item.product_name}</td>
+                      <td className="px-2 py-1.5 text-center">{item.orders.length}</td>
+                      <td className="px-2 py-1.5 text-center font-bold text-primary-600">{item.total_quantity}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+
+              {/* Created Picklist Info */}
+              {createdPicklist && (
+                <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center gap-2 text-green-800">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span className="font-medium">สร้างใบหยิบสินค้าของแถมออนไลน์เรียบร้อยแล้ว</span>
+                  </div>
+                  <div className="mt-2 text-sm text-green-700">
+                    เลขที่: <span className="font-mono font-semibold">{createdPicklist.picklist_code}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-4 py-3 border-t bg-gray-50 flex items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleClosePreviewModal}
+              >
+                ปิด
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleCreateBonusPicklist}
+                disabled={isCreatingPicklist || createdPicklist}
+                loading={isCreatingPicklist}
+              >
+                {createdPicklist ? 'สร้างแล้ว' : 'สร้างใบหยิบสินค้าของแถมออนไลน์'}
+              </Button>
+              <Button
+                variant="success"
+                size="sm"
+                onClick={handlePrintBonusPicklist}
+                disabled={!createdPicklist}
+              >
+                พิมพ์ใบหยิบ
+              </Button>
+              <Button
+                variant="warning"
+                size="sm"
+                onClick={handlePrintReport}
+              >
+                พิมพ์รายงานของแถม
+              </Button>
             </div>
           </div>
         </div>

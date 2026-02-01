@@ -1,8 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
-import { FileOutput, Search } from 'lucide-react'
+import { FileOutput, Search, Loader2, Printer } from 'lucide-react'
 import type { Order, Product } from '@/types/online-packing'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
@@ -78,12 +79,17 @@ type ERPOrder = Order & {
 }
 
 export default function ERPPage() {
+  const router = useRouter()
   const [orders, setOrders] = useState<Order[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [pendingOrders, setPendingOrders] = useState<ERPOrder[]>([])
   const [selectedOrders, setSelectedOrders] = useState<Set<string>>(new Set())
   const [isLoading, setIsLoading] = useState(false)
   const [isSearching, setIsSearching] = useState(false)
+  const [isCreatingPicklist, setIsCreatingPicklist] = useState(false)
+  const [showPreviewModal, setShowPreviewModal] = useState(false)
+  const [previewData, setPreviewData] = useState<any>(null)
+  const [createdPicklist, setCreatedPicklist] = useState<any>(null)
   const [exportStatus, setExportStatus] = useState<'idle' | 'exporting' | 'success' | 'error'>('idle')
   const [selectedPlatform, setSelectedPlatform] = useState<string>('')
   const [searchResults, setSearchResults] = useState<any>(null)
@@ -722,6 +728,117 @@ export default function ERPPage() {
 
 
   const generatePrintableReport = async () => {
+    if (selectedOrders.size === 0 || !searchResults) return
+
+    const selectedOrdersData = pendingOrders.filter(order => selectedOrders.has(order.id))
+    
+    // จัดกลุ่มตามแพลตฟอร์ม
+    const ordersByPlatform = selectedOrdersData.reduce((acc, order) => {
+      if (!acc[order.platform]) {
+        acc[order.platform] = []
+      }
+      acc[order.platform].push(order)
+      return acc
+    }, {} as Record<string, ERPOrder[]>)
+
+    // เตรียมข้อมูลพรีวิวสำหรับแต่ละแพลตฟอร์ม
+    const previewByPlatform: any[] = []
+    
+    for (const [platform, platformOrders] of Object.entries(ordersByPlatform)) {
+      const expandedItems = expandBundleProducts(platformOrders)
+      
+      const productSummary = expandedItems.reduce((acc, item) => {
+        const sku = item.barcode
+        
+        if (!acc[sku]) {
+          acc[sku] = {
+            barcode: sku,
+            erpProductName: item.erpProductName,
+            ecommerceProductName: item.ecommerceProductName,
+            totalQuantity: 0
+          }
+        }
+        
+        acc[sku].totalQuantity += item.totalQuantity
+        return acc
+      }, {} as Record<string, any>)
+
+      const items = Object.values(productSummary)
+      const totalQuantity = items.reduce((sum: number, item: any) => sum + item.totalQuantity, 0)
+
+      previewByPlatform.push({
+        platform,
+        items,
+        totalLines: items.length,
+        totalQuantity
+      })
+    }
+
+    setPreviewData(previewByPlatform)
+    setCreatedPicklist(null)
+    setShowPreviewModal(true)
+  }
+
+  const handleCreatePicklist = async () => {
+    if (!previewData || previewData.length === 0) return
+
+    setIsCreatingPicklist(true)
+
+    try {
+      const createdPicklists: any[] = []
+
+      for (const platformData of previewData) {
+        const picklistItems = platformData.items.map((item: any) => ({
+          sku_id: item.barcode,
+          sku_name: item.erpProductName || item.ecommerceProductName,
+          quantity: item.totalQuantity
+        }))
+
+        const response = await fetch('/api/online-picklists', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            platform: platformData.platform,
+            items: picklistItems,
+            notes: `สร้างจากหน้า ERP - ${new Date().toLocaleString('th-TH')}`
+          })
+        })
+
+        const result = await response.json()
+
+        if (!response.ok || !result.success) {
+          throw new Error(result.error || 'Failed to create picklist')
+        }
+
+        createdPicklists.push(result.data)
+      }
+
+      setCreatedPicklist(createdPicklists)
+      alert('สร้างใบหยิบสินค้าออนไลน์เรียบร้อยแล้ว')
+
+    } catch (error: any) {
+      console.error('Error creating picklist:', error)
+      alert(`เกิดข้อผิดพลาด: ${error.message}`)
+    } finally {
+      setIsCreatingPicklist(false)
+    }
+  }
+
+  const handlePrintPicklist = () => {
+    if (!createdPicklist || createdPicklist.length === 0) return
+
+    for (const picklist of createdPicklist) {
+      window.open(`/online-packing/picklists/${picklist.id}/print`, '_blank')
+    }
+  }
+
+  const handleClosePreviewModal = () => {
+    setShowPreviewModal(false)
+    setPreviewData(null)
+    setCreatedPicklist(null)
+  }
+
+  const generatePrintableReportOld = async () => {
     const supabase = createClient()
     if (selectedOrders.size === 0 || !searchResults) return
 
@@ -1498,8 +1615,8 @@ export default function ERPPage() {
               <Button variant="primary" size="sm" onClick={exportSOToERP} disabled={selectedOrders.size === 0 || exportStatus === 'exporting'} className="text-[10px] py-1 px-2">
                 ส่งออก SO ({getSOItemCount()})
               </Button>
-              <Button variant="success" size="sm" onClick={generatePrintableReport} disabled={selectedOrders.size === 0} className="text-[10px] py-1 px-2">
-                ปริ้นจัดสินค้า
+              <Button variant="success" size="sm" onClick={generatePrintableReport} disabled={selectedOrders.size === 0 || isCreatingPicklist} loading={isCreatingPicklist} className="text-[10px] py-1 px-2">
+                {isCreatingPicklist ? 'กำลังสร้างใบหยิบ...' : 'ปริ้นจัดสินค้า'}
               </Button>
               <Button variant="success" size="sm" onClick={printSOReport} disabled={selectedOrders.size === 0} className="text-[10px] py-1 px-2">
                 ปริ้น SO
@@ -1567,6 +1684,110 @@ export default function ERPPage() {
           </div>
         </div>
       </div>
+
+      {/* Preview Modal */}
+      {showPreviewModal && previewData && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-xl max-w-4xl w-full mx-4 max-h-[90vh] flex flex-col">
+            {/* Modal Header */}
+            <div className="px-4 py-3 border-b flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-gray-800">พรีวิวใบหยิบสินค้าออนไลน์</h2>
+              <button
+                onClick={handleClosePreviewModal}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="flex-1 overflow-auto p-4">
+              {previewData.map((platformData: any, idx: number) => (
+                <div key={idx} className="mb-6 last:mb-0">
+                  <div className="flex items-center justify-between mb-2">
+                    <h3 className="font-semibold text-gray-700">
+                      แพลตฟอร์ม: <span className="text-primary-600">{platformData.platform}</span>
+                    </h3>
+                    <div className="text-xs text-gray-500">
+                      {platformData.totalLines} รายการ | {platformData.totalQuantity} ชิ้น
+                    </div>
+                  </div>
+                  <table className="w-full text-[10px] border">
+                    <thead className="bg-gray-100">
+                      <tr>
+                        <th className="px-2 py-1.5 text-left border-b">#</th>
+                        <th className="px-2 py-1.5 text-left border-b">บาร์โค้ด</th>
+                        <th className="px-2 py-1.5 text-left border-b">ชื่อสินค้า</th>
+                        <th className="px-2 py-1.5 text-center border-b">จำนวน</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {platformData.items.map((item: any, itemIdx: number) => (
+                        <tr key={itemIdx} className="border-b hover:bg-gray-50">
+                          <td className="px-2 py-1 text-gray-500">{itemIdx + 1}</td>
+                          <td className="px-2 py-1 font-mono">{item.barcode}</td>
+                          <td className="px-2 py-1">{item.erpProductName || item.ecommerceProductName || '-'}</td>
+                          <td className="px-2 py-1 text-center font-semibold text-primary-600">{item.totalQuantity}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ))}
+
+              {/* Created Picklist Info */}
+              {createdPicklist && createdPicklist.length > 0 && (
+                <div className="mt-4 p-3 bg-green-50 border border-green-200 rounded-lg">
+                  <div className="flex items-center gap-2 text-green-800">
+                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                    </svg>
+                    <span className="font-medium">สร้างใบหยิบสินค้าออนไลน์เรียบร้อยแล้ว</span>
+                  </div>
+                  <div className="mt-2 text-sm text-green-700">
+                    {createdPicklist.map((pl: any, idx: number) => (
+                      <div key={idx}>
+                        เลขที่: <span className="font-mono font-semibold">{pl.picklist_code}</span> ({pl.platform})
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-4 py-3 border-t bg-gray-50 flex items-center justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleClosePreviewModal}
+              >
+                ปิด
+              </Button>
+              <Button
+                variant="primary"
+                size="sm"
+                onClick={handleCreatePicklist}
+                disabled={isCreatingPicklist || (createdPicklist && createdPicklist.length > 0)}
+                loading={isCreatingPicklist}
+              >
+                {createdPicklist ? 'สร้างแล้ว' : 'สร้างใบหยิบสินค้าออนไลน์'}
+              </Button>
+              <Button
+                variant="success"
+                size="sm"
+                onClick={handlePrintPicklist}
+                disabled={!createdPicklist || createdPicklist.length === 0}
+              >
+                <Printer className="w-3.5 h-3.5 mr-1" />
+                พิมพ์ใบหยิบ
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </PageContainer>
   )
 }

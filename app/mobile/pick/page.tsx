@@ -67,9 +67,21 @@ interface BonusFaceSheet {
   warehouse_id: string;
 }
 
+interface OnlinePicklist {
+  id: number;
+  picklist_code: string;
+  platform: string;
+  status: string;
+  created_at: string;
+  updated_at: string;
+  total_lines: number;
+  total_quantity: number;
+  notes?: string;
+}
+
 // Face Sheet Statuses: generated (สร้างแล้ว), picking (กำลังหยิบ), completed (เสร็จสิ้น), cancelled (ยกเลิก)
 
-type PickTask = (Picklist & { type: 'picklist' }) | (FaceSheet & { type: 'face_sheet' }) | (BonusFaceSheet & { type: 'bonus_face_sheet' });
+type PickTask = (Picklist & { type: 'picklist' }) | (FaceSheet & { type: 'face_sheet' }) | (BonusFaceSheet & { type: 'bonus_face_sheet' }) | (OnlinePicklist & { type: 'online_picklist' });
 
 const PICKLIST_STATUSES = [
   'all',
@@ -141,6 +153,10 @@ function MobilePickPage() {
       const bonusFaceSheetsResponse = await fetch(`/api/bonus-face-sheets?${params.toString()}`);
       const bonusFaceSheetsData = await bonusFaceSheetsResponse.json();
 
+      // Fetch online picklists
+      const onlinePicklistsResponse = await fetch(`/api/online-picklists?${params.toString()}`);
+      const onlinePicklistsData = await onlinePicklistsResponse.json();
+
       const allTasks: PickTask[] = [];
 
       // Add picklists
@@ -162,6 +178,14 @@ function MobilePickPage() {
           f.status !== 'generated'
         );
         allTasks.push(...filteredBonusFaceSheets.map((f: FaceSheet) => ({ ...f, type: 'bonus_face_sheet' as const })));
+      }
+
+      // Add online picklists (ใบหยิบสินค้าออนไลน์)
+      if (onlinePicklistsData.data) {
+        const filteredOnlinePicklists = onlinePicklistsData.data.filter((p: OnlinePicklist) => 
+          p.status !== 'completed' && p.status !== 'cancelled'
+        );
+        allTasks.push(...filteredOnlinePicklists.map((p: OnlinePicklist) => ({ ...p, type: 'online_picklist' as const })));
       }
 
       // Sort by updated_at descending
@@ -190,6 +214,11 @@ function MobilePickPage() {
         task.picklist_code.toLowerCase().includes(searchLower) ||
         task.receiving_route_trips?.receiving_route_plans?.plan_code?.toLowerCase().includes(searchLower) ||
         String(task.receiving_route_trips?.vehicle_id || '').toLowerCase().includes(searchLower);
+      return matchesSearch;
+    } else if (task.type === 'online_picklist') {
+      const matchesSearch =
+        task.picklist_code.toLowerCase().includes(searchLower) ||
+        task.platform.toLowerCase().includes(searchLower);
       return matchesSearch;
     } else {
       const matchesSearch =
@@ -443,6 +472,8 @@ function MobilePickPage() {
                         router.push(`/mobile/pick/${task.id}`);
                       } else if (task.type === 'bonus_face_sheet') {
                         router.push(`/mobile/bonus-face-sheet/${task.id}`);
+                      } else if (task.type === 'online_picklist') {
+                        router.push(`/mobile/online-pick/${task.id}`);
                       } else {
                         router.push(`/mobile/face-sheet/${task.id}`);
                       }
@@ -461,12 +492,15 @@ function MobilePickPage() {
                         </div>
                         <div className="min-w-0">
                           <p className="font-semibold text-gray-900 font-thai text-[10px] whitespace-nowrap">
-                            {task.type === 'picklist' ? task.picklist_code : task.face_sheet_no}
+                            {task.type === 'picklist' || task.type === 'online_picklist' ? task.picklist_code : task.face_sheet_no}
                           </p>
                           {task.type === 'picklist' && task.receiving_route_trips?.receiving_route_plans && (
                             <p className="text-[9px] text-gray-500 font-thai whitespace-nowrap">
                               {task.receiving_route_trips.receiving_route_plans.plan_code}
                             </p>
+                          )}
+                          {task.type === 'online_picklist' && (
+                            <p className="text-[9px] text-orange-500 font-thai whitespace-nowrap">🛒 {task.platform}</p>
                           )}
                           {task.type === 'face_sheet' && (
                             <p className="text-[9px] text-gray-500 font-thai whitespace-nowrap">ใบปะหน้า</p>
@@ -491,10 +525,12 @@ function MobilePickPage() {
                     <td className="px-1.5 py-2 text-center">
                       <div>
                         <p className="font-semibold text-gray-900 font-thai text-xs">
-                          {task.type === 'picklist' ? `${task.total_lines}` : `${task.total_packages}`}
+                          {task.type === 'picklist' ? `${task.total_lines}` : 
+                           task.type === 'online_picklist' ? `${task.total_lines}` : 
+                           `${task.total_packages}`}
                         </p>
                         <p className="text-[9px] text-gray-500 font-thai">
-                          {task.type === 'picklist' ? 'รายการ' : 'แพ็ค'}
+                          {task.type === 'picklist' || task.type === 'online_picklist' ? 'รายการ' : 'แพ็ค'}
                         </p>
                       </div>
                     </td>

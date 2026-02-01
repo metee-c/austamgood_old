@@ -93,7 +93,8 @@
       "mcp__supabase__get_project_url",
       "mcp__supabase__execute_sql",
       "mcp__supabase__apply_migration",
-      "Bash(npx next build:*)"
+      "Bash(npx next build:*)",
+      "Bash(npx eslint:*)"
     ],
     "deny": [],
     "ask": []

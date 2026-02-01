@@ -308,6 +308,12 @@ const menuItems = [
         icon: Activity,
         label: 'ส่งออก ERP',
         englishLabel: 'ERP Export'
+      },
+      {
+        path: '/online-packing/picklists',
+        icon: ClipboardCheck,
+        label: 'ใบหยิบสินค้าออนไลน์',
+        englishLabel: 'Online Picklists'
       }
     ]
   },

@@ -13,6 +13,14 @@ interface ImportResult {
   success: number
   errors: string[]
   duplicates: number
+  skipped: number
+}
+
+interface ProcessResult {
+  data: any[]
+  skippedCount: number
+  columnMismatch?: boolean
+  missingColumns?: string[]
 }
 
 // Exact column mappings based on real project requirements
@@ -138,8 +146,8 @@ export default function ImportPage() {
     return customerName.toString().trim()
   }
 
-  const processExcelData = (jsonData: any[], productMap: Map<string, string | null>): any[] => {
-    if (jsonData.length < 2) return []
+  const processExcelData = (jsonData: any[], productMap: Map<string, string | null>): ProcessResult => {
+    if (jsonData.length < 2) return { data: [], skippedCount: 0 }
 
     const headers = jsonData[0] as string[]
     const mapping = COLUMN_MAPPINGS[selectedPlatform]
@@ -158,7 +166,22 @@ export default function ImportPage() {
       shipping_provider: findColumnIndex(headers, mapping.shipping_provider)
     }
 
+    // ตรวจสอบว่าคอลัมน์หลักตรงกับแพลตฟอร์มที่เลือกหรือไม่
+    const requiredColumns: { key: string; names: string[] | null; label: string }[] = [
+      { key: 'order_number', names: mapping.order_number, label: mapping.order_number?.[0] || 'Order Number' },
+      { key: 'tracking_number', names: mapping.tracking_number, label: mapping.tracking_number?.[0] || 'Tracking Number' },
+      { key: 'product_name', names: mapping.product_name, label: mapping.product_name?.[0] || 'Product Name' },
+    ]
+    const missingColumns = requiredColumns
+      .filter(col => col.names && findColumnIndex(headers, col.names) === -1)
+      .map(col => col.label)
+
+    if (missingColumns.length > 0) {
+      return { data: [], skippedCount: 0, columnMismatch: true, missingColumns }
+    }
+
     const processedData = []
+    let skippedCount = 0
 
     for (let i = 1; i < jsonData.length; i++) {
       const row = jsonData[i] as any[]
@@ -171,6 +194,12 @@ export default function ImportPage() {
       let productName = row[columnIndexes.product_name]?.toString().trim() || ''
       let quantity = 1
       let shippingProvider = row[columnIndexes.shipping_provider]?.toString().trim() || null
+
+      // ข้ามแถวที่ไม่มีหมายเลขติดตามพัสดุ
+      if (!trackingNumber) {
+        skippedCount++
+        continue
+      }
 
       if (parentSku) {
         parentSku = parentSku.replace(/\s+/g, '')
@@ -192,7 +221,7 @@ export default function ImportPage() {
       const orderData = {
         order_number: orderNumber,
         buyer_name: buyerName,
-        tracking_number: trackingNumber === '' ? null : trackingNumber,
+        tracking_number: trackingNumber,
         parent_sku: parentSku,
         product_name: productName,
         quantity: quantity,
@@ -212,7 +241,7 @@ export default function ImportPage() {
       }
     }
 
-    return processedData
+    return { data: processedData, skippedCount }
   }
 
   const handleImport = async () => {
@@ -231,7 +260,8 @@ export default function ImportPage() {
       setImportResult({
         success: 0,
         errors: [`ไม่สามารถโหลดข้อมูลสินค้าได้: ${productsError.message}`],
-        duplicates: 0
+        duplicates: 0,
+        skipped: 0
       })
       setIsProcessing(false)
       return
@@ -260,13 +290,37 @@ export default function ImportPage() {
           setProcessingStatus('ประมวลผลข้อมูล...')
           setProcessingProgress(20)
 
-          const processedData = processExcelData(jsonData, productMap)
+          const result = processExcelData(jsonData, productMap)
+
+          if (result.columnMismatch) {
+            const otherPlatforms = Object.entries(PLATFORM_NAMES)
+              .filter(([key]) => key !== selectedPlatform)
+              .map(([, name]) => name)
+              .join(', ')
+            setImportResult({
+              success: 0,
+              errors: [
+                `ไฟล์ไม่ตรงกับแพลตฟอร์ม "${PLATFORM_NAMES[selectedPlatform]}" ที่เลือก`,
+                `ไม่พบคอลัมน์: ${result.missingColumns?.join(', ')}`,
+                `กรุณาตรวจสอบว่าเลือกแพลตฟอร์มถูกต้อง (${otherPlatforms})`
+              ],
+              duplicates: 0,
+              skipped: 0
+            })
+            setIsProcessing(false)
+            return
+          }
+
+          const { data: processedData, skippedCount } = result
 
           if (processedData.length === 0) {
             setImportResult({
               success: 0,
-              errors: ['ไม่พบข้อมูลที่สามารถนำเข้าได้ กรุณาตรวจสอบรูปแบบไฟล์'],
-              duplicates: 0
+              errors: skippedCount > 0
+                ? [`ไม่พบข้อมูลที่สามารถนำเข้าได้ (${skippedCount} แถวไม่มีหมายเลขติดตามพัสดุ)`]
+                : ['ไม่พบข้อมูลที่สามารถนำเข้าได้ กรุณาตรวจสอบรูปแบบไฟล์'],
+              duplicates: 0,
+              skipped: skippedCount
             })
             setIsProcessing(false)
             return
@@ -288,14 +342,28 @@ export default function ImportPage() {
 
             for (const orderData of batch) {
               try {
+                // ตรวจสอบซ้ำในตาราง packing_orders (ออเดอร์ที่ยังไม่แพ็ค)
                 const { data: existingOrder } = await supabase
                   .from('packing_orders')
                   .select('id')
                   .eq('order_number', orderData.order_number)
                   .eq('parent_sku', orderData.parent_sku)
-                  .single()
+                  .maybeSingle()
 
                 if (existingOrder) {
+                  duplicateCount++
+                  continue
+                }
+
+                // ตรวจสอบซ้ำในตาราง packing_backup_orders (ออเดอร์ที่แพ็คสำเร็จแล้ว)
+                const { data: existingBackup } = await supabase
+                  .from('packing_backup_orders')
+                  .select('id')
+                  .eq('order_number', orderData.order_number)
+                  .eq('parent_sku', orderData.parent_sku)
+                  .maybeSingle()
+
+                if (existingBackup) {
                   duplicateCount++
                   continue
                 }
@@ -319,14 +387,16 @@ export default function ImportPage() {
           setImportResult({
             success: successCount,
             errors: errors.slice(0, 10),
-            duplicates: duplicateCount
+            duplicates: duplicateCount,
+            skipped: skippedCount
           })
 
         } catch (error) {
           setImportResult({
             success: 0,
             errors: [`ข้อผิดพลาดในการอ่านไฟล์: ${error}`],
-            duplicates: 0
+            duplicates: 0,
+            skipped: 0
           })
         }
 
@@ -338,7 +408,8 @@ export default function ImportPage() {
       setImportResult({
         success: 0,
         errors: [`ข้อผิดพลาด: ${error}`],
-        duplicates: 0
+        duplicates: 0,
+        skipped: 0
       })
       setIsProcessing(false)
     }
@@ -408,6 +479,33 @@ export default function ImportPage() {
         )}
       </PageHeaderWithFilters>
 
+      {/* File Summary */}
+      {previewData.length > 1 && !isProcessing && !importResult && (() => {
+        const headers = previewData[0] as string[]
+        const mapping = COLUMN_MAPPINGS[selectedPlatform]
+        const trackingColIdx = findColumnIndex(headers, mapping.tracking_number)
+        const qtyColIdx = findColumnIndex(headers, mapping.quantity)
+        const rows = previewData.slice(1)
+        const uniqueOrders = new Set(rows.map((r: any[]) => r[trackingColIdx]?.toString().trim()).filter(Boolean))
+        const totalPieces = rows.reduce((sum: number, r: any[]) => {
+          if (selectedPlatform === 'lazada') return sum + 1
+          const qty = qtyColIdx !== -1 ? parseInt(r[qtyColIdx]?.toString()) || 1 : 1
+          return sum + qty
+        }, 0)
+        return (
+          <div className="flex items-center gap-4 px-4 py-2 bg-blue-50 border border-blue-200 rounded-lg text-sm font-thai">
+            <FileSpreadsheet className="w-4 h-4 text-blue-500 shrink-0" />
+            <span className="text-blue-800 font-medium">{file?.name}</span>
+            <div className="w-px h-4 bg-blue-200"></div>
+            <span className="text-blue-700"><span className="font-bold">{uniqueOrders.size.toLocaleString()}</span> ออเดอร์</span>
+            <div className="w-px h-4 bg-blue-200"></div>
+            <span className="text-blue-700"><span className="font-bold">{totalPieces.toLocaleString()}</span> ชิ้น</span>
+            <div className="w-px h-4 bg-blue-200"></div>
+            <span className="text-blue-700"><span className="font-bold">{rows.length.toLocaleString()}</span> แถว</span>
+          </div>
+        )
+      })()}
+
       {/* Main Content */}
       <div className="flex-1 min-h-0 bg-white border rounded-lg shadow-sm flex flex-col overflow-hidden">
         {/* Progress Bar */}
@@ -442,6 +540,12 @@ export default function ImportPage() {
                 <AlertCircle className="w-4 h-4 text-yellow-500" />
                 <span className="text-xs font-medium text-yellow-700">ซ้ำ: {importResult.duplicates}</span>
               </div>
+              {importResult.skipped > 0 && (
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-orange-500" />
+                  <span className="text-xs font-medium text-orange-700">ข้ามเนื่องจากไม่มีเลขพัสดุ: {importResult.skipped}</span>
+                </div>
+              )}
               {importResult.errors.length > 0 && (
                 <div className="flex items-center gap-2">
                   <X className="w-4 h-4 text-red-500" />

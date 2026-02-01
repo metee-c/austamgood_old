@@ -33,31 +33,7 @@ interface PackingOrder {
   items: PackingOrderItem[];
 }
 
-interface Box {
-  id: string;
-  box_code: string;
-  box_name: string;
-  dimensions_length: number;
-  dimensions_width: number;
-  dimensions_height: number;
-  volume: number;
-}
 
-interface ProductWeightProfile {
-  product_type_code: string;
-  weight_kg: number;
-  dimensions_length: number;
-  dimensions_width: number;
-  dimensions_height: number;
-}
-
-interface PackingRule {
-  box_code: string;
-  primary_product_type_code: string;
-  rule_code: string;
-  components: Array<{ type: string; qty: number }> | null;
-  notes: string | null;
-}
 
 // =====================================================
 // BUNDLE PRODUCTS CONFIGURATION
@@ -113,30 +89,6 @@ const expandBundleProducts = (items: Omit<PackingOrderItem, 'id' | 'scanned_quan
   return expandedItems;
 };
 
-const getRecommendedBox = async (
-  items: PackingOrderItem[],
-  productProfiles: ProductWeightProfile[],
-  packingRules: PackingRule[],
-  allBoxes: Box[]
-): Promise<Box | null> => {
-  if (items.length === 0 || allBoxes.length === 0) return null;
-
-  // Simplified box recommendation logic
-  const candidateRules = packingRules.filter(rule => rule.components !== null);
-
-  if (candidateRules.length === 0) {
-    const fallbackBox = allBoxes.sort((a, b) => a.volume - b.volume)[0];
-    return fallbackBox || null;
-  }
-
-  const candidateBoxes = candidateRules
-    .map(rule => allBoxes.find(box => box.box_code === rule.box_code))
-    .filter((box): box is Box => box !== undefined);
-
-  candidateBoxes.sort((a, b) => a.volume - b.volume);
-
-  return candidateBoxes[0] || null;
-};
 
 // =====================================================
 // MAIN PACKING PAGE COMPONENT
@@ -153,14 +105,11 @@ export default function PackingPage() {
   const [skuInput, setSkuInput] = useState('');
   const [scanError, setScanError] = useState('');
   const [packedOrdersCount, setPackedOrdersCount] = useState(0);
+  const [packedByPlatform, setPackedByPlatform] = useState<Record<string, number>>({});
   const [isProcessingCompletion, setIsProcessingCompletion] = useState(false);
   const [orderFreebies, setOrderFreebies] = useState<string[]>([]);
   const [freebieConfirmed, setFreebieConfirmed] = useState(false);
 
-  const [recommendedBox, setRecommendedBox] = useState<Box | null>(null);
-  const [boxes, setBoxes] = useState<Box[]>([]);
-  const [productProfiles, setProductProfiles] = useState<ProductWeightProfile[]>([]);
-  const [packingRules, setPackingRules] = useState<PackingRule[]>([]);
 
   const trackingInputRef = useRef<HTMLInputElement>(null);
   const skuInputRef = useRef<HTMLInputElement>(null);
@@ -244,17 +193,11 @@ export default function PackingPage() {
   const loadInitialData = async () => {
     setIsLoading(true);
     try {
-      const [boxesRes, profilesRes, rulesRes, ordersRes, productsRes] = await Promise.all([
-        supabase.from('packing_boxes').select('*'),
-        supabase.from('packing_product_weight_profiles').select('*'),
-        supabase.from('packing_rules').select('*'),
+      const [ordersRes, productsRes] = await Promise.all([
         supabase.from('packing_orders').select('*').not('tracking_number', 'is', null).in('fulfillment_status', ['pending', 'processing']).order('created_at', { ascending: true }),
         supabase.from('master_sku').select('sku_id, barcode').not('barcode', 'is', null)
       ]);
 
-      if (boxesRes.error) throw new Error(`Failed to load boxes: ${boxesRes.error.message}`);
-      if (profilesRes.error) throw new Error(`Failed to load profiles: ${profilesRes.error.message}`);
-      if (rulesRes.error) throw new Error(`Failed to load rules: ${rulesRes.error.message}`);
       if (ordersRes.error) throw new Error(`Failed to load orders: ${ordersRes.error.message}`);
       if (productsRes.error) throw new Error(`Failed to load products: ${productsRes.error.message}`);
 
@@ -287,9 +230,6 @@ export default function PackingPage() {
         }
       });
 
-      setBoxes(boxesRes.data || []);
-      setProductProfiles(profilesRes.data || []);
-      setPackingRules(rulesRes.data || []);
 
       const orderGroups = new Map<string, any[]>();
       ordersRes.data?.forEach(order => {
@@ -363,14 +303,24 @@ export default function PackingPage() {
       const todayISO = today.toISOString();
       const { data: backupOrders, error: backupError } = await supabase
         .from('packing_backup_orders')
-        .select('tracking_number')
+        .select('tracking_number, platform')
         .gte('packed_at', todayISO)
         .not('packed_at', 'is', null);
       if (backupError) {
         console.warn('Could not load backup orders:', backupError);
       }
-      const uniqueTrackingNumbers = new Set(backupOrders?.map(order => order.tracking_number) || []);
-      setPackedOrdersCount(uniqueTrackingNumbers.size);
+      const uniqueMap = new Map<string, string>();
+      (backupOrders || []).forEach(order => {
+        if (!uniqueMap.has(order.tracking_number)) {
+          uniqueMap.set(order.tracking_number, order.platform || 'Other');
+        }
+      });
+      setPackedOrdersCount(uniqueMap.size);
+      const platformCounts: Record<string, number> = {};
+      uniqueMap.forEach((platform) => {
+        platformCounts[platform] = (platformCounts[platform] || 0) + 1;
+      });
+      setPackedByPlatform(platformCounts);
     } catch (error) {
       console.warn('Error loading packed orders count:', error);
       setPackedOrdersCount(0);
@@ -388,14 +338,6 @@ export default function PackingPage() {
       setCurrentOrder(order);
       setTrackingInput('');
       setScanError('');
-      const recommended = await getRecommendedBox(order.items, productProfiles, packingRules, boxes);
-      setRecommendedBox(recommended);
-
-      if (recommended) {
-        await playBoxAudio(recommended.box_code);
-      } else {
-        await playBoxAudio('default');
-      }
 
       updatePackingStatus(order.id, 'in_progress');
       setTimeout(() => skuInputRef.current?.focus(), 100);
@@ -413,8 +355,8 @@ export default function PackingPage() {
 
     await initializeAudioContext();
 
-    const scannedSku = skuInput.trim();
-    const item = currentOrder.items.find(i => i.parent_sku === scannedSku);
+    const scannedSku = skuInput.trim().replace(/\s+/g, '');
+    const item = currentOrder.items.find(i => i.parent_sku.replace(/\s+/g, '') === scannedSku);
 
     if (item) {
       if (item.scanned_quantity < item.quantity) {
@@ -560,57 +502,56 @@ export default function PackingPage() {
     }
   };
 
-  const savePackingHistory = async (completedOrder: PackingOrder, usedBox: Box | null) => {
-    try {
-      if (!usedBox) return;
-
-      const totalWeight = completedOrder.items.reduce((sum, item) => {
-        const weightMatch = item.product_name.match(/(\d+(?:\.\d+)?)\s*(?:kg|กก|กิโลกรัม)/i);
-        const itemWeight = weightMatch ? parseFloat(weightMatch[1]) : 0.5;
-        return sum + (itemWeight * item.quantity);
-      }, 0);
-
-      const totalVolume = usedBox.dimensions_length * usedBox.dimensions_width * usedBox.dimensions_height;
-      const itemsCount = completedOrder.items.reduce((sum, item) => sum + item.quantity, 0);
-
-      const { error } = await supabase.from('packing_history').insert({
-        tracking_number: completedOrder.tracking_number,
-        box_id: usedBox.id,
-        box_code: usedBox.box_code,
-        total_weight: totalWeight,
-        total_volume: totalVolume,
-        items_count: itemsCount,
-        packed_by: 'System User',
-        pack_duration: null,
-        efficiency_score: 85,
-        notes: `แพ็คด้วยระบบอัตโนมัติ - ${itemsCount} รายการ`,
-        packed_at: new Date().toISOString()
-      });
-
-      if (error) {
-        console.warn('Could not save packing history:', error);
-      }
-    } catch (error) {
-      console.warn('Error saving packing history:', error);
-    }
-  };
 
   const completeOrder = async (completedOrder: PackingOrder) => {
     if (!completedOrder) return;
     try {
+      // Move stock from E-Commerce to Dispatch for all items
+      const stockMoveResult = await moveStockToDispatch(completedOrder);
+      if (!stockMoveResult.success) {
+        console.warn('Stock movement warning:', stockMoveResult.message);
+      }
+
       await updatePackingStatus(completedOrder.id, 'completed');
-      await savePackingHistory(completedOrder, recommendedBox);
       await moveOrderToBackup(completedOrder.tracking_number);
 
       playSound('complete');
       setAvailableOrders(prev => prev.filter(o => o.tracking_number !== completedOrder.tracking_number));
       setPackedOrdersCount(prev => prev + 1);
+      const orderPlatform = completedOrder.platform || 'Other';
+      setPackedByPlatform(prev => ({ ...prev, [orderPlatform]: (prev[orderPlatform] || 0) + 1 }));
       setSystemStatus(`พร้อมใช้งาน (${availableOrders.length - 1} ออเดอร์)`);
 
     } catch (error) {
       console.error('Error completing order:', error);
       setScanError('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่อีกครั้ง');
       throw error;
+    }
+  };
+
+  // Move stock from E-Commerce to Dispatch when order is complete
+  const moveStockToDispatch = async (order: PackingOrder): Promise<{ success: boolean; message: string }> => {
+    try {
+      const response = await fetch('/api/online-packing/complete-order', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          order_number: order.order_number,
+          tracking_number: order.tracking_number,
+          platform: order.platform,
+          items: order.items.map(item => ({
+            sku_id: item.parent_sku,
+            sku_name: item.product_name,
+            quantity: item.quantity
+          }))
+        })
+      });
+
+      const result = await response.json();
+      return { success: result.success, message: result.message || '' };
+    } catch (error: any) {
+      console.error('Error moving stock to Dispatch:', error);
+      return { success: false, message: error.message };
     }
   };
 
@@ -632,7 +573,6 @@ export default function PackingPage() {
     setScanError('');
     setSkuInput('');
     setTrackingInput('');
-    setRecommendedBox(null);
     setFreebieConfirmed(false);
     setTimeout(() => trackingInputRef.current?.focus(), 100);
   };
@@ -697,54 +637,6 @@ export default function PackingPage() {
     }
   };
 
-  const playBoxAudio = async (boxCode: string) => {
-    try {
-      await initializeAudioContext();
-
-      const normalizedCode = boxCode.toLowerCase().replace(/\s+/g, '');
-
-      const audioMap: { [key: string]: string } = {
-        'b': 'B.mp3',
-        'c': 'C.mp3',
-        'd': 'D.mp3',
-        'd+11': 'D+11.mp3',
-        'e': 'E.mp3',
-        'm+': 'M+.mp3',
-        'm': 'M+.mp3',
-        'ฉ': 'ฉ.mp3',
-        'a1': 'B.mp3',
-        'b1': 'C.mp3',
-        'c1': 'D.mp3',
-        'd1': 'E.mp3',
-        'm1': 'M+.mp3',
-        'default': 'default.mp3'
-      };
-
-      const audioFile = audioMap[normalizedCode] || audioMap['default'];
-      const audioPath = `/audio/thai/${audioFile}`;
-
-      const audio = new Audio();
-      audio.preload = 'auto';
-      audio.volume = 1.0;
-      audio.crossOrigin = 'anonymous';
-
-      audio.src = audioPath;
-
-      try {
-        const playPromise = audio.play();
-        if (playPromise !== undefined) {
-          await playPromise;
-        }
-      } catch (playError: any) {
-        console.error('❌ Play failed:', playError);
-        console.warn('⚠️ Audio playback failed, no fallback');
-      }
-
-    } catch (error) {
-      console.error('❌ Box Audio Error:', error);
-      console.warn('⚠️ Audio system error, no fallback');
-    }
-  };
 
   if (isLoading) {
     return (
@@ -841,17 +733,6 @@ export default function PackingPage() {
                     <span>กำลังดำเนินการ</span>
                   </div>
                 </div>
-                {recommendedBox && (
-                  <div className="text-right">
-                    <p className="text-xs text-gray-600 font-thai mb-1">กล่องที่แนะนำ</p>
-                    <div className="bg-green-50 border border-green-200 px-4 py-2 rounded-lg">
-                      <p className="font-black text-2xl text-green-700 text-center">
-                        {recommendedBox.box_code}
-                      </p>
-                      <p className="text-xs text-green-600 text-center font-thai mt-0.5">{recommendedBox.box_name}</p>
-                    </div>
-                  </div>
-                )}
               </div>
 
               {/* Order Info Cards */}
@@ -1090,8 +971,8 @@ export default function PackingPage() {
       {/* Footer Statistics - Horizontal Bar Layout */}
       <div className="fixed bottom-0 left-64 right-0 z-40 bg-white border-t border-gray-200">
         <div className="max-w-screen-xl mx-auto px-4 py-3">
-          <div className="flex items-center justify-between bg-gray-50 border border-gray-200 rounded-lg px-4 py-2">
-            <div className="flex items-center space-x-6">
+          <div className="flex items-center gap-4 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2">
+            <div className="flex items-center space-x-6 shrink-0">
               <div className="flex flex-col">
                 <span className="text-xs font-medium text-gray-600 font-thai">ออเดอร์ทั้งหมด/วัน</span>
                 <span className="text-lg font-bold text-gray-800 font-thai">{availableOrders.length + packedOrdersCount}</span>
@@ -1107,25 +988,36 @@ export default function PackingPage() {
                 <span className="text-lg font-bold text-blue-700 font-thai">{availableOrders.length}</span>
               </div>
             </div>
-            <div className="flex items-center space-x-2">
-              <div className="text-right">
-                <span className="text-xs text-gray-600 font-thai">ความคืบหน้า</span>
-                <div className="text-sm font-bold text-gray-800 font-thai">
-                  {availableOrders.length + packedOrdersCount > 0 
-                    ? Math.round((packedOrdersCount / (availableOrders.length + packedOrdersCount)) * 100) 
-                    : 0}%
-                </div>
-              </div>
-              <div className="w-16 h-8 bg-gray-200 rounded-full overflow-hidden">
-                <div 
-                  className="h-full bg-green-500 transition-all duration-300"
-                  style={{
-                    width: `${availableOrders.length + packedOrdersCount > 0 
-                      ? (packedOrdersCount / (availableOrders.length + packedOrdersCount)) * 100 
-                      : 0}%`
-                  }}
-                ></div>
-              </div>
+            <div className="w-px h-10 bg-gray-300 shrink-0"></div>
+            <div className="flex-1 flex flex-col gap-1.5 min-w-0">
+              <span className="text-xs font-medium text-gray-600 font-thai">ความคืบหน้า</span>
+              {(() => {
+                const platforms = [
+                  { key: 'Shopee Thailand', label: 'Shopee', color: 'bg-orange-500', textColor: 'text-orange-600' },
+                  { key: 'TikTok Shop', label: 'TikTok', color: 'bg-gray-800', textColor: 'text-gray-800' },
+                  { key: 'Lazada Thailand', label: 'Lazada', color: 'bg-purple-600', textColor: 'text-purple-600' },
+                ];
+                return platforms.map(p => {
+                  const packedCount = packedByPlatform[p.key] || 0;
+                  const remainingCount = availableOrders.filter(o => o.platform === p.key).length;
+                  const totalCount = packedCount + remainingCount;
+                  const percent = totalCount > 0 ? Math.round((packedCount / totalCount) * 100) : 0;
+                  return (
+                    <div key={p.key} className="flex items-center gap-2">
+                      <span className={`text-xs font-medium ${p.textColor} font-thai w-14 shrink-0`}>{p.label}</span>
+                      <div className="flex-1 h-4 bg-gray-200 rounded-full overflow-hidden">
+                        <div
+                          className={`h-full ${p.color} transition-all duration-300 rounded-full`}
+                          style={{ width: `${percent}%` }}
+                        ></div>
+                      </div>
+                      <span className="text-xs font-bold text-gray-700 font-thai w-20 text-right shrink-0">
+                        {packedCount}/{totalCount} ({percent}%)
+                      </span>
+                    </div>
+                  );
+                });
+              })()}
             </div>
           </div>
         </div>

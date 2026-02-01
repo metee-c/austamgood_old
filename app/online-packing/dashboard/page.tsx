@@ -135,10 +135,11 @@ export default function DashboardPage() {
       let allOrders = [...ordersData, ...filteredBackupData]
 
       if (searchFilters.skuOrName) {
-        const searchTerm = searchFilters.skuOrName.toLowerCase()
-        allOrders = allOrders.filter(order => 
-          (order.parent_sku && order.parent_sku.toLowerCase().includes(searchTerm)) ||
-          (order.product_name && order.product_name.toLowerCase().includes(searchTerm))
+        const searchTerm = searchFilters.skuOrName.toLowerCase().replace(/\s+/g, '')
+        allOrders = allOrders.filter(order =>
+          (order.parent_sku && order.parent_sku.toLowerCase().replace(/\s+/g, '').includes(searchTerm)) ||
+          (order.product_name && order.product_name.toLowerCase().includes(searchFilters.skuOrName.toLowerCase())) ||
+          (order.tracking_number && order.tracking_number.toLowerCase().includes(searchFilters.skuOrName.toLowerCase()))
         )
       }
 
@@ -535,12 +536,12 @@ export default function DashboardPage() {
               </div>
 
               <div className="lg:col-span-2">
-                <label className="block text-xs font-medium text-gray-700 font-thai mb-1">SKU / ชื่อสินค้า</label>
+                <label className="block text-xs font-medium text-gray-700 font-thai mb-1">SKU / ชื่อสินค้า / เลขพัสดุ</label>
                 <input
                   type="text"
                   value={searchFilters.skuOrName}
                   onChange={(e) => setSearchFilters(prev => ({ ...prev, skuOrName: e.target.value }))}
-                  placeholder="ค้นหา..."
+                  placeholder="ค้นหา SKU, ชื่อสินค้า, เลขพัสดุ..."
                   className="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-xs font-thai"
                 />
               </div>
