@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { getCurrentSession } from '@/lib/auth/session';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +28,9 @@ export async function POST(request: NextRequest) {
     }
 
     const now = new Date().toISOString();
-    const { data: { user } } = await supabase.auth.getUser();
+    // Get employee_id from session for created_by
+    const sessionResult = await getCurrentSession();
+    const userId = sessionResult.session?.employee_id || null;
     
     const results: any[] = [];
     let successCount = 0;
@@ -189,7 +192,7 @@ export async function POST(request: NextRequest) {
             pack_qty: packQty,
             reference_no: order_number,
             remarks: `แพ็คสินค้าออนไลน์ - Order: ${order_number} (${tracking_number})`,
-            created_by: user?.id ? parseInt(user.id) : null,
+            created_by: userId,
             skip_balance_sync: true
           });
 
@@ -206,7 +209,7 @@ export async function POST(request: NextRequest) {
             pack_qty: packQty,
             reference_no: order_number,
             remarks: `แพ็คสินค้าออนไลน์ - Order: ${order_number} (${tracking_number})`,
-            created_by: user?.id ? parseInt(user.id) : null,
+            created_by: userId,
             skip_balance_sync: true
           });
 
