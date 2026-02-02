@@ -1485,9 +1485,9 @@ const OrdersPage = () => {
               </button>
               <span className="text-xs text-gray-400">หรือ</span>
               <label className="relative flex items-center gap-1 px-2 py-1 border border-gray-300 rounded text-xs cursor-pointer hover:bg-gray-50">
-                <Calendar className="w-3 h-3 text-gray-500" />
-                <span className="text-gray-600">
-                  {bulkDeliveryDate && bulkDeliveryDate !== 'PENDING' 
+                <Calendar className="w-3 h-3 text-gray-500 pointer-events-none" />
+                <span className="text-gray-600 pointer-events-none">
+                  {bulkDeliveryDate && bulkDeliveryDate !== 'PENDING'
                     ? new Date(bulkDeliveryDate).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' })
                     : 'เลือกวันที่'}
                 </span>
@@ -1495,7 +1495,7 @@ const OrdersPage = () => {
                   type="date"
                   value={bulkDeliveryDate && bulkDeliveryDate !== 'PENDING' ? bulkDeliveryDate : ''}
                   onChange={(e) => setBulkDeliveryDate(e.target.value || '')}
-                  className="absolute inset-0 opacity-0 cursor-pointer"
+                  className="absolute inset-0 opacity-0 cursor-pointer z-10"
                 />
               </label>
               {bulkDeliveryDate && (
