@@ -684,12 +684,12 @@ export default function PackingPage() {
 
       {/* Scanner Section */}
       <section className="bg-white border-b border-gray-200">
-        <div className="max-w-4xl mx-auto px-4 py-3">
+        <div className="max-w-4xl mx-auto px-2 sm:px-4 py-1.5 sm:py-3">
           <div className="bg-white flex justify-center">
-            <form onSubmit={!currentOrder ? handleTrackingSearch : handleSkuScan} className="flex items-end gap-2 w-full max-w-2xl">
+            <form onSubmit={!currentOrder ? handleTrackingSearch : handleSkuScan} className="flex flex-col sm:flex-row items-stretch sm:items-end gap-1.5 sm:gap-2 w-full max-w-2xl">
               <div className="flex-1">
-                <label className="text-base font-bold text-gray-700 font-thai mb-1.5 block">
-                  {!currentOrder ? 'ค้นหาหมายเลขติดตามพัสดุ' : 'สแกนบาร์โค้ดสินค้า'}
+                <label className="text-xs sm:text-base font-bold text-gray-700 font-thai mb-0.5 sm:mb-1.5 block">
+                  {!currentOrder ? 'สแกนบาร์โค้ดสินค้า' : 'สแกนบาร์โค้ดสินค้า'}
                 </label>
                 <div className="relative">
                   <input
@@ -697,12 +697,12 @@ export default function PackingPage() {
                     type="text"
                     value={!currentOrder ? trackingInput : skuInput}
                     onChange={(e) => !currentOrder ? setTrackingInput(e.target.value) : setSkuInput(e.target.value)}
-                    className={`w-full px-3 py-2 text-sm font-mono rounded-lg border transition-all duration-300 bg-white font-thai ${
+                    className={`w-full px-2 py-2 sm:py-2 text-sm sm:text-sm font-mono rounded border transition-all duration-300 bg-white font-thai ${
                       scanError
                         ? 'border-red-400 focus:ring-2 focus:ring-red-300 focus:border-red-500'
                         : 'border-gray-300 focus:ring-2 focus:ring-primary-300 focus:border-primary-500'
                     }`}
-                    placeholder={!currentOrder ? "พิมพ์หรือสแกน Tracking Number ..." : "พิมพ์หรือสแกน SKU / บาร์โค้ด ..."}
+                    placeholder="พิมพ์หรือสแกน SKU / บาร์โค้ด ..."
                     autoFocus
                   />
                 </div>
@@ -711,9 +711,9 @@ export default function PackingPage() {
                 <button
                   type="button"
                   onClick={resetInterface}
-                  className="flex items-center gap-1.5 bg-gray-500 hover:bg-gray-600 text-white px-3 py-2 rounded-lg font-semibold text-xs font-thai transition-colors"
+                  className="flex items-center justify-center gap-1 bg-gray-500 hover:bg-gray-600 text-white px-3 py-2 sm:px-3 sm:py-2 rounded font-semibold text-xs font-thai transition-colors"
                 >
-                  <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                   </svg>
                   ยกเลิก
@@ -724,71 +724,40 @@ export default function PackingPage() {
         </div>
       </section>
 
-      {/* Main Content - ลด padding bottom */}
-      <main className="flex-1 overflow-y-auto px-4 py-4 pb-20">
+      {/* Main Content */}
+      <main className="flex-1 overflow-y-auto px-1.5 sm:px-4 py-1.5 sm:py-4 pb-36 sm:pb-20">
         <div className="max-w-7xl mx-auto">
           {scanError && (
-            <div className="bg-red-50 text-red-700 p-3 rounded-lg mb-4">
-              <div className="flex items-center">
-                <div className="bg-red-100 p-1.5 rounded-lg mr-3">
-                  <svg className="w-4 h-4 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                </div>
-                <p className="font-semibold text-sm font-thai">{scanError}</p>
-              </div>
+            <div className="bg-red-50 text-red-700 p-2 rounded mb-2">
+              <p className="font-semibold text-xs font-thai">{scanError}</p>
             </div>
           )}
 
           {currentOrder && !(currentOrder.items.every(item => item.is_completed) && (orderFreebies.length === 0 || freebieConfirmed)) && (
-            <section className="bg-white p-4 mb-4 min-h-[500px] flex flex-col">
+            <section className="bg-white p-2 sm:p-4 mb-2 sm:mb-4 flex flex-col">
               {/* Order Header */}
-              <div className="flex justify-between items-start mb-4">
+              <div className="flex justify-between items-start mb-2 sm:mb-4">
                 <div>
-                  <h2 className="text-xl font-bold text-gray-800 font-thai mb-1">รายละเอียดออเดอร์</h2>
-                  <div className="flex items-center gap-1.5 text-xs text-gray-600 font-thai">
-                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-                    </svg>
+                  <h2 className="text-sm sm:text-xl font-bold text-gray-800 font-thai">รายละเอียดออเดอร์</h2>
+                  <div className="flex items-center gap-1 text-[10px] sm:text-xs text-gray-500 font-thai">
                     <span>กำลังดำเนินการ</span>
                   </div>
                 </div>
               </div>
 
-              {/* Order Info Cards */}
-              <div className="grid md:grid-cols-3 gap-3 mb-4">
-                <div className="bg-slate-50 p-3 rounded-lg">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="bg-slate-500 p-1.5 rounded-lg">
-                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v10a2 2 0 002 2h8a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
-                      </svg>
-                    </div>
-                    <p className="text-xs font-medium text-slate-600 font-thai">หมายเลขคำสั่งซื้อ</p>
-                  </div>
-                  <p className="font-mono font-bold text-base text-slate-800">{currentOrder.order_number}</p>
+              {/* Order Info Cards - Compact */}
+              <div className="grid grid-cols-3 gap-1.5 sm:gap-3 mb-2 sm:mb-4 text-center">
+                <div className="bg-slate-50 p-1.5 sm:p-3 rounded">
+                  <p className="text-[10px] sm:text-xs text-slate-500 font-thai">หมายเลขคำสั่งซื้อ</p>
+                  <p className="font-mono font-bold text-[11px] sm:text-base text-slate-800 truncate">{currentOrder.order_number}</p>
                 </div>
-                <div className="bg-primary-50 p-3 rounded-lg">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="bg-primary-500 p-1.5 rounded-lg">
-                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                      </svg>
-                    </div>
-                    <p className="text-xs font-medium text-primary-600 font-thai">Tracking No</p>
-                  </div>
-                  <p className="font-mono font-bold text-base text-primary-700">{currentOrder.tracking_number}</p>
+                <div className="bg-primary-50 p-1.5 sm:p-3 rounded">
+                  <p className="text-[10px] sm:text-xs text-primary-500 font-thai">Tracking</p>
+                  <p className="font-mono font-bold text-[11px] sm:text-base text-primary-700 truncate">{currentOrder.tracking_number}</p>
                 </div>
-                <div className="bg-orange-50 p-3 rounded-lg">
-                  <div className="flex items-center gap-2 mb-2">
-                    <div className="bg-orange-500 p-1.5 rounded-lg">
-                      <svg className="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                      </svg>
-                    </div>
-                    <p className="text-xs font-medium text-orange-600 font-thai">ผู้ซื้อ</p>
-                  </div>
-                  <p className="font-bold text-base text-orange-700 font-thai">{currentOrder.buyer_name}</p>
+                <div className="bg-orange-50 p-1.5 sm:p-3 rounded">
+                  <p className="text-[10px] sm:text-xs text-orange-500 font-thai">ผู้ซื้อ</p>
+                  <p className="font-bold text-[11px] sm:text-base text-orange-700 font-thai truncate">{currentOrder.buyer_name}</p>
                 </div>
               </div>
 
@@ -809,39 +778,43 @@ export default function PackingPage() {
               )}
 
               {orderFreebies.length > 0 && (
-                <div className={`mb-3 p-3 border rounded-lg ${
+                <div className={`mb-3 p-2 sm:p-3 border rounded-lg ${
                   freebieConfirmed
                     ? 'bg-green-50 border-green-200 text-green-800'
                     : 'bg-pink-50 border-pink-200 text-pink-800'
                 }`}>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center">
-                      <div className={`p-2 rounded-lg mr-3 ${
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2">
+                    <div className="flex items-center flex-1 min-w-0">
+                      <div className={`p-1.5 sm:p-2 rounded-lg mr-2 sm:mr-3 shrink-0 ${
                         freebieConfirmed ? 'bg-green-100' : 'bg-pink-100'
                       }`}>
-                        <GiftIcon className={`w-5 h-5 ${freebieConfirmed ? 'text-green-600' : 'text-pink-600'}`} />
+                        <GiftIcon className={`w-4 h-4 sm:w-5 sm:h-5 ${freebieConfirmed ? 'text-green-600' : 'text-pink-600'}`} />
                       </div>
-                      <div>
-                        <div className={`${freebieConfirmed ? '' : 'bg-pink-500 p-3 rounded-lg'}`}>
-                          <p className={`font-thai ${freebieConfirmed ? 'font-bold text-sm' : 'font-black text-2xl text-white text-center animate-bounce'}`}>
-                            {freebieConfirmed ? 'ยืนยันของแถมเรียบร้อย' : '🎉 สินค้าของแถมพิเศษ! 🎉'}
-                          </p>
-                          {!freebieConfirmed && orderFreebies.length > 0 && (
-                            <div className="mt-2 space-y-1">
-                              {orderFreebies.map((freebie, index) => (
-                                <p key={index} className="font-black text-3xl text-yellow-300 text-center animate-pulse">
-                                  ✨ {freebie} ✨
-                                </p>
-                              ))}
-                            </div>
-                          )}
-                        </div>
+                      <div className="flex-1 min-w-0">
+                        {freebieConfirmed ? (
+                          <p className="font-bold text-sm font-thai">ยืนยันของแถมเรียบร้อย</p>
+                        ) : (
+                          <div className="bg-pink-500 p-2 sm:p-3 rounded-lg">
+                            <p className="font-black text-base sm:text-xl text-white text-center animate-bounce font-thai">
+                              � ของแถมพิเศษ!
+                            </p>
+                            {orderFreebies.length > 0 && (
+                              <div className="mt-1 space-y-0.5">
+                                {orderFreebies.map((freebie, index) => (
+                                  <p key={index} className="font-bold text-sm sm:text-lg text-yellow-300 text-center">
+                                    ✨ {freebie}
+                                  </p>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                     {!freebieConfirmed && (
                       <button
                         onClick={() => setFreebieConfirmed(true)}
-                        className="bg-primary-500 hover:bg-primary-600 text-white px-5 py-2.5 rounded-lg text-sm font-bold font-thai transition-colors"
+                        className="bg-primary-500 hover:bg-primary-600 text-white px-4 py-2.5 sm:px-5 rounded-lg text-sm font-bold font-thai transition-colors w-full sm:w-auto shrink-0"
                       >
                         ยืนยัน
                       </button>
@@ -851,7 +824,8 @@ export default function PackingPage() {
               )}
 
               <div className="flex-1 flex flex-col mb-2">
-                <div className="overflow-hidden rounded-lg border border-gray-300 flex flex-col">
+                {/* Desktop Table View */}
+                <div className="hidden sm:block overflow-hidden rounded-lg border border-gray-300 flex flex-col">
                   <div className="bg-gray-100 border-b border-gray-300">
                     <div className="grid gap-2 px-2 py-1.5" style={{gridTemplateColumns: '100px 1fr 70px 70px 70px 100px'}}>
                       <div className="text-left text-xs font-bold text-gray-700 font-thai">รหัสสินค้า</div>
@@ -914,6 +888,57 @@ export default function PackingPage() {
                       </div>
                     ))}
                   </div>
+                </div>
+
+                {/* Mobile Card View - Compact */}
+                <div className="sm:hidden space-y-1.5">
+                  {currentOrder.items.map((item) => (
+                    <div
+                      key={item.id}
+                      id={`item-mobile-${item.id}`}
+                      className={`rounded border p-2 transition-all duration-300 ${
+                        item.is_completed
+                          ? 'bg-green-50 border-green-200'
+                          : item.scanned_quantity > 0
+                          ? 'bg-yellow-50 border-yellow-200'
+                          : 'bg-white border-gray-200'
+                      }`}
+                    >
+                      <div className="flex justify-between items-start gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-xs font-medium font-thai leading-tight ${item.is_completed ? 'line-through text-green-700' : 'text-gray-800'}`}>
+                            {item.product_name}
+                          </p>
+                          <p className="font-mono text-[10px] text-primary-600">{item.parent_sku}</p>
+                          {item.bundle_info && (
+                            <span className="text-[9px] text-orange-600 font-thai">จากเซต</span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <div className="text-center">
+                            <p className="text-[9px] text-gray-400 font-thai">สั่ง</p>
+                            <p className="text-sm font-bold text-primary-600">{item.quantity}</p>
+                          </div>
+                          <div className="text-center min-w-[32px]">
+                            <p className="text-[9px] text-gray-400 font-thai">สแกน</p>
+                            <p className={`text-sm font-bold ${item.is_completed ? 'text-green-600' : item.scanned_quantity > 0 ? 'text-yellow-600' : 'text-gray-400'}`}>
+                              {item.scanned_quantity}/{item.quantity}
+                            </p>
+                          </div>
+                          {item.is_completed ? (
+                            <span className="text-green-600 text-xs">✓</span>
+                          ) : (
+                            <button 
+                              onClick={() => handleManualConfirm(item.id)} 
+                              className="bg-primary-500 text-white px-2 py-1 rounded text-[10px] font-medium font-thai"
+                            >
+                              ยืนยัน
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </section>
@@ -988,10 +1013,53 @@ export default function PackingPage() {
         </div>
       </main>
 
-      {/* Footer Statistics - Horizontal Bar Layout */}
-      <div className="fixed bottom-0 left-64 right-0 z-40 bg-white border-t border-gray-200">
-        <div className="max-w-screen-xl mx-auto px-4 py-3">
-          <div className="flex items-center gap-4 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2">
+      {/* Footer Statistics */}
+      <div className="fixed bottom-0 left-0 sm:left-64 right-0 z-40 bg-white border-t border-gray-200">
+        <div className="max-w-screen-xl mx-auto px-1.5 sm:px-4 py-1.5 sm:py-3">
+          {/* Mobile Footer - Compact */}
+          <div className="sm:hidden">
+            <div className="flex items-center justify-between gap-1 mb-1">
+              <div className="flex-1 bg-gray-50 rounded p-1 text-center">
+                <span className="text-[9px] text-gray-500 font-thai block">ทั้งหมด</span>
+                <span className="text-sm font-bold text-gray-800 font-thai">{availableOrders.length + packedOrdersCount}</span>
+              </div>
+              <div className="flex-1 bg-green-50 rounded p-1 text-center">
+                <span className="text-[9px] text-green-600 font-thai block">สแกนแล้ว</span>
+                <span className="text-sm font-bold text-green-700 font-thai">{packedOrdersCount}</span>
+              </div>
+              <div className="flex-1 bg-blue-50 rounded p-1 text-center">
+                <span className="text-[9px] text-blue-600 font-thai block">คงเหลือ</span>
+                <span className="text-sm font-bold text-blue-700 font-thai">{availableOrders.length}</span>
+              </div>
+            </div>
+            <div className="space-y-0.5">
+              {(() => {
+                const platforms = [
+                  { key: 'Shopee Thailand', label: 'Sho', color: 'bg-orange-500', textColor: 'text-orange-600' },
+                  { key: 'TikTok Shop', label: 'Tik', color: 'bg-gray-800', textColor: 'text-gray-800' },
+                  { key: 'Lazada Thailand', label: 'Laz', color: 'bg-purple-600', textColor: 'text-purple-600' },
+                ];
+                return platforms.map(p => {
+                  const packedCount = packedByPlatform[p.key] || 0;
+                  const remainingCount = availableOrders.filter(o => o.platform === p.key).length;
+                  const totalCount = packedCount + remainingCount;
+                  const percent = totalCount > 0 ? Math.round((packedCount / totalCount) * 100) : 0;
+                  return (
+                    <div key={p.key} className="flex items-center gap-1">
+                      <span className={`text-[9px] font-medium ${p.textColor} font-thai w-6 shrink-0`}>{p.label}</span>
+                      <div className="flex-1 h-2 bg-gray-200 rounded-full overflow-hidden">
+                        <div className={`h-full ${p.color} rounded-full`} style={{ width: `${percent}%` }}></div>
+                      </div>
+                      <span className="text-[9px] font-bold text-gray-600 font-thai w-12 text-right shrink-0">{packedCount}/{totalCount}</span>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+          </div>
+
+          {/* Desktop Footer */}
+          <div className="hidden sm:flex items-center gap-4 bg-gray-50 border border-gray-200 rounded-lg px-4 py-2">
             <div className="flex items-center space-x-6 shrink-0">
               <div className="flex flex-col">
                 <span className="text-xs font-medium text-gray-600 font-thai">ออเดอร์ทั้งหมด/วัน</span>
