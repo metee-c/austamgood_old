@@ -62,7 +62,7 @@ interface OrderItem {
 
 // Validation schema for the entire form
 const receiveFormSchema = z.object({
-  receive_type: z.enum(['รับสินค้าปกติ', 'รับสินค้าชำรุด', 'รับสินค้าหมดอายุ', 'รับสินค้าตีกลับ', 'รับสินค้าคืน (ไม่มีเอกสาร)'] as const),
+  receive_type: z.enum(['รับสินค้าปกติ', 'รับสินค้าชำรุด', 'รับสินค้าหมดอายุ', 'รับสินค้าตีกลับ', 'รับสินค้าคืน', 'การผลิต'] as const),
   pallet_box_option: z.enum(['ไม่สร้าง_Pallet_ID', 'สร้าง_Pallet_ID', 'สร้าง_Pallet_ID_รวม', 'สร้าง_Pallet_ID_และ_Box_ID', 'สร้าง_Pallet_ID_และ_สแกน_Pallet_ID_ภายนอก'] as const),
   pallet_calculation_method: z.enum(['ใช้จำนวนจากมาสเตอร์สินค้า', 'กำหนดจำนวนเอง'] as const),
   mixed_pallet_mode: z.boolean().default(false), // เพิ่มตัวเลือก Mixed Pallet
@@ -125,8 +125,8 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
     resolver: zodResolver(receiveFormSchema),
     defaultValues: isEditMode && editData ? {
       receive_type: editData.receive_type || 'รับสินค้าปกติ',
-      pallet_box_option: 'ไม่สร้าง_Pallet_ID',
-      pallet_calculation_method: 'ใช้จำนวนจากมาสเตอร์สินค้า',
+      pallet_box_option: editData.pallet_box_option || 'ไม่สร้าง_Pallet_ID',
+      pallet_calculation_method: editData.pallet_calculation_method || 'ใช้จำนวนจากมาสเตอร์สินค้า',
       status: editData.status || 'รอรับเข้า',
       receive_date: editData.receive_date || new Date().toISOString().split('T')[0],
       warehouse_id: editData.warehouse_id || '',
@@ -211,8 +211,9 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
 
   // Auto-set received_by from logged-in user's employee_id (FK to master_employee)
   // รอให้ employees โหลดเสร็จก่อนถึงจะ set ค่า
+  // ใช้สำหรับทั้งโหมดสร้างใหม่และโหมดแก้ไข (ถ้ายังไม่มีค่า)
   useEffect(() => {
-    if (!isEditMode && currentUser?.employee_id && employees.length > 0 && !watch('received_by')) {
+    if (currentUser?.employee_id && employees.length > 0 && !watch('received_by')) {
       // ตรวจสอบว่า employee_id ของ currentUser มีอยู่ใน employees list
       const employeeExists = employees.some(emp => emp.employee_id === currentUser.employee_id);
       if (employeeExists) {
@@ -349,7 +350,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
       'รับสินค้าชำรุด': 'Repair',
       'รับสินค้าหมดอายุ': 'Expired',
       'รับสินค้าตีกลับ': 'Return',
-      'รับสินค้าคืน (ไม่มีเอกสาร)': 'Return',
+      'รับสินค้าคืน': 'Return',
     };
     
     const defaultLocationId = defaultLocationMap[watchedType];
@@ -579,12 +580,12 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
       alert('กรุณากรอกชื่อผู้ส่ง');
       return;
     }
-    if (['รับสินค้าชำรุด', 'รับสินค้าหมดอายุ', 'รับสินค้าตีกลับ', 'รับสินค้าคืน (ไม่มีเอกสาร)'].includes(data.receive_type) && !data.customer_id) {
+    if (['รับสินค้าชำรุด', 'รับสินค้าหมดอายุ', 'รับสินค้าตีกลับ', 'รับสินค้าคืน'].includes(data.receive_type) && !data.customer_id) {
       alert('กรุณาเลือกลูกค้า');
       return;
     }
-    // Reference doc required except for "ไม่มีเอกสาร" types
-    if (!['รับสินค้าคืน (ไม่มีเอกสาร)'].includes(data.receive_type) && !data.reference_doc?.trim()) {
+    // Reference doc required except for 'รับสินค้าคืน' type (no document required)
+    if (!['รับสินค้าคืน'].includes(data.receive_type) && !data.reference_doc?.trim()) {
       alert('กรุณากรอกเลขที่เอกสารอ้างอิง');
       return;
     }
@@ -604,6 +605,8 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
           notes: normalizeOptionalString(data.notes),
           receive_images: data.receive_images,
           receive_image_names: data.receive_image_names,
+          pallet_box_option: data.pallet_box_option,
+          pallet_calculation_method: data.pallet_calculation_method,
         };
 
         const { data: result, error } = await updateReceive(editData.receive_id, updatePayload);
@@ -893,7 +896,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
           </div>
         )}
 
-        {['รับสินค้าชำรุด', 'รับสินค้าหมดอายุ', 'รับสินค้าตีกลับ', 'รับสินค้าคืน (ไม่มีเอกสาร)'].includes(type) && (
+        {['รับสินค้าชำรุด', 'รับสินค้าหมดอายุ', 'รับสินค้าตีกลับ', 'รับสินค้าคืน'].includes(type) && (
           <div>
             <label className="block text-xs font-medium text-thai-gray-700 font-thai mb-1">ลูกค้า *</label>
             <ComboBox
@@ -937,7 +940,8 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
                 <option value="รับสินค้าชำรุด">รับสินค้าชำรุด</option>
                 <option value="รับสินค้าหมดอายุ">รับสินค้าหมดอายุ</option>
                 <option value="รับสินค้าตีกลับ">รับสินค้าตีกลับ</option>
-                <option value="รับสินค้าคืน (ไม่มีเอกสาร)">รับสินค้าคืน (ไม่มีเอกสาร)</option>
+                <option value="รับสินค้าคืน">รับสินค้าคืน</option>
+                <option value="การผลิต">การผลิต</option>
               </select>
             </div>
             <div>
@@ -964,7 +968,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-thai-gray-700 font-thai mb-1">
-                {watchedType === 'รับสินค้าตีกลับ' ? 'เลขที่ออเดอร์อ้างอิง *' : `เลขที่เอกสารอ้างอิง ${watchedType !== 'รับสินค้าคืน (ไม่มีเอกสาร)' ? '*' : ''}`}
+                {watchedType === 'รับสินค้าตีกลับ' ? 'เลขที่ออเดอร์อ้างอิง *' : `เลขที่เอกสารอ้างอิง ${watchedType !== 'รับสินค้าคืน' ? '*' : ''}`}
               </label>
               {watchedType === 'รับสินค้าตีกลับ' ? (
                 // Order Selection for Customer Return
@@ -1136,7 +1140,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
           </div>
 
           {/* Image Upload Section - Only for specific receive types */}
-          {['รับสินค้าชำรุด', 'รับสินค้าหมดอายุ', 'รับสินค้าตีกลับ', 'รับสินค้าคืน (ไม่มีเอกสาร)'].includes(watchedType) && (
+          {['รับสินค้าชำรุด', 'รับสินค้าหมดอายุ', 'รับสินค้าตีกลับ', 'รับสินค้าคืน'].includes(watchedType) && (
           <div>
             <label className="block text-xs font-medium text-thai-gray-700 font-thai mb-1">รูปภาพประกอบ</label>
             <div className="space-y-3">

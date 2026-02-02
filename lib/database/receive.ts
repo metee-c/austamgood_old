@@ -684,6 +684,45 @@ export class ReceiveService {
     }
   }
 
+  // Update receive items - delete existing items and insert new ones
+  async updateReceiveItems(receiveId: number, items: Omit<ReceiveItem, 'item_id' | 'receive_id' | 'created_at' | 'updated_at'>[]): Promise<{ data: ReceiveItem[] | null; error: string | null }> {
+    try {
+      // Delete existing items for this receive
+      const { error: deleteError } = await this.supabase
+        .from('wms_receive_items')
+        .delete()
+        .eq('receive_id', receiveId);
+
+      if (deleteError) {
+        console.error('Error deleting existing receive items:', deleteError);
+        return { data: null, error: deleteError.message };
+      }
+
+      // Insert new items
+      const itemsWithReceiveId = items.map(item => ({
+        ...item,
+        receive_id: receiveId,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      }));
+
+      const { data, error: insertError } = await this.supabase
+        .from('wms_receive_items')
+        .insert(itemsWithReceiveId)
+        .select();
+
+      if (insertError) {
+        console.error('Error inserting receive items:', insertError);
+        return { data: null, error: insertError.message };
+      }
+
+      return { data, error: null };
+    } catch (err) {
+      console.error('Error updating receive items:', err);
+      return { data: null, error: 'Failed to update receive items' };
+    }
+  }
+
   // Get receive by ID
   async getReceiveById(id: number): Promise<{ data: ReceiveRecord | null; error: string | null }> {
     try {

@@ -17,7 +17,21 @@ export async function PATCH(
     const updates = await request.json();
     
     // Validate that only allowed fields are being updated
-    const allowedFields = ['status', 'notes', 'received_by'];
+    const allowedFields = [
+      'status', 
+      'notes', 
+      'received_by',
+      'receive_type',
+      'reference_doc',
+      'supplier_id',
+      'customer_id',
+      'warehouse_id',
+      'receive_date',
+      'receive_images',
+      'receive_image_names',
+      'pallet_box_option',
+      'pallet_calculation_method'
+    ];
     const updateData: any = {};
     
     for (const [key, value] of Object.entries(updates)) {
