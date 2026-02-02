@@ -484,23 +484,60 @@ export default function PackingPage() {
 
   const loadPackedOrdersCount = async () => {
     try {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      const todayISO = today.toISOString();
+      // ✅ แก้ไข: ใช้ UTC date range เหมือน dashboard
+      const today = new Date().toISOString().split('T')[0];
+      const startOfDay = `${today}T00:00:00.000Z`;
+      const endOfDay = `${today}T23:59:59.999Z`;
+
+      // ✅ FIX: ใช้ RPC function เพื่อให้ได้ unique tracking numbers
       const { data: backupOrders, error: backupError } = await supabase
-        .from('packing_backup_orders')
-        .select('tracking_number, platform')
-        .gte('packed_at', todayISO)
-        .not('packed_at', 'is', null);
+        .rpc('get_packed_orders_count_by_date', {
+          p_start_date: startOfDay,
+          p_end_date: endOfDay
+        });
+
       if (backupError) {
-        console.warn('Could not load backup orders:', backupError);
+        console.warn('Could not load backup orders (RPC), falling back to direct query:', backupError);
+
+        // Fallback: Direct query with DISTINCT
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('packing_backup_orders')
+          .select('tracking_number, platform')
+          .gte('packed_at', startOfDay)
+          .lte('packed_at', endOfDay)
+          .not('packed_at', 'is', null);
+
+        if (fallbackError) {
+          console.error('Fallback query also failed:', fallbackError);
+          setPackedOrdersCount(0);
+          return;
+        }
+
+        // Deduplicate in JS
+        const uniqueMap = new Map<string, string>();
+        (fallbackData || []).forEach(order => {
+          if (order.tracking_number && !uniqueMap.has(order.tracking_number)) {
+            uniqueMap.set(order.tracking_number, order.platform || 'Other');
+          }
+        });
+
+        setPackedOrdersCount(uniqueMap.size);
+        const platformCounts: Record<string, number> = {};
+        uniqueMap.forEach((platform) => {
+          platformCounts[platform] = (platformCounts[platform] || 0) + 1;
+        });
+        setPackedByPlatform(platformCounts);
+        return;
       }
+
+      // Process RPC result
       const uniqueMap = new Map<string, string>();
-      (backupOrders || []).forEach(order => {
-        if (!uniqueMap.has(order.tracking_number)) {
+      (backupOrders || []).forEach((order: any) => {
+        if (order.tracking_number) {
           uniqueMap.set(order.tracking_number, order.platform || 'Other');
         }
       });
+
       setPackedOrdersCount(uniqueMap.size);
       const platformCounts: Record<string, number> = {};
       uniqueMap.forEach((platform) => {

@@ -86,6 +86,25 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
+    // 🔄 Force clear stale state
+    setStats({
+      total_orders: 0,
+      pending_orders: 0,
+      processing_orders: 0,
+      packed_orders: 0,
+      shipped_orders: 0,
+      delivered_orders: 0,
+      cancelled_orders: 0,
+      unpacked_orders: 0,
+      scanned_orders: 0,
+      unscanned_orders: 0,
+      productivity_rate: 0,
+      total_items: 0,
+      packed_items: 0
+    })
+    setPlatformStats([])
+    setShippingStats([])
+
     fetchDashboardData()
   }, [selectedDate])
 
@@ -234,50 +253,110 @@ export default function DashboardPage() {
       const startOfDay = `${selectedDate}T00:00:00.000Z`
       const endOfDay = `${selectedDate}T23:59:59.999Z`
 
-      // Query orders by created_at (for pending/processing orders)
-      const [ordersRes, backupRes] = await Promise.all([
+      // 🔍 DEBUG: Log query parameters
+      console.log('📅 [Dashboard] Fetching data for date:', selectedDate)
+      console.log('📅 [Dashboard] Date range:', { startOfDay, endOfDay })
+      console.log('🔄 [Dashboard] Code version: 3.0 - FINAL FIX (Use RPC data directly)')
+
+      // ✅ FIX: ใช้ RPC function เพื่อดึง unique packed orders
+      const [ordersRes, packedOrdersRes] = await Promise.all([
+        // Query pending/processing orders
         supabase
           .from('packing_orders')
           .select('*')
           .gte('created_at', startOfDay)
           .lte('created_at', endOfDay),
-        // Fetch all backup orders and filter in JS (more reliable)
+        // Query unique packed orders using RPC
         supabase
-          .from('packing_backup_orders')
-          .select('*')
+          .rpc('get_packed_orders_count_by_date', {
+            p_start_date: startOfDay,
+            p_end_date: endOfDay
+          })
       ])
 
       if (ordersRes.error) throw ordersRes.error
-      if (backupRes.error) throw backupRes.error
 
       const ordersData = ordersRes.data || []
-      const backupData = backupRes.data || []
-      
-      // Filter backup orders to include if either created_at or packed_at is within date range
-      const filteredBackupData = backupData.filter(order => {
-        const createdAt = order.created_at ? new Date(order.created_at) : null
-        const packedAt = order.packed_at ? new Date(order.packed_at) : null
-        const startDate = new Date(startOfDay)
-        const endDate = new Date(endOfDay)
-        
-        const createdInRange = createdAt && createdAt >= startDate && createdAt <= endDate
-        const packedInRange = packedAt && packedAt >= startDate && packedAt <= endDate
-        
-        return createdInRange || packedInRange
-      })
-      
-      const allOrders = [...ordersData, ...filteredBackupData]
+      let packedOrdersData: any[] = []
 
+      // ✅ Handle RPC error with fallback
+      if (packedOrdersRes.error) {
+        console.warn('RPC failed, using fallback query for dashboard:', packedOrdersRes.error)
+
+        // Fallback: Direct query with JS deduplication
+        const { data: backupData, error: backupError } = await supabase
+          .from('packing_backup_orders')
+          .select('*')
+          .gte('packed_at', startOfDay)
+          .lte('packed_at', endOfDay)
+          .not('packed_at', 'is', null)
+
+        if (!backupError && backupData) {
+          // Deduplicate by tracking_number
+          const uniqueBackup = new Map<string, any>()
+          backupData.forEach(order => {
+            if (order.tracking_number && !uniqueBackup.has(order.tracking_number)) {
+              uniqueBackup.set(order.tracking_number, order)
+            }
+          })
+          packedOrdersData = Array.from(uniqueBackup.values())
+        }
+      } else {
+        // ✅ RPC success: Use RPC data directly (same as main page)
+        const rpcData = packedOrdersRes.data || []
+        console.log('✅ [Dashboard] RPC returned', rpcData.length, 'unique tracking numbers')
+
+        if (rpcData.length > 0) {
+          // ✅ FIX: Trust RPC result - no need to fetch full details
+          // Just use the RPC data directly with platform info
+          const uniqueMap = new Map<string, any>()
+
+          rpcData.forEach((order: any) => {
+            if (order.tracking_number) {
+              uniqueMap.set(order.tracking_number, {
+                tracking_number: order.tracking_number,
+                platform: order.platform || 'Unknown',
+                fulfillment_status: 'delivered', // Packed orders are delivered
+                packing_status: 'completed',
+                quantity: 1, // Default quantity for stats
+                order_number: order.tracking_number,
+                id: order.tracking_number
+              })
+            }
+          })
+
+          packedOrdersData = Array.from(uniqueMap.values())
+          console.log('✅ [Dashboard] Using RPC data directly:', packedOrdersData.length, 'unique orders')
+        }
+      }
+
+      const allOrders = [...ordersData, ...packedOrdersData]
+
+      // ✅ Build unique orders map (packed orders have priority)
       const uniqueOrders = new Map<string, any>()
-      allOrders.forEach(order => {
+
+      // Add packed orders first (higher priority)
+      packedOrdersData.forEach(order => {
         const key = order.tracking_number || order.order_number || order.id
-        if (!uniqueOrders.has(key)) {
+        if (key) uniqueOrders.set(key, order)
+      })
+
+      // Add pending orders if not already packed
+      ordersData.forEach(order => {
+        const key = order.tracking_number || order.order_number || order.id
+        if (key && !uniqueOrders.has(key)) {
           uniqueOrders.set(key, order)
         }
       })
 
       const uniqueOrdersArray = Array.from(uniqueOrders.values())
       const total_orders = uniqueOrdersArray.length
+
+      // 🔍 DEBUG: Log order counts
+      console.log('📊 [Dashboard] Total unique orders:', total_orders)
+      console.log('📊 [Dashboard] From packing_orders:', ordersData.length)
+      console.log('📊 [Dashboard] From packed orders (unique):', packedOrdersData.length)
+
       const pending_orders = uniqueOrdersArray.filter(o => o.fulfillment_status === 'pending').length
       const processing_orders = uniqueOrdersArray.filter(o => o.fulfillment_status === 'processing').length
       const packed_orders_total = uniqueOrdersArray.filter(o => o.fulfillment_status === 'packed').length
@@ -333,6 +412,9 @@ export default function DashboardPage() {
         }))
         .sort((a, b) => b.total_orders - a.total_orders)
 
+      // 🔍 DEBUG: Log platform stats
+      console.log('📊 [Dashboard] Platform stats:', platformStatsData)
+
       setPlatformStats(platformStatsData)
 
       const shippingMap = new Map<string, number>()
@@ -355,8 +437,8 @@ export default function DashboardPage() {
         setRecentOrders([])
       }
 
-    } catch (error) {
-      console.error('Error fetching dashboard data:', error)
+    } catch (error: any) {
+      console.error('Error fetching dashboard data:', error?.message || error)
     }
     setIsLoading(false)
   }
