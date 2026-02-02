@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, Eye, AlertCircle, Check, X, AlertTriangle, Plus, ClipboardList, RefreshCw, Search, ArrowLeft, Package, MapPin, Download } from 'lucide-react';
 import { PageContainer, PageHeaderWithFilters, SearchInput, FilterSelect, PaginationBar } from '@/components/ui/page-components';
+import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
 import Table from '@/components/ui/Table';
 import { format } from 'date-fns';
@@ -658,7 +659,7 @@ function SessionDetailView({ sessionId, onBack }: { sessionId: number; onBack: (
   );
 }
 
-export default function StockCountReportPage() {
+function StockCountReportPage() {
   const [viewMode, setViewMode] = useState<'sessions' | 'items' | 'detail'>('sessions');
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
@@ -920,5 +921,24 @@ export default function StockCountReportPage() {
         <PaginationBar currentPage={itemsPage} totalItems={filteredItems.length} pageSize={itemsPageSize} onPageChange={setItemsPage} />
       </div>
     </PageContainer>
+  );
+}
+
+// Wrap with PermissionGuard
+export default function StockCountPageWithPermission() {
+  return (
+    <PermissionGuard 
+      permission="stock.count.view"
+      fallback={
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <p className="text-red-500 font-thai">คุณไม่มีสิทธิ์เข้าถึงหน้านี้</p>
+            <p className="text-gray-500 text-sm mt-2">กรุณาติดต่อผู้ดูแลระบบ</p>
+          </div>
+        </div>
+      }
+    >
+      <StockCountReportPage />
+    </PermissionGuard>
   );
 }

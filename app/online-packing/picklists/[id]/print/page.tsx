@@ -1,11 +1,9 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
-import { Loader2, Printer, ArrowLeft } from 'lucide-react';
-import Button from '@/components/ui/Button';
-import Link from 'next/link';
+import { Loader2, Printer } from 'lucide-react';
 
 interface PicklistItem {
   id: number;
@@ -34,7 +32,6 @@ const generateQRCode = (data: string) => {
 
 export default function OnlinePicklistPrintPage() {
   const params = useParams();
-  const router = useRouter();
   const picklistId = params.id as string;
   
   const [picklist, setPicklist] = useState<Picklist | null>(null);
@@ -78,28 +75,48 @@ export default function OnlinePicklistPrintPage() {
     }
   };
 
+  const getQRCodeUrl = () => {
+    if (!picklist) return '';
+    const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
+    const qrCodeData = `${baseUrl}/mobile/online-pick/${picklist.id}`;
+    return generateQRCode(qrCodeData);
+  };
+
+  const formatDate = (dateString: string) => {
+    return new Date(dateString).toLocaleDateString('th-TH', { 
+      day: '2-digit', 
+      month: '2-digit', 
+      year: '2-digit', 
+      hour: '2-digit', 
+      minute: '2-digit' 
+    });
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+      </div>
+    );
+  }
+
+  if (error || !picklist) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center text-red-500 gap-4 bg-white">
+        <p>เกิดข้อผิดพลาด: {error || 'ไม่พบข้อมูลใบหยิบ'}</p>
+      </div>
+    );
+  }
+
+  const qrCodeUrl = getQRCodeUrl();
+
   const handlePrint = () => {
     if (!picklist || !items) return;
 
     const printWindow = window.open('', '_blank');
     if (!printWindow) return;
 
-    const htmlContent = generatePrintHTML(picklist, items);
-    printWindow.document.write(htmlContent);
-    printWindow.document.close();
-    printWindow.focus();
-    
-    setTimeout(() => {
-      printWindow.print();
-    }, 250);
-  };
-
-  const generatePrintHTML = (picklist: Picklist, items: PicklistItem[]) => {
-    const baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
-    const qrCodeData = `${baseUrl}/mobile/online-pick/${picklist.id}`;
-    const qrCodeUrl = generateQRCode(qrCodeData);
-
-    return `
+    const htmlContent = `
       <!DOCTYPE html>
       <html>
         <head>
@@ -202,18 +219,10 @@ export default function OnlinePicklistPrintPage() {
               color: #374151;
               text-align: center;
             }
-            .text-center {
-              text-align: center;
-            }
-            .text-right {
-              text-align: right;
-            }
-            .font-bold {
-              font-weight: bold;
-            }
-            .font-mono {
-              font-family: monospace;
-            }
+            .text-center { text-align: center; }
+            .text-right { text-align: right; }
+            .font-bold { font-weight: bold; }
+            .font-mono { font-family: monospace; }
             .qty-cell {
               font-size: 16px;
               font-weight: bold;
@@ -223,18 +232,14 @@ export default function OnlinePicklistPrintPage() {
               font-size: 20px;
               text-align: center;
             }
-            .footer-row {
-              background: #f3f4f6;
-            }
+            .footer-row { background: #f3f4f6; }
             .signatures {
               display: grid;
               grid-template-columns: 1fr 1fr;
               gap: 40px;
               margin-top: 30px;
             }
-            .signature-box {
-              text-align: center;
-            }
+            .signature-box { text-align: center; }
             .signature-line {
               border-top: 1px solid #9ca3af;
               margin-top: 50px;
@@ -252,7 +257,6 @@ export default function OnlinePicklistPrintPage() {
         </head>
         <body>
           <div class="container">
-            <!-- Header -->
             <div class="header">
               <div class="header-content">
                 <div class="header-left">
@@ -261,14 +265,13 @@ export default function OnlinePicklistPrintPage() {
                   </div>
                   <div class="title-section">
                     <div class="title">ใบหยิบสินค้าออนไลน์</div>
-                    <div class="subtitle">${picklist.picklist_code} | ${new Date(picklist.created_at).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })}</div>
+                    <div class="subtitle">${picklist.picklist_code} | ${formatDate(picklist.created_at)}</div>
                   </div>
                 </div>
                 <div class="platform-badge">🛒 ${picklist.platform}</div>
               </div>
             </div>
 
-            <!-- Summary -->
             <div class="summary">
               <div>
                 <span style="font-weight: 600;">รายการสินค้าทั้งหมด:</span> ${picklist.total_lines} รายการ
@@ -277,7 +280,6 @@ export default function OnlinePicklistPrintPage() {
               <div style="color: #059669; font-weight: 600;">ปลายทาง: E-Commerce</div>
             </div>
 
-            <!-- Items Table -->
             <table>
               <thead>
                 <tr>
@@ -308,7 +310,6 @@ export default function OnlinePicklistPrintPage() {
               </tfoot>
             </table>
 
-            <!-- Signatures -->
             <div class="signatures">
               <div class="signature-box">
                 <div class="signature-line">
@@ -337,90 +338,117 @@ export default function OnlinePicklistPrintPage() {
         </body>
       </html>
     `;
+
+    printWindow.document.write(htmlContent);
+    printWindow.document.close();
+    printWindow.focus();
+    
+    setTimeout(() => {
+      printWindow.print();
+    }, 500);
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-primary-500" />
-      </div>
-    );
-  }
-
-  if (error || !picklist) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center text-red-500 gap-4">
-        <p>เกิดข้อผิดพลาด: {error || 'ไม่พบข้อมูลใบหยิบ'}</p>
-        <Link href="/online-packing/picklists">
-          <Button variant="outline">กลับหน้ารายการ</Button>
-        </Link>
-      </div>
-    );
-  }
-
+  // Render HTML directly for printing (like /receiving/picklists)
   return (
-    <div className="min-h-screen bg-gray-100 p-6">
-      <div className="max-w-2xl mx-auto bg-white rounded-lg shadow-md p-6">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h1 className="text-xl font-bold text-gray-800">ใบหยิบสินค้าออนไลน์</h1>
-            <p className="text-sm text-gray-500 font-mono">{picklist.picklist_code}</p>
+    <div className="bg-white min-h-screen p-5 font-thai text-xs print:p-0">
+      
+      {/* Print Button - hidden when printing */}
+      <div className="print:hidden mb-4 flex justify-end">
+        <button
+          onClick={handlePrint}
+          className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium text-sm"
+        >
+          <Printer className="w-4 h-4" />
+          พิมพ์
+        </button>
+      </div>
+
+      {/* Header */}
+      <div className="bg-gray-50 border border-gray-200 rounded p-3 mb-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="bg-white border border-gray-300 rounded p-1">
+              <img src={qrCodeUrl} alt="QR" width="80" height="80" />
+            </div>
+            <div className="border-l-2 border-blue-500 pl-3">
+              <div className="text-lg font-bold text-blue-900">ใบหยิบสินค้าออนไลน์</div>
+              <div className="font-mono text-gray-600 text-xs mt-1">
+                {picklist.picklist_code} | {formatDate(picklist.created_at)}
+              </div>
+            </div>
           </div>
-          <span className="px-3 py-1 bg-orange-100 text-orange-800 rounded-full text-sm font-medium">
+          <div className="bg-orange-100 border border-orange-400 text-orange-600 px-3 py-1 rounded font-bold text-sm">
             🛒 {picklist.platform}
-          </span>
-        </div>
-
-        <div className="grid grid-cols-3 gap-4 mb-6 text-sm">
-          <div className="bg-gray-50 p-3 rounded">
-            <p className="text-gray-500">รายการ</p>
-            <p className="font-bold text-lg">{picklist.total_lines}</p>
-          </div>
-          <div className="bg-gray-50 p-3 rounded">
-            <p className="text-gray-500">จำนวนชิ้น</p>
-            <p className="font-bold text-lg text-primary-600">{picklist.total_quantity}</p>
-          </div>
-          <div className="bg-gray-50 p-3 rounded">
-            <p className="text-gray-500">สถานะ</p>
-            <p className="font-bold text-lg">{picklist.status}</p>
           </div>
         </div>
+      </div>
 
-        <div className="border rounded-lg overflow-hidden mb-6">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr>
-                <th className="px-3 py-2 text-left">#</th>
-                <th className="px-3 py-2 text-left">รหัสสินค้า</th>
-                <th className="px-3 py-2 text-left">ชื่อสินค้า</th>
-                <th className="px-3 py-2 text-center">จำนวน</th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((item, index) => (
-                <tr key={item.id} className="border-t">
-                  <td className="px-3 py-2 text-gray-500">{index + 1}</td>
-                  <td className="px-3 py-2 font-mono text-xs">{item.sku_id}</td>
-                  <td className="px-3 py-2">{item.sku_name || '-'}</td>
-                  <td className="px-3 py-2 text-center font-bold">{item.quantity_to_pick}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {/* Summary */}
+      <div className="bg-blue-50 border border-blue-300 rounded p-2 mb-4 flex justify-between text-xs">
+        <div>
+          <span className="font-semibold">รายการสินค้าทั้งหมด:</span> {picklist.total_lines} รายการ
+          <span className="ml-5"><span className="font-semibold">จำนวนรวม:</span> {picklist.total_quantity} ชิ้น</span>
         </div>
+        <div className="text-green-600 font-semibold">ปลายทาง: E-Commerce</div>
+      </div>
 
-        <div className="flex gap-3">
-          <Link href="/online-packing/picklists" className="flex-1">
-            <Button variant="outline" className="w-full">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              กลับ
-            </Button>
-          </Link>
-          <Button variant="primary" className="flex-1" onClick={handlePrint}>
-            <Printer className="w-4 h-4 mr-2" />
-            พิมพ์ใบหยิบสินค้า
-          </Button>
+      {/* Items Table */}
+      <table className="w-full border-collapse border-2 border-gray-400 mb-4 text-xs">
+        <thead className="bg-gray-200">
+          <tr>
+            <th className="border border-gray-300 p-2 text-center w-[5%]">#</th>
+            <th className="border border-gray-300 p-2 text-center w-[20%]">รหัสสินค้า</th>
+            <th className="border border-gray-300 p-2 text-left">ชื่อสินค้า</th>
+            <th className="border border-gray-300 p-2 text-center w-[12%]">จำนวน</th>
+            <th className="border border-gray-300 p-2 text-center w-[10%]">เช็ค</th>
+          </tr>
+        </thead>
+        <tbody>
+          {items.map((item, index) => (
+            <tr key={item.id}>
+              <td className="border border-gray-300 p-2 text-center">{index + 1}</td>
+              <td className="border border-gray-300 p-2 font-mono">{item.sku_id}</td>
+              <td className="border border-gray-300 p-2">{item.sku_name || '-'}</td>
+              <td className="border border-gray-300 p-2 text-center text-base font-bold">{item.quantity_to_pick}</td>
+              <td className="border border-gray-300 p-2 text-center text-xl">☐</td>
+            </tr>
+          ))}
+        </tbody>
+        <tfoot>
+          <tr className="bg-gray-100">
+            <td colSpan={3} className="border border-gray-300 p-2 text-right font-bold">รวมทั้งหมด</td>
+            <td className="border border-gray-300 p-2 text-center text-base font-bold">{picklist.total_quantity}</td>
+            <td className="border border-gray-300 p-2"></td>
+          </tr>
+        </tfoot>
+      </table>
+
+      {/* Signatures */}
+      <div className="grid grid-cols-2 gap-10 mt-8">
+        <div className="text-center">
+          <div className="border-t border-gray-400 mt-12 pt-2">
+            <div>ผู้หยิบสินค้า</div>
+            <div className="text-[10px] text-gray-500 mt-1">วันที่: _______________</div>
+          </div>
         </div>
+        <div className="text-center">
+          <div className="border-t border-gray-400 mt-12 pt-2">
+            <div>ผู้ตรวจสอบ</div>
+            <div className="text-[10px] text-gray-500 mt-1">วันที่: _______________</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Notes */}
+      {picklist.notes && (
+        <div className="mt-4 p-2 bg-yellow-50 border border-yellow-400 rounded text-xs">
+          <strong>หมายเหตุ:</strong> {picklist.notes}
+        </div>
+      )}
+
+      {/* Footer */}
+      <div className="mt-5 pt-2 border-t border-gray-300 text-[10px] text-gray-500 text-center">
+        เอกสารนี้สร้างโดยระบบอัตโนมัติ | พิมพ์เมื่อ: {new Date().toLocaleString('th-TH')}
       </div>
     </div>
   );
