@@ -1,6 +1,6 @@
 // API route for user management
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentSession } from '@/lib/auth';
+import { getUserFromToken } from '@/lib/auth/simple-auth';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { logAuditEntry } from '@/lib/auth/audit';
 import { getClientIP } from '@/lib/auth/middleware';
@@ -12,10 +12,19 @@ import { hashPassword } from '@/lib/auth/password';
  */
 export async function GET(request: NextRequest) {
   try {
-    // Get current session
-    const sessionResult = await getCurrentSession();
+    // Get current user from JWT token
+    const token = request.cookies.get('auth_token')?.value;
     
-    if (!sessionResult.success || !sessionResult.session) {
+    if (!token) {
+      return NextResponse.json(
+        { error: 'ไม่ได้เข้าสู่ระบบ' },
+        { status: 401 }
+      );
+    }
+
+    const authResult = await getUserFromToken(token);
+    
+    if (!authResult.success || !authResult.user) {
       return NextResponse.json(
         { error: 'ไม่ได้เข้าสู่ระบบ' },
         { status: 401 }
@@ -120,10 +129,19 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   try {
-    // Get current session
-    const sessionResult = await getCurrentSession();
+    // Get current user from JWT token
+    const token = request.cookies.get('auth_token')?.value;
     
-    if (!sessionResult.success || !sessionResult.session) {
+    if (!token) {
+      return NextResponse.json(
+        { error: 'ไม่ได้เข้าสู่ระบบ' },
+        { status: 401 }
+      );
+    }
+
+    const authResult = await getUserFromToken(token);
+    
+    if (!authResult.success || !authResult.user) {
       return NextResponse.json(
         { error: 'ไม่ได้เข้าสู่ระบบ' },
         { status: 401 }
@@ -211,7 +229,7 @@ export async function POST(request: NextRequest) {
         force_password_change: force_password_change !== undefined ? force_password_change : false,
         email_verified: email_verified !== undefined ? email_verified : true,
         remarks,
-        created_by: sessionResult.session.user_id,
+        created_by: authResult.user.user_id,
         created_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
@@ -228,7 +246,7 @@ export async function POST(request: NextRequest) {
 
     // Log the action
     await logAuditEntry({
-      user_id: sessionResult.session.user_id,
+      user_id: authResult.user.user_id,
       action: 'USER_CREATE',
       entity_type: 'USER',
       entity_id: newUser.user_id.toString(),

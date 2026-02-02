@@ -1,6 +1,6 @@
 // API route for individual user operations
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentSession } from '@/lib/auth';
+import { getUserFromToken } from '@/lib/auth/simple-auth';
 import { createServiceRoleClient, createClient } from '@/lib/supabase/server';
 import { logAuditEntry } from '@/lib/auth/audit';
 import { getClientIP } from '@/lib/auth/middleware';
@@ -14,13 +14,13 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const sessionResult = await getCurrentSession();
-    
-    if (!sessionResult.success || !sessionResult.session) {
-      return NextResponse.json(
-        { error: 'ไม่ได้เข้าสู่ระบบ' },
-        { status: 401 }
-      );
+    const token = request.cookies.get('auth_token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'ไม่ได้เข้าสู่ระบบ' }, { status: 401 });
+    }
+    const authResult = await getUserFromToken(token);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json({ error: 'ไม่ได้เข้าสู่ระบบ' }, { status: 401 });
     }
 
     const { id } = await params;
@@ -106,13 +106,13 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const sessionResult = await getCurrentSession();
-    
-    if (!sessionResult.success || !sessionResult.session) {
-      return NextResponse.json(
-        { error: 'ไม่ได้เข้าสู่ระบบ' },
-        { status: 401 }
-      );
+    const token = request.cookies.get('auth_token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'ไม่ได้เข้าสู่ระบบ' }, { status: 401 });
+    }
+    const authResult = await getUserFromToken(token);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json({ error: 'ไม่ได้เข้าสู่ระบบ' }, { status: 401 });
     }
 
     const { id } = await params;
@@ -202,7 +202,7 @@ export async function PATCH(
 
     // Log the action
     await logAuditEntry({
-      user_id: sessionResult.session.user_id,
+      user_id: authResult.user.user_id,
       action: 'USER_UPDATE',
       entity_type: 'USER',
       entity_id: userId.toString(),
@@ -234,13 +234,13 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const sessionResult = await getCurrentSession();
-
-    if (!sessionResult.success || !sessionResult.session) {
-      return NextResponse.json(
-        { error: 'ไม่ได้เข้าสู่ระบบ' },
-        { status: 401 }
-      );
+    const token = request.cookies.get('auth_token')?.value;
+    if (!token) {
+      return NextResponse.json({ error: 'ไม่ได้เข้าสู่ระบบ' }, { status: 401 });
+    }
+    const authResult = await getUserFromToken(token);
+    if (!authResult.success || !authResult.user) {
+      return NextResponse.json({ error: 'ไม่ได้เข้าสู่ระบบ' }, { status: 401 });
     }
 
     const { id } = await params;
@@ -254,7 +254,7 @@ export async function DELETE(
     }
 
     // Prevent self-deletion
-    if (userId === sessionResult.session.user_id) {
+    if (userId === authResult.user.user_id) {
       return NextResponse.json(
         { error: 'ไม่สามารถลบผู้ใช้งานของตัวเองได้' },
         { status: 400 }
@@ -279,7 +279,7 @@ export async function DELETE(
 
     // Log the action
     await logAuditEntry({
-      user_id: sessionResult.session.user_id,
+      user_id: authResult.user.user_id,
       action: 'USER_DELETE',
       entity_type: 'USER',
       entity_id: userId.toString(),
