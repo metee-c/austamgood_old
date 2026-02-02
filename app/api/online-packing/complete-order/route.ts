@@ -35,12 +35,28 @@ export async function POST(request: NextRequest) {
 
     for (const item of items) {
       try {
-        // Get SKU info for qty_per_pack
-        const { data: skuData } = await supabase
+        // Lookup SKU by sku_id first, then by barcode if not found
+        let actualSkuId = item.sku_id;
+        let { data: skuData } = await supabase
           .from('master_sku')
-          .select('qty_per_pack')
+          .select('sku_id, qty_per_pack')
           .eq('sku_id', item.sku_id)
           .single();
+
+        // If not found by sku_id, try barcode lookup
+        if (!skuData) {
+          const { data: skuByBarcode } = await supabase
+            .from('master_sku')
+            .select('sku_id, qty_per_pack')
+            .eq('barcode', item.sku_id)
+            .single();
+          
+          if (skuByBarcode) {
+            skuData = skuByBarcode;
+            actualSkuId = skuByBarcode.sku_id;
+            console.log(`📦 Mapped barcode ${item.sku_id} to SKU ${actualSkuId}`);
+          }
+        }
 
         const qtyPerPack = skuData?.qty_per_pack || 1;
         const packQty = item.quantity / qtyPerPack;
@@ -51,7 +67,7 @@ export async function POST(request: NextRequest) {
           .select('balance_id, pallet_id, location_id, total_piece_qty, total_pack_qty, reserved_piece_qty, reserved_pack_qty, expiry_date, production_date')
           .eq('warehouse_id', DEFAULT_WAREHOUSE)
           .eq('location_id', SOURCE_LOCATION)
-          .eq('sku_id', item.sku_id)
+          .eq('sku_id', actualSkuId)
           .not('pallet_id', 'like', 'VIRTUAL-%')
           .order('expiry_date', { ascending: true, nullsFirst: false })
           .order('production_date', { ascending: true, nullsFirst: false })
@@ -100,7 +116,7 @@ export async function POST(request: NextRequest) {
           const { data: virtualResult, error: virtualError } = await supabase
             .rpc('create_or_update_virtual_balance', {
               p_location_id: SOURCE_LOCATION,
-              p_sku_id: item.sku_id,
+              p_sku_id: actualSkuId,
               p_warehouse_id: DEFAULT_WAREHOUSE,
               p_piece_qty: -remainingQty,
               p_pack_qty: -(remainingQty / qtyPerPack),
@@ -117,10 +133,47 @@ export async function POST(request: NextRequest) {
               is_negative: true
             });
             negativeBalanceCount++;
-            console.log(`⚠️ Created negative balance at E-Commerce: SKU=${item.sku_id}, Qty=${-remainingQty}`);
+            console.log(`⚠️ Created negative balance at E-Commerce: SKU=${actualSkuId}, Qty=${-remainingQty}`);
           } else {
-            console.error(`❌ Failed to create virtual balance for SKU ${item.sku_id}:`, virtualError);
+            console.error(`❌ Failed to create virtual balance for SKU ${actualSkuId}:`, virtualError);
           }
+        }
+
+        // Add or update balance at Dispatch location
+        const { data: existingDispatchBalance } = await supabase
+          .from('wms_inventory_balances')
+          .select('balance_id, total_piece_qty, total_pack_qty')
+          .eq('warehouse_id', DEFAULT_WAREHOUSE)
+          .eq('location_id', DESTINATION_LOCATION)
+          .eq('sku_id', actualSkuId)
+          .single();
+
+        if (existingDispatchBalance) {
+          await supabase
+            .from('wms_inventory_balances')
+            .update({
+              total_piece_qty: (existingDispatchBalance.total_piece_qty || 0) + item.quantity,
+              total_pack_qty: (existingDispatchBalance.total_pack_qty || 0) + packQty,
+              updated_at: now
+            })
+            .eq('balance_id', existingDispatchBalance.balance_id);
+        } else {
+          // Create new balance at Dispatch
+          await supabase
+            .from('wms_inventory_balances')
+            .insert({
+              warehouse_id: DEFAULT_WAREHOUSE,
+              location_id: DESTINATION_LOCATION,
+              sku_id: actualSkuId,
+              pallet_id: `DISPATCH-${actualSkuId}`,
+              total_piece_qty: item.quantity,
+              total_pack_qty: packQty,
+              reserved_piece_qty: 0,
+              reserved_pack_qty: 0,
+              created_at: now,
+              updated_at: now
+            });
+          console.log(`✅ Created new balance at ${DESTINATION_LOCATION}: SKU=${actualSkuId}, Qty=${item.quantity}`);
         }
 
         // Create inventory ledger entry for the move (E-Commerce -> Dispatch)
@@ -129,14 +182,15 @@ export async function POST(request: NextRequest) {
           .insert({
             warehouse_id: DEFAULT_WAREHOUSE,
             location_id: DESTINATION_LOCATION,
-            sku_id: item.sku_id,
-            transaction_type: 'transfer',
+            sku_id: actualSkuId,
+            transaction_type: 'online_pack',
             direction: 'in',
             piece_qty: item.quantity,
             pack_qty: packQty,
             reference_no: order_number,
-            remarks: `ย้ายสต็อกจาก ${SOURCE_LOCATION} ไป ${DESTINATION_LOCATION} - Order: ${order_number} (${tracking_number})`,
-            created_by: user?.id ? parseInt(user.id) : null
+            remarks: `แพ็คสินค้าออนไลน์ - Order: ${order_number} (${tracking_number})`,
+            created_by: user?.id ? parseInt(user.id) : null,
+            skip_balance_sync: true
           });
 
         // Also create ledger entry for the source (out from E-Commerce)
@@ -145,18 +199,20 @@ export async function POST(request: NextRequest) {
           .insert({
             warehouse_id: DEFAULT_WAREHOUSE,
             location_id: SOURCE_LOCATION,
-            sku_id: item.sku_id,
-            transaction_type: 'transfer',
+            sku_id: actualSkuId,
+            transaction_type: 'online_pack',
             direction: 'out',
-            piece_qty: -item.quantity,
-            pack_qty: -packQty,
+            piece_qty: item.quantity,
+            pack_qty: packQty,
             reference_no: order_number,
-            remarks: `ย้ายสต็อกจาก ${SOURCE_LOCATION} ไป ${DESTINATION_LOCATION} - Order: ${order_number} (${tracking_number})`,
-            created_by: user?.id ? parseInt(user.id) : null
+            remarks: `แพ็คสินค้าออนไลน์ - Order: ${order_number} (${tracking_number})`,
+            created_by: user?.id ? parseInt(user.id) : null,
+            skip_balance_sync: true
           });
 
         results.push({
-          sku_id: item.sku_id,
+          sku_id: actualSkuId,
+          original_sku: item.sku_id,
           success: true,
           qty_moved: item.quantity,
           moved_from: movedFromBalances,
@@ -168,6 +224,7 @@ export async function POST(request: NextRequest) {
         console.error(`Error processing item ${item.sku_id}:`, itemError);
         results.push({
           sku_id: item.sku_id,
+          original_sku: item.sku_id,
           success: false,
           error: itemError.message
         });

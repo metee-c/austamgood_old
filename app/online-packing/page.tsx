@@ -40,13 +40,29 @@ interface PackingOrder {
 // =====================================================
 
 const PRODUCT_BUNDLES: Record<string, Array<{ sku: string; name: string; quantity: number }>> = {
-  'CATBUNDLE': [
-    { sku: 'CAT001', name: 'อาหารแมวเม็ด 1kg', quantity: 1 },
-    { sku: 'CAT002', name: 'ขนมแมว 100g', quantity: 2 }
+  // Buzz Balanced+ SET 7kg (แตกเป็น 2x3kg + 1x1kg)
+  '8854052503703': [
+    { sku: '8854052503307', name: 'Buzz Balanced+ แมวโต Hair&Skin | 3 กก.', quantity: 2 },
+    { sku: '8854052503109', name: 'Buzz Balanced+ แมวโต Hair&Skin | 1 กก.', quantity: 1 }
   ],
-  'DOGBUNDLE': [
-    { sku: 'DOG001', name: 'อาหารหมาเม็ด 2kg', quantity: 1 },
-    { sku: 'DOG002', name: 'ขนมหมา 200g', quantity: 1 }
+  '8854052501709': [
+    { sku: '8854052501303', name: 'Buzz Balanced+ แมวโต Indoor | 3 กก.', quantity: 2 },
+    { sku: '8854052501105', name: 'Buzz Balanced+ แมวโต Indoor | 1 กก.', quantity: 1 }
+  ],
+  '8854052504700': [
+    { sku: '8854052504304', name: 'Buzz Balanced+ ลูกและแม่แมว K&P | 3 กก.', quantity: 2 },
+    { sku: '8854052504106', name: 'Buzz Balanced+ ลูกและแม่แมว K&P | 1 กก.', quantity: 1 }
+  ],
+  '8854052502706': [
+    { sku: '8854052502300', name: 'Buzz Balanced+ แมวโต Weight+ | 3 กก.', quantity: 2 },
+    { sku: '8854052502102', name: 'Buzz Balanced+ แมวโต Weight+ | 1 กก.', quantity: 1 }
+  ],
+  // Buzz Netura SET (แตกเป็น 4x2.5kg)
+  '5424052641014': [
+    { sku: '5424052641250', name: 'Buzz Netura สุนัขโต ไก่ เม็ดเล็ก | 2.5 กก.', quantity: 4 }
+  ],
+  '5424052630018': [
+    { sku: '5424052630254', name: 'Buzz Netura สุนัขโต แซลมอน เม็ดใหญ่ | 2.5 กก.', quantity: 4 }
   ]
 };
 
@@ -56,9 +72,13 @@ const PRODUCT_BUNDLES: Record<string, Array<{ sku: string; name: string; quantit
 
 const expandBundleProducts = (items: Omit<PackingOrderItem, 'id' | 'scanned_quantity' | 'is_completed'>[]): PackingOrderItem[] => {
   const expandedItems: PackingOrderItem[] = [];
+  console.log('📦 expandBundleProducts input:', items.map(i => ({ parent_sku: i.parent_sku, qty: i.quantity })));
+  console.log('📦 PRODUCT_BUNDLES keys:', Object.keys(PRODUCT_BUNDLES));
 
   items.forEach((item) => {
-    if (PRODUCT_BUNDLES[item.parent_sku]) {
+    const isBundle = PRODUCT_BUNDLES[item.parent_sku];
+    console.log(`📦 Checking SKU ${item.parent_sku}: isBundle=${!!isBundle}`);
+    if (isBundle) {
       const bundleComponents = PRODUCT_BUNDLES[item.parent_sku];
       bundleComponents.forEach((component) => {
         expandedItems.push({

@@ -90,17 +90,14 @@ interface InventoryBalance {
   related_documents?: RelatedDocument[];
 }
 
-type FlowStage = 'preparation' | 'premium' | 'dispatch' | 'bfs_staging' | 'delivery';
+type FlowStage = 'preparation' | 'premium';
 
 const InventoryBalancesPage = () => {
   const [balanceData, setBalanceData] = useState<InventoryBalance[]>([]);
   const [premiumData, setPremiumData] = useState<InventoryBalance[]>([]);
-  const [dispatchData, setDispatchData] = useState<InventoryBalance[]>([]);
-  const [bfsStagingData, setBfsStagingData] = useState<InventoryBalance[]>([]);
-  const [deliveryData, setDeliveryData] = useState<InventoryBalance[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'preparation' | 'premium' | 'dispatch' | 'bfs_staging' | 'delivery'>('preparation');
+  const [activeTab, setActiveTab] = useState<'preparation' | 'premium'>('preparation');
 
   // Expandable row state
   const [expandedSkus, setExpandedSkus] = useState<Set<string>>(new Set());
@@ -195,12 +192,6 @@ const InventoryBalancesPage = () => {
     fetchPremiumData();
   }, [showCorrectLocationOnly, selectedWarehouse]);
 
-  // Fetch dispatch/staging/delivery data once on mount
-  useEffect(() => {
-    fetchDispatchData();
-    fetchBfsStagingData();
-    fetchDeliveryData();
-  }, []);
 
   const fetchPreparationAreas = async () => {
     try {
@@ -336,32 +327,6 @@ const InventoryBalancesPage = () => {
     }
   };
 
-  const fetchDispatchData = async () => {
-    try {
-      const data = await fetchJsonWithAuth<{ data: any[] }>('/api/warehouse/dispatch-inventory');
-      setDispatchData(data.data || []);
-    } catch (err: any) {
-      console.error('❌ Error fetching dispatch data:', err);
-    }
-  };
-
-  const fetchBfsStagingData = async () => {
-    try {
-      const data = await fetchJsonWithAuth<{ data: any[] }>('/api/warehouse/bfs-staging-inventory');
-      setBfsStagingData(data.data || []);
-    } catch (err: any) {
-      console.error('❌ Error fetching BFS staging data:', err);
-    }
-  };
-
-  const fetchDeliveryData = async () => {
-    try {
-      const data = await fetchJsonWithAuth<{ data: any[] }>('/api/warehouse/delivery-inventory');
-      setDeliveryData(data.data || []);
-    } catch (err: any) {
-      console.error('❌ Error fetching delivery data:', err);
-    }
-  };
 
   const handleViewBalance = (balance: InventoryBalance) => {
     setSelectedBalance(balance);
@@ -461,24 +426,6 @@ const InventoryBalancesPage = () => {
             hasMore = false;
           }
         }
-      } else if (activeTab === 'dispatch') {
-        // Fetch from dispatch API with export flag for ALL data
-        const response = await fetch('/api/warehouse/dispatch-inventory?export=true');
-        if (!response.ok) throw new Error('Failed to fetch dispatch data');
-        const result = await response.json();
-        allData = result.data || [];
-      } else if (activeTab === 'bfs_staging') {
-        // Fetch from BFS staging API with export flag for ALL data
-        const response = await fetch('/api/warehouse/bfs-staging-inventory?export=true');
-        if (!response.ok) throw new Error('Failed to fetch BFS staging data');
-        const result = await response.json();
-        allData = result.data || [];
-      } else if (activeTab === 'delivery') {
-        // Fetch from delivery API with export flag for ALL data
-        const response = await fetch('/api/warehouse/delivery-inventory?export=true');
-        if (!response.ok) throw new Error('Failed to fetch delivery data');
-        const result = await response.json();
-        allData = result.data || [];
       }
 
       if (allData.length === 0) {
@@ -486,38 +433,16 @@ const InventoryBalancesPage = () => {
         return;
       }
 
-      // For dispatch/bfs_staging/delivery tabs: expand related_documents into separate rows (like the table display)
-      let expandedData: any[] = [];
-      if (activeTab === 'dispatch' || activeTab === 'bfs_staging' || activeTab === 'delivery') {
-        for (const item of allData) {
-          if (item.related_documents && item.related_documents.length > 0) {
-            // Create a row for each related document
-            for (const doc of item.related_documents) {
-              expandedData.push({
-                ...item,
-                _document: doc
-              });
-            }
-          } else {
-            // No documents, add single row
-            expandedData.push(item);
-          }
-        }
-      } else {
-        expandedData = allData;
-      }
+      let expandedData: any[] = allData;
 
       // Transform data for Excel based on tab
       const tabNames: Record<string, string> = {
         preparation: 'บ้านหยิบ',
-        premium: 'บ้านหยิบพรีเมี่ยม',
-        dispatch: 'จัดสินค้าเสร็จ (PK,FS)',
-        bfs_staging: 'จัดสินค้าเสร็จ (BFS)',
-        delivery: 'โหลดสินค้าเสร็จ'
+        premium: 'บ้านหยิบพรีเมี่ยม'
       };
 
       const excelData = expandedData.map((item: any) => {
-        const baseData: Record<string, any> = {
+        return {
           'Balance ID': item.balance_id,
           'คลัง': item.warehouse_id,
           'ตำแหน่ง': item.location_id,
@@ -535,23 +460,6 @@ const InventoryBalancesPage = () => {
           'คงเหลือชิ้น': (item.total_piece_qty || 0) - (item.reserved_piece_qty || 0),
           'อัพเดทล่าสุด': item.updated_at ? new Date(item.updated_at).toLocaleString('th-TH') : '-'
         };
-
-        // Add document info for dispatch/bfs_staging/delivery tabs (from expanded _document)
-        if ((activeTab === 'dispatch' || activeTab === 'bfs_staging' || activeTab === 'delivery') && item._document) {
-          const doc = item._document;
-          baseData['ประเภทเอกสาร'] = doc.document_type === 'picklist' ? 'ใบหยิบ' :
-            doc.document_type === 'face_sheet' ? 'ใบปะหน้า' :
-              doc.document_type === 'bonus_face_sheet' ? 'ใบปะหน้าโบนัส' : '-';
-          baseData['รหัสใบหยิบ'] = doc.picklist_code || doc.face_sheet_code || doc.bonus_face_sheet_code || '-';
-          baseData['Loadlist'] = doc.loadlist_code || '-';
-          baseData['เลขออเดอร์'] = doc.order_no || '-';
-          baseData['ร้านค้า'] = doc.shop_name || '-';
-          baseData['จังหวัด'] = doc.province || '-';
-          baseData['จำนวนหยิบ'] = doc.quantity_picked || 0;
-          baseData['วันส่ง'] = doc.delivery_date ? new Date(doc.delivery_date).toLocaleDateString('en-GB') : '-';
-        }
-
-        return baseData;
       });
 
       // Create workbook and worksheet
@@ -615,21 +523,6 @@ const InventoryBalancesPage = () => {
 
   // กรองข้อมูลตาม Tab ที่เลือก
   const getFilteredDataByTab = () => {
-    // ถ้าเป็น dispatch tab ให้ใช้ข้อมูลจาก API ที่มีบริบท
-    if (activeTab === 'dispatch') {
-      return dispatchData;
-    }
-
-    // ถ้าเป็น bfs_staging tab ให้ใช้ข้อมูลจาก API ที่มีบริบท
-    if (activeTab === 'bfs_staging') {
-      return bfsStagingData;
-    }
-
-    // ถ้าเป็น delivery tab ให้ใช้ข้อมูลจาก API ที่มีบริบท
-    if (activeTab === 'delivery') {
-      return deliveryData;
-    }
-
     // ถ้าเป็น premium tab ให้ใช้ข้อมูลจาก premiumData (already filtered by API)
     if (activeTab === 'premium') {
       return aggregateDataBySku(premiumData);
@@ -645,23 +538,7 @@ const InventoryBalancesPage = () => {
 
   const tabFilteredData = getFilteredDataByTab();
 
-  // สำหรับ dispatch, bfs_staging และ delivery tabs: แยกแต่ละ related_document ออกมาเป็นแถวแยก
-  const currentTab: FlowStage = activeTab;
-  const expandedData: InventoryBalance[] = (currentTab === 'dispatch' || currentTab === 'bfs_staging' || currentTab === 'delivery')
-    ? tabFilteredData.flatMap(item => {
-      if (item.related_documents && item.related_documents.length > 0) {
-        // แยกแต่ละ document ออกมาเป็นแถวแยก
-        return item.related_documents.map((doc: any) => ({
-          ...item,
-          related_documents: [doc], // เก็บแค่ document เดียวต่อแถว
-          _document: doc // เก็บ reference ไว้ใช้งาน
-        }));
-      } else {
-        // ถ้าไม่มี document ให้แสดงแถวเดียว
-        return [item];
-      }
-    })
-    : tabFilteredData;
+  const expandedData: InventoryBalance[] = tabFilteredData;
 
   const filteredData = expandedData.filter(item => {
     const searchLower = searchTerm.toLowerCase();
@@ -709,18 +586,8 @@ const InventoryBalancesPage = () => {
     const matchesDateTo = !advancedFilters.date_to ||
       (item.production_date && item.production_date <= advancedFilters.date_to);
 
-    // Document filters (for dispatch/bfs_staging/delivery tabs)
-    const relatedDoc = item.related_documents?.[0];
-    const matchesDocType = !advancedFilters.document_type ||
-      relatedDoc?.document_type === advancedFilters.document_type;
-    const matchesOrderNo = !advancedFilters.order_no ||
-      relatedDoc?.order_no?.toLowerCase().includes(advancedFilters.order_no.toLowerCase());
-    const matchesShopName = !advancedFilters.shop_name ||
-      relatedDoc?.shop_name?.toLowerCase().includes(advancedFilters.shop_name.toLowerCase());
-
     return matchesSearch && matchesWarehouse && matchesLowStock && matchesExpiring && matchesZeroBalance &&
-      matchesSku && matchesLocation && matchesPallet && matchesLotNo && matchesDateFrom && matchesDateTo &&
-      matchesDocType && matchesOrderNo && matchesShopName;
+      matchesSku && matchesLocation && matchesPallet && matchesLotNo && matchesDateFrom && matchesDateTo;
   }).sort((a, b) => {
     // เรียงตามคอลัมน์ที่เลือก
     if (sortColumn === 'picklist_code') {
@@ -744,18 +611,6 @@ const InventoryBalancesPage = () => {
     }
   });
 
-  // Debug log final result
-  if (activeTab === 'dispatch') {
-    console.log('✅ Final filtered data for dispatch:', {
-      tabFilteredCount: tabFilteredData.length,
-      finalFilteredCount: filteredData.length,
-      items: filteredData.map(item => ({
-        balance_id: item.balance_id,
-        sku_id: item.sku_id,
-        location_id: item.location_id
-      }))
-    });
-  }
 
   // นับจำนวนสินค้าในแต่ละ Tab (นับจากข้อมูลต้นฉบับก่อนแยกแถว)
   const preparationCount = balanceData.filter(item =>
@@ -766,17 +621,6 @@ const InventoryBalancesPage = () => {
 
   const premiumCount = premiumData.reduce((sum, item) => sum + item.total_piece_qty, 0);
 
-  const dispatchCount = tabFilteredData.length > 0 && activeTab === 'dispatch'
-    ? tabFilteredData.reduce((sum, item) => sum + item.total_piece_qty, 0)
-    : dispatchData.reduce((sum, item) => sum + item.total_piece_qty, 0);
-
-  const bfsStagingCount = tabFilteredData.length > 0 && activeTab === 'bfs_staging'
-    ? tabFilteredData.reduce((sum, item) => sum + item.total_piece_qty, 0)
-    : bfsStagingData.reduce((sum, item) => sum + item.total_piece_qty, 0);
-
-  const deliveryCount = tabFilteredData.length > 0 && activeTab === 'delivery'
-    ? tabFilteredData.reduce((sum, item) => sum + item.total_piece_qty, 0)
-    : deliveryData.reduce((sum, item) => sum + item.total_piece_qty, 0);
 
   return (
     <div className="h-[calc(100vh-3.25rem)] bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
@@ -887,9 +731,6 @@ const InventoryBalancesPage = () => {
               onClick={() => {
                 fetchBalanceData();
                 fetchPremiumData();
-                fetchDispatchData();
-                fetchBfsStagingData();
-                fetchDeliveryData();
               }}
               disabled={loading}
               className="text-xs py-1 px-2"
@@ -988,53 +829,8 @@ const InventoryBalancesPage = () => {
                 />
               </div>
 
-              {/* Document Type - only for dispatch/bfs_staging/delivery tabs */}
-              {(activeTab === 'dispatch' || activeTab === 'bfs_staging' || activeTab === 'delivery') && (
-                <div>
-                  <label className="block text-xs font-medium text-thai-gray-700 mb-1 font-thai">ประเภทเอกสาร</label>
-                  <select
-                    value={tempAdvancedFilters.document_type || ''}
-                    onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, document_type: e.target.value || undefined }))}
-                    className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
-                  >
-                    <option value="">ทั้งหมด</option>
-                    <option value="picklist">ใบหยิบ</option>
-                    <option value="face_sheet">ใบปะหน้า</option>
-                    <option value="bonus_face_sheet">ใบปะหน้าโบนัส</option>
-                  </select>
-                </div>
-              )}
-
-              {/* Order No - only for dispatch/bfs_staging/delivery tabs */}
-              {(activeTab === 'dispatch' || activeTab === 'bfs_staging' || activeTab === 'delivery') && (
-                <div>
-                  <label className="block text-xs font-medium text-thai-gray-700 mb-1 font-thai">เลขออเดอร์</label>
-                  <input
-                    type="text"
-                    value={tempAdvancedFilters.order_no || ''}
-                    onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, order_no: e.target.value || undefined }))}
-                    placeholder="ค้นหาออเดอร์..."
-                    className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
-                  />
-                </div>
-              )}
-
-              {/* Shop Name - only for dispatch/bfs_staging/delivery tabs */}
-              {(activeTab === 'dispatch' || activeTab === 'bfs_staging' || activeTab === 'delivery') && (
-                <div>
-                  <label className="block text-xs font-medium text-thai-gray-700 mb-1 font-thai">ร้านค้า</label>
-                  <input
-                    type="text"
-                    value={tempAdvancedFilters.shop_name || ''}
-                    onChange={(e) => setTempAdvancedFilters(prev => ({ ...prev, shop_name: e.target.value || undefined }))}
-                    placeholder="ค้นหาร้านค้า..."
-                    className="w-full px-2 py-1.5 border border-gray-200 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-primary-500"
-                  />
-                </div>
-              )}
-
               {/* Buttons */}
-              <div className={`flex items-end gap-2 ${(activeTab === 'dispatch' || activeTab === 'bfs_staging' || activeTab === 'delivery') ? 'col-span-3' : 'col-span-6'}`}>
+              <div className="flex items-end gap-2 col-span-6">
                 <Button variant="primary" size="sm" onClick={applyFilters} className="text-xs">
                   ใช้ตัวกรอง
                 </Button>
@@ -1074,56 +870,13 @@ const InventoryBalancesPage = () => {
               {premiumCount.toLocaleString()}
             </span>
           </button>
-          <button
-            onClick={() => setActiveTab('dispatch')}
-            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded font-thai font-medium transition-all text-xs ${activeTab === 'dispatch'
-              ? 'bg-green-500 text-white shadow-sm'
-              : 'bg-white text-thai-gray-600 hover:bg-green-50 border border-thai-gray-200'
-              }`}
-          >
-            <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>จัดสินค้าเสร็จ (PK,FS)</span>
-            <span className={`text-[10px] font-semibold ${activeTab === 'dispatch' ? 'text-green-100' : 'text-thai-gray-500'}`}>
-              {dispatchCount.toLocaleString()}
-            </span>
-          </button>
-          <button
-            onClick={() => setActiveTab('bfs_staging')}
-            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded font-thai font-medium transition-all text-xs ${activeTab === 'bfs_staging'
-              ? 'bg-teal-500 text-white shadow-sm'
-              : 'bg-white text-thai-gray-600 hover:bg-teal-50 border border-thai-gray-200'
-              }`}
-          >
-            <Package className="w-3.5 h-3.5" />
-            <span>จัดสินค้าเสร็จ (BFS)</span>
-            <span className={`text-[10px] font-semibold ${activeTab === 'bfs_staging' ? 'text-teal-100' : 'text-thai-gray-500'}`}>
-              {bfsStagingCount.toLocaleString()}
-            </span>
-          </button>
-          <button
-            onClick={() => setActiveTab('delivery')}
-            className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded font-thai font-medium transition-all text-xs ${activeTab === 'delivery'
-              ? 'bg-purple-500 text-white shadow-sm'
-              : 'bg-white text-thai-gray-600 hover:bg-purple-50 border border-thai-gray-200'
-              }`}
-          >
-            <Truck className="w-3.5 h-3.5" />
-            <span>โหลดสินค้าเสร็จ</span>
-            <span className={`text-[10px] font-semibold ${activeTab === 'delivery' ? 'text-purple-100' : 'text-thai-gray-500'}`}>
-              {deliveryCount.toLocaleString()}
-            </span>
-          </button>
         </div>
 
 
 
         {/* Data Table */}
         <div className="flex-1 min-h-0 flex flex-col">
-          {activeTab === 'dispatch' ? (
-            <PreparedDocumentsTable warehouseId={selectedWarehouse === 'all' ? 'WH001' : selectedWarehouse} />
-          ) : activeTab === 'bfs_staging' ? (
-            <PreparedDocumentsTable warehouseId={selectedWarehouse === 'all' ? 'WH001' : selectedWarehouse} isBfsStaging={true} />
-          ) : (
+          {(
             <div className="w-full flex-1 bg-white border border-gray-200 rounded-lg shadow-sm flex flex-col overflow-hidden">
               {loading ? (
                 <div className="h-full flex flex-col items-center justify-center text-thai-gray-500 gap-2">
@@ -1254,56 +1007,6 @@ const InventoryBalancesPage = () => {
                         <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ID</th>
                         <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสสินค้า</th>
                         <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชื่อสินค้า</th>
-                        {(activeTab as string) === 'dispatch' && (
-                          <>
-                            <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">ประเภท</th>
-                            <th
-                              className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50 cursor-pointer hover:bg-blue-100 transition-colors select-none"
-                              onClick={() => handleSort('picklist_code')}
-                            >
-                              <div className="flex items-center gap-1">
-                                <span>ใบหยิบ</span>
-                                {sortColumn === 'picklist_code' ? (
-                                  sortDirection === 'desc' ? (
-                                    <ArrowDown className="w-3 h-3 text-blue-600" />
-                                  ) : (
-                                    <ArrowUp className="w-3 h-3 text-blue-600" />
-                                  )
-                                ) : (
-                                  <ArrowUpDown className="w-3 h-3 text-gray-400" />
-                                )}
-                              </div>
-                            </th>
-                            <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">เลขออเดอร์</th>
-                            <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-blue-50">ร้านค้า</th>
-                          </>
-                        )}
-                        {(activeTab as string) === 'delivery' && (
-                          <>
-                            <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">เลขแผนส่ง</th>
-                            <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">คันที่</th>
-                            <th
-                              className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50 cursor-pointer hover:bg-purple-100 transition-colors select-none"
-                              onClick={() => handleSort('picklist_code')}
-                            >
-                              <div className="flex items-center gap-1">
-                                <span>ใบหยิบ</span>
-                                {sortColumn === 'picklist_code' ? (
-                                  sortDirection === 'desc' ? (
-                                    <ArrowDown className="w-3 h-3 text-purple-600" />
-                                  ) : (
-                                    <ArrowUp className="w-3 h-3 text-purple-600" />
-                                  )
-                                ) : (
-                                  <ArrowUpDown className="w-3 h-3 text-gray-400" />
-                                )}
-                              </div>
-                            </th>
-                            <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">ใบโหลด</th>
-                            <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">เลขออเดอร์</th>
-                            <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-purple-50">ร้านค้า</th>
-                          </>
-                        )}
                         <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสพาเลท</th>
                         <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">คลัง</th>
                         <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">Location ID</th>
@@ -1343,111 +1046,6 @@ const InventoryBalancesPage = () => {
                               {(balance as any).master_sku?.sku_name || '-'}
                             </span>
                           </td>
-                          {(activeTab as string) === 'dispatch' && (
-                            <>
-                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-blue-50/30">
-                                {balance.related_documents && balance.related_documents.length > 0 && balance.related_documents[0].document_type ? (
-                                  <span className={`text-[10px] font-thai font-medium ${balance.related_documents[0].document_type === 'picklist' ? 'text-green-600' :
-                                    balance.related_documents[0].document_type === 'face_sheet' ? 'text-purple-600' :
-                                      balance.related_documents[0].document_type === 'bonus_face_sheet' ? 'text-orange-600' :
-                                        'text-gray-500'
-                                    }`}>
-                                    {balance.related_documents[0].document_type === 'picklist' ? 'ใบหยิบ' :
-                                      balance.related_documents[0].document_type === 'face_sheet' ? 'ใบปะหน้า' :
-                                        balance.related_documents[0].document_type === 'bonus_face_sheet' ? 'ใบปะหน้าโบนัส' :
-                                          '-'}
-                                  </span>
-                                ) : (
-                                  <span className="text-gray-400 text-[10px]">-</span>
-                                )}
-                              </td>
-                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-blue-50/30">
-                                {balance.related_documents && balance.related_documents.length > 0 ? (
-                                  <span className="font-mono text-blue-700 font-semibold text-[11px]">
-                                    {balance.related_documents[0].picklist_code || balance.related_documents[0].face_sheet_no || '-'}
-                                  </span>
-                                ) : (
-                                  <span className="text-gray-400 text-[11px]">-</span>
-                                )}
-                              </td>
-                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-blue-50/30">
-                                {balance.related_documents && balance.related_documents.length > 0 ? (
-                                  <span className="font-mono text-blue-700 text-[11px]">
-                                    {balance.related_documents[0].order_no || '-'}
-                                  </span>
-                                ) : (
-                                  <span className="text-gray-400 text-[11px]">-</span>
-                                )}
-                              </td>
-                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-blue-50/30">
-                                {balance.related_documents && balance.related_documents.length > 0 ? (
-                                  <span className="text-thai-gray-700 font-thai text-[11px]">
-                                    {balance.related_documents[0].shop_name || '-'}
-                                  </span>
-                                ) : (
-                                  <span className="text-gray-400 text-[11px]">-</span>
-                                )}
-                              </td>
-                            </>
-                          )}
-                          {(activeTab as string) === 'delivery' && (
-                            <>
-                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-purple-50/30">
-                                {balance.related_documents && balance.related_documents.length > 0 ? (
-                                  <span className="font-mono text-purple-700 font-semibold text-[11px]">
-                                    {balance.related_documents[0].plan_code || '-'}
-                                  </span>
-                                ) : (
-                                  <span className="text-gray-400 text-[11px]">-</span>
-                                )}
-                              </td>
-                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-purple-50/30">
-                                {balance.related_documents && balance.related_documents.length > 0 ? (
-                                  <span className="font-mono text-purple-700 text-[11px]">
-                                    {balance.related_documents[0].trip_code || '-'}
-                                  </span>
-                                ) : (
-                                  <span className="text-gray-400 text-[11px]">-</span>
-                                )}
-                              </td>
-                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-purple-50/30">
-                                {balance.related_documents && balance.related_documents.length > 0 ? (
-                                  <span className="font-mono text-blue-700 font-semibold text-[11px]">
-                                    {balance.related_documents[0].picklist_code || balance.related_documents[0].face_sheet_code || balance.related_documents[0].bonus_face_sheet_code || '-'}
-                                  </span>
-                                ) : (
-                                  <span className="text-gray-400 text-[11px]">-</span>
-                                )}
-                              </td>
-                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-purple-50/30">
-                                {balance.related_documents && balance.related_documents.length > 0 ? (
-                                  <span className="font-mono text-green-700 font-semibold text-[11px]">
-                                    {balance.related_documents[0].loadlist_code || '-'}
-                                  </span>
-                                ) : (
-                                  <span className="text-gray-400 text-[11px]">-</span>
-                                )}
-                              </td>
-                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-purple-50/30">
-                                {balance.related_documents && balance.related_documents.length > 0 ? (
-                                  <span className="font-mono text-blue-700 text-[11px]">
-                                    {balance.related_documents[0].order_no || '-'}
-                                  </span>
-                                ) : (
-                                  <span className="text-gray-400 text-[11px]">-</span>
-                                )}
-                              </td>
-                              <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap bg-purple-50/30">
-                                {balance.related_documents && balance.related_documents.length > 0 ? (
-                                  <span className="text-thai-gray-700 font-thai text-[11px]">
-                                    {balance.related_documents[0].shop_name || '-'}
-                                  </span>
-                                ) : (
-                                  <span className="text-gray-400 text-[11px]">-</span>
-                                )}
-                              </td>
-                            </>
-                          )}
                           <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap">
                             <div>
                               {balance.pallet_id_external && (
@@ -1477,16 +1075,12 @@ const InventoryBalancesPage = () => {
                           </td>
                           <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
                             <span className="font-bold text-green-600">
-                              {(activeTab === 'delivery' && balance.related_documents?.[0]?.quantity_picked != null)
-                                ? balance.related_documents[0].quantity_picked.toLocaleString()
-                                : balance.total_pack_qty?.toLocaleString()}
+                              {balance.total_pack_qty?.toLocaleString()}
                             </span>
                           </td>
                           <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
                             <span className="font-bold text-green-600">
-                              {(activeTab === 'delivery' && balance.related_documents?.[0]?.quantity_picked != null)
-                                ? balance.related_documents[0].quantity_picked.toLocaleString()
-                                : balance.total_piece_qty?.toLocaleString()}
+                              {balance.total_piece_qty?.toLocaleString()}
                             </span>
                           </td>
                           <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">

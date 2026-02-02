@@ -180,16 +180,22 @@ function MobilePickPage() {
         allTasks.push(...filteredBonusFaceSheets.map((f: FaceSheet) => ({ ...f, type: 'bonus_face_sheet' as const })));
       }
 
-      // Add online picklists (ใบหยิบสินค้าออนไลน์)
+      // Add online picklists (ใบหยิบสินค้าออนไลน์) - แสดงทั้งหมดยกเว้น cancelled
       if (onlinePicklistsData.data) {
         const filteredOnlinePicklists = onlinePicklistsData.data.filter((p: OnlinePicklist) => 
-          p.status !== 'completed' && p.status !== 'cancelled'
+          p.status !== 'cancelled'
         );
         allTasks.push(...filteredOnlinePicklists.map((p: OnlinePicklist) => ({ ...p, type: 'online_picklist' as const })));
       }
 
-      // Sort by updated_at descending
-      allTasks.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+      // Sort: online_picklist first, then by updated_at descending
+      allTasks.sort((a, b) => {
+        // Online picklists always come first
+        if (a.type === 'online_picklist' && b.type !== 'online_picklist') return -1;
+        if (a.type !== 'online_picklist' && b.type === 'online_picklist') return 1;
+        // Then sort by updated_at descending
+        return new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime();
+      });
 
       setTasks(allTasks);
     } catch (error) {
@@ -227,6 +233,7 @@ function MobilePickPage() {
       return matchesSearch;
     }
   });
+  
 
   // Get status badge
   const getStatusBadge = (status: string) => {
