@@ -1,8 +1,8 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Gift as GiftIcon } from 'lucide-react';
+import { Gift as GiftIcon, Users } from 'lucide-react';
 import JsBarcode from 'jsbarcode';
 
 // =====================================================
@@ -31,6 +31,15 @@ interface PackingOrder {
   platform: string;
   sample_alert: string | null;
   items: PackingOrderItem[];
+  is_locked?: boolean;
+  locked_by_device?: string;
+}
+
+interface LockedOrder {
+  tracking_number: string;
+  locked_by_session: string;
+  locked_by_device: string | null;
+  locked_at: string;
 }
 
 
@@ -114,8 +123,34 @@ const expandBundleProducts = (items: Omit<PackingOrderItem, 'id' | 'scanned_quan
 // MAIN PACKING PAGE COMPONENT
 // =====================================================
 
+// Generate unique session ID for this browser tab
+const generateSessionId = () => {
+  if (typeof window !== 'undefined') {
+    let sessionId = sessionStorage.getItem('packing_session_id');
+    if (!sessionId) {
+      sessionId = `session_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      sessionStorage.setItem('packing_session_id', sessionId);
+    }
+    return sessionId;
+  }
+  return `session_${Date.now()}`;
+};
+
+// Get device info for display
+const getDeviceInfo = () => {
+  if (typeof window !== 'undefined') {
+    const ua = navigator.userAgent;
+    if (ua.includes('Mobile')) return 'มือถือ';
+    if (ua.includes('Tablet')) return 'แท็บเล็ต';
+    return 'คอมพิวเตอร์';
+  }
+  return 'Unknown';
+};
+
 export default function PackingPage() {
   const supabase = createClient();
+  const sessionIdRef = useRef<string>(generateSessionId());
+  const deviceInfoRef = useRef<string>(getDeviceInfo());
 
   const [isLoading, setIsLoading] = useState(true);
   const [availableOrders, setAvailableOrders] = useState<PackingOrder[]>([]);
@@ -129,17 +164,96 @@ export default function PackingPage() {
   const [isProcessingCompletion, setIsProcessingCompletion] = useState(false);
   const [orderFreebies, setOrderFreebies] = useState<string[]>([]);
   const [freebieConfirmed, setFreebieConfirmed] = useState(false);
-
+  
+  // ✅ Multi-scanner support states
+  const [lockedOrders, setLockedOrders] = useState<Map<string, LockedOrder>>(new Map());
+  const [activeScannersCount, setActiveScannersCount] = useState(0);
 
   const trackingInputRef = useRef<HTMLInputElement>(null);
   const skuInputRef = useRef<HTMLInputElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const [audioInitialized, setAudioInitialized] = useState(false);
 
+  // ✅ Load locked orders และ subscribe to real-time updates
+  const loadLockedOrders = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.rpc('get_locked_packing_orders');
+      if (!error && data) {
+        const lockMap = new Map<string, LockedOrder>();
+        data.forEach((lock: LockedOrder) => {
+          // ไม่แสดง lock ของตัวเอง
+          if (lock.locked_by_session !== sessionIdRef.current) {
+            lockMap.set(lock.tracking_number, lock);
+          }
+        });
+        setLockedOrders(lockMap);
+        setActiveScannersCount(data.length);
+      }
+    } catch (err) {
+      console.warn('Could not load locked orders:', err);
+    }
+  }, [supabase]);
+
+  // ✅ Lock order เมื่อเริ่มแพ็ค
+  const lockOrder = useCallback(async (trackingNumber: string): Promise<boolean> => {
+    try {
+      console.log('🔒 Attempting to lock order:', trackingNumber, 'Session:', sessionIdRef.current);
+      
+      const { data, error } = await supabase.rpc('lock_packing_order', {
+        p_tracking_number: trackingNumber,
+        p_session_id: sessionIdRef.current,
+        p_device_info: deviceInfoRef.current,
+        p_timeout_seconds: 300 // 5 minutes
+      });
+      
+      console.log('🔒 Lock response:', { data, error });
+      
+      if (error) {
+        console.error('Lock error:', error);
+        setScanError(`ไม่สามารถ lock order ได้: ${error.message}`);
+        playSound('error');
+        return false;
+      }
+      
+      // RPC returns array of rows
+      const result = Array.isArray(data) ? data[0] : data;
+      console.log('🔒 Lock result:', result);
+      
+      if (!result || result.success === false) {
+        const errorMsg = result?.message || 'ออเดอร์นี้กำลังถูกแพ็คโดยเครื่องอื่น';
+        setScanError(errorMsg);
+        playSound('error');
+        return false;
+      }
+      
+      console.log('🔒 Lock acquired successfully');
+      return true;
+    } catch (err) {
+      console.error('Lock order error:', err);
+      setScanError('เกิดข้อผิดพลาดในการ lock order');
+      playSound('error');
+      return false;
+    }
+  }, [supabase]);
+
+  // ✅ Release lock เมื่อเสร็จหรือยกเลิก
+  const releaseOrderLock = useCallback(async (trackingNumber: string, markCompleted: boolean = false) => {
+    try {
+      await supabase.rpc('release_packing_order_lock', {
+        p_tracking_number: trackingNumber,
+        p_session_id: sessionIdRef.current,
+        p_mark_completed: markCompleted
+      });
+    } catch (err) {
+      console.warn('Release lock error:', err);
+    }
+  }, [supabase]);
+
   // Load initial data on page load
   useEffect(() => {
     loadInitialData();
     loadPackedOrdersCount();
+    loadLockedOrders();
 
     const initAudioOnClick = () => {
       initializeAudioContext();
@@ -147,27 +261,79 @@ export default function PackingPage() {
     };
 
     const handleWindowFocus = () => {
-      console.log('🔄 Window focused - refreshing freebie data');
+      console.log('🔄 Window focused - refreshing data');
       loadInitialData();
+      loadLockedOrders();
     };
 
     const handleVisibilityChange = () => {
       if (!document.hidden) {
-        console.log('🔄 Tab visible - refreshing freebie data');
+        console.log('🔄 Tab visible - refreshing data');
         loadInitialData();
+        loadLockedOrders();
       }
     };
+
+    // ✅ Real-time subscription for order locks
+    const lockChannel = supabase
+      .channel('packing_order_locks_changes')
+      .on('postgres_changes', 
+        { event: '*', schema: 'public', table: 'packing_order_locks' },
+        () => {
+          console.log('🔒 Lock changed - refreshing');
+          loadLockedOrders();
+        }
+      )
+      .subscribe();
+
+    // ✅ Real-time subscription for packing_orders changes
+    const ordersChannel = supabase
+      .channel('packing_orders_changes')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'packing_orders' },
+        () => {
+          console.log('📦 Orders changed - refreshing');
+          loadInitialData();
+        }
+      )
+      .subscribe();
+
+    // ✅ Periodic refresh every 30 seconds
+    const refreshInterval = setInterval(() => {
+      loadLockedOrders();
+    }, 30000);
 
     document.addEventListener('click', initAudioOnClick);
     window.addEventListener('focus', handleWindowFocus);
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
+    // ✅ Release lock on page unload
+    const handleBeforeUnload = () => {
+      if (currentOrder) {
+        // Use sendBeacon for reliable unload
+        navigator.sendBeacon?.('/api/online-packing/release-lock', JSON.stringify({
+          tracking_number: currentOrder.tracking_number,
+          session_id: sessionIdRef.current
+        }));
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+
     return () => {
       document.removeEventListener('click', initAudioOnClick);
       window.removeEventListener('focus', handleWindowFocus);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      lockChannel.unsubscribe();
+      ordersChannel.unsubscribe();
+      clearInterval(refreshInterval);
+      
+      // Release lock on unmount
+      if (currentOrder) {
+        releaseOrderLock(currentOrder.tracking_number);
+      }
     };
-  }, []);
+  }, [loadLockedOrders, releaseOrderLock]);
 
   useEffect(() => {
     if (currentOrder && currentOrder.items.every(item => item.is_completed) && (orderFreebies.length === 0 || freebieConfirmed)) {
@@ -353,8 +519,26 @@ export default function PackingPage() {
 
     await initializeAudioContext();
 
-    const order = availableOrders.find(o => o.tracking_number === trackingInput.trim());
+    const trackingNo = trackingInput.trim();
+    const order = availableOrders.find(o => o.tracking_number === trackingNo);
+    
     if (order) {
+      // ✅ เช็คว่า order ถูก lock โดยคนอื่นหรือไม่
+      const lockedInfo = lockedOrders.get(trackingNo);
+      if (lockedInfo) {
+        setScanError(`ออเดอร์นี้กำลังถูกแพ็คโดยเครื่องอื่น (${lockedInfo.locked_by_device || 'ไม่ทราบ'})`);
+        setTrackingInput('');
+        playSound('error');
+        return;
+      }
+      
+      // ✅ พยายาม lock order ก่อนเริ่มแพ็ค
+      const lockSuccess = await lockOrder(trackingNo);
+      if (!lockSuccess) {
+        setTrackingInput('');
+        return; // Error already set by lockOrder
+      }
+      
       setCurrentOrder(order);
       setTrackingInput('');
       setScanError('');
@@ -363,7 +547,7 @@ export default function PackingPage() {
       setTimeout(() => skuInputRef.current?.focus(), 100);
       playSound('success');
     } else {
-      setScanError(`ไม่พบออเดอร์สำหรับ Tracking No: ${trackingInput}`);
+      setScanError(`ไม่พบออเดอร์สำหรับ Tracking No: ${trackingNo}`);
       setTrackingInput('');
       playSound('error');
     }
@@ -534,6 +718,9 @@ export default function PackingPage() {
 
       await updatePackingStatus(completedOrder.id, 'completed');
       await moveOrderToBackup(completedOrder.tracking_number);
+      
+      // ✅ Release lock และ mark as completed
+      await releaseOrderLock(completedOrder.tracking_number, true);
 
       playSound('complete');
       setAvailableOrders(prev => prev.filter(o => o.tracking_number !== completedOrder.tracking_number));
@@ -588,7 +775,11 @@ export default function PackingPage() {
     }
   };
 
-  const resetInterface = () => {
+  const resetInterface = async () => {
+    // ✅ Release lock เมื่อยกเลิก
+    if (currentOrder) {
+      await releaseOrderLock(currentOrder.tracking_number, false);
+    }
     setCurrentOrder(null);
     setScanError('');
     setSkuInput('');
@@ -678,6 +869,23 @@ export default function PackingPage() {
             <div className="w-12 h-12 border-4 border-primary-500 border-t-transparent rounded-full animate-spin mx-auto mb-3"></div>
             <p className="text-base font-semibold text-gray-800 font-thai">กำลังบันทึกข้อมูลการแพ็ค...</p>
             <p className="text-xs text-gray-600 font-thai mt-1">กรุณารอสักครู่</p>
+          </div>
+        </div>
+      )}
+
+      {/* ✅ Active Scanners Indicator */}
+      {activeScannersCount > 1 && (
+        <div className="bg-blue-50 border-b border-blue-200 px-2 sm:px-4 py-1">
+          <div className="max-w-4xl mx-auto flex items-center justify-center gap-2 text-blue-700">
+            <Users className="w-4 h-4" />
+            <span className="text-xs font-medium font-thai">
+              มี {activeScannersCount} เครื่องสแกนกำลังทำงานพร้อมกัน
+            </span>
+            {lockedOrders.size > 0 && (
+              <span className="text-xs text-blue-500 font-thai">
+                ({lockedOrders.size} ออเดอร์ถูก lock)
+              </span>
+            )}
           </div>
         </div>
       )}
