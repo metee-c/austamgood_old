@@ -256,7 +256,7 @@ export default function DashboardPage() {
       // 🔍 DEBUG: Log query parameters
       console.log('📅 [Dashboard] Fetching data for date:', selectedDate)
       console.log('📅 [Dashboard] Date range:', { startOfDay, endOfDay })
-      console.log('🔄 [Dashboard] Code version: 3.0 - FINAL FIX (Use RPC data directly)')
+      console.log('🔄 [Dashboard] Code version: 3.1 - FINAL FIX + Shipping Provider')
 
       // ✅ FIX: ใช้ RPC function เพื่อดึง unique packed orders
       const [ordersRes, packedOrdersRes] = await Promise.all([
@@ -316,6 +316,7 @@ export default function DashboardPage() {
               uniqueMap.set(order.tracking_number, {
                 tracking_number: order.tracking_number,
                 platform: order.platform || 'Unknown',
+                shipping_provider: order.shipping_provider || null, // ✅ เพิ่ม shipping_provider
                 fulfillment_status: 'delivered', // Packed orders are delivered
                 packing_status: 'completed',
                 quantity: 1, // Default quantity for stats
