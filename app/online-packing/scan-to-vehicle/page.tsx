@@ -188,13 +188,33 @@ export default function ScanToVehiclePage() {
         return;
       }
 
-      const pkg = packages[0];
+      // Check if already loaded (check all packages with this tracking number)
+      const { data: allPackages, error: checkError } = await supabase
+        .from('packing_backup_orders')
+        .select('id, tracking_number, order_number, buyer_name, platform, loaded_at')
+        .eq('tracking_number', trackingNumber);
 
-      // Check if already loaded
-      if (pkg.loaded_at) {
-        setScanError(`พัสดุนี้ถูกสแกนขึ้นรถแล้วเมื่อ ${new Date(pkg.loaded_at).toLocaleTimeString('th-TH')}`);
+      if (checkError) throw checkError;
+
+      // Check if any package with this tracking number is already loaded
+      const alreadyLoaded = allPackages?.find(p => p.loaded_at);
+      if (alreadyLoaded) {
+        setScanError(`พัสดุนี้ถูกสแกนขึ้นรถแล้วเมื่อ ${new Date(alreadyLoaded.loaded_at).toLocaleTimeString('th-TH')}`);
         playSound('error');
         setIsProcessing(false);
+        // Focus back immediately
+        inputRef.current?.focus();
+        return;
+      }
+
+      // Get the first package that hasn't been loaded yet
+      const pkg = allPackages?.find(p => !p.loaded_at);
+
+      if (!pkg) {
+        setScanError(`ไม่พบพัสดุหมายเลข: ${trackingNumber}`);
+        playSound('error');
+        setIsProcessing(false);
+        inputRef.current?.focus();
         return;
       }
 
@@ -237,10 +257,10 @@ export default function ScanToVehiclePage() {
       setScanError(`เกิดข้อผิดพลาด: ${error.message}`);
       playSound('error');
     } finally {
-      // Add delay before allowing next scan
-      setTimeout(() => {
-        setIsProcessing(false);
-      }, 1500);
+      // Focus input immediately for next scan
+      inputRef.current?.focus();
+      // Quick reset for continuous scanning
+      setIsProcessing(false);
     }
   };
 
@@ -310,8 +330,8 @@ export default function ScanToVehiclePage() {
               type="text"
               value={scanInput}
               onChange={(e) => setScanInput(e.target.value)}
-              disabled={isProcessing}
-              className="w-full px-4 py-3 text-base font-mono rounded-lg border-2 transition-all duration-200 bg-white font-thai disabled:bg-gray-100 disabled:cursor-not-allowed focus:outline-none"
+              readOnly={isProcessing}
+              className="w-full px-4 py-3 text-base font-mono rounded-lg border-2 transition-all duration-200 bg-white font-thai focus:outline-none"
               style={{
                 borderColor: scanError ? '#ef4444' : scanSuccess ? '#22c55e' : '#d1d5db',
                 boxShadow: scanError ? '0 0 0 3px rgba(239, 68, 68, 0.2)' : scanSuccess ? '0 0 0 3px rgba(34, 197, 94, 0.2)' : 'none'
