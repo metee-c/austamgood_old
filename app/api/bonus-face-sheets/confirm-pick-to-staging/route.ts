@@ -254,8 +254,8 @@ async function handlePost(request: NextRequest, context: any) {
       );
     }
 
-    // 3. ดึง packages จาก matched_package_ids ที่มี storage_location
-    const { data: packages, error: pkgError } = await supabase
+    // 3. ดึง packages จาก matched_package_ids (รวมทั้งที่มีและไม่มี storage_location)
+    const { data: allPackages, error: pkgError } = await supabase
       .from('bonus_face_sheet_packages')
       .select(`
         id,
@@ -268,8 +268,7 @@ async function handlePost(request: NextRequest, context: any) {
         trip_number,
         face_sheet_id
       `)
-      .in('id', matchedPackageIds)
-      .not('storage_location', 'is', null);
+      .in('id', matchedPackageIds);
 
     if (pkgError) {
       console.error('Error fetching packages:', pkgError);
@@ -279,11 +278,44 @@ async function handlePost(request: NextRequest, context: any) {
       );
     }
 
-    if (!packages || packages.length === 0) {
+    if (!allPackages || allPackages.length === 0) {
       return NextResponse.json(
-        { success: false, error: 'ไม่พบแพ็คที่มีโลเคชั่นจัดวาง กรุณาจัดสรรโลเคชั่นก่อน' },
+        { success: false, error: 'ไม่พบแพ็คที่แมพกับใบโหลดนี้' },
         { status: 400 }
       );
+    }
+
+    // แยก packages ที่มี storage_location และไม่มี
+    const packages = allPackages.filter(p => p.storage_location && p.storage_location.trim() !== '');
+    const packagesWithoutLocation = allPackages.filter(p => !p.storage_location || p.storage_location.trim() === '');
+
+    console.log(`📦 Packages with storage_location: ${packages.length}, without: ${packagesWithoutLocation.length}`);
+
+    // ✅ FIX: ถ้าไม่มี packages ที่มี storage_location แต่มี packages ที่ไม่มี
+    // → ถือว่า stock ถูกย้ายไป staging แล้ว (หรือยังไม่ได้จัดสรร location)
+    if (packages.length === 0 && packagesWithoutLocation.length > 0) {
+      console.log('⚠️ All packages have no storage_location - assuming already moved to staging or not assigned');
+      
+      // อัปเดต loadlist bfs_confirmed_to_staging = 'yes' เพราะไม่มีอะไรต้องย้าย
+      const { error: updateLoadlistError } = await supabase
+        .from('loadlists')
+        .update({ 
+          bfs_confirmed_to_staging: 'yes',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', loadlist_id);
+
+      if (updateLoadlistError) {
+        console.error('❌ Error updating loadlist bfs_confirmed_to_staging:', updateLoadlistError);
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: 'ไม่มีสินค้าที่ต้องย้าย (อาจย้ายไปแล้วหรือยังไม่ได้จัดสรรโลเคชั่น)',
+        total_moved: 0,
+        packages_processed: 0,
+        packages_without_location: packagesWithoutLocation.length
+      });
     }
 
     console.log(`📦 Found ${packages.length} packages with storage locations from ${bonusFaceSheets.length} BFS (matched_package_ids: ${matchedPackageIds.length})`);

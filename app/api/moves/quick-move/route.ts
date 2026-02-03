@@ -280,9 +280,25 @@ export async function POST(request: NextRequest) {
     console.log('DEBUG: move.move_id =', move.move_id, 'type:', typeof move.move_id)
     console.log('DEBUG: isPartialMove =', isPartialMove, 'partial_quantities =', partial_quantities)
     
+    // ✅ FIX: ตรวจสอบว่าย้ายทั้งหมดหรือบางส่วนจริงๆ
+    // ถ้า partial_quantities เท่ากับ total_piece_qty ของทุก SKU = ย้ายทั้งหมด ไม่ใช่ partial move
+    let isActualPartialMove = isPartialMove
+    if (isPartialMove && partial_quantities) {
+      const allFullMove = balanceRecords.every(balance => {
+        const requestedQty = partial_quantities[balance.sku_id]
+        const totalQty = Number(balance.total_piece_qty) || 0
+        // ถ้าไม่ได้ระบุจำนวน หรือ จำนวนเท่ากับ total = ย้ายทั้งหมด
+        return requestedQty === undefined || requestedQty >= totalQty
+      })
+      if (allFullMove) {
+        isActualPartialMove = false
+        console.log('DEBUG: Detected full move (partial_quantities equals total), treating as regular move')
+      }
+    }
+    
     // สำหรับ partial move ต้องสร้าง pallet_id ใหม่ในรูปแบบ ORIGINAL-01, -02, ...
     let newPalletId: string | null = null
-    if (isPartialMove && pallet_id) {
+    if (isActualPartialMove && pallet_id) {
       // Generate split pallet ID based on parent pallet ID for traceability
       const { data: generatedPalletId, error: palletIdError } = await receiveService.generateSplitPalletId(pallet_id)
       if (!palletIdError && generatedPalletId) {
@@ -295,13 +311,13 @@ export async function POST(request: NextRequest) {
     
     const moveItems = balanceRecords.map(balance => {
       // ถ้าเป็น partial move ให้ใช้จำนวนที่ระบุ
-      const moveQty = isPartialMove && partial_quantities[balance.sku_id] !== undefined
+      const moveQty = isActualPartialMove && partial_quantities[balance.sku_id] !== undefined
         ? partial_quantities[balance.sku_id]
         : balance.total_piece_qty || 0
       
       // ถ้าเป็น partial move ให้ใช้ new_pallet_id และเก็บ parent_pallet_id
-      const usePalletId = isPartialMove && newPalletId ? newPalletId : balance.pallet_id
-      const parentPalletId = isPartialMove && newPalletId ? balance.pallet_id : null
+      const usePalletId = isActualPartialMove && newPalletId ? newPalletId : balance.pallet_id
+      const parentPalletId = isActualPartialMove && newPalletId ? balance.pallet_id : null
       
       return {
         move_id: move.move_id,

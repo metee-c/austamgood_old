@@ -2,7 +2,8 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Gift as GiftIcon, Users } from 'lucide-react';
+import { Gift as GiftIcon, Users, Truck } from 'lucide-react';
+import Link from 'next/link';
 import JsBarcode from 'jsbarcode';
 
 // =====================================================
@@ -930,6 +931,17 @@ export default function PackingPage() {
       {/* Scanner Section */}
       <section className="bg-white border-b border-gray-200">
         <div className="max-w-4xl mx-auto px-2 sm:px-4 py-1.5 sm:py-3">
+          {/* Header with Scan to Vehicle Button - Mobile only */}
+          <div className="flex items-center justify-between mb-2 sm:hidden">
+            <span className="text-xs text-gray-400 font-thai">สแกนแพ็คสินค้า</span>
+            <Link
+              href="/online-packing/scan-to-vehicle"
+              className="flex items-center gap-1.5 bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded-lg text-xs font-medium font-thai transition-colors"
+            >
+              <Truck className="w-3.5 h-3.5" />
+              สแกนขึ้นรถ
+            </Link>
+          </div>
           <div className="bg-white flex justify-center">
             <form onSubmit={!currentOrder ? handleTrackingSearch : handleSkuScan} className="flex flex-col sm:flex-row items-stretch sm:items-end gap-1.5 sm:gap-2 w-full max-w-2xl">
               <div className="flex-1">
@@ -940,6 +952,7 @@ export default function PackingPage() {
                   <input
                     ref={!currentOrder ? trackingInputRef : skuInputRef}
                     type="text"
+                    inputMode="none"
                     value={!currentOrder ? trackingInput : skuInput}
                     onChange={(e) => !currentOrder ? setTrackingInput(e.target.value) : setSkuInput(e.target.value)}
                     className={`w-full px-2 py-2 sm:py-2 text-sm sm:text-sm font-mono rounded border transition-all duration-300 bg-white font-thai ${
