@@ -47,46 +47,12 @@ export default function ScanToVehiclePage() {
   const [totalCount, setTotalCount] = useState(0);
   const [todayCount, setTodayCount] = useState(0);
 
-  // Audio context for beep sounds
+  // Audio for beep sounds using files
   const playSound = useCallback((type: 'success' | 'error') => {
     try {
-      const context = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const oscillator = context.createOscillator();
-      const gainNode = context.createGain();
-      oscillator.connect(gainNode);
-      gainNode.connect(context.destination);
-
-      if (type === 'success') {
-        // Success: High pitch beep
-        oscillator.frequency.value = 1000;
-        oscillator.type = 'sine';
-        gainNode.gain.setValueAtTime(0.3, context.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, context.currentTime + 0.2);
-        oscillator.start(context.currentTime);
-        oscillator.stop(context.currentTime + 0.2);
-      } else {
-        // Error: Low pitch double beep
-        oscillator.frequency.value = 300;
-        oscillator.type = 'sawtooth';
-        gainNode.gain.setValueAtTime(0.3, context.currentTime);
-        gainNode.gain.exponentialRampToValueAtTime(0.01, context.currentTime + 0.15);
-        oscillator.start(context.currentTime);
-        oscillator.stop(context.currentTime + 0.15);
-        
-        // Second beep
-        setTimeout(() => {
-          const osc2 = context.createOscillator();
-          const gain2 = context.createGain();
-          osc2.connect(gain2);
-          gain2.connect(context.destination);
-          osc2.frequency.value = 300;
-          osc2.type = 'sawtooth';
-          gain2.gain.setValueAtTime(0.3, context.currentTime);
-          gain2.gain.exponentialRampToValueAtTime(0.01, context.currentTime + 0.15);
-          osc2.start(context.currentTime);
-          osc2.stop(context.currentTime + 0.15);
-        }, 150);
-      }
+      const audioFile = type === 'success' ? '/audio/เจ่ง.mp3' : '/audio/ซ้ำ.mp3';
+      const audio = new Audio(audioFile);
+      audio.play().catch(err => console.warn('Audio play failed:', err));
     } catch (error) {
       console.warn('Audio not supported:', error);
     }
