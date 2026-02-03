@@ -952,7 +952,6 @@ export default function PackingPage() {
                   <input
                     ref={!currentOrder ? trackingInputRef : skuInputRef}
                     type="text"
-                    inputMode="none"
                     value={!currentOrder ? trackingInput : skuInput}
                     onChange={(e) => !currentOrder ? setTrackingInput(e.target.value) : setSkuInput(e.target.value)}
                     className={`w-full px-2 py-2 sm:py-2 text-sm sm:text-sm font-mono rounded border transition-all duration-300 bg-white font-thai ${

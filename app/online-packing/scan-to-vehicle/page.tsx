@@ -308,7 +308,6 @@ export default function ScanToVehiclePage() {
             <input
               ref={inputRef}
               type="text"
-              inputMode="none"
               value={scanInput}
               onChange={(e) => setScanInput(e.target.value)}
               disabled={isProcessing}
