@@ -50,7 +50,7 @@ export default function ScanToVehiclePage() {
   // Audio for beep sounds using files
   const playSound = useCallback((type: 'success' | 'error') => {
     try {
-      const audioFile = type === 'success' ? '/audio/เจ่ง.mp3' : '/audio/ซ้ำ.mp3';
+      const audioFile = type === 'success' ? '/audio/เจ๋งอะพี่.mp3' : '/audio/ซ้ำ.mp3';
       const audio = new Audio(audioFile);
       audio.play().catch(err => console.warn('Audio play failed:', err));
     } catch (error) {

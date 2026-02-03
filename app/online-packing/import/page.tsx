@@ -343,27 +343,29 @@ export default function ImportPage() {
             for (const orderData of batch) {
               try {
                 // ตรวจสอบซ้ำในตาราง packing_orders (ออเดอร์ที่ยังไม่แพ็ค)
-                const { data: existingOrder } = await supabase
+                // ใช้ .limit(1) แทน .maybeSingle() เพราะถ้ามีหลายแถว maybeSingle จะ error แล้ว return null
+                const { data: existingOrders } = await supabase
                   .from('packing_orders')
                   .select('id')
                   .eq('order_number', orderData.order_number)
                   .eq('parent_sku', orderData.parent_sku)
-                  .maybeSingle()
+                  .limit(1)
 
-                if (existingOrder) {
+                if (existingOrders && existingOrders.length > 0) {
                   duplicateCount++
                   continue
                 }
 
                 // ตรวจสอบซ้ำในตาราง packing_backup_orders (ออเดอร์ที่แพ็คสำเร็จแล้ว)
-                const { data: existingBackup } = await supabase
+                // ใช้ .limit(1) แทน .maybeSingle() เพราะ backup อาจมีหลายแถวซ้ำ
+                const { data: existingBackups } = await supabase
                   .from('packing_backup_orders')
                   .select('id')
                   .eq('order_number', orderData.order_number)
                   .eq('parent_sku', orderData.parent_sku)
-                  .maybeSingle()
+                  .limit(1)
 
-                if (existingBackup) {
+                if (existingBackups && existingBackups.length > 0) {
                   duplicateCount++
                   continue
                 }
@@ -371,7 +373,12 @@ export default function ImportPage() {
                 const { error } = await supabase.from('packing_orders').insert([orderData])
 
                 if (error) {
-                  errors.push(`ข้อผิดพลาดในคำสั่งซื้อ ${orderData.order_number}: ${error.message}`)
+                  // ถ้า unique constraint จับซ้ำ ให้นับเป็น duplicate แทน error
+                  if (error.code === '23505') {
+                    duplicateCount++
+                  } else {
+                    errors.push(`ข้อผิดพลาดในคำสั่งซื้อ ${orderData.order_number}: ${error.message}`)
+                  }
                 } else {
                   successCount++
                 }

@@ -98,11 +98,14 @@ export default function ERPPage() {
   const [startDate, setStartDate] = useState<string>('')
   const [endDate, setEndDate] = useState<string>('')
   const [selectedStatus, setSelectedStatus] = useState<string>('')
+  const [availableDates, setAvailableDates] = useState<{label: string, startISO: string, endISO: string}[]>([])
+  const [selectedDate, setSelectedDate] = useState<string>('')
 
   useEffect(() => {
     fetchProducts()
     fetchAvailablePlatforms()
     fetchAvailableStatuses()
+    fetchAvailableDates()
   }, [])
 
   const fetchProducts = async () => {
@@ -298,6 +301,102 @@ export default function ERPPage() {
     }
   }
 
+  const fetchAvailableDates = async () => {
+    const supabase = createClient()
+    try {
+      console.log('🔄 กำลังดึงรายการรอบนำเข้าที่มีอยู่...')
+
+      const [
+        { data: ordersDates, error: ordersError },
+        { data: backupDates, error: backupError }
+      ] = await Promise.all([
+        supabase
+          .from('packing_orders')
+          .select('created_at')
+          .not('created_at', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(5000),
+        supabase
+          .from('packing_backup_orders')
+          .select('created_at')
+          .not('created_at', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(5000)
+      ])
+
+      if (ordersError) {
+        console.error('❌ Date Error (orders):', ordersError)
+      }
+      if (backupError) {
+        console.error('❌ Date Error (backup_orders):', backupError)
+      }
+
+      const allTimestamps = [
+        ...(ordersDates ?? []),
+        ...(backupDates ?? [])
+      ]
+        .map(item => item.created_at)
+        .filter((ts): ts is string => !!ts)
+        .sort()
+
+      console.log('🔍 ข้อมูล timestamps ทั้งหมด:', allTimestamps.length, 'รายการ')
+
+      // ตรวจจับรอบนำเข้า: ถ้าช่วงห่าง > 30 นาที ถือว่าเป็นรอบใหม่
+      const BATCH_GAP_MS = 30 * 60 * 1000
+      const batches: { startISO: string; endISO: string; count: number }[] = []
+      let batchStart = allTimestamps[0]
+      let batchEnd = allTimestamps[0]
+      let batchCount = 1
+
+      for (let i = 1; i < allTimestamps.length; i++) {
+        const prev = new Date(allTimestamps[i - 1]).getTime()
+        const curr = new Date(allTimestamps[i]).getTime()
+
+        if (curr - prev > BATCH_GAP_MS) {
+          batches.push({ startISO: batchStart, endISO: batchEnd, count: batchCount })
+          batchStart = allTimestamps[i]
+          batchEnd = allTimestamps[i]
+          batchCount = 1
+        } else {
+          batchEnd = allTimestamps[i]
+          batchCount++
+        }
+      }
+      if (allTimestamps.length > 0) {
+        batches.push({ startISO: batchStart, endISO: batchEnd, count: batchCount })
+      }
+
+      // สร้าง label สำหรับแต่ละรอบ (แสดงวันที่/เวลาในเขตเวลาท้องถิ่น)
+      const formatLocal = (iso: string) => {
+        const d = new Date(iso)
+        const dd = String(d.getDate()).padStart(2, '0')
+        const mm = String(d.getMonth() + 1).padStart(2, '0')
+        const yyyy = d.getFullYear()
+        const hh = String(d.getHours()).padStart(2, '0')
+        const min = String(d.getMinutes()).padStart(2, '0')
+        return { dateStr: `${dd}/${mm}/${yyyy}`, timeStr: `${hh}:${min}` }
+      }
+
+      const batchOptions = batches
+        .sort((a, b) => b.startISO.localeCompare(a.startISO))
+        .map(batch => {
+          const start = formatLocal(batch.startISO)
+          const end = formatLocal(batch.endISO)
+          const label = start.dateStr === end.dateStr
+            ? `${start.dateStr} ${start.timeStr}-${end.timeStr} น. (${batch.count} รายการ)`
+            : `${start.dateStr} ${start.timeStr} - ${end.dateStr} ${end.timeStr} น. (${batch.count} รายการ)`
+          return { label, startISO: batch.startISO, endISO: batch.endISO }
+        })
+
+      console.log('✅ พบรอบนำเข้า:', batchOptions.length, 'รอบ')
+
+      setAvailableDates(batchOptions)
+    } catch (error) {
+      console.error('💥 Error fetching dates:', error)
+      setAvailableDates([])
+    }
+  }
+
   const searchPendingOrders = async () => {
     const supabase = createClient()
     if (!selectedPlatform) {
@@ -311,15 +410,19 @@ export default function ERPPage() {
       console.log('📅 ช่วงวันที่:', startDate, '-', endDate)
       console.log('📊 สถานะ:', selectedStatus)
 
+      // แปลง local time เป็น ISO string ที่ Supabase เข้าใจ (ต้องรวม timezone offset)
+      // datetime-local input ให้ค่าเป็น local time เช่น "2026-02-03T12:42"
+      // ต้องแปลงเป็น Date แล้วใช้ toISOString() เพื่อได้ UTC ที่ถูกต้อง
+      const toUTCString = (localDateStr: string) => {
+        const d = new Date(localDateStr)
+        return Number.isNaN(d.getTime()) ? null : d.toISOString()
+      }
+
       const startDateTime = startDate
-        ? startDate.includes('T')
-          ? startDate
-          : `${startDate}T00:00:00`
+        ? toUTCString(startDate.includes('T') ? startDate : `${startDate}T00:00:00`)
         : null
       const endDateTime = endDate
-        ? endDate.includes('T')
-          ? endDate
-          : `${endDate}T23:59:59`
+        ? toUTCString(endDate.includes('T') ? endDate : `${endDate}T23:59:59`)
         : null
 
       const buildBaseQuery = (table: 'packing_orders' | 'packing_backup_orders') => {
@@ -330,6 +433,14 @@ export default function ERPPage() {
 
         if (selectedStatus) {
           baseQuery = baseQuery.eq('fulfillment_status', selectedStatus)
+        }
+
+        // กรองตาม created_at (เวลาที่นำเข้าออเดอร์) ที่ database level
+        if (startDateTime) {
+          baseQuery = baseQuery.gte('created_at', startDateTime)
+        }
+        if (endDateTime) {
+          baseQuery = baseQuery.lte('created_at', endDateTime)
         }
 
         return baseQuery
@@ -430,7 +541,8 @@ export default function ERPPage() {
             barcode: sku,
             erpProductName: erpName,
             ecommerceProductName: order.product_name || '',
-            totalQuantity: 0
+            totalQuantity: 0,
+            importDate: order.created_at
           }
         }
         
@@ -495,24 +607,16 @@ export default function ERPPage() {
     const endTime = end ? parseTimestamp(end) : null
 
     return ordersToFilter.filter(order => {
-      const timestamps = [
-        order.created_at,
-        order.packed_at,
-        order.completed_at,
-        order.moved_to_backup_at
-      ]
-        .map(parseTimestamp)
-        .filter((value): value is number => value !== null)
+      // กรองตาม created_at (เวลาที่นำเข้าออเดอร์) เท่านั้น
+      const createdTime = parseTimestamp(order.created_at)
 
-      if (timestamps.length === 0) {
+      if (createdTime === null) {
         return false
       }
 
-      return timestamps.some(timestamp => {
-        const meetsStart = startTime === null || timestamp >= startTime
-        const meetsEnd = endTime === null || timestamp <= endTime
-        return meetsStart && meetsEnd
-      })
+      const meetsStart = startTime === null || createdTime >= startTime
+      const meetsEnd = endTime === null || createdTime <= endTime
+      return meetsStart && meetsEnd
     })
   }
 
@@ -1539,6 +1643,44 @@ export default function ERPPage() {
             ...availableStatuses.map(s => ({ value: s, label: getStatusText(s) }))
           ]}
         />
+        <FilterSelect
+          value={selectedDate}
+          onChange={(value) => {
+            setSelectedDate(value)
+            if (value) {
+              const batch = availableDates[parseInt(value)]
+              if (batch) {
+                // แปลง ISO เป็น datetime-local format สำหรับ input
+                const toLocal = (iso: string) => {
+                  const d = new Date(iso)
+                  const yyyy = d.getFullYear()
+                  const mm = String(d.getMonth() + 1).padStart(2, '0')
+                  const dd = String(d.getDate()).padStart(2, '0')
+                  const hh = String(d.getHours()).padStart(2, '0')
+                  const min = String(d.getMinutes()).padStart(2, '0')
+                  return `${yyyy}-${mm}-${dd}T${hh}:${min}`
+                }
+                // ขยายช่วงเวลาเล็กน้อย เผื่อวินาที
+                const startD = new Date(batch.startISO)
+                startD.setSeconds(0, 0)
+                const endD = new Date(batch.endISO)
+                endD.setSeconds(59, 999)
+                setStartDate(toLocal(startD.toISOString()))
+                setEndDate(toLocal(endD.toISOString()))
+              }
+            } else {
+              setStartDate('')
+              setEndDate('')
+            }
+          }}
+          options={[
+            { value: '', label: '-- ทุกรอบนำเข้า --' },
+            ...availableDates.map((d, idx) => ({
+              value: String(idx),
+              label: d.label
+            }))
+          ]}
+        />
         <input
           type="datetime-local"
           value={startDate}
@@ -1562,11 +1704,12 @@ export default function ERPPage() {
         >
           ค้นหา
         </Button>
-        {(selectedPlatform || selectedStatus || startDate || endDate) && (
+        {(selectedPlatform || selectedStatus || startDate || endDate || selectedDate) && (
           <button
             onClick={() => {
               setSelectedPlatform('')
               setSelectedStatus('')
+              setSelectedDate('')
               setStartDate('')
               setEndDate('')
               setSearchResults(null)
@@ -1636,6 +1779,7 @@ export default function ERPPage() {
                   <th className="px-2 py-1.5 text-left font-semibold text-gray-700 border-b whitespace-nowrap">ชื่อสินค้า ERP</th>
                   <th className="px-2 py-1.5 text-left font-semibold text-gray-700 border-b whitespace-nowrap">ชื่อสินค้า E-commerce</th>
                   <th className="px-2 py-1.5 text-center font-semibold text-gray-700 border-b whitespace-nowrap">จำนวน</th>
+                  <th className="px-2 py-1.5 text-center font-semibold text-gray-700 border-b whitespace-nowrap">วันที่นำเข้า</th>
                 </tr>
               </thead>
               <tbody>
@@ -1656,6 +1800,15 @@ export default function ERPPage() {
                         {item.ecommerceProductName || '-'}
                       </td>
                       <td className="px-2 py-1 text-center font-semibold text-primary-600">{item.totalQuantity}</td>
+                      <td className="px-2 py-1 text-center text-gray-600 text-[9px]">
+                        {item.importDate ? new Date(item.importDate).toLocaleString('th-TH', {
+                          year: 'numeric',
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit'
+                        }) : '-'}
+                      </td>
                     </tr>
                   )
                 })}

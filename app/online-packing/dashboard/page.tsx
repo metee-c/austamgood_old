@@ -65,6 +65,7 @@ export default function DashboardPage() {
     skuOrName: '',
     platform: 'all' as 'all' | string
   })
+  const [dateRangePreset, setDateRangePreset] = useState<string>('today')
   const [isSearchPerformed, setIsSearchPerformed] = useState(false)
   const [stats, setStats] = useState<ExtendedDashboardStats>({
     total_orders: 0,
@@ -108,6 +109,82 @@ export default function DashboardPage() {
 
     fetchDashboardData()
   }, [selectedDate])
+
+  const handleDateRangeChange = (preset: string) => {
+    setDateRangePreset(preset)
+    const now = new Date()
+    const today = now.toISOString().split('T')[0]
+    
+    switch (preset) {
+      case 'today':
+        setSearchFilters(prev => ({
+          ...prev,
+          startDate: today,
+          endDate: today,
+          startTime: '00:00',
+          endTime: '23:59'
+        }))
+        break
+      case 'yesterday':
+        const yesterday = new Date(now)
+        yesterday.setDate(yesterday.getDate() - 1)
+        const yesterdayStr = yesterday.toISOString().split('T')[0]
+        setSearchFilters(prev => ({
+          ...prev,
+          startDate: yesterdayStr,
+          endDate: yesterdayStr,
+          startTime: '00:00',
+          endTime: '23:59'
+        }))
+        break
+      case 'last7days':
+        const last7Days = new Date(now)
+        last7Days.setDate(last7Days.getDate() - 7)
+        setSearchFilters(prev => ({
+          ...prev,
+          startDate: last7Days.toISOString().split('T')[0],
+          endDate: today,
+          startTime: '00:00',
+          endTime: '23:59'
+        }))
+        break
+      case 'last30days':
+        const last30Days = new Date(now)
+        last30Days.setDate(last30Days.getDate() - 30)
+        setSearchFilters(prev => ({
+          ...prev,
+          startDate: last30Days.toISOString().split('T')[0],
+          endDate: today,
+          startTime: '00:00',
+          endTime: '23:59'
+        }))
+        break
+      case 'thisMonth':
+        const firstDayOfMonth = new Date(now.getFullYear(), now.getMonth(), 1)
+        setSearchFilters(prev => ({
+          ...prev,
+          startDate: firstDayOfMonth.toISOString().split('T')[0],
+          endDate: today,
+          startTime: '00:00',
+          endTime: '23:59'
+        }))
+        break
+      case 'lastMonth':
+        const firstDayOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+        const lastDayOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0)
+        setSearchFilters(prev => ({
+          ...prev,
+          startDate: firstDayOfLastMonth.toISOString().split('T')[0],
+          endDate: lastDayOfLastMonth.toISOString().split('T')[0],
+          startTime: '00:00',
+          endTime: '23:59'
+        }))
+        break
+      case 'custom':
+        // Keep current values, user will adjust manually
+        break
+    }
+  }
 
   const handleSearch = async () => {
     setIsSearchPerformed(true)
@@ -604,7 +681,23 @@ export default function DashboardPage() {
           </div>
 
           <div className="bg-gray-50 rounded-lg p-3 mb-3">
-            <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-9 gap-2 items-end">
+            <div className="grid grid-cols-1 md:grid-cols-4 lg:grid-cols-10 gap-2 items-end">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 font-thai mb-1">ช่วงเวลานำเข้า</label>
+                <select
+                  value={dateRangePreset}
+                  onChange={(e) => handleDateRangeChange(e.target.value)}
+                  className="w-full px-2 py-1.5 border border-gray-300 rounded-md focus:ring-primary-500 focus:border-primary-500 text-xs font-thai"
+                >
+                  <option value="today">วันนี้</option>
+                  <option value="yesterday">เมื่อวาน</option>
+                  <option value="last7days">7 วันล่าสุด</option>
+                  <option value="last30days">30 วันล่าสุด</option>
+                  <option value="thisMonth">เดือนนี้</option>
+                  <option value="lastMonth">เดือนที่แล้ว</option>
+                  <option value="custom">กำหนดเอง</option>
+                </select>
+              </div>
               <div>
                 <label className="block text-xs font-medium text-gray-700 font-thai mb-1">วันที่เริ่มต้น</label>
                 <input

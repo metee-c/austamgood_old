@@ -706,9 +706,10 @@ export default function PackingPage() {
       .limit(1);
 
     if (!existingBackup || existingBackup.length === 0) {
+      // ใช้ upsert กับ ignoreDuplicates เพื่อข้ามแถวซ้ำโดยไม่ให้ทั้ง batch ล้มเหลว
       const { error: insertError } = await supabase
         .from('packing_backup_orders')
-        .insert(ordersToBackup.map(o => ({
+        .upsert(ordersToBackup.map(o => ({
           original_order_id: o.id,
           order_number: o.order_number,
           buyer_name: o.buyer_name,
@@ -725,9 +726,9 @@ export default function PackingPage() {
           packed_by: o.packed_by,
           sample_alert: o.sample_alert,
           moved_to_backup_at: new Date().toISOString()
-        })));
+        })), { onConflict: 'order_number,parent_sku', ignoreDuplicates: true });
 
-      if (insertError && insertError.code !== '23505') {
+      if (insertError) {
         console.error('❌ Backup error:', insertError);
         throw insertError;
       }

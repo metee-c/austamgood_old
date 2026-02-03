@@ -237,7 +237,13 @@ const LoadlistsPage = () => {
   const [selectedPicklists, setSelectedPicklists] = useState<number[]>([]);
   const [selectedFaceSheets, setSelectedFaceSheets] = useState<number[]>([]);
   const [selectedBonusFaceSheets, setSelectedBonusFaceSheets] = useState<number[]>([]);
-  const [activeTab, setActiveTab] = useState<'picklists' | 'face-sheets' | 'bonus-face-sheets'>('picklists');
+  const [activeTab, setActiveTab] = useState<'picklists' | 'face-sheets' | 'bonus-face-sheets' | 'online'>('picklists');
+
+  // State for online orders
+  const [selectedPlatform, setSelectedPlatform] = useState<string>('');
+  const [availableOnlineOrders, setAvailableOnlineOrders] = useState<any[]>([]);
+  const [selectedOnlineOrders, setSelectedOnlineOrders] = useState<string[]>([]);
+  const [loadingOnlineOrders, setLoadingOnlineOrders] = useState(false);
 
   // ✅ NEW: เก็บค่าแยกต่างหากแต่ละ picklist (key = picklist_id)
   const [picklistFormData, setPicklistFormData] = useState<Record<number, PicklistFormData>>({});
@@ -771,6 +777,111 @@ const LoadlistsPage = () => {
     }
   };
 
+  // ✅ NEW: Fetch online orders from packing_backup_orders
+  const fetchOnlineOrders = async (platform: string) => {
+    if (!platform) {
+      setAvailableOnlineOrders([]);
+      return;
+    }
+
+    setLoadingOnlineOrders(true);
+    try {
+      const response = await fetch(`/api/packing-backup-orders?platform=${encodeURIComponent(platform)}&loaded=true&not_in_loadlist=true`);
+      const result = await response.json();
+
+      if (result.success && result.data) {
+        setAvailableOnlineOrders(result.data);
+      } else {
+        setAvailableOnlineOrders([]);
+      }
+    } catch (err) {
+      console.error('Error fetching online orders:', err);
+      setAvailableOnlineOrders([]);
+    } finally {
+      setLoadingOnlineOrders(false);
+    }
+  };
+
+  // ✅ NEW: Handle platform change
+  const handlePlatformChange = (platform: string) => {
+    setSelectedPlatform(platform);
+    setSelectedOnlineOrders([]);
+    fetchOnlineOrders(platform);
+  };
+
+  // ✅ NEW: Toggle online order selection
+  const handleToggleOnlineOrder = (orderId: string) => {
+    setSelectedOnlineOrders(prev =>
+      prev.includes(orderId)
+        ? prev.filter(id => id !== orderId)
+        : [...prev, orderId]
+    );
+  };
+
+  // ✅ NEW: Toggle all online orders
+  const handleToggleAllOnlineOrders = () => {
+    if (selectedOnlineOrders.length === availableOnlineOrders.length) {
+      setSelectedOnlineOrders([]);
+    } else {
+      setSelectedOnlineOrders(availableOnlineOrders.map(o => o.id));
+    }
+  };
+
+  // ✅ NEW: Handler for creating loadlist from online orders
+  const handleCreateLoadlistFromOnline = async () => {
+    if (selectedOnlineOrders.length === 0) {
+      setCreateError('กรุณาเลือกอย่างน้อย 1 ออเดอร์');
+      return;
+    }
+
+    if (!checkerEmployeeId) {
+      setCreateError('กรุณาเลือกผู้เช็คโหลดสินค้า');
+      return;
+    }
+
+    setIsCreating(true);
+    setCreateError(null);
+
+    try {
+      const requestBody = {
+        checker_employee_id: checkerEmployeeId,
+        vehicle_type: vehicleType || 'N/A',
+        delivery_number: deliveryNumber || `ONLINE-${Date.now()}`,
+        vehicle_id: vehicleId || null,
+        driver_employee_id: driverEmployeeId || null,
+        loading_queue_number: loadingQueueNumber || null,
+        loading_door_number: loadingDoorNumber || null,
+        online_order_ids: selectedOnlineOrders,
+        platform: selectedPlatform
+      };
+
+      const response = await fetch('/api/loadlists', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(requestBody)
+      });
+
+      const result = await response.json();
+
+      if (!response.ok) {
+        throw new Error(result.error || 'ไม่สามารถสร้างใบโหลดได้');
+      }
+
+      // Success
+      setIsCreateModalOpen(false);
+      setSelectedOnlineOrders([]);
+      setSelectedPlatform('');
+      setAvailableOnlineOrders([]);
+      await fetchLoadlists();
+
+    } catch (err: any) {
+      console.error('Error creating loadlist from online orders:', err);
+      setCreateError(err.message || 'เกิดข้อผิดพลาดในการสร้างใบโหลด');
+    } finally {
+      setIsCreating(false);
+    }
+  };
+
   // ✅ Helper function สำหรับอัปเดตค่าแต่ละ picklist
   const updatePicklistFormData = (picklistId: number, field: keyof PicklistFormData, value: any) => {
     setPicklistFormData(prev => ({
@@ -911,10 +1022,16 @@ const LoadlistsPage = () => {
     const hasPicklists = selectedPicklists.length > 0;
     const hasFaceSheets = selectedFaceSheets.length > 0;
     const hasBonusFaceSheets = selectedBonusFaceSheets.length > 0;
+    const hasOnlineOrders = selectedOnlineOrders.length > 0;
 
     // ✅ NEW (edit28): โหมดไม่แมพ - สร้าง loadlist จาก BFS โดยตรง
     if (skipMapping && hasBonusFaceSheets) {
       return await handleCreateLoadlistSkipMapping();
+    }
+
+    // ✅ NEW: สร้าง loadlist จากออนไลน์
+    if (activeTab === 'online' && hasOnlineOrders) {
+      return await handleCreateLoadlistFromOnline();
     }
 
     if (!hasPicklists && !hasFaceSheets && !hasBonusFaceSheets) {
@@ -1986,6 +2103,16 @@ const LoadlistsPage = () => {
                 <Layers className="w-4 h-4 inline-block mr-2" />
                 ใบปะหน้าของแถม ({selectedBonusFaceSheets.length})
               </button>
+              <button
+                onClick={() => setActiveTab('online')}
+                className={`px-4 py-2 font-medium text-sm border-b-2 transition-colors ${activeTab === 'online'
+                    ? 'border-green-500 text-green-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-700'
+                  }`}
+              >
+                <Package className="w-4 h-4 inline-block mr-2" />
+                ออนไลน์ ({selectedOnlineOrders.length})
+              </button>
             </div>
           </div>
 
@@ -2959,6 +3086,125 @@ const LoadlistsPage = () => {
             </div>
           )}
 
+          {/* Online Tab */}
+          {activeTab === 'online' && (
+            <div className="space-y-4">
+              {/* Platform Selection */}
+              <div className="bg-gray-50 p-4 rounded-lg">
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  เลือกแพลตฟอร์ม
+                </label>
+                <select
+                  value={selectedPlatform}
+                  onChange={(e) => handlePlatformChange(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
+                >
+                  <option value="">-- เลือกแพลตฟอร์ม --</option>
+                  <option value="Shopee Thailand">Shopee</option>
+                  <option value="TikTok Shop">TikTok Shop</option>
+                  <option value="Lazada Thailand">Lazada</option>
+                </select>
+              </div>
+
+              {/* Orders List */}
+              {selectedPlatform && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between bg-gray-50 px-4 py-2 rounded">
+                    <label className="flex items-center space-x-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedOnlineOrders.length === availableOnlineOrders.length && availableOnlineOrders.length > 0}
+                        onChange={handleToggleAllOnlineOrders}
+                        className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                      />
+                      <span className="text-sm font-medium text-gray-700">
+                        เลือกทั้งหมด ({selectedOnlineOrders.length}/{availableOnlineOrders.length})
+                      </span>
+                    </label>
+                    {loadingOnlineOrders && (
+                      <Loader2 className="w-4 h-4 animate-spin text-blue-500" />
+                    )}
+                  </div>
+
+                  <div className="max-h-64 overflow-y-auto border rounded-lg">
+                    <table className="w-full border-collapse text-sm">
+                      <thead className="sticky top-0 z-10 bg-gray-100">
+                        <tr>
+                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap w-12">
+                            <span className="sr-only">เลือก</span>
+                          </th>
+                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">เลขออเดอร์</th>
+                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">Tracking</th>
+                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชื่อผู้ซื้อ</th>
+                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">สแกนขึ้นรถเมื่อ</th>
+                          <th className="px-2 py-2 text-center text-xs font-semibold border-b whitespace-nowrap">สถานะ</th>
+                        </tr>
+                      </thead>
+                      <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
+                        {loadingOnlineOrders ? (
+                          <tr>
+                            <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                              <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
+                              กำลังโหลด...
+                            </td>
+                          </tr>
+                        ) : availableOnlineOrders.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                              ไม่พบออเดอร์ที่สแกนขึ้นรถแล้ว
+                            </td>
+                          </tr>
+                        ) : (
+                          availableOnlineOrders.map((order) => (
+                            <tr
+                              key={order.id}
+                              className={`hover:bg-blue-50/30 transition-colors duration-150 ${
+                                selectedOnlineOrders.includes(order.id) ? 'bg-green-50' : ''
+                              }`}
+                            >
+                              <td className="px-2 py-2 border-r border-gray-100 whitespace-nowrap">
+                                <input
+                                  type="checkbox"
+                                  checked={selectedOnlineOrders.includes(order.id)}
+                                  onChange={() => handleToggleOnlineOrder(order.id)}
+                                  className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
+                                />
+                              </td>
+                              <td className="px-2 py-2 border-r border-gray-100 whitespace-nowrap font-mono text-blue-600">
+                                {order.order_number}
+                              </td>
+                              <td className="px-2 py-2 border-r border-gray-100 whitespace-nowrap font-mono text-purple-600">
+                                {order.tracking_number}
+                              </td>
+                              <td className="px-2 py-2 border-r border-gray-100 whitespace-nowrap text-gray-700">
+                                {order.buyer_name}
+                              </td>
+                              <td className="px-2 py-2 border-r border-gray-100 whitespace-nowrap text-gray-600">
+                                {new Date(order.loaded_at).toLocaleString('th-TH')}
+                              </td>
+                              <td className="px-2 py-2 text-center whitespace-nowrap">
+                                <Badge variant="success" size="sm">สแกนขึ้นรถแล้ว</Badge>
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Summary */}
+                  {selectedOnlineOrders.length > 0 && (
+                    <div className="bg-green-50 p-3 rounded-lg text-xs">
+                      <div className="font-semibold text-green-700">
+                        เลือก {selectedOnlineOrders.length} ออเดอร์
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="flex justify-end gap-2 pt-4 border-t">
             <Button variant="outline" onClick={() => setIsCreateModalOpen(false)} disabled={isCreating}>
               ยกเลิก
@@ -2966,11 +3212,11 @@ const LoadlistsPage = () => {
             <Button
               variant="primary"
               onClick={handleCreateLoadlist}
-              disabled={isCreating || (selectedPicklists.length === 0 && selectedFaceSheets.length === 0 && selectedBonusFaceSheets.length === 0)}
+              disabled={isCreating || (selectedPicklists.length === 0 && selectedFaceSheets.length === 0 && selectedBonusFaceSheets.length === 0 && selectedOnlineOrders.length === 0)}
               className="bg-green-500 hover:bg-green-600"
             >
               {isCreating ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              {isCreating ? 'กำลังสร้าง...' : `สร้าง (${selectedPicklists.length + selectedFaceSheets.length + selectedBonusFaceSheets.length} รายการ)`}
+              {isCreating ? `กำลังสร้าง...` : `สร้าง (${selectedPicklists.length + selectedFaceSheets.length + selectedBonusFaceSheets.length + selectedOnlineOrders.length} รายการ)`}
             </Button>
           </div>
         </div>

@@ -4,6 +4,135 @@ import { withAuth } from '@/lib/api/with-auth';
 import { SupabaseClient } from '@supabase/supabase-js';
 
 /**
+ * ✅ NEW: Helper function สำหรับสร้าง loadlist จากออเดอร์ออนไลน์ (packing_backup_orders)
+ * - ดึงออเดอร์ที่สแกนขึ้นรถแล้วจาก packing_backup_orders
+ * - สร้าง loadlist 1 ใบ
+ * - อัพเดต loadlist_id และ loadlist_created_at ใน packing_backup_orders
+ */
+async function handleOnlineOrdersMode(
+  supabase: SupabaseClient,
+  params: {
+    online_order_ids: string[];
+    platform: string;
+    checker_employee_id: number;
+    vehicle_type: string;
+    delivery_number: string;
+    vehicle_id?: number | null;
+    driver_employee_id?: number | null;
+    driver_phone?: string | null;
+    helper_employee_id?: number | null;
+    loading_queue_number?: string | null;
+    loading_door_number?: string | null;
+  }
+) {
+  const {
+    online_order_ids,
+    platform,
+    checker_employee_id,
+    vehicle_type,
+    delivery_number,
+    vehicle_id,
+    driver_employee_id,
+    driver_phone,
+    helper_employee_id,
+    loading_queue_number,
+    loading_door_number
+  } = params;
+
+  try {
+    // Validate required fields
+    if (!checker_employee_id) {
+      return NextResponse.json({ error: 'checker_employee_id is required' }, { status: 400 });
+    }
+
+    const effectiveVehicleType = vehicle_type || 'N/A';
+    const effectiveDeliveryNumber = delivery_number || `ONLINE-${Date.now()}`;
+
+    // Generate loadlist code with pattern: LD-YYYYMMDD-####
+    const today = new Date();
+    const datePrefix = `${today.getFullYear()}${String(today.getMonth() + 1).padStart(2, '0')}${String(today.getDate()).padStart(2, '0')}`;
+
+    const { data: latestLoadlist } = await supabase
+      .from('loadlists')
+      .select('loadlist_code')
+      .like('loadlist_code', `LD-${datePrefix}-%`)
+      .order('loadlist_code', { ascending: false })
+      .limit(1)
+      .single();
+
+    let sequenceNumber = 1;
+    if (latestLoadlist?.loadlist_code) {
+      const lastSequence = latestLoadlist.loadlist_code.split('-')[2];
+      if (lastSequence) {
+        sequenceNumber = parseInt(lastSequence, 10) + 1;
+      }
+    }
+
+    const loadlistCode = `LD-${datePrefix}-${String(sequenceNumber).padStart(4, '0')}`;
+
+    // 1. Create loadlist
+    const { data: loadlist, error: loadlistError } = await supabase
+      .from('loadlists')
+      .insert({
+        loadlist_code: loadlistCode,
+        plan_id: null,
+        trip_id: null,
+        status: 'pending',
+        checker_employee_id,
+        vehicle_type: effectiveVehicleType,
+        delivery_number: effectiveDeliveryNumber,
+        vehicle_id: vehicle_id || null,
+        driver_employee_id: driver_employee_id || null,
+        driver_phone: driver_phone || null,
+        helper_employee_id: helper_employee_id || null,
+        loading_queue_number: loading_queue_number || null,
+        loading_door_number: loading_door_number || null,
+        created_by: null
+      })
+      .select()
+      .single();
+
+    if (loadlistError) {
+      return NextResponse.json(
+        { error: 'Failed to create loadlist', details: loadlistError.message },
+        { status: 500 }
+      );
+    }
+
+    // 2. Update packing_backup_orders with loadlist_id and loadlist_created_at
+    const { error: updateError } = await supabase
+      .from('packing_backup_orders')
+      .update({
+        loadlist_id: loadlist.id,
+        loadlist_created_at: new Date().toISOString()
+      })
+      .in('id', online_order_ids);
+
+    if (updateError) {
+      // Cleanup: delete the loadlist if update failed
+      await supabase.from('loadlists').delete().eq('id', loadlist.id);
+      return NextResponse.json(
+        { error: 'Failed to update packing_backup_orders', details: updateError.message },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      success: true,
+      loadlist,
+      message: `สร้างใบโหลดสำเร็จ พร้อมอัพเดต ${online_order_ids.length} ออเดอร์`
+    });
+
+  } catch (error: any) {
+    console.error('Error in handleOnlineOrdersMode:', error);
+    return NextResponse.json(
+      { error: 'Internal server error', details: error.message },
+      { status: 500 }
+    );
+  }
+}
+
+/**
  * ✅ NEW (edit28): Helper function สำหรับสร้าง loadlist จาก BFS โดยไม่ต้องแมพกับ picklist
  * ✅ NEW: รองรับการเลือกเฉพาะบางออเดอร์จาก BFS
  * - ดึง packages ทั้งหมดของ BFS ที่เลือก (ที่ยังไม่ถูกแมพ)
@@ -776,10 +905,12 @@ async function handlePost(request: NextRequest, context: any) {
       picklist_ids,
       face_sheet_ids,
       bonus_face_sheet_ids,
-      bonus_face_sheet_mappings, // ✅ NEW: รับ mapping ของ bonus face sheet กับ picklist และ face sheet
-      skip_mapping, // ✅ NEW (edit28): สร้าง loadlist จาก BFS โดยไม่ต้องแมพกับ picklist
-      bfs_ids, // ✅ NEW (edit28): รายการ BFS IDs เมื่อ skip_mapping = true
-      selected_orders, // ✅ NEW: รายการออเดอร์ที่เลือกสำหรับแต่ละ BFS (bfs_id -> order_no[])
+      bonus_face_sheet_mappings,
+      skip_mapping,
+      bfs_ids,
+      selected_orders,
+      online_order_ids,
+      platform,
       checker_employee_id,
       vehicle_type,
       delivery_number,
@@ -790,6 +921,23 @@ async function handlePost(request: NextRequest, context: any) {
       loading_queue_number,
       loading_door_number
     } = body;
+
+    // ✅ NEW: สร้าง loadlist จากออเดอร์ออนไลน์
+    if (online_order_ids && Array.isArray(online_order_ids) && online_order_ids.length > 0) {
+      return await handleOnlineOrdersMode(supabase, {
+        online_order_ids,
+        platform: platform || 'ONLINE',
+        checker_employee_id,
+        vehicle_type,
+        delivery_number,
+        vehicle_id,
+        driver_employee_id,
+        driver_phone,
+        helper_employee_id,
+        loading_queue_number,
+        loading_door_number
+      });
+    }
 
     // ✅ NEW (edit28): โหมดไม่แมพ - สร้าง loadlist จาก BFS โดยตรง
     if (skip_mapping && bfs_ids && Array.isArray(bfs_ids) && bfs_ids.length > 0) {
@@ -804,18 +952,19 @@ async function handlePost(request: NextRequest, context: any) {
         helper_employee_id,
         loading_queue_number,
         loading_door_number,
-        selected_orders // ✅ NEW: ส่ง selected_orders ไปด้วย
+        selected_orders
       });
     }
 
-    // Validation - ต้องมีอย่างน้อย picklist_ids, face_sheet_ids หรือ bonus_face_sheet_ids
+    // Validation - ต้องมีอย่างน้อย picklist_ids, face_sheet_ids, bonus_face_sheet_ids หรือ online_order_ids
     const hasPicklists = picklist_ids && Array.isArray(picklist_ids) && picklist_ids.length > 0;
     const hasFaceSheets = face_sheet_ids && Array.isArray(face_sheet_ids) && face_sheet_ids.length > 0;
     const hasBonusFaceSheets = bonus_face_sheet_ids && Array.isArray(bonus_face_sheet_ids) && bonus_face_sheet_ids.length > 0;
+    const hasOnlineOrders = online_order_ids && Array.isArray(online_order_ids) && online_order_ids.length > 0;
 
-    if (!hasPicklists && !hasFaceSheets && !hasBonusFaceSheets) {
+    if (!hasPicklists && !hasFaceSheets && !hasBonusFaceSheets && !hasOnlineOrders) {
       return NextResponse.json(
-        { error: 'At least one of picklist_ids, face_sheet_ids, or bonus_face_sheet_ids is required and must be a non-empty array' },
+        { error: 'At least one of picklist_ids, face_sheet_ids, bonus_face_sheet_ids, or online_order_ids is required and must be a non-empty array' },
         { status: 400 }
       );
     }
