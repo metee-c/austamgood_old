@@ -70,6 +70,7 @@ export default function ScanToVehiclePage() {
         .select('id, tracking_number, order_number, buyer_name, platform, loaded_at')
         .gte('loaded_at', startOfDay)
         .lte('loaded_at', endOfDay)
+        .is('loadlist_id', null) // Only show orders not in any loadlist
         .order('loaded_at', { ascending: false });
 
       if (error) throw error;
@@ -96,7 +97,8 @@ export default function ScanToVehiclePage() {
       const { count, error } = await supabase
         .from('packing_backup_orders')
         .select('*', { count: 'exact', head: true })
-        .not('loaded_at', 'is', null);
+        .not('loaded_at', 'is', null)
+        .is('loadlist_id', null); // Only count orders not in any loadlist
 
       if (error) throw error;
       setTotalCount(count || 0);
@@ -139,28 +141,29 @@ export default function ScanToVehiclePage() {
 
     try {
       // Check if package exists in packing_backup_orders
-      const { data: packages, error: findError } = await supabase
+      const { data: allPackages, error: findError } = await supabase
         .from('packing_backup_orders')
-        .select('id, tracking_number, order_number, buyer_name, platform, loaded_at')
-        .eq('tracking_number', trackingNumber)
-        .limit(1);
+        .select('id, tracking_number, order_number, buyer_name, platform, loaded_at, loadlist_id')
+        .eq('tracking_number', trackingNumber);
 
       if (findError) throw findError;
 
-      if (!packages || packages.length === 0) {
+      if (!allPackages || allPackages.length === 0) {
         setScanError(`ไม่พบพัสดุหมายเลข: ${trackingNumber}`);
         playSound('error');
         setIsProcessing(false);
         return;
       }
 
-      // Check if already loaded (check all packages with this tracking number)
-      const { data: allPackages, error: checkError } = await supabase
-        .from('packing_backup_orders')
-        .select('id, tracking_number, order_number, buyer_name, platform, loaded_at')
-        .eq('tracking_number', trackingNumber);
-
-      if (checkError) throw checkError;
+      // Check if any package with this tracking number is in a loadlist
+      const inLoadlist = allPackages?.find(p => p.loadlist_id);
+      if (inLoadlist) {
+        setScanError(`พัสดุนี้อยู่ในใบโหลดแล้ว (Loadlist ID: ${inLoadlist.loadlist_id})`);
+        playSound('error');
+        setIsProcessing(false);
+        inputRef.current?.focus();
+        return;
+      }
 
       // Check if any package with this tracking number is already loaded
       const alreadyLoaded = allPackages?.find(p => p.loaded_at);
@@ -168,15 +171,14 @@ export default function ScanToVehiclePage() {
         setScanError(`พัสดุนี้ถูกสแกนขึ้นรถแล้วเมื่อ ${new Date(alreadyLoaded.loaded_at).toLocaleTimeString('th-TH')}`);
         playSound('error');
         setIsProcessing(false);
-        // Focus back immediately
         inputRef.current?.focus();
         return;
       }
 
-      // Get the first package that hasn't been loaded yet
-      const pkg = allPackages?.find(p => !p.loaded_at);
+      // Get all packages that haven't been loaded yet and not in loadlist
+      const packagesToUpdate = allPackages?.filter(p => !p.loaded_at && !p.loadlist_id) || [];
 
-      if (!pkg) {
+      if (packagesToUpdate.length === 0) {
         setScanError(`ไม่พบพัสดุหมายเลข: ${trackingNumber}`);
         playSound('error');
         setIsProcessing(false);
@@ -184,34 +186,37 @@ export default function ScanToVehiclePage() {
         return;
       }
 
-      // Update the package with loaded_at and loaded_by
+      // Update ALL packages with the same tracking number
       const { error: updateError } = await supabase
         .from('packing_backup_orders')
         .update({
           loaded_at: new Date().toISOString(),
           loaded_by: 'System User' // TODO: Replace with actual user
         })
-        .eq('id', pkg.id);
+        .eq('tracking_number', trackingNumber)
+        .is('loaded_at', null)
+        .is('loadlist_id', null);
 
       if (updateError) throw updateError;
 
       // Success
-      setScanSuccess(`สแกนขึ้นรถสำเร็จ: ${trackingNumber}`);
+      setScanSuccess(`สแกนขึ้นรถสำเร็จ: ${trackingNumber} (${packagesToUpdate.length} รายการ)`);
       playSound('success');
 
-      // Add to scanned list
+      // Add to scanned list (show first package as representative)
+      const firstPkg = packagesToUpdate[0];
       const newPackage: ScannedPackage = {
-        id: pkg.id,
-        tracking_number: pkg.tracking_number,
-        order_number: pkg.order_number,
-        buyer_name: pkg.buyer_name,
-        platform: pkg.platform,
+        id: firstPkg.id,
+        tracking_number: firstPkg.tracking_number,
+        order_number: firstPkg.order_number,
+        buyer_name: firstPkg.buyer_name,
+        platform: firstPkg.platform,
         loaded_at: new Date().toISOString()
       };
 
       setScannedPackages(prev => [newPackage, ...prev]);
-      setTodayCount(prev => prev + 1);
-      setTotalCount(prev => prev + 1);
+      setTodayCount(prev => prev + packagesToUpdate.length);
+      setTotalCount(prev => prev + packagesToUpdate.length);
 
       // Clear success message after 2 seconds
       setTimeout(() => {

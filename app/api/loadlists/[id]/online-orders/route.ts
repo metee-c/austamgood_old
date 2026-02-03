@@ -5,11 +5,12 @@ import { NextRequest, NextResponse } from 'next/server';
 // Fetch online orders (packing_backup_orders) for a specific loadlist
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const supabase = await createClient();
-    const loadlistId = parseInt(params.id, 10);
+    const { id } = await params;
+    const loadlistId = parseInt(id, 10);
 
     if (isNaN(loadlistId)) {
       return NextResponse.json(

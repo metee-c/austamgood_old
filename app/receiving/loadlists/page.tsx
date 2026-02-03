@@ -17,6 +17,7 @@ import {
   FileText,
   Trash2
 } from 'lucide-react';
+import { createClient } from '@/lib/supabase/client';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
 import Badge from '@/components/ui/Badge';
@@ -221,6 +222,9 @@ const statusMap: Record<string, { label: string; variant: 'default' | 'info' | '
 };
 
 const LoadlistsPage = () => {
+  // Initialize Supabase client
+  const supabase = createClient();
+  
   const [loadlists, setLoadlists] = useState<Loadlist[]>([]);
   const [availablePicklists, setAvailablePicklists] = useState<AvailablePicklist[]>([]);
   const [availableFaceSheets, setAvailableFaceSheets] = useState<AvailableFaceSheet[]>([]);
@@ -240,10 +244,11 @@ const LoadlistsPage = () => {
   const [activeTab, setActiveTab] = useState<'picklists' | 'face-sheets' | 'bonus-face-sheets' | 'online'>('picklists');
 
   // State for online orders
-  const [selectedPlatform, setSelectedPlatform] = useState<string>('');
   const [availableOnlineOrders, setAvailableOnlineOrders] = useState<any[]>([]);
   const [selectedOnlineOrders, setSelectedOnlineOrders] = useState<string[]>([]);
   const [loadingOnlineOrders, setLoadingOnlineOrders] = useState(false);
+  const [onlineShippingProvider, setOnlineShippingProvider] = useState<string>(''); // ประเภทขนส่งสำหรับออนไลน์
+  const [availableShippingProviders, setAvailableShippingProviders] = useState<string[]>([]); // รายการขนส่งจากฐานข้อมูล
 
   // ✅ NEW: เก็บค่าแยกต่างหากแต่ละ picklist (key = picklist_id)
   const [picklistFormData, setPicklistFormData] = useState<Record<number, PicklistFormData>>({});
@@ -340,7 +345,44 @@ const LoadlistsPage = () => {
     fetchLoadlists();
     fetchEmployees();
     fetchVehicles();
+    fetchAvailableShippingProviders(); // ✅ NEW: ดึงรายการขนส่งจากฐานข้อมูล
   }, []);
+
+  // ✅ ฟังก์ชันดึงรายการขนส่งทั้งหมดจากออเดอร์ออนไลน์
+  const fetchAvailableShippingProviders = async () => {
+    console.log('🔍 Fetching shipping providers...');
+    try {
+      const { data, error } = await supabase
+        .from('packing_backup_orders')
+        .select('shipping_provider')
+        .not('shipping_provider', 'is', null);
+
+      if (error) {
+        console.error('❌ Error fetching shipping providers:', error);
+        throw error;
+      }
+
+      console.log('📦 Raw data:', data);
+
+      // Get unique shipping providers
+      const uniqueProviders = Array.from(
+        new Set(data?.map(item => item.shipping_provider).filter(Boolean))
+      ).sort();
+
+      console.log('✅ Unique providers:', uniqueProviders);
+      console.log('🔄 Setting state with:', uniqueProviders);
+      
+      setAvailableShippingProviders(uniqueProviders as string[]);
+      
+      // ✅ Verify state was set
+      setTimeout(() => {
+        console.log('⏰ State after 100ms:', uniqueProviders);
+      }, 100);
+    } catch (error) {
+      console.error('❌ Error in fetchAvailableShippingProviders:', error);
+      setAvailableShippingProviders([]);
+    }
+  };
 
   // Auto-fill form fields from selected picklists
   useEffect(() => {
@@ -684,13 +726,19 @@ const LoadlistsPage = () => {
     setMatchingPreviews({}); // ✅ Reset matching previews
     setSkipMapping(false); // ✅ Reset skip mapping mode (edit28)
     setUnmappedBonusFaceSheets([]); // ✅ Reset unmapped BFS (edit28)
+    // ✅ Reset online orders fields
+    setAvailableOnlineOrders([]);
+    setSelectedOnlineOrders([]);
+    setOnlineShippingProvider('');
+    setAvailableShippingProviders([]);
     await Promise.all([
       fetchAvailablePicklists(),
       fetchAvailableFaceSheets(),
       fetchAvailableBonusFaceSheets(),
       fetchAllPicklistsForDropdown(), // ✅ NEW: ดึงรายการ picklists สำหรับ dropdown
       fetchEmployees(),
-      fetchVehicles()
+      fetchVehicles(),
+      fetchAvailableShippingProviders() // ✅ NEW: ดึงรายการขนส่ง
     ]);
   };
 
@@ -777,16 +825,16 @@ const LoadlistsPage = () => {
     }
   };
 
-  // ✅ NEW: Fetch online orders from packing_backup_orders
-  const fetchOnlineOrders = async (platform: string) => {
-    if (!platform) {
+  // ✅ Fetch online orders by shipping provider
+  const fetchOnlineOrdersByShippingProvider = async (shippingProvider: string) => {
+    if (!shippingProvider) {
       setAvailableOnlineOrders([]);
       return;
     }
 
     setLoadingOnlineOrders(true);
     try {
-      const response = await fetch(`/api/packing-backup-orders?platform=${encodeURIComponent(platform)}&loaded=true&not_in_loadlist=true`);
+      const response = await fetch(`/api/packing-backup-orders?shipping_provider=${encodeURIComponent(shippingProvider)}&loaded=true&not_in_loadlist=true`);
       const result = await response.json();
 
       if (result.success && result.data) {
@@ -802,11 +850,14 @@ const LoadlistsPage = () => {
     }
   };
 
-  // ✅ NEW: Handle platform change
-  const handlePlatformChange = (platform: string) => {
-    setSelectedPlatform(platform);
+  // ✅ Handle shipping provider change
+  const handleShippingProviderChange = (provider: string) => {
+    setOnlineShippingProvider(provider);
     setSelectedOnlineOrders([]);
-    fetchOnlineOrders(platform);
+    setAvailableOnlineOrders([]);
+    if (provider) {
+      fetchOnlineOrdersByShippingProvider(provider);
+    }
   };
 
   // ✅ NEW: Toggle online order selection
@@ -852,7 +903,7 @@ const LoadlistsPage = () => {
         loading_queue_number: loadingQueueNumber || null,
         loading_door_number: loadingDoorNumber || null,
         online_order_ids: selectedOnlineOrders,
-        platform: selectedPlatform
+        shipping_provider: onlineShippingProvider || null // ประเภทขนส่ง
       };
 
       const response = await fetch('/api/loadlists', {
@@ -870,8 +921,8 @@ const LoadlistsPage = () => {
       // Success
       setIsCreateModalOpen(false);
       setSelectedOnlineOrders([]);
-      setSelectedPlatform('');
       setAvailableOnlineOrders([]);
+      setOnlineShippingProvider(''); // Reset ประเภทขนส่ง
       await fetchLoadlists();
 
     } catch (err: any) {
@@ -3126,50 +3177,54 @@ const LoadlistsPage = () => {
           {/* Online Tab */}
           {activeTab === 'online' && (
             <div className="space-y-4">
-              {/* Platform Selection */}
+              {/* Shipping Provider Selection */}
               <div className="bg-gray-50 p-4 rounded-lg">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  เลือกแพลตฟอร์ม
+                  เลือกขนส่ง
                 </label>
                 <select
-                  value={selectedPlatform}
-                  onChange={(e) => handlePlatformChange(e.target.value)}
+                  value={onlineShippingProvider}
+                  onChange={(e) => handleShippingProviderChange(e.target.value)}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                 >
-                  <option value="">-- เลือกแพลตฟอร์ม --</option>
-                  <option value="Shopee Thailand">Shopee</option>
-                  <option value="TikTok Shop">TikTok Shop</option>
-                  <option value="Lazada Thailand">Lazada</option>
+                  <option value="">-- เลือกขนส่ง --</option>
+                  {availableShippingProviders.map((provider) => (
+                    <option key={provider} value={provider}>
+                      {provider}
+                    </option>
+                  ))}
                 </select>
               </div>
 
               {/* Form Fields for Online Orders - Only Checker is required */}
-              {selectedPlatform && (
+              {onlineShippingProvider && (
                 <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
                   <h4 className="text-sm font-semibold text-blue-800 mb-3">ข้อมูลใบโหลด</h4>
-                  <div className="max-w-md">
+                  <div className="grid grid-cols-1 gap-4 max-w-md">
                     {/* Checker - REQUIRED */}
-                    <label className="block text-xs font-medium text-gray-700 mb-1">
-                      ผู้เช็คโหลดสินค้า <span className="text-red-500">*</span>
-                    </label>
-                    <select
-                      value={checkerEmployeeId}
-                      onChange={(e) => setCheckerEmployeeId(e.target.value ? Number(e.target.value) : '')}
-                      className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-green-500"
-                    >
-                      <option value="">-- เลือกผู้เช็ค --</option>
-                      {employees.map((emp) => (
-                        <option key={emp.employee_id} value={emp.employee_id}>
-                          {emp.first_name} {emp.last_name}
-                        </option>
-                      ))}
-                    </select>
+                    <div>
+                      <label className="block text-xs font-medium text-gray-700 mb-1">
+                        ผู้เช็คโหลดสินค้า <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        value={checkerEmployeeId}
+                        onChange={(e) => setCheckerEmployeeId(e.target.value ? Number(e.target.value) : '')}
+                        className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-green-500"
+                      >
+                        <option value="">-- เลือกผู้เช็ค --</option>
+                        {employees.map((emp) => (
+                          <option key={emp.employee_id} value={emp.employee_id}>
+                            {emp.first_name} {emp.last_name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
                 </div>
               )}
 
               {/* Orders List */}
-              {selectedPlatform && (
+              {onlineShippingProvider && (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between bg-gray-50 px-4 py-2 rounded">
                     <label className="flex items-center space-x-2 cursor-pointer">
@@ -3195,7 +3250,6 @@ const LoadlistsPage = () => {
                           <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap w-12">
                             <span className="sr-only">เลือก</span>
                           </th>
-                          <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">เลขออเดอร์</th>
                           <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">Tracking</th>
                           <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชื่อผู้ซื้อ</th>
                           <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">สแกนขึ้นรถเมื่อ</th>
@@ -3205,14 +3259,14 @@ const LoadlistsPage = () => {
                       <tbody className="bg-white divide-y divide-gray-100 text-[11px]">
                         {loadingOnlineOrders ? (
                           <tr>
-                            <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                            <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
                               <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2" />
                               กำลังโหลด...
                             </td>
                           </tr>
                         ) : availableOnlineOrders.length === 0 ? (
                           <tr>
-                            <td colSpan={6} className="px-4 py-8 text-center text-gray-500">
+                            <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
                               ไม่พบออเดอร์ที่สแกนขึ้นรถแล้ว
                             </td>
                           </tr>
@@ -3231,9 +3285,6 @@ const LoadlistsPage = () => {
                                   onChange={() => handleToggleOnlineOrder(order.id)}
                                   className="w-4 h-4 text-green-600 rounded focus:ring-green-500"
                                 />
-                              </td>
-                              <td className="px-2 py-2 border-r border-gray-100 whitespace-nowrap font-mono text-blue-600">
-                                {order.order_number}
                               </td>
                               <td className="px-2 py-2 border-r border-gray-100 whitespace-nowrap font-mono text-purple-600">
                                 {order.tracking_number}

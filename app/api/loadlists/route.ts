@@ -23,6 +23,7 @@ async function handleOnlineOrdersMode(
     helper_employee_id?: number | null;
     loading_queue_number?: string | null;
     loading_door_number?: string | null;
+    shipping_provider?: string | null; // ประเภทขนส่ง
   }
 ) {
   const {
@@ -36,7 +37,8 @@ async function handleOnlineOrdersMode(
     driver_phone,
     helper_employee_id,
     loading_queue_number,
-    loading_door_number
+    loading_door_number,
+    shipping_provider
   } = params;
 
   try {

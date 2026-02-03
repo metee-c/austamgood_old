@@ -289,6 +289,7 @@ export default function DashboardPage() {
           second: '2-digit'
         }) : '-',
         'แพลตฟอร์ม': order.platform || '-',
+        'ขนส่ง': order.shipping_provider || '-',
         'วันที่สร้าง': new Date(order.created_at).toLocaleString('th-TH', {
           timeZone: 'Asia/Bangkok',
           year: 'numeric',
@@ -307,7 +308,7 @@ export default function DashboardPage() {
     const colWidths = [
       { wch: 8 }, { wch: 20 }, { wch: 18 }, { wch: 15 }, { wch: 15 },
       { wch: 30 }, { wch: 8 }, { wch: 12 }, { wch: 12 }, { wch: 20 },
-      { wch: 12 }, { wch: 20 }
+      { wch: 12 }, { wch: 15 }, { wch: 20 }
     ]
     ws['!cols'] = colWidths
 
@@ -812,6 +813,7 @@ export default function DashboardPage() {
                     <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">เวลาสแกนสินค้า</th>
                     <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">แพลตฟอร์ม</th>
                     <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">วันที่สร้าง</th>
+                    <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">ขนส่ง</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -876,6 +878,9 @@ export default function DashboardPage() {
                               minute: '2-digit'
                             })}
                           </span>
+                        </td>
+                        <td className="py-1.5 px-2">
+                          <span className="text-xs font-medium text-gray-700 font-thai">{order.shipping_provider || '-'}</span>
                         </td>
                       </tr>
                     );

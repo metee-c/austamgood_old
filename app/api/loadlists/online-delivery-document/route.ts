@@ -11,6 +11,8 @@ interface OnlineOrder {
   quantity: number;
   platform: string;
   shipping_provider: string;
+  created_at?: string;
+  loaded_at?: string;
 }
 
 interface LoadlistData {
@@ -85,7 +87,7 @@ function generateDeliveryHTML(loadlist: LoadlistData): string {
     <style>
         @page {
             size: A4 portrait;
-            margin: 10mm;
+            margin: 1.5cm 1cm 2cm 1cm;
         }
         
         * {
@@ -96,12 +98,10 @@ function generateDeliveryHTML(loadlist: LoadlistData): string {
         
         body {
             font-family: 'Sarabun', 'Noto Sans Thai', sans-serif;
-            font-size: 14px;
-            line-height: 1.5;
+            font-size: 11px;
+            line-height: 1.3;
             color: #000;
             background: #fff;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
         }
         
         .container {
@@ -113,192 +113,148 @@ function generateDeliveryHTML(loadlist: LoadlistData): string {
             text-align: center;
             margin-bottom: 20px;
             border-bottom: 2px solid #000;
-            padding-bottom: 10px;
+            padding-bottom: 8px;
+            background-color: #fff;
         }
         
         .company-name {
-            font-size: 18px;
+            font-size: 16px;
             font-weight: 700;
-            margin-bottom: 5px;
-        }
-        
-        .company-address {
-            font-size: 12px;
             margin-bottom: 3px;
         }
         
+        .company-address {
+            font-size: 11px;
+            margin-bottom: 2px;
+        }
+        
         .document-title {
-            font-size: 20px;
+            font-size: 14px;
             font-weight: 700;
-            text-align: center;
-            border: 3px solid #000;
-            padding: 15px;
-            margin: 20px 0;
-            background-color: #f0f0f0;
-        }
-        
-        .info-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-            margin-bottom: 20px;
-            font-size: 13px;
-        }
-        
-        .info-item {
-            padding: 5px;
-        }
-        
-        .info-label {
-            font-weight: 600;
-            display: inline-block;
-            min-width: 100px;
+            text-transform: uppercase;
+            border: 2px solid #000;
+            padding: 8px;
+            margin: 8px 0;
+            background-color: #fff;
         }
         
         .summary-box {
             background-color: #e3f2fd;
             border: 2px solid #2196f3;
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 20px;
+            border-radius: 4px;
+            padding: 10px;
+            margin-bottom: 15px;
         }
         
         .summary-grid {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
-            gap: 15px;
+            gap: 10px;
             text-align: center;
         }
         
         .summary-item {
-            padding: 10px;
+            padding: 6px;
         }
         
         .summary-value {
-            font-size: 24px;
+            font-size: 20px;
             font-weight: 700;
             color: #2196f3;
         }
         
         .summary-label {
-            font-size: 12px;
+            font-size: 10px;
             color: #666;
-            margin-top: 5px;
+            margin-top: 3px;
         }
         
         .platform-section {
-            margin-bottom: 30px;
-            page-break-inside: avoid;
+            margin-bottom: 15px;
         }
         
         .platform-header {
             background-color: #f5f5f5;
-            padding: 10px;
+            padding: 8px;
             font-weight: 700;
-            font-size: 16px;
-            border-left: 4px solid #2196f3;
-            margin-bottom: 10px;
+            font-size: 12px;
+            border-left: 3px solid #2196f3;
+            margin-bottom: 8px;
         }
         
         .orders-table {
             width: 100%;
             border-collapse: collapse;
             margin-bottom: 20px;
-            font-size: 12px;
-            border-spacing: 0;
         }
         
         .orders-table th,
         .orders-table td {
-            border: 1px solid #ddd;
-            padding: 8px;
+            border: 1px solid #000;
+            padding: 3px 5px;
             text-align: left;
-            margin: 0;
+            font-size: 10px;
         }
         
         .orders-table th {
-            background-color: #f5f5f5;
+            background-color: #fff;
             font-weight: 600;
             text-align: center;
-            border-bottom: 2px solid #ddd;
-        }
-        
-        .orders-table tbody tr:first-child td {
-            border-top: none;
+            font-size: 11px;
         }
         
         .orders-table td:nth-child(1),
+        .orders-table td:nth-child(5),
         .orders-table td:nth-child(6) {
             text-align: center;
         }
         
-        .orders-table tr:hover {
-            background-color: #f9f9f9;
-        }
-        
         .signature-section {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 40px;
-            margin: 40px 0;
-            page-break-inside: avoid;
+            display: flex;
+            justify-content: space-between;
+            margin: 25px 0;
         }
         
         .signature-box {
+            flex: 1;
             text-align: center;
         }
         
         .signature-title {
             font-weight: 600;
-            margin-bottom: 15px;
-            font-size: 14px;
+            margin-bottom: 8px;
+            font-size: 11px;
         }
         
         .signature-line {
             border-bottom: 1px solid #000;
-            margin: 50px 20px 10px 20px;
+            width: 180px;
+            margin: 8px auto;
+            height: 30px;
         }
         
         .signature-info {
-            margin-top: 10px;
-            font-size: 12px;
+            margin-top: 8px;
+            font-size: 10px;
         }
         
         .date-line {
             border-bottom: 1px solid #000;
-            width: 150px;
-            margin: 10px auto;
+            width: 90px;
+            margin: 4px auto;
         }
         
         .footer {
             text-align: center;
-            font-size: 11px;
-            margin-top: 30px;
-            padding-top: 15px;
+            font-size: 9px;
+            margin-top: 15px;
             border-top: 1px solid #ccc;
-            color: #666;
+            padding-top: 8px;
         }
         
         @media print {
             body {
                 margin: 0;
-            }
-            
-            .orders-table {
-                page-break-inside: auto;
-            }
-            
-            .orders-table tr {
-                page-break-inside: avoid;
-                page-break-after: auto;
-            }
-            
-            .orders-table thead {
-                display: table-header-group;
-            }
-            
-            .platform-section {
-                page-break-inside: avoid;
             }
         }
     </style>
@@ -324,36 +280,65 @@ function generateDeliveryHTML(loadlist: LoadlistData): string {
             เอกสารส่งมอบสินค้า (Online) - ${loadlist.loadlist_code}
         </div>
 
-        <!-- Loadlist Information - Compact with Fill-in Lines -->
-        <div style="display: flex; justify-content: space-between; margin-bottom: 15px; padding: 12px; border: 1px solid #ddd; background-color: #f9f9f9; font-size: 12px;">
-            <div style="flex: 1;">
-                <div style="margin-bottom: 6px;">
-                    <strong>เลขงานจัดส่ง:</strong> ${loadlist.loadlist_code}
-                </div>
-                <div style="margin-bottom: 6px;">
-                    <strong>ผู้เช็คโหลด:</strong> ${loadlist.checker_employee ? `${loadlist.checker_employee.first_name} ${loadlist.checker_employee.last_name}` : '<span style="display: inline-block; border-bottom: 1px solid #000; width: 150px; height: 16px;"></span>'}
-                </div>
-                <div style="margin-bottom: 6px;">
-                    <strong>ผู้ช่วยโหลด:</strong> ${loadlist.helper_employee ? `${loadlist.helper_employee.first_name} ${loadlist.helper_employee.last_name}` : '<span style="display: inline-block; border-bottom: 1px solid #000; width: 150px; height: 16px;"></span>'}
-                </div>
+        <!-- Loadlist Information -->
+        <div style="border: 2px solid #000; padding: 10px; margin-bottom: 15px; background-color: #fff;">
+            <div style="font-weight: 700; font-size: 12px; margin-bottom: 8px; text-align: center; border-bottom: 1px solid #000; padding-bottom: 5px;">
+                ข้อมูลการโหลดสินค้า
             </div>
-            <div style="flex: 1;">
-                <div style="margin-bottom: 6px;">
-                    <strong>ทะเบียนรถ:</strong> ${loadlist.vehicle?.plate_number || '<span style="display: inline-block; border-bottom: 1px solid #000; width: 120px; height: 16px;"></span>'}
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; font-size: 10px;">
+                <div>
+                    <span style="font-weight: 600;">เลขงานจัดส่ง:</span>
+                    <span style="padding: 0 5px;">
+                        ${loadlist.loadlist_code}
+                    </span>
                 </div>
-                <div style="margin-bottom: 6px;">
-                    <strong>พนักงานขับรถ:</strong> ${loadlist.driver ? `${loadlist.driver.first_name} ${loadlist.driver.last_name}` : '<span style="display: inline-block; border-bottom: 1px solid #000; width: 150px; height: 16px;"></span>'}
+                <div>
+                    <span style="font-weight: 600;">วันที่:</span>
+                    <span style="padding: 0 5px;">
+                        ${formatThaiDate(loadlist.created_at)}
+                    </span>
                 </div>
-                <div style="margin-bottom: 6px;">
-                    <strong>ประตู/คิว:</strong> ${loadlist.loading_door_number || '<span style="display: inline-block; border-bottom: 1px solid #000; width: 40px; height: 16px;"></span>'} / ${loadlist.loading_queue_number || '<span style="display: inline-block; border-bottom: 1px solid #000; width: 40px; height: 16px;"></span>'}
+                <div>
+                    <span style="font-weight: 600;">ประตูโหลด:</span>
+                    <span style="${loadlist.loading_door_number ? '' : 'border-bottom: 1px solid #000;'} display: inline-block; min-width: 80px; padding: 0 5px;">
+                        ${loadlist.loading_door_number || '_____________'}
+                    </span>
                 </div>
-            </div>
-            <div style="flex: 1;">
-                <div style="margin-bottom: 6px;">
-                    <strong>วันที่:</strong> ${formatThaiDate(loadlist.created_at)}
+                <div>
+                    <span style="font-weight: 600;">ผู้เช็คโหลด:</span>
+                    <span style="${loadlist.checker_employee ? '' : 'border-bottom: 1px solid #000;'} display: inline-block; min-width: 120px; padding: 0 5px;">
+                        ${loadlist.checker_employee ? `${loadlist.checker_employee.first_name} ${loadlist.checker_employee.last_name}` : '____________________'}
+                    </span>
                 </div>
-                <div style="margin-bottom: 6px;">
-                    <strong>เบอร์โทร:</strong> ${loadlist.driver_phone || '<span style="display: inline-block; border-bottom: 1px solid #000; width: 120px; height: 16px;"></span>'}
+                <div>
+                    <span style="font-weight: 600;">ผู้ช่วยโหลด:</span>
+                    <span style="${loadlist.helper_employee ? '' : 'border-bottom: 1px solid #000;'} display: inline-block; min-width: 120px; padding: 0 5px;">
+                        ${loadlist.helper_employee ? `${loadlist.helper_employee.first_name} ${loadlist.helper_employee.last_name}` : '____________________'}
+                    </span>
+                </div>
+                <div>
+                    <span style="font-weight: 600;">คิว:</span>
+                    <span style="${loadlist.loading_queue_number ? '' : 'border-bottom: 1px solid #000;'} display: inline-block; min-width: 80px; padding: 0 5px;">
+                        ${loadlist.loading_queue_number || '_____________'}
+                    </span>
+                </div>
+                <div>
+                    <span style="font-weight: 600;">ทะเบียนรถ:</span>
+                    <span style="${loadlist.vehicle?.plate_number ? '' : 'border-bottom: 1px solid #000;'} display: inline-block; min-width: 100px; padding: 0 5px;">
+                        ${loadlist.vehicle?.plate_number || '________________'}
+                    </span>
+                </div>
+                <div>
+                    <span style="font-weight: 600;">พนักงานขับรถ:</span>
+                    <span style="${loadlist.driver ? '' : 'border-bottom: 1px solid #000;'} display: inline-block; min-width: 120px; padding: 0 5px;">
+                        ${loadlist.driver ? `${loadlist.driver.first_name} ${loadlist.driver.last_name}` : '____________________'}
+                    </span>
+                </div>
+                <div>
+                    <span style="font-weight: 600;">เบอร์โทร:</span>
+                    <span style="${loadlist.driver_phone ? '' : 'border-bottom: 1px solid #000;'} display: inline-block; min-width: 100px; padding: 0 5px;">
+                        ${loadlist.driver_phone || '________________'}
+                    </span>
                 </div>
             </div>
         </div>
@@ -421,9 +406,8 @@ function generateDeliveryHTML(loadlist: LoadlistData): string {
                     <div>ชื่อ: ${loadlist.checker_employee ? `${loadlist.checker_employee.first_name} ${loadlist.checker_employee.last_name}` : '___________________________'}</div>
                 </div>
                 <div class="signature-line"></div>
-                <div style="margin-top: 5px;">ลายเซ็น</div>
                 <div class="date-line"></div>
-                <div>วันที่</div>
+                <div>วันที่ ___/___/___</div>
             </div>
             <div class="signature-box">
                 <div class="signature-title">ผู้รับมอบ (ขนส่ง)</div>
@@ -431,9 +415,8 @@ function generateDeliveryHTML(loadlist: LoadlistData): string {
                     <div>ชื่อ: ${loadlist.driver ? `${loadlist.driver.first_name} ${loadlist.driver.last_name}` : '___________________________'}</div>
                 </div>
                 <div class="signature-line"></div>
-                <div style="margin-top: 5px;">ลายเซ็น</div>
                 <div class="date-line"></div>
-                <div>วันที่</div>
+                <div>วันที่ ___/___/___</div>
             </div>
         </div>
 

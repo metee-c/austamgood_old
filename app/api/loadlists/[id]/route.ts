@@ -273,6 +273,19 @@ export async function DELETE(
 
     if (delBFS) console.error('Error deleting BFS mappings:', delBFS);
 
+    // ✅ Clear loadlist_id and loadlist_created_at from packing_backup_orders
+    const { error: clearOrdersError } = await supabase
+      .from('packing_backup_orders')
+      .update({
+        loadlist_id: null,
+        loadlist_created_at: null
+      })
+      .eq('loadlist_id', id);
+
+    if (clearOrdersError) {
+      console.error('Error clearing loadlist data from packing_backup_orders:', clearOrdersError);
+    }
+
     // 3. Delete the loadlist itself
     const { error: delError } = await supabase
       .from('loadlists')

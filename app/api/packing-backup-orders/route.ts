@@ -8,15 +8,15 @@ export async function GET(request: NextRequest) {
     
     // Get query parameters
     const { searchParams } = new URL(request.url);
-    const platform = searchParams.get('platform');
+    const shippingProvider = searchParams.get('shipping_provider');
     const loaded = searchParams.get('loaded');
     const notInLoadlist = searchParams.get('not_in_loadlist');
 
     // Build query
     let query = supabase
       .from('packing_backup_orders')
-      .select('id, order_number, tracking_number, buyer_name, platform, loaded_at, loaded_by, loadlist_created_at')
-      .eq('platform', platform)
+      .select('id, order_number, tracking_number, buyer_name, platform, loaded_at, loaded_by, loadlist_created_at, shipping_provider')
+      .eq('shipping_provider', shippingProvider)
       .order('loaded_at', { ascending: false });
 
     // Filter for loaded orders (loaded_at is not null)
