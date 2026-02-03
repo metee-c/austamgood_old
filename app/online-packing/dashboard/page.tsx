@@ -46,6 +46,7 @@ interface PlatformStats {
 interface ShippingStats {
   provider: string
   total_orders: number
+  packed_orders: number
   percentage: number
 }
 
@@ -418,17 +419,23 @@ export default function DashboardPage() {
 
       setPlatformStats(platformStatsData)
 
-      const shippingMap = new Map<string, number>()
+      const shippingMap = new Map<string, { total: number; packed: number }>()
       uniqueOrdersArray.forEach(order => {
         const provider = order.shipping_provider || 'ไม่ระบุ'
-        shippingMap.set(provider, (shippingMap.get(provider) || 0) + 1)
+        const current = shippingMap.get(provider) || { total: 0, packed: 0 }
+        current.total += 1
+        if (['packed', 'shipped', 'delivered'].includes(order.fulfillment_status)) {
+          current.packed += 1
+        }
+        shippingMap.set(provider, current)
       })
 
       const shippingStatsData: ShippingStats[] = Array.from(shippingMap.entries())
-        .map(([provider, count]) => ({
+        .map(([provider, data]) => ({
           provider,
-          total_orders: count,
-          percentage: total_orders > 0 ? Math.round((count / total_orders) * 100) : 0
+          total_orders: data.total,
+          packed_orders: data.packed,
+          percentage: total_orders > 0 ? Math.round((data.total / total_orders) * 100) : 0
         }))
         .sort((a, b) => b.total_orders - a.total_orders)
 
@@ -528,6 +535,16 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 ))}
+                <div className="flex items-center justify-between p-2 bg-primary-100 rounded border-t border-primary-200 mt-1">
+                  <span className="text-xs font-bold text-gray-800 font-thai">รวม</span>
+                  <div className="flex items-center space-x-3">
+                    <div className="text-right">
+                      <div className="text-xs font-bold text-green-600 font-thai">{platformStats.reduce((sum, p) => sum + p.packed_orders, 0)} สแกนแล้ว</div>
+                      <div className="text-xs font-bold text-orange-500 font-thai">{platformStats.reduce((sum, p) => sum + (p.total_orders - p.packed_orders), 0)} ยังไม่สแกน</div>
+                    </div>
+                    <div className="text-xs font-bold text-primary-700 font-thai min-w-[40px] text-right">{platformStats.reduce((sum, p) => sum + p.total_orders, 0)}</div>
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="text-center py-4 text-gray-400">
@@ -546,12 +563,22 @@ export default function DashboardPage() {
                     <div className="flex items-center space-x-3">
                       <div className="text-right">
                         <div className="text-xs font-bold text-gray-800 font-thai">{shipping.total_orders}</div>
-                        <div className="text-[10px] text-gray-500 font-thai">ออเดอร์</div>
+                        <div className="text-[10px] text-gray-500 font-thai">{shipping.packed_orders} แพ็คแล้ว</div>
                       </div>
                       <div className="text-xs font-bold text-purple-600 font-thai min-w-[40px] text-right">{shipping.percentage}%</div>
                     </div>
                   </div>
                 ))}
+                <div className="flex items-center justify-between p-2 bg-purple-100 rounded border-t border-purple-200 mt-1">
+                  <span className="text-xs font-bold text-gray-800 font-thai">รวม</span>
+                  <div className="flex items-center space-x-3">
+                    <div className="text-right">
+                      <div className="text-xs font-bold text-green-600 font-thai">{shippingStats.reduce((sum, s) => sum + s.packed_orders, 0)} สแกนแล้ว</div>
+                      <div className="text-xs font-bold text-orange-500 font-thai">{shippingStats.reduce((sum, s) => sum + (s.total_orders - s.packed_orders), 0)} ยังไม่สแกน</div>
+                    </div>
+                    <div className="text-xs font-bold text-purple-700 font-thai min-w-[40px] text-right">{shippingStats.reduce((sum, s) => sum + s.total_orders, 0)}</div>
+                  </div>
+                </div>
               </div>
             ) : (
               <div className="text-center py-4 text-gray-400">

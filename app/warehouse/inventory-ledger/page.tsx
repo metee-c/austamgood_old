@@ -608,16 +608,19 @@ const InventoryLedgerPage = () => {
         consolidatedData.push(item);
         processedIds.add(item.ledger_id);
       }
-    } else if (item.reference_no && (item.transaction_type === 'transfer_out' || item.transaction_type === 'transfer_in')) {
-      // สำหรับ replenishment ที่ไม่มี move_item_id แต่มี reference_no (เช่น REPL-xxx)
-      // หาคู่ของมัน (in/out) ที่มี reference_no เดียวกัน
+    } else if (item.reference_no) {
+      // สำหรับธุรกรรมที่ไม่มี move_item_id แต่มี reference_no
+      // เช่น online_pack, pick, ship, rollback, cleanup, transfer, VIRTUAL_SETTLE, online_pick, TRANSFER ฯลฯ
+      // หาคู่ของมัน (in/out) ที่มี reference_no + sku_id + transaction_type เดียวกัน
       const pair = filteredData.find(
         other =>
           other.ledger_id !== item.ledger_id &&
+          !processedIds.has(other.ledger_id) &&
           other.reference_no === item.reference_no &&
           other.direction !== item.direction &&
           other.sku_id === item.sku_id &&
-          !other.move_item_id // ต้องไม่มี move_item_id เหมือนกัน
+          other.transaction_type === item.transaction_type &&
+          !other.move_item_id
       );
 
       if (pair) {
@@ -635,12 +638,12 @@ const InventoryLedgerPage = () => {
         processedIds.add(item.ledger_id);
         processedIds.add(pair.ledger_id);
       } else {
-        // ไม่มีคู่ แสดงปกติ
+        // ไม่มีคู่ แสดงปกติ (เช่น receive ที่มี reference_no แต่ไม่มีคู่ out)
         consolidatedData.push(item);
         processedIds.add(item.ledger_id);
       }
     } else {
-      // ธุรกรรมอื่นๆ ที่ไม่มี move_item_id (เช่น receive) แสดงปกติ
+      // ธุรกรรมอื่นๆ ที่ไม่มี move_item_id และไม่มี reference_no แสดงปกติ
       consolidatedData.push(item);
       processedIds.add(item.ledger_id);
     }
