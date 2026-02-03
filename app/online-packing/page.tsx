@@ -725,6 +725,7 @@ export default function PackingPage() {
           packed_at: o.packed_at,
           packed_by: o.packed_by,
           sample_alert: o.sample_alert,
+          created_at: o.created_at,
           moved_to_backup_at: new Date().toISOString()
         })), { onConflict: 'order_number,parent_sku', ignoreDuplicates: true });
 

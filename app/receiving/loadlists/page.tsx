@@ -1281,18 +1281,55 @@ const LoadlistsPage = () => {
   };
 
   const handlePrintLoadlist = async (loadlist: Loadlist) => {
+    console.log('🖨️ handlePrintLoadlist called with:', {
+      id: loadlist.id,
+      code: loadlist.loadlist_code,
+      hasPicklists: loadlist.picklists?.length,
+      hasFaceSheets: (loadlist as any).face_sheets?.length,
+      hasBonusFaceSheets: (loadlist as any).bonus_face_sheets?.length,
+      hasOnlineOrders: (loadlist as any).online_orders?.length,
+      loadlistData: loadlist
+    });
+
     // Check if this loadlist has any items
     const hasPicklists = loadlist.picklists && loadlist.picklists.length > 0;
     const hasFaceSheets = (loadlist as any).face_sheets && (loadlist as any).face_sheets.length > 0;
     const hasBonusFaceSheets = (loadlist as any).bonus_face_sheets && (loadlist as any).bonus_face_sheets.length > 0;
+    const hasOnlineOrders = (loadlist as any).online_orders && (loadlist as any).online_orders.length > 0;
 
-    // Check if loadlist is empty
-    if (!hasPicklists && !hasFaceSheets && !hasBonusFaceSheets) {
+    // ✅ NEW: Check for online orders by fetching from API if not present
+    if (!hasPicklists && !hasFaceSheets && !hasBonusFaceSheets && !hasOnlineOrders) {
+      console.log('⚠️ No items found in loadlist object, checking API...');
+      
+      // Try to fetch online orders from API
+      try {
+        const response = await fetch(`/api/loadlists/${loadlist.id}`);
+        const result = await response.json();
+        
+        console.log('📡 API response:', result);
+        
+        if (result.success && result.data?.online_orders?.length > 0) {
+          console.log('✅ Found online orders in API, opening delivery document API');
+          window.open(`/api/loadlists/online-delivery-document?loadlist_id=${loadlist.id}`, '_blank');
+          return;
+        }
+      } catch (err) {
+        console.error('❌ Error fetching loadlist from API:', err);
+      }
+      
       alert('ใบโหลดนี้ไม่มีรายการสินค้า ไม่สามารถพิมพ์ได้');
       return;
     }
 
-    // Priority: Check Bonus Face Sheets FIRST (ตรวจสอบของแถมก่อน)
+    // ✅ NEW: Check for online orders FIRST (ตรวจสอบออนไลน์ก่อน)
+    if (hasOnlineOrders) {
+      console.log('✅ Has online orders, opening delivery document API');
+      // เปิด API endpoint สำหรับเอกสารส่งมอบออนไลน์ (เหมือน face sheet)
+      window.open(`/api/loadlists/online-delivery-document?loadlist_id=${loadlist.id}`, '_blank');
+      return;
+    }
+
+    // Priority: Check Bonus Face Sheets (ตรวจสอบของแถม)
     if (hasBonusFaceSheets) {
       // ✅ FIX: แสดงทุก BFS ที่แมพกับ loadlist นี้ (ไม่ใช่แค่ BFS แรก)
       const allBonusFaceSheets = (loadlist as any).bonus_face_sheets || [];
@@ -3105,6 +3142,31 @@ const LoadlistsPage = () => {
                   <option value="Lazada Thailand">Lazada</option>
                 </select>
               </div>
+
+              {/* Form Fields for Online Orders - Only Checker is required */}
+              {selectedPlatform && (
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-200">
+                  <h4 className="text-sm font-semibold text-blue-800 mb-3">ข้อมูลใบโหลด</h4>
+                  <div className="max-w-md">
+                    {/* Checker - REQUIRED */}
+                    <label className="block text-xs font-medium text-gray-700 mb-1">
+                      ผู้เช็คโหลดสินค้า <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={checkerEmployeeId}
+                      onChange={(e) => setCheckerEmployeeId(e.target.value ? Number(e.target.value) : '')}
+                      className="w-full px-3 py-2 border border-gray-300 rounded text-sm focus:outline-none focus:ring-1 focus:ring-green-500"
+                    >
+                      <option value="">-- เลือกผู้เช็ค --</option>
+                      {employees.map((emp) => (
+                        <option key={emp.employee_id} value={emp.employee_id}>
+                          {emp.first_name} {emp.last_name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
 
               {/* Orders List */}
               {selectedPlatform && (

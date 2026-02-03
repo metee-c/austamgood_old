@@ -399,14 +399,10 @@ export default function ERPPage() {
 
   const searchPendingOrders = async () => {
     const supabase = createClient()
-    if (!selectedPlatform) {
-      alert('กรุณาเลือกแพลตฟอร์ม')
-      return
-    }
 
     setIsSearching(true)
     try {
-      console.log('🔍 กำลังค้นหาออเดอร์สำหรับแพลตฟอร์ม:', selectedPlatform)
+      console.log('🔍 กำลังค้นหาออเดอร์สำหรับแพลตฟอร์ม:', selectedPlatform || 'ทั้งหมด')
       console.log('📅 ช่วงวันที่:', startDate, '-', endDate)
       console.log('📊 สถานะ:', selectedStatus)
 
@@ -418,18 +414,32 @@ export default function ERPPage() {
         return Number.isNaN(d.getTime()) ? null : d.toISOString()
       }
 
+      // datetime-local input ไม่มีวินาที (เช่น "2026-02-03T14:19")
+      // ต้องเพิ่ม :00 สำหรับ start และ :59 สำหรับ end เพื่อครอบคลุมทั้งนาที
+      const ensureSeconds = (dateStr: string, seconds: string) => {
+        if (!dateStr) return dateStr
+        // ถ้ามี T แต่ไม่มีวินาที (length=16 เช่น "2026-02-03T14:19") → เพิ่มวินาที
+        if (dateStr.includes('T') && dateStr.length === 16) return `${dateStr}:${seconds}`
+        if (!dateStr.includes('T')) return `${dateStr}T${seconds === '00' ? '00:00:00' : '23:59:59'}`
+        return dateStr
+      }
+
       const startDateTime = startDate
-        ? toUTCString(startDate.includes('T') ? startDate : `${startDate}T00:00:00`)
+        ? toUTCString(ensureSeconds(startDate, '00'))
         : null
       const endDateTime = endDate
-        ? toUTCString(endDate.includes('T') ? endDate : `${endDate}T23:59:59`)
+        ? toUTCString(ensureSeconds(endDate, '59'))
         : null
 
       const buildBaseQuery = (table: 'packing_orders' | 'packing_backup_orders') => {
         let baseQuery = supabase
           .from(table)
           .select('*')
-          .eq('platform', selectedPlatform)
+
+        // กรองตามแพลตฟอร์ม (ถ้าเลือก)
+        if (selectedPlatform) {
+          baseQuery = baseQuery.eq('platform', selectedPlatform)
+        }
 
         if (selectedStatus) {
           baseQuery = baseQuery.eq('fulfillment_status', selectedStatus)
@@ -607,8 +617,10 @@ export default function ERPPage() {
     const endTime = end ? parseTimestamp(end) : null
 
     return ordersToFilter.filter(order => {
-      // กรองตาม created_at (เวลาที่นำเข้าออเดอร์) เท่านั้น
+      // กรองตาม created_at หรือ moved_to_backup_at (fallback สำหรับ backup orders)
       const createdTime = parseTimestamp(order.created_at)
+        ?? parseTimestamp(order.moved_to_backup_at)
+        ?? parseTimestamp(order.packed_at)
 
       if (createdTime === null) {
         return false
@@ -1631,7 +1643,7 @@ export default function ERPPage() {
           value={selectedPlatform}
           onChange={setSelectedPlatform}
           options={[
-            { value: '', label: '-- แพลตฟอร์ม --' },
+            { value: '', label: '-- ทุกแพลตฟอร์ม --' },
             ...availablePlatforms.map(p => ({ value: p, label: p }))
           ]}
         />
@@ -1698,7 +1710,7 @@ export default function ERPPage() {
           size="sm"
           icon={Search}
           onClick={searchPendingOrders}
-          disabled={!selectedPlatform || isSearching}
+          disabled={isSearching}
           loading={isSearching}
           className="text-xs py-1 px-2"
         >
