@@ -44,9 +44,9 @@ export async function POST(request: NextRequest) {
       }, { status: idempotencyCheck[0].previous_status || 200 });
     }
 
-    // Get employee_id from session for created_by
+    // Get user_id from session for created_by (FK references master_system_user.user_id)
     const sessionResult = await getCurrentSession();
-    const userId = sessionResult.session?.employee_id || null;
+    const userId = sessionResult.session?.user_id || null;
     
     // Prepare items for atomic function
     const itemsJson = items.map((item: any) => ({

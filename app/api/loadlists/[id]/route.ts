@@ -273,12 +273,15 @@ export async function DELETE(
 
     if (delBFS) console.error('Error deleting BFS mappings:', delBFS);
 
-    // ✅ Clear loadlist_id and loadlist_created_at from packing_backup_orders
+    // ✅ Clear loadlist_id, loadlist_created_at, loaded_at, loaded_by from packing_backup_orders
+    // This allows the packages to be scanned again at scan-to-vehicle page
     const { error: clearOrdersError } = await supabase
       .from('packing_backup_orders')
       .update({
         loadlist_id: null,
-        loadlist_created_at: null
+        loadlist_created_at: null,
+        loaded_at: null,
+        loaded_by: null
       })
       .eq('loadlist_id', id);
 

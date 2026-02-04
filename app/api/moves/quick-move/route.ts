@@ -85,37 +85,55 @@ export async function POST(request: NextRequest) {
 
     // Get balance info
     if (pallet_id) {
-      let query = supabase
+      // ✅ FIX: Always query ALL balances for this pallet first
+      const { data: allBalances, error: allBalancesError } = await supabase
         .from('wms_inventory_balances')
         .select('*')
         .eq('pallet_id', pallet_id)
+        .gt('total_piece_qty', 0) // Only balances with stock
 
-      // ✅ FIX: Filter by from_location_id if provided by client
-      // This prevents picking the wrong source when a pallet exists at multiple locations
-      if (client_from_location_id) {
-        query = query.eq('location_id', client_from_location_id)
-      }
-
-      const { data, error } = await query
-
-      if (error) {
-        console.error('Pallet query error:', error)
+      if (allBalancesError) {
+        console.error('Pallet query error:', allBalancesError)
         return NextResponse.json(
-          { error: `เกิดข้อผิดพลาดในการค้นหา Pallet: ${error.message}` },
+          { error: `เกิดข้อผิดพลาดในการค้นหา Pallet: ${allBalancesError.message}` },
           { status: 500 }
         )
       }
 
-      if (!data || data.length === 0) {
+      if (!allBalances || allBalances.length === 0) {
         return NextResponse.json(
-          { error: `ไม่พบข้อมูล Pallet ID: ${pallet_id}${client_from_location_id ? ` ที่ตำแหน่ง ${client_from_location_id}` : ''}` },
+          { error: `ไม่พบข้อมูล Pallet ID: ${pallet_id} หรือไม่มีสต็อกคงเหลือ` },
           { status: 404 }
         )
       }
 
-      balanceRecords = data
-      from_location_id = client_from_location_id || data[0].location_id
-      warehouse_id = data[0].warehouse_id || 'WH001' // Get warehouse from balance
+      // ✅ FIX: If client provided from_location_id, validate it exists in actual balances
+      if (client_from_location_id) {
+        const matchingBalances = allBalances.filter(b => b.location_id === client_from_location_id)
+        if (matchingBalances.length === 0) {
+          // Client sent wrong from_location - show available locations
+          const availableLocations = allBalances.map(b => b.location_id).join(', ')
+          return NextResponse.json(
+            { error: `Pallet ${pallet_id} ไม่อยู่ที่ตำแหน่ง ${client_from_location_id} อยู่ที่: ${availableLocations}` },
+            { status: 400 }
+          )
+        }
+        balanceRecords = matchingBalances
+        from_location_id = client_from_location_id
+      } else {
+        // No from_location specified - if pallet at multiple locations, require user to specify
+        if (allBalances.length > 1) {
+          const locations = allBalances.map(b => `${b.location_id} (${b.total_piece_qty} ชิ้น)`).join(', ')
+          return NextResponse.json(
+            { error: `Pallet ${pallet_id} อยู่หลายตำแหน่ง: ${locations} กรุณาเลือกตำแหน่งต้นทาง`, requireSourceLocation: true, locations: allBalances.map(b => ({ location_id: b.location_id, qty: b.total_piece_qty })) },
+            { status: 400 }
+          )
+        }
+        balanceRecords = allBalances
+        from_location_id = allBalances[0].location_id
+      }
+
+      warehouse_id = balanceRecords[0].warehouse_id || 'WH001' // Get warehouse from balance
     } else if (balance_id) {
       const { data, error } = await supabase
         .from('wms_inventory_balances')

@@ -39,9 +39,18 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    // ✅ FIX: Deduplicate by tracking_number - keep only first occurrence (most recent loaded_at)
+    const uniqueByTracking = new Map<string, typeof data[0]>();
+    for (const order of data || []) {
+      if (!uniqueByTracking.has(order.tracking_number)) {
+        uniqueByTracking.set(order.tracking_number, order);
+      }
+    }
+    const uniqueData = Array.from(uniqueByTracking.values());
+
     return NextResponse.json({
       success: true,
-      data: data || []
+      data: uniqueData
     });
 
   } catch (error: any) {

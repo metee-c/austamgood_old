@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { Truck, ArrowLeft, Package, CheckCircle, XCircle, Loader2, Ban } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 // =====================================================
 // TYPE DEFINITIONS
@@ -38,6 +39,7 @@ export default function ScanToVehiclePage() {
   const supabase = createClient();
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
+  const { user } = useAuthContext();
 
   const [scanInput, setScanInput] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -92,17 +94,21 @@ export default function ScanToVehiclePage() {
     }
   }, [supabase]);
 
-  // Load total count of loaded packages
+  // Load total count of loaded packages (unique tracking numbers)
   const loadTotalCount = useCallback(async () => {
     try {
-      const { count, error } = await supabase
+      // Get all loaded packages and count unique tracking numbers
+      const { data, error } = await supabase
         .from('packing_backup_orders')
-        .select('*', { count: 'exact', head: true })
+        .select('tracking_number')
         .not('loaded_at', 'is', null)
         .is('loadlist_id', null); // Only count orders not in any loadlist
 
       if (error) throw error;
-      setTotalCount(count || 0);
+      
+      // Count unique tracking numbers
+      const uniqueTrackingNumbers = new Set(data?.map(d => d.tracking_number) || []);
+      setTotalCount(uniqueTrackingNumbers.size);
     } catch (error) {
       console.error('Error loading total count:', error);
     }
@@ -263,7 +269,7 @@ export default function ScanToVehiclePage() {
         .from('packing_backup_orders')
         .update({
           loaded_at: new Date().toISOString(),
-          loaded_by: 'System User' // TODO: Replace with actual user
+          loaded_by: user?.full_name || user?.username || 'Unknown User'
         })
         .eq('tracking_number', trackingNumber)
         .is('loaded_at', null)

@@ -101,14 +101,32 @@ async function handleOnlineOrdersMode(
       );
     }
 
-    // 2. Update packing_backup_orders with loadlist_id and loadlist_created_at
+    // 2. Get tracking numbers from selected order IDs
+    const { data: selectedOrders, error: fetchError } = await supabase
+      .from('packing_backup_orders')
+      .select('tracking_number')
+      .in('id', online_order_ids);
+
+    if (fetchError || !selectedOrders) {
+      await supabase.from('loadlists').delete().eq('id', loadlist.id);
+      return NextResponse.json(
+        { error: 'Failed to fetch selected orders', details: fetchError?.message },
+        { status: 500 }
+      );
+    }
+
+    // Get unique tracking numbers
+    const trackingNumbers = [...new Set(selectedOrders.map(o => o.tracking_number))];
+
+    // 3. Update ALL rows with same tracking_number (not just selected IDs)
+    // This ensures all items of the same package are included in the loadlist
     const { error: updateError } = await supabase
       .from('packing_backup_orders')
       .update({
         loadlist_id: loadlist.id,
         loadlist_created_at: new Date().toISOString()
       })
-      .in('id', online_order_ids);
+      .in('tracking_number', trackingNumbers);
 
     if (updateError) {
       // Cleanup: delete the loadlist if update failed
@@ -122,7 +140,7 @@ async function handleOnlineOrdersMode(
     return NextResponse.json({
       success: true,
       loadlist,
-      message: `สร้างใบโหลดสำเร็จ พร้อมอัพเดต ${online_order_ids.length} ออเดอร์`
+      message: `สร้างใบโหลดสำเร็จ พร้อมอัพเดต ${trackingNumbers.length} tracking`
     });
 
   } catch (error: any) {
