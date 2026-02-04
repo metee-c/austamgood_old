@@ -108,6 +108,15 @@ async function handlePost(request: NextRequest, context: any) {
     const faceSheetIds = faceSheetLinks?.map(fs => fs.face_sheet_id) || [];
     let bonusFaceSheetIds = bonusFaceSheetLinks?.map(bfs => bfs.bonus_face_sheet_id) || [];
 
+    // ✅ NEW: Fetch online orders for this loadlist (from packing_backup_orders)
+    const { data: onlineOrders } = await supabase
+      .from('packing_backup_orders')
+      .select('id, parent_sku, quantity, tracking_number, product_name')
+      .eq('loadlist_id', loadlist.id);
+
+    const hasOnlineOrders = (onlineOrders && onlineOrders.length > 0);
+    console.log(`📦 Online orders in loadlist: ${onlineOrders?.length || 0}`);
+
     // ✅ FIX: หา BFS ที่แมพกับ PL/FS ที่อยู่ใน loadlist นี้ (จาก loadlist อื่น)
     // เพื่อให้ process BFS items ด้วยเมื่อโหลด PL/FS
     let relatedBfsMappingsFromPL: any[] = [];
@@ -280,10 +289,10 @@ async function handlePost(request: NextRequest, context: any) {
 
     console.log('📋 Document IDs:', { picklistIds, faceSheetIds, bonusFaceSheetIds });
 
-    if (picklistIds.length === 0 && faceSheetIds.length === 0 && bonusFaceSheetIds.length === 0) {
-      console.error('❌ No picklists, face sheets, or bonus face sheets found');
+    if (picklistIds.length === 0 && faceSheetIds.length === 0 && bonusFaceSheetIds.length === 0 && !hasOnlineOrders) {
+      console.error('❌ No picklists, face sheets, bonus face sheets, or online orders found');
       return NextResponse.json(
-        { error: 'ไม่พบใบจัดสินค้า ใบปะหน้า หรือใบปะหน้าของแถมในใบโหลดนี้' },
+        { error: 'ไม่พบใบจัดสินค้า ใบปะหน้า ใบปะหน้าของแถม หรือออเดอร์ออนไลน์ในใบโหลดนี้' },
         { status: 400 }
       );
     }
@@ -426,10 +435,10 @@ async function handlePost(request: NextRequest, context: any) {
       bonusFaceSheets: bonusFaceSheets.length
     });
 
-    if (picklists.length === 0 && faceSheets.length === 0 && bonusFaceSheets.length === 0) {
+    if (picklists.length === 0 && faceSheets.length === 0 && bonusFaceSheets.length === 0 && !hasOnlineOrders) {
       console.error('❌ No document data found');
       return NextResponse.json(
-        { error: 'ไม่พบข้อมูลใบจัดสินค้า ใบปะหน้า หรือใบปะหน้าของแถม' },
+        { error: 'ไม่พบข้อมูลใบจัดสินค้า ใบปะหน้า ใบปะหน้าของแถม หรือออเดอร์ออนไลน์' },
         { status: 404 }
       );
     }
@@ -526,6 +535,52 @@ async function handlePost(request: NextRequest, context: any) {
       }
     }
 
+    // ✅ NEW: Collect online order items (map barcode → sku_id)
+    if (hasOnlineOrders) {
+      const uniqueParentSkus = [...new Set(onlineOrders!.map(o => o.parent_sku).filter(Boolean))];
+
+      if (uniqueParentSkus.length > 0) {
+        const { data: skuMappings } = await supabase
+          .from('master_sku')
+          .select('sku_id, barcode')
+          .in('barcode', uniqueParentSkus);
+
+        const barcodeToSkuMap = new Map<string, string>();
+        skuMappings?.forEach((ms: any) => {
+          if (ms.barcode) barcodeToSkuMap.set(ms.barcode, ms.sku_id);
+        });
+
+        // Also check if parent_sku is directly a sku_id
+        const unmappedSkus = uniqueParentSkus.filter(s => !barcodeToSkuMap.has(s));
+        if (unmappedSkus.length > 0) {
+          const { data: directSkus } = await supabase
+            .from('master_sku')
+            .select('sku_id')
+            .in('sku_id', unmappedSkus);
+          directSkus?.forEach((ms: any) => {
+            barcodeToSkuMap.set(ms.sku_id, ms.sku_id);
+          });
+        }
+
+        for (const order of onlineOrders!) {
+          if (!order.parent_sku || !order.quantity || order.quantity <= 0) continue;
+          const actualSkuId = barcodeToSkuMap.get(order.parent_sku) || order.parent_sku;
+          if (isSticker(actualSkuId)) {
+            console.log(`⏭️ Skipping sticker SKU (online): ${actualSkuId}`);
+            continue;
+          }
+          allDispatchItems.push({
+            sku_id: actualSkuId,
+            qty: order.quantity,
+            source: 'online_order',
+            docCode: order.tracking_number || ''
+          });
+        }
+
+        console.log(`📦 Added ${allDispatchItems.filter(i => i.source === 'online_order').length} online items to dispatch validation`);
+      }
+    }
+
     // Step 2: รวมจำนวนตาม SKU
     const skuTotalQtyMap = new Map<string, number>();
     for (const item of allDispatchItems) {
@@ -608,9 +663,11 @@ async function handlePost(request: NextRequest, context: any) {
           qtyPerPack,
           picklist_code: item.source === 'picklist' ? item.docCode : undefined,
           face_sheet_no: item.source === 'face_sheet' ? item.docCode : undefined,
+          tracking_number: item.source === 'online_order' ? item.docCode : undefined,
           sourceBalance: cached?.balance,
           sourceLocation: dispatchLocation.location_id,
-          isFromFaceSheet: item.source === 'face_sheet'
+          isFromFaceSheet: item.source === 'face_sheet',
+          isFromOnlineOrder: item.source === 'online_order'
         });
       }
     }
@@ -1229,6 +1286,7 @@ async function handlePost(request: NextRequest, context: any) {
       items_moved: itemsProcessed,
       total_items: itemsToProcess.length,
       orders_loaded: orderDetails.length,
+      online_orders_count: onlineOrders?.length || 0,
       related_bonus_loadlists_updated: relatedBonusLoadlistsUpdated
     });
 

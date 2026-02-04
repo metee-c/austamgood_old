@@ -105,7 +105,17 @@ async function handleGet(request: NextRequest, context: any) {
       }
     });
 
-    console.log(`📋 Found ${loadedPicklistIds.size} loaded picklists, ${loadedFaceSheetIds.size} loaded face sheets`);
+    // ✅ NEW: Query for loadlists with online orders
+    const { data: onlineOrderLoadlists } = await supabase
+      .from('packing_backup_orders')
+      .select('loadlist_id')
+      .not('loadlist_id', 'is', null)
+      .order('loadlist_id');
+
+    const loadlistIdsWithOnlineOrders = new Set(
+      onlineOrderLoadlists?.map((o: any) => o.loadlist_id) || []
+    );
+    console.log(`📦 Found ${loadlistIdsWithOnlineOrders.size} loadlists with online orders`);
 
     // หา BFS IDs ที่แมพกับ loadlist ที่มี picklist/face sheet
     const bfsIdsWithMainLoadlist = new Set<number>();
@@ -131,6 +141,7 @@ async function handleGet(request: NextRequest, context: any) {
 
       const hasPicklist = picklistLinks.length > 0;
       const hasFaceSheet = faceSheetLinks.length > 0;
+      const hasOnlineOrders = loadlistIdsWithOnlineOrders.has(loadlist.id);
       const hasBFS = bfsList.length > 0;
 
       // ✅ NEW: ตรวจสอบว่า Picklist ทั้งหมดใน LD นี้ ถูกโหลดไปแล้วโดย LD อื่นหรือไม่
@@ -159,13 +170,13 @@ async function handleGet(request: NextRequest, context: any) {
         }
       }
 
-      // ถ้ามี picklist หรือ face sheet → แสดง (เพราะยังไม่ถูกโหลดหมด)
-      if (hasPicklist || hasFaceSheet) {
+      // ถ้ามี picklist หรือ face sheet หรือ online orders → แสดง
+      if (hasPicklist || hasFaceSheet || hasOnlineOrders) {
         return true;
       }
 
       // ถ้ามีเฉพาะ BFS → ตรวจสอบว่า BFS นั้นแมพกับ LD อื่นที่มี picklist/face sheet หรือไม่
-      if (hasBFS && !hasPicklist && !hasFaceSheet) {
+      if (hasBFS && !hasPicklist && !hasFaceSheet && !hasOnlineOrders) {
         // ตรวจสอบว่า BFS ทั้งหมดใน LD นี้ แมพกับ LD อื่นที่มี picklist/face sheet หรือไม่
         const allBfsHaveMainLoadlist = bfsList.every((bfs: any) =>
           bfsIdsWithMainLoadlist.has(bfs.bonus_face_sheet_id)
@@ -368,11 +379,29 @@ async function handleGet(request: NextRequest, context: any) {
         }
       }
 
+      // ✅ NEW: Calculate from online orders
+      if (loadlistIdsWithOnlineOrders.has(loadlist.id)) {
+        const { data: onlineOrders } = await supabase
+          .from('packing_backup_orders')
+          .select('id')
+          .eq('loadlist_id', loadlist.id);
+
+        if (onlineOrders && onlineOrders.length > 0) {
+          // Online orders count as 1 item per order
+          totalItems += onlineOrders.length;
+          totalPieces += onlineOrders.length;
+          totalPacks += onlineOrders.length;
+          // Estimate weight 0.5 kg per online order (since we don't have actual SKU data)
+          totalWeight += onlineOrders.length * 0.5;
+        }
+      }
+
       // Determine which document types are present
       const documentTypes: string[] = [];
       if (picklists.length > 0) documentTypes.push('ใบหยิบ');
       if (faceSheets.length > 0) documentTypes.push('ใบปะหน้า');
       if (bonusFaceSheets.length > 0) documentTypes.push('ของแถม');
+      if (loadlistIdsWithOnlineOrders.has(loadlist.id)) documentTypes.push('ออนไลน์');
 
       // Get daily_trip_number (เลขคัน) from trip
       const trip = loadlist.trip_id ? tripMap[loadlist.trip_id] : null;
