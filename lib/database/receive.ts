@@ -478,7 +478,7 @@ export class ReceiveService {
           master_customer(customer_name),
           master_warehouse(warehouse_name),
           received_by_employee:master_employee!fk_receives_employee(first_name, last_name),
-          created_by_employee:master_employee!fk_receives_created_by(first_name, last_name)
+          created_by_user:master_system_user!fk_receives_created_by(full_name, username)
         `)
         .order('receive_date', { ascending: false });
 
