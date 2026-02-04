@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 export const dynamic = 'force-dynamic';
 
 interface AddOrderRequest {
@@ -19,7 +18,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const supabase = await createClient();
     const { id: planId } = await params;
     const body: AddOrderRequest = await request.json();
@@ -314,6 +313,7 @@ export async function POST(
 
   } catch (error: any) {
     console.error('Error in add-order API:', error);
+
     return NextResponse.json(
       { error: error.message || 'เกิดข้อผิดพลาดในการเพิ่มออเดอร์' },
       { status: 500 }

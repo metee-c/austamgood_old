@@ -5,7 +5,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
 import { setUserContext } from '@/lib/supabase/with-user-context';
-
 export const dynamic = 'force-dynamic';
 
 interface VarianceItem {
@@ -32,7 +31,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const { id: sessionId } = await params;
     const supabase = await createClient();
 

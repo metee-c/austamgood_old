@@ -17,7 +17,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentSession } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { stockAdjustmentService } from '@/lib/database/stock-adjustment';
-
 // Constants
 const PRODUCTION_VARIANCE_REASON_ID = 40; // reason_code = 'PRODUCTION_VARIANCE'
 const DEFAULT_WAREHOUSE_ID = 'WH001';
@@ -33,7 +32,7 @@ interface PackagingAdjustmentItem {
 }
 
 export async function POST(request: NextRequest) {
-  try {
+try {
     const sessionResult = await getCurrentSession();
     if (!sessionResult.session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

@@ -3,8 +3,11 @@ import { createClient } from '@/lib/supabase/server'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { getCurrentUserFromCookie } from '@/lib/auth/simple-auth'
 import { receiveService } from '@/lib/database/receive'
+import { apiLog } from '@/lib/logging'
 
 export async function POST(request: NextRequest) {
+  const txId = await apiLog.start('MOVE', request)
+  
   try {
     const supabase = await createClient()
     // Create admin client to bypass RLS for generating move numbers
@@ -380,6 +383,12 @@ export async function POST(request: NextRequest) {
     // หมายเหตุ: Balance จะถูกจัดการโดย trigger อัตโนมัติ
     // ไม่ต้องทำอะไรเพิ่มเติมที่นี่
 
+    apiLog.success(txId, 'STOCK_QUICK_MOVE', {
+      entityType: 'MOVE',
+      entityId: move?.move_id?.toString(),
+      entityNo: move?.move_no,
+    })
+    
     return NextResponse.json({
       success: true,
       data: move,
@@ -387,6 +396,7 @@ export async function POST(request: NextRequest) {
     })
   } catch (error: any) {
     console.error('Quick move error:', error)
+    apiLog.failure(txId, 'STOCK_QUICK_MOVE', error)
     return NextResponse.json(
       { error: error.message || 'เกิดข้อผิดพลาดในการย้ายสินค้า' },
       { status: 500 }

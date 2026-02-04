@@ -4,7 +4,6 @@ import { getCurrentSession } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { logAuditEntry } from '@/lib/auth/audit';
 import { getClientIP } from '@/lib/auth/middleware';
-
 /**
  * GET /api/auth/settings/[key]
  * Get specific setting by key

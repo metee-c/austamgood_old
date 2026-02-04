@@ -5,7 +5,6 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 import { logAuditEntry } from '@/lib/auth/audit';
 import { getClientIP } from '@/lib/auth/middleware';
 import { hashPassword } from '@/lib/auth/password';
-
 /**
  * GET /api/users
  * Get all users with optional filters
@@ -116,6 +115,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(users);
   } catch (error) {
     console.error('Get users API error:', error);
+
     return NextResponse.json(
       { error: 'เกิดข้อผิดพลาดภายในระบบ' },
       { status: 500 }
@@ -128,7 +128,7 @@ export async function GET(request: NextRequest) {
  * Create a new user
  */
 export async function POST(request: NextRequest) {
-  try {
+try {
     // Get current user from JWT token
     const token = request.cookies.get('auth_token')?.value;
     
@@ -266,6 +266,7 @@ export async function POST(request: NextRequest) {
     }, { status: 201 });
   } catch (error) {
     console.error('Create user API error:', error);
+
     return NextResponse.json(
       { error: 'เกิดข้อผิดพลาดภายในระบบ' },
       { status: 500 }

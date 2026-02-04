@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { Supplier } from '@/types/supplier'; // Import the Supplier type
 import { withAdminAuth } from '@/lib/api/with-auth';
-
 async function handlePost(request: NextRequest, context: any) {
-  try {
+try {
     const supabase = await createClient();
     
     // First check if table exists
@@ -134,13 +133,13 @@ async function handlePost(request: NextRequest, context: any) {
 
   } catch (error) {
     console.error('Unexpected error:', error);
+
     return NextResponse.json(
       { error: 'Internal server error', details: error },
       { status: 500 }
     );
   }
 }
-
 
 // Export with admin auth wrapper
 export const POST = withAdminAuth(handlePost);

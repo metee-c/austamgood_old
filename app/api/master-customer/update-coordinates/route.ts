@@ -1,8 +1,7 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-
 export async function PATCH(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const body = await request.json();
 
@@ -115,6 +114,7 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ data: data[0], error: null, created: false });
   } catch (error) {
     console.error('API Error in PATCH /api/master-customer/update-coordinates:', error);
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

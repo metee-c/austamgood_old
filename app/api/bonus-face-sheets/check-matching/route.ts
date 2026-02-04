@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 /**
  * POST /api/bonus-face-sheets/check-matching
  * ตรวจสอบ customer_id ที่ตรงกันระหว่าง BFS กับ Picklist หรือ Face Sheet
@@ -8,7 +7,7 @@ import { createClient } from '@/lib/supabase/server';
  * ✅ FIX (edit02): รองรับ available_package_ids เพื่อตรวจสอบเฉพาะ packages ที่ยังไม่ถูกแมพ
  */
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const body = await request.json();
     const { bonus_face_sheet_id, picklist_id, face_sheet_id, available_package_ids } = body;

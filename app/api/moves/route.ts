@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { moveService, CreateMovePayload } from '@/lib/database/move';
+import { apiLog } from '@/lib/logging';
 
 export async function GET(request: NextRequest) {
   try {
@@ -34,6 +35,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const txId = await apiLog.start('MOVE', request);
+  
   try {
     const body: CreateMovePayload = await request.json();
     
@@ -104,16 +107,23 @@ export async function POST(request: NextRequest) {
     const { data, error } = await moveService.createMove(body);
 
     if (error) {
+      apiLog.failure(txId, 'STOCK_MOVE_CREATE', new Error(error));
       return NextResponse.json(
         { data: null, error },
         { status: 500 }
       );
     }
 
+    apiLog.success(txId, 'STOCK_MOVE_CREATE', {
+      entityType: 'MOVE',
+      entityId: data?.move_id?.toString(),
+      entityNo: data?.move_no,
+    });
     return NextResponse.json({ data, error: null }, { status: 201 });
 
   } catch (error) {
     console.error('API Error in POST /api/moves:', error);
+    apiLog.failure(txId, 'STOCK_MOVE_CREATE', error as Error);
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
     return NextResponse.json(
       { data: null, error: errorMessage },

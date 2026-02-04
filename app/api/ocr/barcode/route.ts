@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-
 // Pattern สำหรับ Barcode ID ของแถม: BFS-YYYYMMDD-XXX-PXXX
 const BFS_BARCODE_PATTERN = /BFS-\d{8}-\d{3}-P\d{3}/gi;
 
@@ -7,7 +6,7 @@ const BFS_BARCODE_PATTERN = /BFS-\d{8}-\d{3}-P\d{3}/gi;
 const FS_BARCODE_PATTERN = /FS-\d{8}-\d{3}-P\d{3}/gi;
 
 export async function POST(request: NextRequest) {
-  try {
+try {
     const formData = await request.formData();
     const imageFile = formData.get('image') as File | null;
 

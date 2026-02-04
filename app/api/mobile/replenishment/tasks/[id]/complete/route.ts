@@ -4,7 +4,6 @@ import { getCurrentUserFromCookie } from '@/lib/auth/simple-auth';
 import { stockAdjustmentService } from '@/lib/database/stock-adjustment';
 import { canTransferToLocation } from '@/lib/database/prep-area-validation';
 import { isPrepArea, upsertPrepAreaBalance } from '@/lib/database/prep-area-balance';
-
 export const dynamic = 'force-dynamic';
 
 // Constants
@@ -23,7 +22,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const supabase = await createClient();
     const { id: taskId } = await params;
     const body = await request.json();

@@ -1,7 +1,10 @@
 // API route for user logout - Simple version
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { apiLog } from '@/lib/logging';
 
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const txId = await apiLog.start('AUTH', request);
+  
   try {
     const response = NextResponse.json({
       success: true,
@@ -11,9 +14,11 @@ export async function POST() {
     // Clear auth cookie
     response.cookies.delete('auth_token');
 
+    apiLog.success(txId, 'AUTH_LOGOUT');
     return response;
   } catch (error) {
     console.error('Logout API error:', error);
+    apiLog.failure(txId, 'AUTH_LOGOUT', error);
     return NextResponse.json(
       { error: 'เกิดข้อผิดพลาดภายในระบบ' },
       { status: 500 }

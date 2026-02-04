@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { receiveService } from '@/lib/database/receive';
-
 export async function POST(request: NextRequest) {
-  try {
+try {
     const body = await request.json();
     const { palletId } = body;
 
@@ -25,6 +24,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ data, error: null });
   } catch (error) {
     console.error('API Error in POST /api/receives/validate-pallet:', error);
+
     return NextResponse.json(
       { data: false, error: 'Internal server error' },
       { status: 500 }

@@ -7,9 +7,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createScenarioEngine, DemandScenarioParams, SIMULATION_DISCLAIMER } from '@/lib/simulation';
-
 export async function POST(request: NextRequest) {
-  try {
+try {
     const body = await request.json();
     const { demand_multiplier, period_days } = body;
 

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withAuth, withAdminAuth } from '@/lib/api/with-auth';
-
 async function handleGet(request: NextRequest, context: any) {
   try {
     const supabase = await createClient();
@@ -59,6 +58,7 @@ async function handleGet(request: NextRequest, context: any) {
     return NextResponse.json(suppliers);
   } catch (error) {
     console.error('Unexpected error:', error);
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -67,7 +67,7 @@ async function handleGet(request: NextRequest, context: any) {
 }
 
 async function handlePost(request: NextRequest, context: any) {
-  try {
+try {
     const supabase = await createClient();
     const body = await request.json();
 
@@ -138,6 +138,7 @@ async function handlePost(request: NextRequest, context: any) {
     return NextResponse.json(supplier, { status: 201 });
   } catch (error) {
     console.error('Unexpected error:', error);
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -216,6 +217,7 @@ async function handlePut(request: NextRequest, context: any) {
     return NextResponse.json(supplier);
   } catch (error) {
     console.error('Unexpected error:', error);
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -252,6 +254,7 @@ async function handleDelete(request: NextRequest, context: any) {
     return NextResponse.json({ message: 'Supplier deleted successfully' });
   } catch (error) {
     console.error('Unexpected error:', error);
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

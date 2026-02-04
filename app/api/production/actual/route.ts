@@ -9,7 +9,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentSession } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { stockAdjustmentService } from '@/lib/database/stock-adjustment';
-
 // Constants
 // ADJ_LOSS_LOCATION ไม่ใช้แล้ว - ใช้ location จาก replenishment_queue แทน
 const PRODUCTION_VARIANCE_REASON_ID = 40; // reason_code = 'PRODUCTION_VARIANCE'
@@ -350,7 +349,7 @@ interface BomMaterialInput {
 }
 
 export async function POST(request: NextRequest) {
-  try {
+try {
     const sessionResult = await getCurrentSession();
     if (!sessionResult.session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

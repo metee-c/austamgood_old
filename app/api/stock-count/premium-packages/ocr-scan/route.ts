@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 // Helper: สร้างหรือดึง session สำหรับ premium_ocr ของวันนี้
 async function getOrCreateTodaySession(supabase: Awaited<ReturnType<typeof createClient>>, countedBy?: string) {
   const today = new Date();
@@ -61,7 +60,7 @@ async function getOrCreateTodaySession(supabase: Awaited<ReturnType<typeof creat
 
 // POST - บันทึกแพ็คจาก OCR (barcode + lot_no)
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const body = await request.json();
     const { barcode_id, lot_no, counted_by } = body;

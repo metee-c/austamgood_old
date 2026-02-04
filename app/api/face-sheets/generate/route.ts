@@ -2,9 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { withAuth } from '@/lib/api/with-auth';
-
 async function handlePost(request: NextRequest, context: any) {
-  try {
+try {
     const supabase = await createClient();
     
     // ✅ FIX: Use service role client with longer timeout for heavy operations
@@ -288,6 +287,7 @@ async function handlePost(request: NextRequest, context: any) {
 
   } catch (error) {
     console.error('Error in face-sheets generate API:', error);
+
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }
@@ -379,6 +379,7 @@ async function handleGetGenerate(request: NextRequest, context: any) {
 
   } catch (error) {
     console.error('Error in face-sheets GET API:', error);
+
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

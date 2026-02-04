@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 /**
  * GET /api/system/metrics
  * Get system metrics summary
@@ -68,6 +67,7 @@ export async function GET(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Error in GET /api/system/metrics:', error);
+
     return NextResponse.json(
       { error: 'Internal server error', details: error.message },
       { status: 500 }
@@ -80,7 +80,7 @@ export async function GET(request: NextRequest) {
  * Record a custom metric
  */
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const body = await request.json();
     
@@ -115,6 +115,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Error in POST /api/system/metrics:', error);
+
     return NextResponse.json(
       { error: 'Internal server error', details: error.message },
       { status: 500 }

@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 /**
  * POST /api/bonus-face-sheets/assign-locations
  * Auto-assign storage locations (PQ01-PQ10, MR01-MR10) to bonus face sheet packages
  * Max 10 packs per location
  */
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const body = await request.json();
     const { face_sheet_id } = body;

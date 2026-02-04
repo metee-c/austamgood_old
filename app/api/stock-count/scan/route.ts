@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 /**
  * POST /api/stock-count/scan
  * สแกนโลเคชั่นหรือพาเลท (Realtime mode)
  */
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const body = await request.json();
     const { session_id, scan_type, scanned_code, counted_by } = body;

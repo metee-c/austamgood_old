@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { parse } from 'csv-parse/sync';
-
 export const dynamic = 'force-dynamic';
 
 const REQUIRED_FIELDS = ['area_code', 'area_name', 'warehouse_id', 'zone', 'area_type', 'status'];
@@ -116,7 +115,7 @@ function validateRow(row: any, lineNumber: number): { isValid: boolean; data?: P
 }
 
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = createServiceRoleClient();
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -250,6 +249,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error importing preparation areas:', error);
+
     return NextResponse.json(
       { error: 'เกิดข้อผิดพลาดในการนำเข้าข้อมูล' },
       { status: 500 }

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createServerClient } from '@/lib/supabase/server'
 import { withAuth } from '@/lib/api/with-auth';
-
 async function handleGet(request: NextRequest, context: any) {
   try {
     const { searchParams } = new URL(request.url)
@@ -51,6 +50,7 @@ async function handleGet(request: NextRequest, context: any) {
     })
   } catch (error) {
     console.error('API error:', error)
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -59,7 +59,7 @@ async function handleGet(request: NextRequest, context: any) {
 }
 
 async function handlePost(request: NextRequest, context: any) {
-  try {
+try {
     const body = await request.json()
     const supabase = await createServerClient()
 
@@ -80,6 +80,7 @@ async function handlePost(request: NextRequest, context: any) {
     return NextResponse.json({ data })
   } catch (error) {
     console.error('API error:', error)
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -126,6 +127,7 @@ async function handlePut(request: NextRequest, context: any) {
     return NextResponse.json({ data })
   } catch (error) {
     console.error('API error:', error)
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -163,6 +165,7 @@ async function handleDelete(request: NextRequest, context: any) {
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error('API error:', error)
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

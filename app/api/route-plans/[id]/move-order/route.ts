@@ -1,13 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 export const dynamic = 'force-dynamic';
 
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const supabase = await createClient();
     const { id: planId } = await params;
     const body = await request.json();
@@ -287,6 +286,7 @@ export async function POST(
 
   } catch (error: any) {
     console.error('Error moving order:', error);
+
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

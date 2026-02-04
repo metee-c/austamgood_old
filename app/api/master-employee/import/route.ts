@@ -2,9 +2,8 @@ import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { EmployeeSchema, Employee } from '@/types/employee-schema';
-
 export async function POST(request: Request) {
-  const supabase = await createClient();
+const supabase = await createClient();
   const employeesRaw = await request.json();
 
   if (!Array.isArray(employeesRaw)) {

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 export const dynamic = 'force-dynamic';
 
 // Platform abbreviations for document numbers
@@ -37,7 +36,7 @@ async function generatePicklistCode(supabase: any, platform: string): Promise<st
 }
 
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const body = await request.json();
     
@@ -120,6 +119,7 @@ export async function POST(request: NextRequest) {
     
   } catch (error: any) {
     console.error('Error in online-picklists API:', error);
+
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }
@@ -172,11 +172,12 @@ export async function GET(request: NextRequest) {
         { status: 500 }
       );
     }
-    
+
     return NextResponse.json({ success: true, data });
     
   } catch (error: any) {
     console.error('Error in online-picklists GET:', error);
+
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 // GET - ดึงรายการ sessions
 export async function GET(request: NextRequest) {
   try {
@@ -30,7 +29,6 @@ export async function GET(request: NextRequest) {
       empty_count: 0, // PPC ไม่มีสถานะว่าง
       extra_count: 0, // PPC ไม่มีสถานะเพิ่มเติม
     }));
-
     return NextResponse.json({ success: true, data: sessionsWithStats });
   } catch (error) {
     console.error('Error fetching sessions:', error);
@@ -43,7 +41,7 @@ export async function GET(request: NextRequest) {
 
 // POST - สร้าง session ใหม่
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const body = await request.json();
     const { location_code, counted_by } = body;
@@ -90,7 +88,6 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) throw error;
-
     return NextResponse.json({ success: true, data });
   } catch (error) {
     console.error('Error creating session:', error);

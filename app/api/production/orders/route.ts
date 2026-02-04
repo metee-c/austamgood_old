@@ -12,7 +12,6 @@ import {
   createOrdersFromPlan,
 } from '@/lib/database/production-orders';
 import { ProductionOrderFilters, CreateProductionOrderInput } from '@/types/production-order-schema';
-
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -39,7 +38,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  try {
+try {
     const sessionResult = await getCurrentSession();
     if (!sessionResult.session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

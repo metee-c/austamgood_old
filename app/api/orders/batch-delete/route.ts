@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/api/with-auth';
-
 // User ID ที่อนุญาตให้ลบ batch ได้ (metee)
 const ALLOWED_DELETE_USER_ID = 2;
 

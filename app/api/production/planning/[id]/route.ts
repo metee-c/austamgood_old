@@ -17,7 +17,6 @@ import {
   recalculateMaterialRequirements,
 } from '@/lib/database/production-planning';
 import { UpdateProductionPlanInput } from '@/types/production-planning-schema';
-
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -32,7 +31,6 @@ export async function GET(
         { status: 404 }
       );
     }
-
     return NextResponse.json({ data: plan });
   } catch (error: any) {
     console.error('Error fetching production plan:', error);
@@ -92,7 +90,6 @@ export async function PUT(
           { status: 500 }
         );
       }
-
       return NextResponse.json({ data: result });
     }
 
@@ -110,7 +107,6 @@ export async function PUT(
         { status: 500 }
       );
     }
-
     return NextResponse.json({ data: result });
   } catch (error: any) {
     console.error('Error updating production plan:', error);
@@ -125,7 +121,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const { id } = await params;
     const success = await deleteProductionPlan(id);
 
@@ -135,7 +131,6 @@ export async function DELETE(
         { status: 500 }
       );
     }
-
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('Error deleting production plan:', error);

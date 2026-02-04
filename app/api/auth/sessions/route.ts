@@ -1,7 +1,6 @@
 // API route for managing user sessions
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentSession, getUserActiveSessions, invalidateOtherSessions } from '@/lib/auth';
-
 /**
  * GET /api/auth/sessions
  * Get all active sessions for current user
@@ -47,7 +46,7 @@ export async function GET(request: NextRequest) {
  * Invalidate all other sessions except current
  */
 export async function DELETE(request: NextRequest) {
-  try {
+try {
     // Get current session
     const sessionResult = await getCurrentSession();
     

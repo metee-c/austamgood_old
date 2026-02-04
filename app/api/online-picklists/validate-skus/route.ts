@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 export async function POST(request: NextRequest) {
-  const supabase = await createClient();
+const supabase = await createClient();
   
   try {
     const { picklist_id } = await request.json();
@@ -95,6 +94,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Error validating SKUs:', error);
+
     return NextResponse.json(
       { success: false, error: error.message },
       { status: 500 }

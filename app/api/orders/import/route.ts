@@ -4,7 +4,6 @@ import * as XLSX from 'xlsx';
 import { createClient } from '@/lib/supabase/server';
 import { setDatabaseUserContext } from '@/lib/database/user-context';
 import { withAuth } from '@/lib/api/with-auth';
-
 function parseCSV(text: string): string[][] {
   const lines = text.split('\n');
   const result: string[][] = [];
@@ -83,7 +82,7 @@ function parseDate(dateStr: string): string | null {
 }
 
 async function handlePost(request: NextRequest, context: any) {
-  try {
+try {
     // Get user ID from auth context and set database context
     const supabase = await createClient();
     const userId = context.user.user_id;
@@ -776,6 +775,7 @@ async function handlePost(request: NextRequest, context: any) {
 
   } catch (error: any) {
     console.error('Error importing orders:', error);
+
     return NextResponse.json(
       { data: null, error: error.message },
       { status: 500 }

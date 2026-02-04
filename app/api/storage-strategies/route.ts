@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 export const dynamic = 'force-dynamic';
 
 /**
@@ -64,6 +63,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ data: data || [] });
   } catch (err) {
     console.error('[storage-strategies][GET] Unexpected error:', err);
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
  * สร้าง storage strategy ใหม่
  */
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const body = await request.json();
 
@@ -111,6 +111,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ data }, { status: 201 });
   } catch (err) {
     console.error('[storage-strategies][POST] Unexpected error:', err);
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -166,6 +167,7 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ data });
   } catch (err) {
     console.error('[storage-strategies][PUT] Unexpected error:', err);
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -178,7 +180,7 @@ export async function PUT(request: NextRequest) {
  * ลบ storage strategy
  */
 export async function DELETE(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
     const strategyId = searchParams.get('strategy_id');
@@ -206,6 +208,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ success: true });
   } catch (err) {
     console.error('[storage-strategies][DELETE] Unexpected error:', err);
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/api/with-auth';
-
 /**
  * DELETE /api/bonus-face-sheets/[id]/delete
  * ลบ Bonus Face Sheet และปลดล็อคยอดจองในบ้านหยิบ

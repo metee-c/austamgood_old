@@ -6,11 +6,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { stockImportService } from '@/lib/database/stock-import';
 import { withAuth } from '@/lib/api/with-auth';
-
 export const dynamic = 'force-dynamic';
 
 async function handlePost(request: NextRequest, context: any) {
-  try {
+try {
     // Get user ID from auth context
     const userId = context.user.user_id;
 

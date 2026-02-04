@@ -27,7 +27,6 @@ export async function GET(
     if (!order) {
       return NextResponse.json({ error: 'Production order not found' }, { status: 404 });
     }
-    
     return NextResponse.json({ data: order });
   } catch (error: any) {
     console.error('Error in GET /api/production/orders/[id]:', error);
@@ -81,7 +80,6 @@ export async function PUT(
       id,
       ...body,
     });
-
     return NextResponse.json({ data: result });
   } catch (error: any) {
     console.error('Error in PUT /api/production/orders/[id]:', error);
@@ -96,7 +94,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const sessionResult = await getCurrentSession();
     if (!sessionResult.session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -108,7 +106,6 @@ export async function DELETE(
     if (!success) {
       return NextResponse.json({ error: 'Failed to delete production order' }, { status: 500 });
     }
-
     return NextResponse.json({ success: true });
   } catch (error: any) {
     console.error('Error in DELETE /api/production/orders/[id]:', error);

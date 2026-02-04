@@ -7,9 +7,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createScenarioEngine, LeadTimeScenarioParams, SIMULATION_DISCLAIMER } from '@/lib/simulation';
-
 export async function POST(request: NextRequest) {
-  try {
+try {
     const body = await request.json();
     const { lead_time_increase_days, supplier_ids } = body;
 

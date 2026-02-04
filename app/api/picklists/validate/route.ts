@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 export const dynamic = 'force-dynamic';
 
 /**
@@ -199,6 +198,7 @@ export async function GET(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Error validating picklist:', error);
+
     return NextResponse.json(
       { error: error.message || 'เกิดข้อผิดพลาดภายในระบบ' },
       { status: 500 }
@@ -213,7 +213,7 @@ export async function GET(request: NextRequest) {
  * Body: { trip_id: number, auto_fix: boolean }
  */
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const { trip_id, auto_fix = false } = await request.json();
 
@@ -369,6 +369,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Error fixing picklist:', error);
+
     return NextResponse.json(
       { error: error.message || 'เกิดข้อผิดพลาดภายในระบบ' },
       { status: 500 }

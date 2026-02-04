@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { setDatabaseUserContext } from '@/lib/database/user-context';
 import { withAuth } from '@/lib/api/with-auth';
-
 /**
  * GET /api/bonus-face-sheets/confirm-pick-to-staging?loadlist_id=xxx
  * ตรวจสอบสถานะการย้ายสต็อกไป staging
@@ -167,7 +166,7 @@ export async function GET(request: NextRequest) {
  * 3. บันทึก ledger entries
  */
 async function handlePost(request: NextRequest, context: any) {
-  try {
+try {
     const supabase = await createClient();
     
     // Set user context for audit trail

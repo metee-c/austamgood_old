@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withAdminAuth } from '@/lib/api/with-auth';
-
 /**
  * POST /api/inventory-balances/reset-reservations
  * ล้างยอดจองทั้งหมดในระบบ (ใช้เมื่อมีการจองค้างที่ไม่ถูกต้อง)
@@ -10,7 +9,7 @@ import { withAdminAuth } from '@/lib/api/with-auth';
  * SECURITY: Admin only - requires authentication
  */
 async function handlePost(request: NextRequest, context: any) {
-  try {
+try {
     const supabase = await createClient();
 
     console.log('🔄 Starting reservation reset...');
@@ -71,6 +70,7 @@ async function handlePost(request: NextRequest, context: any) {
   } catch (error) {
     console.error('API Error in POST /api/inventory-balances/reset-reservations:', error);
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+
     return NextResponse.json(
       { error: errorMessage },
       { status: 500 }

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 export const dynamic = 'force-dynamic';
 
 /**
@@ -8,7 +7,7 @@ export const dynamic = 'force-dynamic';
  * Release packing order lock - used by sendBeacon on page unload
  */
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     
     // Handle both JSON and text body (sendBeacon may send as text)
@@ -53,6 +52,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('API Error in POST /api/online-packing/release-lock:', error);
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }

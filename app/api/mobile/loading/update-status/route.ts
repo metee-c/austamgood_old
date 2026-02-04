@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
-
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createServerClient();
     const body = await request.json();
     const { loadlist_id, picklist_id, scanned_code } = body;
@@ -95,6 +94,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('API error:', error);
+
     return NextResponse.json(
       { error: 'เกิดข้อผิดพลาดภายในระบบ' },
       { status: 500 }

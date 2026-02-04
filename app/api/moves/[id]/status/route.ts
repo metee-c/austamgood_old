@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { moveService } from '@/lib/database/move';
-
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  try {
+try {
     const { id } = await params;
     const { status } = await request.json();
 
@@ -19,6 +18,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return NextResponse.json({ data, error: null });
   } catch (error) {
     console.error('API Error in PATCH /api/moves/[id]/status:', error);
+
     return NextResponse.json(
       { data: null, error: 'Internal server error' },
       { status: 500 }

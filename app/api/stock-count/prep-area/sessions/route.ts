@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 // GET - ดึงรายการ prep area sessions
 export async function GET(request: NextRequest) {
   try {
@@ -21,7 +20,6 @@ export async function GET(request: NextRequest) {
     const { data, error } = await query;
 
     if (error) throw error;
-
     return NextResponse.json({ success: true, data });
   } catch (error) {
     console.error('Error fetching prep area sessions:', error);
@@ -34,7 +32,7 @@ export async function GET(request: NextRequest) {
 
 // POST - สร้าง prep area session ใหม่
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const body = await request.json();
     const { counted_by } = body;

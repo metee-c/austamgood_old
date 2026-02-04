@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 /**
  * GET /api/system/alerts
  * Get system alerts with filtering options
@@ -61,6 +60,7 @@ export async function GET(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Error in GET /api/system/alerts:', error);
+
     return NextResponse.json(
       { error: 'Internal server error', details: error.message },
       { status: 500 }
@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
  * Create a new alert (for testing or manual alerts)
  */
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const body = await request.json();
     
@@ -109,6 +109,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Error in POST /api/system/alerts:', error);
+
     return NextResponse.json(
       { error: 'Internal server error', details: error.message },
       { status: 500 }
@@ -123,7 +124,7 @@ export async function POST(request: NextRequest) {
  * Body: { alert_id: number, acknowledged_by?: number }
  */
 export async function PATCH(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const body = await request.json();
     
@@ -157,6 +158,7 @@ export async function PATCH(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Error in PATCH /api/system/alerts:', error);
+
     return NextResponse.json(
       { error: 'Internal server error', details: error.message },
       { status: 500 }

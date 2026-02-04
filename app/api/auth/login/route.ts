@@ -1,9 +1,8 @@
 // API route for user login - Simple version without session management
 import { NextRequest, NextResponse } from 'next/server';
 import { simpleLogin } from '@/lib/auth/simple-auth';
-
 export async function POST(request: NextRequest) {
-  try {
+try {
     const body = await request.json();
     const { email, password } = body;
 

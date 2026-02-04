@@ -45,7 +45,6 @@ export async function GET(
         { status: 404 }
       );
     }
-
     return NextResponse.json({ data: adjustment });
   } catch (error: any) {
     console.error('Error fetching stock adjustment:', error);
@@ -61,7 +60,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const supabase = await createClient();
 
     // Check authentication
@@ -99,7 +98,6 @@ export async function PATCH(
     if (error) {
       return NextResponse.json({ error }, { status: 400 });
     }
-
     return NextResponse.json({ data: adjustment });
   } catch (error: any) {
     console.error('Error updating stock adjustment:', error);
@@ -115,7 +113,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const supabase = await createClient();
 
     // Check authentication
@@ -151,7 +149,6 @@ export async function DELETE(
       }
       throw error;
     }
-
     return NextResponse.json({ success: true, deleted: data });
   } catch (error: any) {
     console.error('Error deleting stock adjustment:', error);

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 interface PackageItem {
   product_code: string;
   product_name: string;
@@ -19,7 +18,7 @@ interface SKUGroup {
 }
 
 export async function POST(request: NextRequest) {
-  try {
+try {
     const body = await request.json();
     const { faceSheetId } = body;
 

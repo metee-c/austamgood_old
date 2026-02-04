@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { orderRollbackService } from '@/lib/database/order-rollback';
 import { withAuth } from '@/lib/api/with-auth';
+import { apiLog } from '@/lib/logging';
 
 /**
  * POST /api/orders/[id]/rollback
@@ -13,6 +14,7 @@ async function handlePost(
   request: NextRequest,
   context: { params?: { id: string }; user: any }
 ) {
+  const txId = await apiLog.start('ROLLBACK', request);
   console.log('[rollback] === START POST /api/orders/[id]/rollback ===');
   
   try {
@@ -78,6 +80,7 @@ async function handlePost(
 
     if (error) {
       console.log('[rollback] Returning error response:', error);
+      apiLog.failure(txId, 'ORDER_ROLLBACK_EXECUTE', new Error(error));
       return NextResponse.json(
         { error, data },
         { status: 400 }
@@ -85,6 +88,11 @@ async function handlePost(
     }
 
     console.log('[rollback] === SUCCESS - Rollback completed ===');
+    apiLog.success(txId, 'ORDER_ROLLBACK_EXECUTE', {
+      entityType: 'ORDER',
+      entityId: orderId.toString(),
+      entityNo: data?.orderNo,
+    });
     return NextResponse.json({
       success: true,
       message: 'Rollback Order สำเร็จ',
@@ -92,6 +100,7 @@ async function handlePost(
     });
   } catch (err: any) {
     console.error('[rollback] EXCEPTION:', err);
+    apiLog.failure(txId, 'ORDER_ROLLBACK_EXECUTE', err);
     return NextResponse.json(
       { error: err.message || 'เกิดข้อผิดพลาดภายในระบบ' },
       { status: 500 }

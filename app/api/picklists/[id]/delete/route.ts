@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/api/with-auth';
-
 /**
  * DELETE /api/picklists/[id]/delete
  * ลบ Picklist และปลดล็อคยอดจองในบ้านหยิบ

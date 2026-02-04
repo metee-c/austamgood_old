@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const body = await request.json();
     const { loadlist_id, picklist_id } = body;
@@ -62,6 +61,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('API error:', error);
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

@@ -2,7 +2,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentSession } from '@/lib/auth';
 import { createServiceRoleClient } from '@/lib/supabase/server';
-
 /**
  * GET /api/roles/[id]
  * Get role details with permissions
@@ -71,6 +70,7 @@ export async function GET(
     });
   } catch (error) {
     console.error('Get role API error:', error);
+
     return NextResponse.json(
       { error: 'เกิดข้อผิดพลาดภายในระบบ' },
       { status: 500 }
@@ -197,6 +197,7 @@ export async function PUT(
     });
   } catch (error) {
     console.error('Update role API error:', error);
+
     return NextResponse.json(
       { error: 'เกิดข้อผิดพลาดภายในระบบ' },
       { status: 500 }
@@ -212,7 +213,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const { id } = await params;
     const roleId = parseInt(id);
     
@@ -313,6 +314,7 @@ export async function DELETE(
     });
   } catch (error) {
     console.error('❌ [API DELETE ROLE] Exception:', error);
+
     return NextResponse.json(
       { error: 'เกิดข้อผิดพลาดภายในระบบ', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

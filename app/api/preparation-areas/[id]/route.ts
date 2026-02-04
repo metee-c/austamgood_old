@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
-
 export const dynamic = 'force-dynamic';
 
 const PREPARATION_AREA_FIELDS = `
@@ -51,6 +50,7 @@ export async function GET(
     return NextResponse.json(preparationArea);
   } catch (error) {
     console.error('Error fetching preparation area:', error);
+
     return NextResponse.json(
       { error: 'Failed to fetch preparation area' },
       { status: 500 }
@@ -117,6 +117,7 @@ export async function PUT(
     return NextResponse.json(updatedArea);
   } catch (error) {
     console.error('Error updating preparation area:', error);
+
     return NextResponse.json(
       { error: 'Failed to update preparation area' },
       { status: 500 }
@@ -128,7 +129,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const supabase = createServiceRoleClient();
     const { id } = await params;
     const { error } = await supabase
@@ -149,6 +150,7 @@ export async function DELETE(
     return NextResponse.json({ message: 'Preparation area deleted successfully' });
   } catch (error) {
     console.error('Error deleting preparation area:', error);
+
     return NextResponse.json(
       { error: 'Failed to delete preparation area' },
       { status: 500 }

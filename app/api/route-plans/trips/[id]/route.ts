@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const supabase = await createClient();
     const { id: tripId } = await params;
     const body = await request.json();
@@ -89,6 +88,7 @@ export async function PATCH(
     return NextResponse.json({ data, error: null });
   } catch (error: any) {
     console.error('Error updating trip:', error);
+
     return NextResponse.json(
       { data: null, error: error.message },
       { status: 500 }

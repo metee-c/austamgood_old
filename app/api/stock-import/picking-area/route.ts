@@ -7,7 +7,6 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import type { PickingAreaImportRowData } from '@/types/stock-import';
-
 export const dynamic = 'force-dynamic';
 
 const supabase = createClient(
@@ -20,7 +19,7 @@ const supabase = createClient(
  * อัพโหลดและนำเข้าข้อมูลสต็อกสำหรับ Picking Area
  */
 export async function POST(request: Request) {
-  try {
+try {
     // 1. Get user_id from request (passed from client)
     const formData = await request.formData();
     const userId = formData.get('user_id') as string;
@@ -224,6 +223,7 @@ export async function POST(request: Request) {
 
   } catch (error: any) {
     console.error('Picking area import error:', error);
+
     return NextResponse.json(
       { error: error.message || 'เกิดข้อผิดพลาดในการอัพโหลด' },
       { status: 500 }

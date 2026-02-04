@@ -4,7 +4,6 @@ import { getCurrentSession } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { logAuditEntry } from '@/lib/auth/audit';
 import { getClientIP } from '@/lib/auth/middleware';
-
 /**
  * DELETE /api/auth/sessions/[id]
  * Invalidate a specific session
@@ -13,7 +12,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     // Get current session
     const sessionResult = await getCurrentSession();
     

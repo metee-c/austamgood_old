@@ -6,7 +6,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentSession } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
-
 interface BomMaterialInput {
   material_sku_id: string;
   issued_qty: number;
@@ -68,7 +67,6 @@ export async function GET(
         { status: 404 }
       );
     }
-
     return NextResponse.json({ data });
   } catch (error: any) {
     console.error('Error in GET /api/production/actual/[id]:', error);
@@ -224,7 +222,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const sessionResult = await getCurrentSession();
     if (!sessionResult.session) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

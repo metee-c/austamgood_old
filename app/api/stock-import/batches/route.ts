@@ -7,7 +7,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { stockImportService } from '@/lib/database/stock-import';
 import type { StockImportBatchStatus } from '@/types/stock-import';
-
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
@@ -30,6 +29,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('Fetch batches error:', error);
+
     return NextResponse.json(
       { error: error.message || 'เกิดข้อผิดพลาดในการดึงข้อมูล' },
       { status: 500 }
@@ -42,7 +42,7 @@ export async function GET(request: NextRequest) {
 // ============================================================================
 
 export async function DELETE(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
 
     // รับ batch_id
@@ -62,6 +62,7 @@ export async function DELETE(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('Delete batch error:', error);
+
     return NextResponse.json(
       { error: error.message || 'เกิดข้อผิดพลาดในการลบ' },
       { status: 500 }

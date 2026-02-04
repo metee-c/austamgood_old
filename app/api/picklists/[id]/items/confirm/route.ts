@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 const STAGING_LOCATION = 'Dispatch'; // Picklist → Dispatch
 
 /**
@@ -12,7 +11,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const supabase = await createClient();
     const { id } = await params;
     const body = await request.json();

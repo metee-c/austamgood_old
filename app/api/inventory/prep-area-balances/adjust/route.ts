@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 /**
  * POST /api/inventory/prep-area-balances/adjust
  * 
@@ -8,7 +7,7 @@ import { createClient } from '@/lib/supabase/server';
  * This directly updates wms_inventory_balances for all pallets of the SKU in the location
  */
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const body = await request.json();
     

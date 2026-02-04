@@ -4,12 +4,11 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-
 export const dynamic = 'force-dynamic';
 
 // POST: Check stock availability for adjustment
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
 
     // Check authentication from session cookie

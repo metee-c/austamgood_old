@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createRouteClient } from '@/lib/supabase/route-handler';
 import { withAuth, withAdminAuth } from '@/lib/api/with-auth';
-
 async function handleGet(request: NextRequest, context: any) {
   try {
     const supabase = await createRouteClient();
@@ -49,6 +48,7 @@ async function handleGet(request: NextRequest, context: any) {
     return NextResponse.json(warehouses);
   } catch (error) {
     console.error('Unexpected error:', error);
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -57,7 +57,7 @@ async function handleGet(request: NextRequest, context: any) {
 }
 
 async function handlePost(request: NextRequest, context: any) {
-  try {
+try {
     const supabase = await createRouteClient();
     const body = await request.json();
 
@@ -114,6 +114,7 @@ async function handlePost(request: NextRequest, context: any) {
     return NextResponse.json(warehouse, { status: 201 });
   } catch (error) {
     console.error('Unexpected error:', error);
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -178,6 +179,7 @@ async function handlePut(request: NextRequest, context: any) {
     return NextResponse.json(warehouse);
   } catch (error) {
     console.error('Unexpected error:', error);
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -214,6 +216,7 @@ async function handleDelete(request: NextRequest, context: any) {
     return NextResponse.json({ message: 'Warehouse deleted successfully' });
   } catch (error) {
     console.error('Unexpected error:', error);
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

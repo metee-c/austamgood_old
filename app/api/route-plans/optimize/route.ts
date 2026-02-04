@@ -135,7 +135,7 @@ async function performVRPOptimization(
 }
 
 export async function POST(request: Request) {
-  try {
+try {
     const supabase = await createClient();
     const { planId } = await request.json();
 
@@ -426,7 +426,8 @@ export async function POST(request: Request) {
     } catch (error: any) {
       if (error.message.includes('timeout')) {
         console.error('❌ VRP Optimization Timeout:', error.message);
-        return NextResponse.json(
+
+    return NextResponse.json(
           { 
             error: error.message,
             suggestion: 'ลองลดจำนวนออเดอร์ หรือเพิ่มจำนวนโซน หรือปรับการตั้งค่า VRP'
@@ -766,6 +767,7 @@ export async function POST(request: Request) {
 
   } catch (error: any) {
     console.error('Error optimizing route plan:', error);
+
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

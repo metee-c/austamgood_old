@@ -3,7 +3,6 @@ import { createClient } from '@/lib/supabase/server';
 import { setDatabaseUserContext } from '@/lib/database/user-context';
 import { isPrepArea } from '@/lib/database/prep-area-balance';
 import { withAuth } from '@/lib/api/with-auth';
-
 /**
  * ✅ Helper: ตรวจสอบว่า location เป็น Preparation Area หรือไม่
  * Preparation Area อนุญาตให้สต็อคติดลบได้
@@ -19,7 +18,7 @@ async function isPreparationArea(supabase: any, locationId: string): Promise<boo
  * คัดลอก logic จาก /api/mobile/pick/scan
  */
 async function handlePost(request: NextRequest, context: any) {
-  try {
+try {
     const supabase = await createClient();
     
     // ✅ Get userId from auth context (provided by withAuth wrapper)

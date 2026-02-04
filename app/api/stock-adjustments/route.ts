@@ -9,6 +9,7 @@ import { createAdjustmentSchema } from '@/types/stock-adjustment-schema';
 import type { AdjustmentFilters } from '@/types/stock-adjustment-schema';
 import { cookies } from 'next/headers';
 import { setUserContext } from '@/lib/supabase/with-user-context';
+import { apiLog } from '@/lib/logging';
 
 export const dynamic = 'force-dynamic';
 
@@ -84,6 +85,9 @@ export async function GET(request: NextRequest) {
 
 // POST: Create new adjustment
 export async function POST(request: NextRequest) {
+  // 🔒 Shadow logging - fire-and-forget, won't block or fail business logic
+  const txId = await apiLog.start('ADJUSTMENT', request);
+  
   try {
     const supabase = await createClient();
 
@@ -95,6 +99,7 @@ export async function POST(request: NextRequest) {
     
     if (!sessionToken?.value) {
       console.log('[Stock Adjustment API] No session token found');
+      apiLog.failure(txId, 'STOCK_ADJUST_CREATE', new Error('Unauthorized - No session'));
       return NextResponse.json({ error: 'Unauthorized - No session' }, { status: 401 });
     }
 
@@ -105,6 +110,7 @@ export async function POST(request: NextRequest) {
 
     if (sessionError || !sessionData || sessionData.length === 0 || !sessionData[0].is_valid) {
       console.log('[Stock Adjustment API] Invalid session');
+      apiLog.failure(txId, 'STOCK_ADJUST_CREATE', new Error('Invalid session'));
       return NextResponse.json({ error: 'Invalid session' }, { status: 401 });
     }
 
@@ -120,6 +126,7 @@ export async function POST(request: NextRequest) {
     // Validate payload
     const validation = createAdjustmentSchema.safeParse(body);
     if (!validation.success) {
+      apiLog.failure(txId, 'STOCK_ADJUST_CREATE', new Error('Invalid payload'));
       return NextResponse.json(
         { error: 'Invalid payload', details: validation.error.errors },
         { status: 400 }
@@ -138,13 +145,23 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.log('[Stock Adjustment API] Service error:', error);
+      apiLog.failure(txId, 'STOCK_ADJUST_CREATE', new Error(error));
       return NextResponse.json({ error }, { status: 400 });
     }
 
     console.log('[Stock Adjustment API] Successfully created adjustment:', adjustment?.adjustment_id);
+    
+    // 🔒 Shadow logging - success
+    apiLog.success(txId, 'STOCK_ADJUST_CREATE', {
+      entityType: 'ADJUSTMENT',
+      entityId: adjustment?.adjustment_id?.toString(),
+      entityNo: adjustment?.adjustment_no,
+    });
+    
     return NextResponse.json({ data: adjustment }, { status: 201 });
   } catch (error: any) {
     console.error('[Stock Adjustment API] Unexpected error:', error);
+    apiLog.failure(txId, 'STOCK_ADJUST_CREATE', error);
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

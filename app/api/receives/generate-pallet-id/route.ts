@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { receiveService } from '@/lib/database/receive';
-
 export async function POST(request: NextRequest) {
-  console.log('🚀 Pallet ID generation API called');
+console.log('🚀 Pallet ID generation API called');
   try {
     const body = await request.json().catch(() => null);
     const count = body?.count;
@@ -52,6 +51,7 @@ export async function POST(request: NextRequest) {
     }
   } catch (error) {
     console.error('API Error in POST /api/receives/generate-pallet-id:', error);
+
     return NextResponse.json(
       { data: null, error: 'Internal server error' },
       { status: 500 }

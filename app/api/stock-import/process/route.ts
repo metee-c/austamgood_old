@@ -8,11 +8,10 @@ import { createClient } from '@/lib/supabase/server';
 import { stockImportService } from '@/lib/database/stock-import';
 import { setDatabaseUserContext } from '@/lib/database/user-context';
 import { withAuth } from '@/lib/api/with-auth';
-
 export const dynamic = 'force-dynamic';
 
 async function handlePost(request: NextRequest, context: any) {
-  try {
+try {
     const supabase = await createClient();
 
     // รับข้อมูล

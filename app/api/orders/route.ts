@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/api/with-auth';
-
 async function handleGet(request: NextRequest, context: any) {
   try {
     const supabase = await createClient();
@@ -64,6 +63,7 @@ async function handleGet(request: NextRequest, context: any) {
     return NextResponse.json({ data, error: null });
   } catch (error) {
     console.error('API Error in GET /api/orders:', error);
+
     return NextResponse.json(
       { data: null, error: 'Internal server error' },
       { status: 500 }
@@ -72,7 +72,7 @@ async function handleGet(request: NextRequest, context: any) {
 }
 
 async function handlePost(request: NextRequest, context: any) {
-  try {
+try {
     const supabase = await createClient();
     const body = await request.json();
 
@@ -184,6 +184,7 @@ async function handlePost(request: NextRequest, context: any) {
   } catch (error) {
     console.error('API Error in POST /api/orders:', error);
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+
     return NextResponse.json(
       { data: null, error: errorMessage },
       { status: 500 }

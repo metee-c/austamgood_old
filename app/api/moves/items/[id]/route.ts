@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
-
 const UPDATABLE_FIELDS = new Set([
   'status',
   'confirmed_pack_qty',
@@ -69,6 +68,7 @@ export async function GET(
     return NextResponse.json({ data, error: null });
   } catch (err) {
     console.error('GET /api/moves/items/' + ' error', err);
+
     return NextResponse.json(
       { data: null, error: 'Internal server error' },
       { status: 500 }
@@ -80,7 +80,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const supabase = createServiceRoleClient();
     const { id } = await params;
     const moveItemId = Number(id);
@@ -263,6 +263,7 @@ export async function PATCH(
   } catch (err) {
     console.error('PATCH /api/moves/items/ error', err);
     const message = err instanceof Error ? err.message : 'Internal server error';
+
     return NextResponse.json(
       { data: null, error: message },
       { status: 500 }

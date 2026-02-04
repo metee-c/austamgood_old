@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 // GET - Get transport contract by plan_id and supplier_id
 // POST - Create or get transport contract (single plan or multi-plan)
 export async function GET(request: NextRequest) {
@@ -29,7 +28,6 @@ export async function GET(request: NextRequest) {
       console.error('Error fetching transport contracts:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
-
     return NextResponse.json({ data });
   } catch (error: any) {
     console.error('Error in GET /api/transport-contracts:', error);
@@ -38,7 +36,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const body = await request.json();
     const { 
@@ -108,7 +106,6 @@ export async function POST(request: NextRequest) {
 
     // data is an array from the function, get first item
     const contract = Array.isArray(data) ? data[0] : data;
-
     return NextResponse.json({ data: contract });
   } catch (error: any) {
     console.error('Error in POST /api/transport-contracts:', error);

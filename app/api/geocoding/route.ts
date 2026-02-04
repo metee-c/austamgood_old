@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server';
-
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || 'pk.eyJ1IjoieW95b21ldGVlIiwiYSI6ImNtY3U3ZWp5ZDBicDIyanB0czg3d2o2NGoifQ.sdHHSLjh7vr-_w1KrU5f3Q';
 
 // Extract location components from address
@@ -132,7 +131,7 @@ function calculateMatchScore(
 }
 
 export async function POST(request: NextRequest) {
-  try {
+try {
     const body = await request.json();
     const { address } = body;
 
@@ -265,6 +264,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Geocoding API error:', error);
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

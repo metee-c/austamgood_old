@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
-
 /**
  * POST /api/receives/[id]/link-production-order
  * Links a production receive to a production order retroactively
@@ -10,7 +9,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const supabase = createServiceRoleClient();
+const supabase = createServiceRoleClient();
   const { id } = await params;
   const receiveId = parseInt(id);
 

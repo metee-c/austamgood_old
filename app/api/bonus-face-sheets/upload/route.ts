@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 /**
  * POST /api/bonus-face-sheets/upload
  * อัปโหลดและประมวลผลไฟล์ Excel สำหรับสินค้าของแถม
  */
 export async function POST(request: NextRequest) {
-  try {
+try {
     const body = await request.json();
     const { excelData, warehouse_id = 'WH001', created_by = 'System' } = body;
     

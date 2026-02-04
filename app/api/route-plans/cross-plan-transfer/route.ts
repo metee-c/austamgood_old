@@ -5,7 +5,6 @@
 import { withAuth } from '@/lib/api/with-auth';
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-
 interface TransferItem {
   orderItemId: number;
   moveWeightKg: number;

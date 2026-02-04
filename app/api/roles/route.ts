@@ -2,7 +2,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentSession } from '@/lib/auth';
 import { createServiceRoleClient } from '@/lib/supabase/server';
-
 /**
  * GET /api/roles
  * Get all roles
@@ -110,6 +109,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error('Get roles API error:', error);
+
     return NextResponse.json(
       { error: 'เกิดข้อผิดพลาดภายในระบบ' },
       { status: 500 }
@@ -122,7 +122,7 @@ export async function GET(request: NextRequest) {
  * Create a new role
  */
 export async function POST(request: NextRequest) {
-  try {
+try {
     // Get current session
     const sessionResult = await getCurrentSession();
     
@@ -215,6 +215,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     console.error('Create role API error:', error);
+
     return NextResponse.json(
       { error: 'เกิดข้อผิดพลาดภายในระบบ' },
       { status: 500 }

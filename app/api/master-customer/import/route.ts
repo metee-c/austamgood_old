@@ -1,9 +1,8 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
-
 export async function POST(request: Request) {
-  const supabase = await createClient();
+const supabase = await createClient();
   const customers = await request.json();
 
   // TODO: Add validation for the customer data

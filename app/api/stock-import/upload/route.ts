@@ -7,11 +7,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { stockImportService } from '@/lib/database/stock-import';
 import { withAuth } from '@/lib/api/with-auth';
-
 export const dynamic = 'force-dynamic';
 
 async function handlePost(request: NextRequest, context: any) {
-  try {
+try {
     const supabase = await createClient();
 
     // รับข้อมูลจาก FormData
@@ -94,6 +93,7 @@ async function handlePost(request: NextRequest, context: any) {
     });
   } catch (error: any) {
     console.error('Upload error:', error);
+
     return NextResponse.json(
       { error: error.message || 'เกิดข้อผิดพลาดในการอัพโหลด' },
       { status: 500 }

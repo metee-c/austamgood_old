@@ -11,7 +11,6 @@ import {
 } from '@/lib/database/production-planning';
 import { ProductionPlanFilters, CreateProductionPlanInput } from '@/types/production-planning-schema';
 import { getCurrentSession } from '@/lib/auth';
-
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -39,7 +38,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  try {
+try {
     const body: CreateProductionPlanInput = await request.json();
 
     // Validate required fields
@@ -79,7 +78,6 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
-
     return NextResponse.json({ data: result }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating production plan:', error);

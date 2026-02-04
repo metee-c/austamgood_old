@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 /**
  * POST /api/loadlists/[id]/depart
  * เมื่อกดปุ่ม "ออกจัดส่ง" → เปลี่ยนสถานะจาก loading → loaded
@@ -10,7 +9,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const supabase = await createClient();
     const { id } = await params;
 
@@ -70,6 +69,7 @@ export async function POST(
   } catch (error) {
     console.error('API Error in POST /api/loadlists/[id]/depart:', error);
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+
     return NextResponse.json(
       { error: errorMessage },
       { status: 500 }

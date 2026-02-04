@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
@@ -30,7 +29,7 @@ interface PicklistResult {
 }
 
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const { trips } = await request.json() as { trips: TripInput[] };
 

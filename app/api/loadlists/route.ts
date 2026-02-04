@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/api/with-auth';
 import { SupabaseClient } from '@supabase/supabase-js';
-
 /**
  * ✅ NEW: Helper function สำหรับสร้าง loadlist จากออเดอร์ออนไลน์ (packing_backup_orders)
  * - ดึงออเดอร์ที่สแกนขึ้นรถแล้วจาก packing_backup_orders
@@ -145,6 +144,7 @@ async function handleOnlineOrdersMode(
 
   } catch (error: any) {
     console.error('Error in handleOnlineOrdersMode:', error);
+
     return NextResponse.json(
       { error: 'Internal server error', details: error.message },
       { status: 500 }
@@ -424,6 +424,7 @@ async function handleSkipMappingMode(
 
   } catch (error: any) {
     console.error('[skip_mapping] Error:', error);
+
     return NextResponse.json(
       { error: 'Internal server error', details: error.message },
       { status: 500 }
@@ -910,6 +911,7 @@ async function handleGet(request: NextRequest, context: any) {
     });
   } catch (error) {
     console.error('API error:', error);
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
@@ -918,7 +920,7 @@ async function handleGet(request: NextRequest, context: any) {
 }
 
 async function handlePost(request: NextRequest, context: any) {
-  try {
+try {
     const supabase = await createClient();
     const body = await request.json();
     const {
@@ -1795,6 +1797,7 @@ async function handlePost(request: NextRequest, context: any) {
     return NextResponse.json(transformedLoadlist);
   } catch (error) {
     console.error('API error:', error);
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

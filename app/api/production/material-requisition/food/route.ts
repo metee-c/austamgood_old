@@ -6,7 +6,6 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
@@ -136,7 +135,7 @@ export async function GET(request: NextRequest) {
  * สร้างงานเบิกเติมวัตถุดิบอาหารลง replenishment_queue
  */
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const body = await request.json();
 

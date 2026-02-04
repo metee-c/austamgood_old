@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { setDatabaseUserContext } from '@/lib/database/user-context';
 import { withAuth } from '@/lib/api/with-auth';
-
 /**
  * POST /api/mobile/loading/complete
  * ยืนยันการโหลดสินค้าเสร็จสิ้น
@@ -17,7 +16,7 @@ import { withAuth } from '@/lib/api/with-auth';
  * 5. อัปเดต loadlist status
  */
 async function handlePost(request: NextRequest, context: any) {
-  try {
+try {
     const supabase = await createClient();
 
     // ✅ Get userId from auth context (provided by withAuth wrapper)
@@ -1293,6 +1292,7 @@ async function handlePost(request: NextRequest, context: any) {
   } catch (error: any) {
     console.error('❌ API error:', error);
     console.error('Error stack:', error.stack);
+
     return NextResponse.json(
       {
         error: 'เกิดข้อผิดพลาดภายในระบบ',

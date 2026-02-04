@@ -1,9 +1,8 @@
 // API route for changing password (authenticated users) - Simple version
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromToken, simpleChangePassword } from '@/lib/auth/simple-auth';
-
 export async function POST(request: NextRequest) {
-  try {
+try {
     // Get token from cookie
     const token = request.cookies.get('auth_token')?.value;
     

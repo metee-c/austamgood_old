@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getCurrentSession } from '@/lib/auth/session';
-
 export const dynamic = 'force-dynamic';
 
 /**
@@ -14,7 +13,7 @@ export const dynamic = 'force-dynamic';
  * - Idempotency key ป้องกัน process ซ้ำ
  */
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const body = await request.json();
     
@@ -107,6 +106,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('API Error in POST /api/online-packing/complete-order:', error);
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+
     return NextResponse.json(
       { error: errorMessage },
       { status: 500 }

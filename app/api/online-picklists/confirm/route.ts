@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 export const dynamic = 'force-dynamic';
 
 const DESTINATION_LOCATION = 'E-Commerce';
@@ -12,7 +11,7 @@ const DEFAULT_WAREHOUSE = 'WH001';
  * Similar to PL system but for online orders
  */
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const body = await request.json();
     
@@ -454,6 +453,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('API Error in POST /api/online-picklists/confirm:', error);
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+
     return NextResponse.json(
       { error: errorMessage },
       { status: 500 }

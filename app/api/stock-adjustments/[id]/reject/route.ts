@@ -6,6 +6,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { stockAdjustmentService } from '@/lib/database/stock-adjustment';
 import { cookies } from 'next/headers';
 import { setUserContext } from '@/lib/supabase/with-user-context';
+import { apiLog } from '@/lib/logging';
 
 export const dynamic = 'force-dynamic';
 
@@ -13,6 +14,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const txId = await apiLog.start('ADJUSTMENT', request);
+  
   try {
     const supabase = await createClient();
 
@@ -68,12 +71,18 @@ export async function POST(
       await stockAdjustmentService.rejectAdjustment(adjustmentId, userId, reason);
 
     if (error) {
+      apiLog.failure(txId, 'STOCK_ADJUST_REJECT', new Error(error));
       return NextResponse.json({ error }, { status: 400 });
     }
 
+    apiLog.success(txId, 'STOCK_ADJUST_REJECT', {
+      entityType: 'ADJUSTMENT',
+      entityId: adjustmentId.toString(),
+    });
     return NextResponse.json({ data: adjustment });
   } catch (error: any) {
     console.error('Error rejecting stock adjustment:', error);
+    apiLog.failure(txId, 'STOCK_ADJUST_REJECT', error);
     return NextResponse.json(
       { error: error.message || 'Internal server error' },
       { status: 500 }

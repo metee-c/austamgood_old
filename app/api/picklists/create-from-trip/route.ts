@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 export const dynamic = 'force-dynamic';
 
 /**
@@ -14,7 +13,7 @@ export const dynamic = 'force-dynamic';
  * 5. Transaction rollback on any failure
  */
 export async function POST(request: NextRequest) {
-  let picklist: any = null;
+let picklist: any = null;
   let picklistItems: any[] = [];
 
   try {

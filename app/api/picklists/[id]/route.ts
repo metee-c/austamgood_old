@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 /**
  * GET /api/picklists/[id]
  * ดึง Picklist by ID พร้อมรายละเอียดทั้งหมด
@@ -75,6 +74,7 @@ export async function GET(
   } catch (error) {
     console.error('API Error in GET /api/picklists/[id]:', error);
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+
     return NextResponse.json(
       { error: errorMessage },
       { status: 500 }
@@ -91,7 +91,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const supabase = await createClient();
     const { id } = await params;
     const body = await request.json();
@@ -453,6 +453,7 @@ export async function PATCH(
   } catch (error) {
     console.error('API Error in PATCH /api/picklists/[id]:', error);
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+
     return NextResponse.json(
       { error: errorMessage },
       { status: 500 }
@@ -468,7 +469,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const supabase = await createClient();
     const { id } = await params;
 
@@ -578,6 +579,7 @@ export async function DELETE(
   } catch (error) {
     console.error('API Error in DELETE /api/picklists/[id]:', error);
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+
     return NextResponse.json(
       { error: errorMessage },
       { status: 500 }

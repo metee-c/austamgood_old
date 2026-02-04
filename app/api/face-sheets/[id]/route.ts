@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 /**
  * GET /api/face-sheets/[id]
  * Fetch face sheet details by ID
@@ -100,6 +99,7 @@ export async function GET(
 
   } catch (error: any) {
     console.error('Error in GET /api/face-sheets/[id]:', error);
+
     return NextResponse.json(
       { success: false, error: error.message || 'Internal server error' },
       { status: 500 }
@@ -115,7 +115,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const supabase = await createClient();
     const { id: idParam } = await params;
     const id = parseInt(idParam);
@@ -171,6 +171,7 @@ export async function PATCH(
 
   } catch (error: any) {
     console.error('Error in PATCH /api/face-sheets/[id]:', error);
+
     return NextResponse.json(
       { success: false, error: error.message || 'Internal server error' },
       { status: 500 }

@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { hashPassword } from '@/lib/auth/password';
-
 export async function POST(request: NextRequest) {
-  try {
+try {
     const { email, new_password } = await request.json();
 
     console.log('🔐 [RESET-PASSWORD] Request received for email:', email);

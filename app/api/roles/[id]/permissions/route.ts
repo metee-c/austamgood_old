@@ -2,7 +2,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentSession } from '@/lib/auth';
 import { createServiceRoleClient } from '@/lib/supabase/server';
-
 /**
  * PUT /api/roles/[id]/permissions
  * Update role permissions (Super Admin only)

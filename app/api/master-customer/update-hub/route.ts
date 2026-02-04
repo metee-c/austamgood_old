@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 interface UpdateHubRequest {
   updates: Array<{
     customer_id: string;
@@ -9,7 +8,7 @@ interface UpdateHubRequest {
 }
 
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const body: UpdateHubRequest = await request.json();
     const { updates } = body;

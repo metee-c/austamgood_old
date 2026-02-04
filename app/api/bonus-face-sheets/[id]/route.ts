@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 /**
  * GET /api/bonus-face-sheets/[id]
  * ดึงรายละเอียดใบปะหน้าของแถม
@@ -104,7 +103,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const supabase = await createClient();
     const { id: idParam } = await params;
     const id = parseInt(idParam);

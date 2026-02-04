@@ -48,7 +48,8 @@ import {
   ClipboardCheck,
   PackageCheck,
   Upload,
-  TrendingUp
+  TrendingUp,
+  Monitor
 } from 'lucide-react';
 
 interface SidebarProps {
@@ -322,6 +323,12 @@ const menuItems = [
     icon: Smartphone,
     label: 'อุปกรณ์เครื่องมือ',
     englishLabel: 'Mobile Tools'
+  },
+  {
+    path: '/command-center',
+    icon: Monitor,
+    label: 'ศูนย์บัญชาการ',
+    englishLabel: 'Command Center'
   },
   {
     path: '/master-data',

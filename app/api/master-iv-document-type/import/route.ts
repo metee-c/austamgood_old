@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const formData = await request.formData();
     const file = formData.get('file') as File;
@@ -116,6 +115,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('Error importing document types:', error);
+
     return NextResponse.json({ error: 'เกิดข้อผิดพลาดในการนำเข้าข้อมูล' }, { status: 500 });
   }
 }

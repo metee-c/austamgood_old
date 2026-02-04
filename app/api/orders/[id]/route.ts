@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/api/with-auth';
-
 async function handlePatch(
   request: NextRequest,
   context: { params?: Promise<{ id: string }>; user: any }

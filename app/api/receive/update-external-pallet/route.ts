@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
-
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = createServiceRoleClient();
     const { itemId, externalPalletId } = await request.json();
 
@@ -45,6 +44,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('API Error:', error);
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

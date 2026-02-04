@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 export const dynamic = 'force-dynamic';
 
 /**
@@ -86,7 +85,6 @@ export async function GET(
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
-
     return NextResponse.json({ data });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -102,7 +100,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const supabase = await createClient();
     const { id } = await params;
     const body = await request.json();
@@ -141,7 +139,6 @@ export async function PATCH(
     if (body.status === 'completed' && data?.trigger_reference) {
       await checkAndUpdateProductionOrderStatus(supabase, data.trigger_reference);
     }
-
     return NextResponse.json({ data });
   } catch (error: any) {
     console.error('Error in PATCH /api/replenishment/[id]:', error);
@@ -157,7 +154,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const supabase = await createClient();
     const { id } = await params;
 
@@ -169,7 +166,6 @@ export async function DELETE(
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
-
     return NextResponse.json({ success: true });
   } catch (error: any) {
     return NextResponse.json({ error: error.message }, { status: 500 });

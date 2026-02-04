@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { canTransferToLocation } from '@/lib/database/prep-area-validation';
-
 export const dynamic = 'force-dynamic';
 
 /**
@@ -84,7 +83,7 @@ export async function GET(request: NextRequest) {
  * Create a new replenishment task
  */
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const body = await request.json();
 
@@ -114,7 +113,6 @@ export async function POST(request: NextRequest) {
       console.error('Error creating replenishment task:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
-
     return NextResponse.json({ data });
   } catch (error: any) {
     console.error('Error in POST /api/replenishment:', error);

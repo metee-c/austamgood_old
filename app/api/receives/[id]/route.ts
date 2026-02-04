@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { receiveService } from '@/lib/database/receive';
+import { apiLog } from '@/lib/logging';
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const txId = await apiLog.start('RECEIVE', request);
+  
   try {
     const id = parseInt((await params).id);
     if (isNaN(id)) {
@@ -50,16 +53,22 @@ export async function PATCH(
     const { data, error } = await receiveService.updateReceive(id, updateData);
 
     if (error) {
+      apiLog.failure(txId, 'STOCK_RECEIVE_UPDATE', new Error(error));
       return NextResponse.json(
         { data: null, error },
         { status: 500 }
       );
     }
 
+    apiLog.success(txId, 'STOCK_RECEIVE_UPDATE', {
+      entityType: 'RECEIVE',
+      entityId: id.toString(),
+    });
     return NextResponse.json({ data, error: null });
 
   } catch (error) {
     console.error('API Error in PATCH /api/receives/[id]:', error);
+    apiLog.failure(txId, 'STOCK_RECEIVE_UPDATE', error as Error);
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
     return NextResponse.json(
       { data: null, error: errorMessage },

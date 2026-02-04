@@ -7,9 +7,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createScenarioEngine, ShiftScenarioParams, SIMULATION_DISCLAIMER } from '@/lib/simulation';
-
 export async function POST(request: NextRequest) {
-  try {
+try {
     const body = await request.json();
     const { shift_hours_change, worker_count_change, productivity_change_percent } = body;
 

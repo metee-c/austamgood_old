@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/api/with-auth';
-
 /**
  * GET /api/bonus-face-sheets
  * ดึงรายการใบปะหน้าของแถมทั้งหมด
@@ -130,7 +129,7 @@ async function handleGet(request: NextRequest, context: any) {
  * สร้างใบปะหน้าของแถมใหม่จากออเดอร์ที่มี order_type = 'special'
  */
 async function handlePost(request: NextRequest, context: any) {
-  try {
+try {
     const supabase = await createClient();
     const body = await request.json();
     

@@ -1,7 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { receiveService } from '@/lib/database/receive';
 
-export async function POST() {
+export async function POST(request: NextRequest) {
   try {
     const { data, error } = await receiveService.generateReceiveNo();
 
@@ -15,6 +15,7 @@ export async function POST() {
     return NextResponse.json({ data, error: null });
   } catch (error) {
     console.error('API Error in POST /api/receives/generate-receive-no:', error);
+
     return NextResponse.json(
       { data: null, error: 'Internal server error' },
       { status: 500 }

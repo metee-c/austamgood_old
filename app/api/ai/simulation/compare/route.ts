@@ -5,7 +5,8 @@
  * Compares multiple scenarios side by side
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { 
+NextRequest, NextResponse } from 'next/server';
 import { 
   createScenarioEngine, 
   Scenario, 
@@ -21,7 +22,7 @@ interface ScenarioInput {
 }
 
 export async function POST(request: NextRequest) {
-  try {
+try {
     const body = await request.json();
     const { scenarios } = body;
 

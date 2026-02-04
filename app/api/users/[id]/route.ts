@@ -4,7 +4,6 @@ import { getUserFromToken } from '@/lib/auth/simple-auth';
 import { createServiceRoleClient, createClient } from '@/lib/supabase/server';
 import { logAuditEntry } from '@/lib/auth/audit';
 import { getClientIP } from '@/lib/auth/middleware';
-
 /**
  * GET /api/users/[id]
  * Get a single user by ID
@@ -105,7 +104,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const token = request.cookies.get('auth_token')?.value;
     if (!token) {
       return NextResponse.json({ error: 'ไม่ได้เข้าสู่ระบบ' }, { status: 401 });
@@ -233,7 +232,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const token = request.cookies.get('auth_token')?.value;
     if (!token) {
       return NextResponse.json({ error: 'ไม่ได้เข้าสู่ระบบ' }, { status: 401 });

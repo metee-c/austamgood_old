@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { receiveService, CreateReceivePayload, ReceiveType, ReceiveStatus, PalletScanStatus } from '@/lib/database/receive';
-
 export async function POST(request: NextRequest) {
-  try {
+try {
     const body = await request.json();
 
     // Validate required fields
@@ -136,6 +135,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error) {
     console.error('[Import Return API] Unexpected error:', error);
+
     return NextResponse.json(
       { success: false, error: 'Internal server error' },
       { status: 500 }

@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/api/with-auth';
-
 /**
  * POST /api/orders/[id]/items/[itemId]/rollback
  * Rollback รายการสินค้าเดียวใน Order
@@ -10,7 +9,7 @@ async function handlePost(
   request: NextRequest,
   context: { params?: { id: string; itemId: string }; user: any }
 ) {
-  try {
+try {
     const { id, itemId } = await (context.params as any);
     const orderId = parseInt(id, 10);
     const orderItemId = parseInt(itemId, 10);
@@ -81,6 +80,7 @@ async function handlePost(
 
   } catch (err: any) {
     console.error('[item-rollback] Exception:', err);
+
     return NextResponse.json(
       { success: false, error: err.message || 'เกิดข้อผิดพลาดภายในระบบ' },
       { status: 500 }

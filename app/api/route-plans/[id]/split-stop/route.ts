@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 interface SplitStopItem {
   orderItemId: number;
   moveWeightKg: number;
@@ -24,7 +23,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const supabase = await createClient();
     const { id: planId } = await params;
     const body: SplitStopRequestBody = await request.json();

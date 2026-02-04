@@ -2,7 +2,6 @@ import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { customerSchema } from '@/types/customer-schema';
 import { withAuth, withAdminAuth } from '@/lib/api/with-auth';
-
 async function handleGet(request: NextRequest, context: any) {
   const { searchParams } = new URL(request.url);
     

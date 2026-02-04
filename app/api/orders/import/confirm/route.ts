@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ordersService } from '@/lib/database/orders.service';
-
 /**
  * POST /api/orders/import/confirm
  *
@@ -8,7 +7,7 @@ import { ordersService } from '@/lib/database/orders.service';
  * รับรายการออเดอร์ที่ผู้ใช้ยืนยันให้อัพเดต
  */
 export async function POST(request: NextRequest) {
-  try {
+try {
     const body = await request.json();
     const { confirmedOrders, newOrders } = body;
 
@@ -196,6 +195,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error('Error confirming import:', error);
+
     return NextResponse.json(
       { data: null, error: error.message },
       { status: 500 }

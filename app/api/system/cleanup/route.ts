@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 /**
  * POST /api/system/cleanup
  * Cleanup expired locks, idempotency keys, old metrics, and old alerts
@@ -16,7 +15,7 @@ import { createClient } from '@/lib/supabase/server';
  * ```
  */
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     
     // Verify API key for security (optional - add your own auth)
@@ -107,6 +106,7 @@ export async function POST(request: NextRequest) {
 
   } catch (error: any) {
     console.error('❌ Cleanup job error:', error);
+
     return NextResponse.json(
       { error: 'Cleanup job failed', details: error.message },
       { status: 500 }
@@ -186,6 +186,7 @@ export async function GET(request: NextRequest) {
 
   } catch (error: any) {
     console.error('❌ Health check error:', error);
+
     return NextResponse.json(
       { error: 'Health check failed', details: error.message },
       { status: 500 }

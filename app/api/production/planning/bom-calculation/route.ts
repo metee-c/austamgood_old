@@ -6,9 +6,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { calculateBomRequirements } from '@/lib/database/production-planning';
 import { BomCalculationRequest } from '@/types/production-planning-schema';
-
 export async function POST(request: NextRequest) {
-  try {
+try {
     const body: BomCalculationRequest = await request.json();
 
     // Validate required fields
@@ -34,7 +33,6 @@ export async function POST(request: NextRequest) {
         { status: 404 }
       );
     }
-
     return NextResponse.json({ data: result });
   } catch (error: any) {
     console.error('Error calculating BOM requirements:', error);

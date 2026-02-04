@@ -2,7 +2,6 @@ import { createClient } from '@/lib/supabase/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { FileManagementService } from '@/lib/database/file-management';
-
 export async function GET(request: Request) {
   const supabase = await createClient();
   const fileService = new FileManagementService(supabase);
@@ -21,7 +20,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  try {
+try {
     console.log('File upload request received');
     
     // Check environment variables
@@ -171,6 +170,7 @@ export async function POST(request: Request) {
 
   } catch (error) {
     console.error('File upload error:', error);
+
     return NextResponse.json(
       { data: null, error: 'Internal server error' },
       { status: 500 }

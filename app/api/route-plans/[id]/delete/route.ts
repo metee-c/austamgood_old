@@ -4,7 +4,6 @@
 import { withAuth } from '@/lib/api/with-auth';
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
-
 async function handleDelete(request: NextRequest, context: any) {
   const supabase = await createClient();
   const { id } = await context.params;

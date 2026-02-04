@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 export const dynamic = 'force-dynamic';
 
 /**
@@ -11,7 +10,7 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const { id: skuId } = await params;
     const body = await request.json();
     
@@ -131,7 +130,6 @@ export async function GET(
       console.error('Error fetching SKU:', error);
       return NextResponse.json({ error: 'SKU not found' }, { status: 404 });
     }
-
     return NextResponse.json({ data });
 
   } catch (error: any) {

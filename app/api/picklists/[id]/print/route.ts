@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 /**
  * POST /api/picklists/[id]/print
  * เมื่อกดปุ่มพิมพ์เอกสาร Picklist (ไม่อัปเดตสถานะอัตโนมัติ)
@@ -9,7 +8,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const supabase = await createClient();
     const { id } = await params;
 
@@ -37,6 +36,7 @@ export async function POST(
   } catch (error) {
     console.error('API Error in POST /api/picklists/[id]/print:', error);
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+
     return NextResponse.json(
       { error: errorMessage },
       { status: 500 }

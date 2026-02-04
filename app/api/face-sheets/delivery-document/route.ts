@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 interface PackageDetails {
   id?: number;
   package_number?: number;
@@ -695,6 +694,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error generating delivery document:', error);
+
     return NextResponse.json(
       { error: 'Failed to generate delivery document' },
       { status: 500 }
@@ -705,7 +705,7 @@ export async function GET(request: NextRequest) {
 export async function POST(
   request: NextRequest
 ) {
-  try {
+try {
     const body = await request.json();
     const { faceSheetId } = body;
 
@@ -803,6 +803,7 @@ export async function POST(
 
   } catch (error) {
     console.error('Error generating delivery document:', error);
+
     return NextResponse.json(
       { error: 'Internal server error', details: error instanceof Error ? error.message : 'Unknown error' },
       { status: 500 }

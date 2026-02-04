@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
-
 export const dynamic = 'force-dynamic';
 
 const PREPARATION_AREA_FIELDS = `
@@ -88,6 +87,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     console.error('Error fetching preparation areas:', error);
+
     return NextResponse.json(
       { error: 'Failed to fetch preparation areas' },
       { status: 500 }
@@ -96,7 +96,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = createServiceRoleClient();
     const body = await request.json();
 
@@ -141,6 +141,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(newArea, { status: 201 });
   } catch (error) {
     console.error('Error creating preparation area:', error);
+
     return NextResponse.json(
       { error: 'Failed to create preparation area' },
       { status: 500 }

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 export const dynamic = 'force-dynamic';
 
 // GET - ดึงรายการ freight rates ทั้งหมด
@@ -92,6 +91,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ data: freightRates, error: null });
   } catch (error: any) {
     console.error('Error fetching freight rates:', error);
+
     return NextResponse.json(
       { data: null, error: error.message },
       { status: 500 }
@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
 
 // POST - สร้าง freight rate ใหม่
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const body = await request.json();
 
@@ -164,6 +164,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ data, error: null }, { status: 201 });
   } catch (error: any) {
     console.error('Error creating freight rate:', error);
+
     return NextResponse.json(
       { data: null, error: error.message },
       { status: 500 }

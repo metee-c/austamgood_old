@@ -6,7 +6,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { stockImportService } from '@/lib/database/stock-import';
-
 export const dynamic = 'force-dynamic';
 
 const supabase = createClient(
@@ -15,7 +14,7 @@ const supabase = createClient(
 );
 
 export async function POST(request: NextRequest) {
-  try {
+try {
 
     // รับข้อมูล
     const body = await request.json();
@@ -88,6 +87,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('Picking area validation error:', error);
+
     return NextResponse.json(
       { error: error.message || 'เกิดข้อผิดพลาดในการตรวจสอบ' },
       { status: 500 }

@@ -6,11 +6,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { stockImportService } from '@/lib/database/stock-import';
-
 export const dynamic = 'force-dynamic';
 
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
 
     // รับข้อมูล
@@ -78,6 +77,7 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error('Validation error:', error);
+
     return NextResponse.json(
       { error: error.message || 'เกิดข้อผิดพลาดในการตรวจสอบ' },
       { status: 500 }

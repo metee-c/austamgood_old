@@ -7,9 +7,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createScenarioEngine, StorageScenarioParams, SIMULATION_DISCLAIMER } from '@/lib/simulation';
-
 export async function POST(request: NextRequest) {
-  try {
+try {
     const body = await request.json();
     const { reduction_percent, reduction_locations, affected_zones } = body;
 

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 export async function GET(request: NextRequest) {
   try {
     const supabase = await createClient();
@@ -33,12 +32,13 @@ export async function GET(request: NextRequest) {
     }
   } catch (error) {
     console.error('Error fetching customer no price goods:', error);
+
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
 export async function POST(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const body = await request.json();
     
@@ -55,6 +55,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(data, { status: 201 });
   } catch (error) {
     console.error('Error creating customer no price goods:', error);
+
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -79,12 +80,13 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json(data);
   } catch (error) {
     console.error('Error updating customer no price goods:', error);
+
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
 export async function DELETE(request: NextRequest) {
-  try {
+try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
@@ -105,6 +107,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ message: 'Customer no price goods record deleted successfully' });
   } catch (error) {
     console.error('Error deleting customer no price goods:', error);
+
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }

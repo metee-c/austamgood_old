@@ -1,5 +1,6 @@
 // API route for authentication system settings
-import { NextRequest, NextResponse } from 'next/server';
+import { 
+NextRequest, NextResponse } from 'next/server';
 import { 
   getCurrentSession, 
   getAuthSettings, 

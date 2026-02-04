@@ -1,9 +1,8 @@
 // API route for user registration
 import { NextRequest, NextResponse } from 'next/server';
 import { registerUser, getCurrentSession } from '@/lib/auth';
-
 export async function POST(request: NextRequest) {
-  try {
+try {
     // Get current session (only authenticated users can register new users)
     const sessionResult = await getCurrentSession();
     

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 /**
  * POST /api/loadlists/[id]/scan
  * สแกนขึ้นรถ - เพิ่ม Order เข้า Loadlist
@@ -10,7 +9,7 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  try {
+try {
     const supabase = await createClient();
     const { id: loadlistId } = await params;
     const body = await request.json();
@@ -142,13 +141,13 @@ export async function POST(
   } catch (error) {
     console.error('API Error in POST /api/loadlists/[id]/scan:', error);
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+
     return NextResponse.json(
       { error: errorMessage },
       { status: 500 }
     );
   }
 }
-
 
 /**
  * GET /api/loadlists/[id]/scan
@@ -194,6 +193,7 @@ export async function GET(
   } catch (error) {
     console.error('API Error in GET /api/loadlists/[id]/scan:', error);
     const errorMessage = error instanceof Error ? error.message : 'Internal server error';
+
     return NextResponse.json(
       { error: errorMessage },
       { status: 500 }

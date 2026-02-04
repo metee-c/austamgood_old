@@ -1,6 +1,5 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-
 export async function GET(request: Request) {
   try {
     const supabase = await createClient();
@@ -213,6 +212,7 @@ export async function GET(request: Request) {
     console.error('Unexpected error fetching route plans:', error);
     console.error('Error stack:', error?.stack);
     console.error('Error message:', error?.message);
+
     return NextResponse.json(
       { error: error?.message || 'Internal server error' },
       { status: 500 }
@@ -221,7 +221,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  try {
+try {
     const supabase = await createClient();
     const body = await request.json();
 
@@ -242,6 +242,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ data, error: null }, { status: 201 });
   } catch (error) {
     console.error('Unexpected error creating route plan:', error);
+
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }
