@@ -73,7 +73,7 @@ const receiveFormSchema = z.object({
   warehouse_id: z.string().min(1, 'กรุณาเลือกคลังสินค้า'),
   receive_date: z.string().min(1, 'กรุณาเลือกวันที่รับสินค้า'),
   received_by: z.number().optional(),
-  status: z.enum(['รอรับเข้า', 'รับเข้าแล้ว', 'กำลังตรวจสอบ', 'สำเร็จ'] as const).default('รอรับเข้า'),
+  status: z.enum(['รับเข้าแล้ว', 'กำลังตรวจสอบ', 'สำเร็จ'] as const).default('รับเข้าแล้ว'),
   notes: z.string().optional(),
   custom_pieces_per_pallet: z.number().optional(),
   pieces_per_box: z.number().optional(),
@@ -127,7 +127,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
       receive_type: editData.receive_type || 'รับสินค้าปกติ',
       pallet_box_option: editData.pallet_box_option || 'ไม่สร้าง_Pallet_ID',
       pallet_calculation_method: editData.pallet_calculation_method || 'ใช้จำนวนจากมาสเตอร์สินค้า',
-      status: editData.status || 'รอรับเข้า',
+      status: editData.status || 'รับเข้าแล้ว',
       receive_date: editData.receive_date || new Date().toISOString().split('T')[0],
       warehouse_id: editData.warehouse_id || '',
       supplier_id: editData.supplier_id || '',
@@ -170,7 +170,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
       receive_type: 'รับสินค้าปกติ',
       pallet_box_option: 'ไม่สร้าง_Pallet_ID',
       pallet_calculation_method: 'ใช้จำนวนจากมาสเตอร์สินค้า',
-      status: 'รอรับเข้า',
+      status: 'รับเข้าแล้ว',
       receive_date: new Date().toISOString().split('T')[0],
       warehouse_id: '',
       items: [{
@@ -336,7 +336,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
     if (watchedType === 'รับสินค้าตีกลับ') {
       setValue('status', 'รับเข้าแล้ว');
     } else if (!isEditMode) {
-      setValue('status', 'รอรับเข้า');
+      setValue('status', 'รับเข้าแล้ว');
     }
   }, [watchedType, setValue, isEditMode]);
 
@@ -1217,7 +1217,6 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
           <div>
             <label className="block text-xs font-medium text-thai-gray-700 font-thai mb-1">สถานะ</label>
             <select {...register('status')} className="w-full p-2 border border-thai-gray-200 rounded-md text-sm">
-              <option value="รอรับเข้า">รอรับเข้า</option>
               <option value="รับเข้าแล้ว">รับเข้าแล้ว</option>
               <option value="กำลังตรวจสอบ">กำลังตรวจสอบ</option>
               <option value="สำเร็จ">สำเร็จ</option>

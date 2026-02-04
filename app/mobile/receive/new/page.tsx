@@ -57,7 +57,7 @@ const receiveFormSchema = z.object({
   warehouse_id: z.string().min(1, 'กรุณาเลือกคลังสินค้า'),
   receive_date: z.string().min(1, 'กรุณาเลือกวันที่รับสินค้า'),
   received_by: z.number().optional(),
-  status: z.enum(['รอรับเข้า', 'รับเข้าแล้ว', 'กำลังตรวจสอบ', 'สำเร็จ'] as const).default('รับเข้าแล้ว'),
+  status: z.enum(['รับเข้าแล้ว', 'กำลังตรวจสอบ', 'สำเร็จ'] as const).default('รับเข้าแล้ว'),
   notes: z.string().optional(),
   custom_pieces_per_pallet: z.number().optional(),
   pieces_per_box: z.number().optional(),
@@ -613,7 +613,6 @@ export default function MobileReceiveNewPage() {
           <div className="bg-white rounded-lg shadow-sm p-2.5">
             <label className="block text-xs font-semibold text-gray-700 font-thai mb-1">สถานะ</label>
             <select {...register('status')} className="w-full px-2 py-2 border border-gray-300 rounded font-thai text-xs">
-              <option value="รอรับเข้า">รอรับเข้า</option>
               <option value="รับเข้าแล้ว">รับเข้าแล้ว</option>
               <option value="กำลังตรวจสอบ">กำลังตรวจสอบ</option>
               <option value="สำเร็จ">สำเร็จ</option>
