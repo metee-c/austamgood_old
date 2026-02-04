@@ -293,8 +293,9 @@ export default function ScanToVehiclePage() {
       };
 
       setScannedPackages(prev => [newPackage, ...prev]);
-      setTodayCount(prev => prev + packagesToUpdate.length);
-      setTotalCount(prev => prev + packagesToUpdate.length);
+      // ✅ FIX: Add 1 per unique tracking, not per row count
+      setTodayCount(prev => prev + 1);
+      setTotalCount(prev => prev + 1);
 
       // Clear success message after 2 seconds
       setTimeout(() => {
