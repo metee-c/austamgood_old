@@ -14,6 +14,7 @@ import {
   SIMULATION_DISCLAIMER,
   generateSimulationId,
 } from '@/lib/simulation';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 interface ScenarioInput {
   type: ScenarioType;
@@ -21,7 +22,7 @@ interface ScenarioInput {
   parameters: Record<string, any>;
 }
 
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
     const body = await request.json();
     const { scenarios } = body;
@@ -151,7 +152,7 @@ function generateRecommendation(result: any): string {
   return recommendation;
 }
 
-export async function GET() {
+async function _GET() {
   return NextResponse.json({
     success: true,
     endpoint: '/api/ai/simulation/compare',
@@ -194,3 +195,6 @@ export async function GET() {
     },
   });
 }
+
+export const GET = withShadowLog(_GET);
+export const POST = withShadowLog(_POST);

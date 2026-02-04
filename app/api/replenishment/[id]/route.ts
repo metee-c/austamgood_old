@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 export const dynamic = 'force-dynamic';
 
 /**
@@ -62,7 +63,7 @@ async function checkAndUpdateProductionOrderStatus(supabase: any, productionOrde
  * GET /api/replenishment/[id]
  * Get single replenishment task
  */
-export async function GET(
+async function _GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -96,7 +97,7 @@ export async function GET(
  * PATCH /api/replenishment/[id]
  * Update replenishment task (assign, start, complete, cancel)
  */
-export async function PATCH(
+async function _PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -150,7 +151,7 @@ try {
  * DELETE /api/replenishment/[id]
  * Delete/cancel replenishment task
  */
-export async function DELETE(
+async function _DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -171,3 +172,7 @@ try {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const PATCH = withShadowLog(_PATCH);
+export const DELETE = withShadowLog(_DELETE);

@@ -7,7 +7,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createScenarioEngine, ShiftScenarioParams, SIMULATION_DISCLAIMER } from '@/lib/simulation';
-export async function POST(request: NextRequest) {
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
+async function _POST(request: NextRequest) {
 try {
     const body = await request.json();
     const { shift_hours_change, worker_count_change, productivity_change_percent } = body;
@@ -110,7 +111,7 @@ try {
   }
 }
 
-export async function GET() {
+async function _GET() {
   return NextResponse.json({
     success: true,
     endpoint: '/api/ai/simulation/shift-change',
@@ -144,3 +145,6 @@ export async function GET() {
     },
   });
 }
+
+export const GET = withShadowLog(_GET);
+export const POST = withShadowLog(_POST);

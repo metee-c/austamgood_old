@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/api/with-auth';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 // User ID ที่อนุญาตให้ลบ batch ได้ (metee)
 const ALLOWED_DELETE_USER_ID = 2;
 
@@ -105,4 +106,4 @@ async function handleDelete(request: NextRequest, context: any) {
   }
 }
 
-export const DELETE = withAuth(handleDelete);
+export const DELETE = withShadowLog(withAuth(handleDelete));

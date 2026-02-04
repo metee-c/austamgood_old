@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * POST /api/bonus-face-sheets/upload
  * อัปโหลดและประมวลผลไฟล์ Excel สำหรับสินค้าของแถม
  */
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
     const body = await request.json();
     const { excelData, warehouse_id = 'WH001', created_by = 'System' } = body;
@@ -85,3 +86,5 @@ try {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

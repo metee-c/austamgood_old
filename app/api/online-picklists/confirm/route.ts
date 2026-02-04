@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 export const dynamic = 'force-dynamic';
 
 const DESTINATION_LOCATION = 'E-Commerce';
@@ -10,7 +11,7 @@ const DEFAULT_WAREHOUSE = 'WH001';
  * Confirm online picklist items and move stock to E-Commerce location
  * Similar to PL system but for online orders
  */
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
     const supabase = await createClient();
     const body = await request.json();
@@ -460,3 +461,5 @@ try {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

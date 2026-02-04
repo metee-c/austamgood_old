@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 /**
  * GET /api/inventory/prep-area-balances
@@ -14,7 +15,7 @@ import { createClient } from '@/lib/supabase/server';
  * - filter_correct_location: Set to 'true' to show only items in correct location (optional)
  * - export: Set to 'true' to fetch all data without pagination (optional)
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const searchParams = request.nextUrl.searchParams;
@@ -155,3 +156,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);

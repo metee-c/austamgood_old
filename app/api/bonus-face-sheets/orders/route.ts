@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 /**
  * GET /api/bonus-face-sheets/orders
@@ -10,7 +11,7 @@ import { createClient } from '@/lib/supabase/server';
  *    แมพกับ customer_id ของออเดอร์ปกติที่อยู่ใน route stops
  * 2. สร้าง full trip code: {plan_code}-{trip_code}
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const searchParams = request.nextUrl.searchParams;
@@ -236,3 +237,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);

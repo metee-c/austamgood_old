@@ -4,6 +4,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 export const dynamic = 'force-dynamic';
 
@@ -18,7 +19,7 @@ interface ComparisonItem {
   prep_area_code: string;
 }
 
-export async function GET(
+async function _GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -222,3 +223,5 @@ export async function GET(
     );
   }
 }
+
+export const GET = withShadowLog(_GET);

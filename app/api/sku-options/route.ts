@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const supabase = createServiceRoleClient();
     const { searchParams } = new URL(request.url);
@@ -65,3 +66,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);

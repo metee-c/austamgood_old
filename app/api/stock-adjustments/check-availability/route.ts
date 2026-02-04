@@ -4,10 +4,11 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 export const dynamic = 'force-dynamic';
 
 // POST: Check stock availability for adjustment
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
     const supabase = await createClient();
 
@@ -102,3 +103,5 @@ try {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

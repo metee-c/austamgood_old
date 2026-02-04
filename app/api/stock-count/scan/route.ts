@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * POST /api/stock-count/scan
  * สแกนโลเคชั่นหรือพาเลท (Realtime mode)
  */
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
     const supabase = await createClient();
     const body = await request.json();
@@ -306,3 +307,5 @@ async function updateSessionCounts(supabase: ReturnType<typeof createClient> ext
     })
     .eq('id', sessionId);
 }
+
+export const POST = withShadowLog(_POST);

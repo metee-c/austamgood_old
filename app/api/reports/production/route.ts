@@ -1,3 +1,4 @@
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * Production Report API
  * รายงานการผลิต - แสดงข้อมูล traceability ของสินค้าสำเร็จรูปและวัตถุดิบ
@@ -12,7 +13,7 @@ import {
 } from '@/lib/database/production-report'
 import { ProductionReportFilterSchema } from '@/types/production-report-schema'
 
-export async function GET(request: Request) {
+async function _GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     
@@ -109,3 +110,5 @@ function parseFilters(searchParams: URLSearchParams) {
   
   return filters
 }
+
+export const GET = withShadowLog(_GET);

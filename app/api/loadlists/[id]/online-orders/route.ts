@@ -1,9 +1,10 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 // GET /api/loadlists/[id]/online-orders
 // Fetch online orders (packing_backup_orders) for a specific loadlist
-export async function GET(
+async function _GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -94,3 +95,5 @@ export async function GET(
     );
   }
 }
+
+export const GET = withShadowLog(_GET);

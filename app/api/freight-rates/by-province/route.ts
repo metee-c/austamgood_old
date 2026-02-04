@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { normalizeProvinceName, getProvinceVariants } from '@/lib/utils/province-normalizer';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,7 +10,7 @@ export const dynamic = 'force-dynamic';
  * ดึงราคาค่าขนส่งตามจังหวัดปลายทางและผู้ให้บริการ
  * รองรับชื่อจังหวัดทั้งชื่อย่อและชื่อเต็ม (เช่น กทม, กรุงเทพ, กรุงเทพมหานคร)
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -102,3 +103,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);

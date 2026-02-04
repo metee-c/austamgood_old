@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { cookies } from 'next/headers';
 import { setUserContext } from '@/lib/supabase/with-user-context';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 export const dynamic = 'force-dynamic';
 
 interface VarianceItem {
@@ -27,7 +28,7 @@ interface InventoryRecord {
   created_at: string;
 }
 
-export async function POST(
+async function _POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -424,3 +425,5 @@ async function generateAdjustmentNo(supabase: any, type: 'increase' | 'decrease'
 
   return prefix + String(running).padStart(4, '0');
 }
+
+export const POST = withShadowLog(_POST);

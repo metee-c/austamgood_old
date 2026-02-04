@@ -1,8 +1,9 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { FileManagementService } from '@/lib/database/file-management';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
-export async function GET(request: Request) {
+async function _GET(request: Request) {
   const supabase = await createClient();
   const fileService = new FileManagementService(supabase);
 
@@ -18,3 +19,5 @@ export async function GET(request: Request) {
 
   return NextResponse.json(data);
 }
+
+export const GET = withShadowLog(_GET);

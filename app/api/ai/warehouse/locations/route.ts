@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 export interface AIWarehouseLocationParams {
   warehouse_id?: string;
@@ -60,7 +61,7 @@ export interface AIWarehouseLocationResponse {
   error?: string;
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse<AIWarehouseLocationResponse>> {
+async function _GET(request: NextRequest): Promise<NextResponse<AIWarehouseLocationResponse>> {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -291,3 +292,5 @@ export async function GET(request: NextRequest): Promise<NextResponse<AIWarehous
     }, { status: 500 });
   }
 }
+
+export const GET = withShadowLog(_GET);

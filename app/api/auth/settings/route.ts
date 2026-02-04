@@ -8,12 +8,13 @@ import {
   getAllSystemSettings,
   updateSystemSetting
 } from '@/lib/auth';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 /**
  * GET /api/auth/settings
  * Get authentication settings
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     // Get current session (require admin role)
     const sessionResult = await getCurrentSession();
@@ -81,7 +82,7 @@ export async function GET(request: NextRequest) {
  * PUT /api/auth/settings
  * Update authentication settings
  */
-export async function PUT(request: NextRequest) {
+async function _PUT(request: NextRequest) {
   try {
     // Get current session (require admin role)
     const sessionResult = await getCurrentSession();
@@ -157,3 +158,6 @@ export async function PUT(request: NextRequest) {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const PUT = withShadowLog(_PUT);

@@ -7,6 +7,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import type { PickingAreaImportRowData } from '@/types/stock-import';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 export const dynamic = 'force-dynamic';
 
 const supabase = createClient(
@@ -18,7 +19,7 @@ const supabase = createClient(
  * POST /api/stock-import/picking-area
  * อัพโหลดและนำเข้าข้อมูลสต็อกสำหรับ Picking Area
  */
-export async function POST(request: Request) {
+async function _POST(request: Request) {
 try {
     // 1. Get user_id from request (passed from client)
     const formData = await request.formData();
@@ -230,3 +231,5 @@ try {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

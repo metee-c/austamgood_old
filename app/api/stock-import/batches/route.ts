@@ -7,9 +7,10 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { stockImportService } from '@/lib/database/stock-import';
 import type { StockImportBatchStatus } from '@/types/stock-import';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const supabase = await createClient();
 
@@ -41,7 +42,7 @@ export async function GET(request: NextRequest) {
 // DELETE: ลบ Import Batch
 // ============================================================================
 
-export async function DELETE(request: NextRequest) {
+async function _DELETE(request: NextRequest) {
 try {
     const supabase = await createClient();
 
@@ -69,3 +70,6 @@ try {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const DELETE = withShadowLog(_DELETE);

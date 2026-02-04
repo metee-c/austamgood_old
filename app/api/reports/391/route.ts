@@ -1,3 +1,4 @@
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * Stock Control Card 391 Report API
  * BRCGS Compliant Stock Movement Report
@@ -14,7 +15,7 @@ import {
 } from '@/lib/database/report-391'
 import { Report391FilterSchema } from '@/types/report-391-schema'
 
-export async function GET(request: Request) {
+async function _GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url)
     
@@ -137,3 +138,5 @@ function parseFilters(searchParams: URLSearchParams) {
   
   return filters
 }
+
+export const GET = withShadowLog(_GET);

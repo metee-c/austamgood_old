@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 // POST - สแกนแพ็คใบปะหน้าของแถม
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
     const supabase = await createClient();
     const body = await request.json();
@@ -133,3 +134,5 @@ try {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

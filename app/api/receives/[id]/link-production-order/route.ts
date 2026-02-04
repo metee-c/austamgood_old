@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * POST /api/receives/[id]/link-production-order
  * Links a production receive to a production order retroactively
  * and consumes materials from Repack location
  */
-export async function POST(
+async function _POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -225,3 +226,5 @@ const supabase = createServiceRoleClient();
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

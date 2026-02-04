@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 export interface AIStockBalanceParams {
   sku_id?: string;
@@ -54,7 +55,7 @@ export interface AIStockBalanceResponse {
   error?: string;
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse<AIStockBalanceResponse>> {
+async function _GET(request: NextRequest): Promise<NextResponse<AIStockBalanceResponse>> {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -230,3 +231,5 @@ export async function GET(request: NextRequest): Promise<NextResponse<AIStockBal
     }, { status: 500 });
   }
 }
+
+export const GET = withShadowLog(_GET);

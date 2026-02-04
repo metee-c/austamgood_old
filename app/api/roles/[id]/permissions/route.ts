@@ -2,11 +2,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentSession } from '@/lib/auth';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * PUT /api/roles/[id]/permissions
  * Update role permissions (Super Admin only)
  */
-export async function PUT(
+async function _PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -122,3 +123,5 @@ export async function PUT(
     );
   }
 }
+
+export const PUT = withShadowLog(_PUT);

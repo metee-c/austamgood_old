@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * GET /api/loadlists/[id]
  * Get loadlist details with online orders
  */
-export async function GET(
+async function _GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -115,7 +116,7 @@ export async function GET(
  * PUT /api/loadlists/[id]
  * Update loadlist fields (vehicle_id, driver_employee_id, loading_queue_number, etc.)
  */
-export async function PUT(
+async function _PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -166,7 +167,7 @@ export async function PUT(
  * PATCH /api/loadlists/[id]
  * Update loadlist by loadlist_code
  */
-export async function PATCH(
+async function _PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -217,7 +218,7 @@ try {
  * DELETE /api/loadlists/[id]
  * Delete a pending loadlist and its mappings
  */
-export async function DELETE(
+async function _DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -322,3 +323,8 @@ try {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const PUT = withShadowLog(_PUT);
+export const PATCH = withShadowLog(_PATCH);
+export const DELETE = withShadowLog(_DELETE);

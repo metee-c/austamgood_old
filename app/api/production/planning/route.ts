@@ -11,7 +11,8 @@ import {
 } from '@/lib/database/production-planning';
 import { ProductionPlanFilters, CreateProductionPlanInput } from '@/types/production-planning-schema';
 import { getCurrentSession } from '@/lib/auth';
-export async function GET(request: NextRequest) {
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
+async function _GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
 
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
     const body: CreateProductionPlanInput = await request.json();
 
@@ -87,3 +88,6 @@ try {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const POST = withShadowLog(_POST);

@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 export interface AIOrderStatusParams {
   order_code?: string;
@@ -81,7 +82,7 @@ const STATUS_THAI: Record<string, string> = {
   returned: 'คืนสินค้า',
 };
 
-export async function GET(request: NextRequest): Promise<NextResponse<AIOrderStatusResponse>> {
+async function _GET(request: NextRequest): Promise<NextResponse<AIOrderStatusResponse>> {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -285,3 +286,5 @@ export async function GET(request: NextRequest): Promise<NextResponse<AIOrderSta
     }, { status: 500 });
   }
 }
+
+export const GET = withShadowLog(_GET);

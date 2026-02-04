@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 const STAGING_LOCATION = 'Dispatch'; // Picklist → Dispatch
 
 /**
@@ -7,7 +8,7 @@ const STAGING_LOCATION = 'Dispatch'; // Picklist → Dispatch
  * อัพเดต quantity_picked สำหรับ picklist items ตาม order_id
  * และสร้าง staging reservation หลังจากยืนยันการหยิบ
  */
-export async function POST(
+async function _POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -150,3 +151,5 @@ try {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

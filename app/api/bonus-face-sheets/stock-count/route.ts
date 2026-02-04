@@ -1,13 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/api/with-auth';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 /**
  * GET /api/bonus-face-sheets/stock-count
  * ดึงข้อมูล packages ทั้งหมดที่ยังอยู่ใน prep areas (PQ01-PQ10, MR01-MR10, PQTD, MRTD)
  * สำหรับการนับสต็อกและปรับสต็อก
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const supabase = await createClient();
 
@@ -165,3 +166,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);

@@ -11,6 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getCurrentSession } from '@/lib/auth';
 import { stockAdjustmentService } from '@/lib/database/stock-adjustment';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 // Constants
 const PRODUCTION_VARIANCE_REASON_ID = 40; // reason_code = 'PRODUCTION_VARIANCE'
 const DEFAULT_WAREHOUSE_ID = 'WH001';
@@ -80,7 +81,7 @@ async function checkAndUpdateProductionOrderStatus(supabase: any, productionOrde
  * - item_id: สำหรับ production_order_items
  * - queue_id: สำหรับ replenishment_queue (variance items)
  */
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 console.log('📦 [Material Requisition Issue] POST request received');
   try {
     const supabase = await createClient();
@@ -457,3 +458,5 @@ console.log('📦 [Material Requisition Issue] POST request received');
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+export const POST = withShadowLog(_POST);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * GET /api/system/metrics
  * Get system metrics summary
@@ -8,7 +9,7 @@ import { createClient } from '@/lib/supabase/server';
  * - metric: string (specific metric name)
  * - hours: number (default 24)
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const searchParams = request.nextUrl.searchParams;
@@ -79,7 +80,7 @@ export async function GET(request: NextRequest) {
  * POST /api/system/metrics
  * Record a custom metric
  */
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
     const supabase = await createClient();
     const body = await request.json();
@@ -122,3 +123,6 @@ try {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const POST = withShadowLog(_POST);

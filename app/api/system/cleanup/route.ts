@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * POST /api/system/cleanup
  * Cleanup expired locks, idempotency keys, old metrics, and old alerts
@@ -14,7 +15,7 @@ import { createClient } from '@/lib/supabase/server';
  * });
  * ```
  */
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
     const supabase = await createClient();
     
@@ -118,7 +119,7 @@ try {
  * GET /api/system/cleanup
  * Get system health status and recent alerts
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const supabase = await createClient();
 
@@ -193,3 +194,6 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const POST = withShadowLog(_POST);

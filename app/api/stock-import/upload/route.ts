@@ -7,6 +7,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { stockImportService } from '@/lib/database/stock-import';
 import { withAuth } from '@/lib/api/with-auth';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 export const dynamic = 'force-dynamic';
 
 async function handlePost(request: NextRequest, context: any) {
@@ -152,4 +153,4 @@ function parseCSVLine(line: string): string[] {
 }
 
 // Export with auth wrapper
-export const POST = withAuth(handlePost);
+export const POST = withShadowLog(withAuth(handlePost));

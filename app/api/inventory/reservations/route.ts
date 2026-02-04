@@ -1,7 +1,8 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
-export async function GET(request: Request) {
+async function _GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
     
@@ -229,3 +230,5 @@ export async function GET(request: Request) {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);

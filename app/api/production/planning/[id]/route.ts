@@ -17,7 +17,8 @@ import {
   recalculateMaterialRequirements,
 } from '@/lib/database/production-planning';
 import { UpdateProductionPlanInput } from '@/types/production-planning-schema';
-export async function GET(
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
+async function _GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -41,7 +42,7 @@ export async function GET(
   }
 }
 
-export async function PUT(
+async function _PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -117,7 +118,7 @@ export async function PUT(
   }
 }
 
-export async function DELETE(
+async function _DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -140,3 +141,7 @@ try {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const PUT = withShadowLog(_PUT);
+export const DELETE = withShadowLog(_DELETE);

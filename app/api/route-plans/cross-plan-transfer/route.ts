@@ -5,6 +5,7 @@
 import { withAuth } from '@/lib/api/with-auth';
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 interface TransferItem {
   orderItemId: number;
   moveWeightKg: number;
@@ -430,4 +431,4 @@ async function updateTripMetrics(supabase: any, tripId: number) {
     .eq('trip_id', tripId);
 }
 
-export const POST = withAuth(handlePost);
+export const POST = withShadowLog(withAuth(handlePost));

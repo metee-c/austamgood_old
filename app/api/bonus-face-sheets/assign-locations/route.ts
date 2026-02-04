@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * POST /api/bonus-face-sheets/assign-locations
  * Auto-assign storage locations (PQ01-PQ10, MR01-MR10) to bonus face sheet packages
  * Max 10 packs per location
  */
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
     const supabase = await createClient();
     const body = await request.json();
@@ -60,7 +61,7 @@ try {
  * GET /api/bonus-face-sheets/assign-locations?face_sheet_id=xxx
  * Get storage location summary for a bonus face sheet
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const searchParams = request.nextUrl.searchParams;
@@ -125,3 +126,6 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const POST = withShadowLog(_POST);

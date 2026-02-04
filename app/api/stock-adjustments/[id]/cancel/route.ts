@@ -7,10 +7,11 @@ import { stockAdjustmentService } from '@/lib/database/stock-adjustment';
 import { cookies } from 'next/headers';
 import { setUserContext } from '@/lib/supabase/with-user-context';
 import { apiLog } from '@/lib/logging';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(
+async function _POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -89,3 +90,5 @@ export async function POST(
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

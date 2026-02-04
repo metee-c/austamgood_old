@@ -2,11 +2,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentSession } from '@/lib/auth';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * GET /api/roles
  * Get all roles
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     // Get current session
     const sessionResult = await getCurrentSession();
@@ -121,7 +122,7 @@ export async function GET(request: NextRequest) {
  * POST /api/roles
  * Create a new role
  */
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
     // Get current session
     const sessionResult = await getCurrentSession();
@@ -222,3 +223,6 @@ try {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const POST = withShadowLog(_POST);

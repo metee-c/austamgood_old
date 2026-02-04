@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { receiveService } from '@/lib/database/receive';
-export async function POST(request: NextRequest) {
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
+async function _POST(request: NextRequest) {
 console.log('🚀 Pallet ID generation API called');
   try {
     const body = await request.json().catch(() => null);
@@ -58,3 +59,5 @@ console.log('🚀 Pallet ID generation API called');
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

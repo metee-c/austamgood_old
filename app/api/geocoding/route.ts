@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 const MAPBOX_TOKEN = process.env.NEXT_PUBLIC_MAPBOX_TOKEN || 'pk.eyJ1IjoieW95b21ldGVlIiwiYSI6ImNtY3U3ZWp5ZDBicDIyanB0czg3d2o2NGoifQ.sdHHSLjh7vr-_w1KrU5f3Q';
 
 // Extract location components from address
@@ -130,7 +131,7 @@ function calculateMatchScore(
   return score;
 }
 
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
     const body = await request.json();
     const { address } = body;
@@ -271,3 +272,5 @@ try {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

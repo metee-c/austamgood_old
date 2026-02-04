@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 interface PackageDetails {
   id?: number;
@@ -425,7 +426,7 @@ function generateDeliveryHTML(
   `;
 }
 
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const bonusFaceSheetIds = searchParams.get('bonus_face_sheet_ids');
@@ -587,3 +588,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);

@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 /**
  * GET /api/mobile/bonus-face-sheet/tasks/[id]
  * ดึงข้อมูล Bonus Face Sheet พร้อม items สำหรับหน้า Mobile Pick
  */
-export async function GET(
+async function _GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -116,3 +117,5 @@ export async function GET(
     );
   }
 }
+
+export const GET = withShadowLog(_GET);

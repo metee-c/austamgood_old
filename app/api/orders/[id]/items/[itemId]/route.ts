@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/api/with-auth';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * DELETE /api/orders/[id]/items/[itemId]
  * ลบรายการสินค้าที่ถูก Rollback แล้ว
@@ -75,4 +76,4 @@ async function handleDelete(
   }
 }
 
-export const DELETE = withAuth(handleDelete);
+export const DELETE = withShadowLog(withAuth(handleDelete));

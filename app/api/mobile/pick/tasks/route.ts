@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/api/with-auth';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 /**
  * GET /api/mobile/pick/tasks
@@ -65,4 +66,4 @@ async function handleGet(request: NextRequest, context: any) {
 }
 
 // Export with auth wrapper
-export const GET = withAuth(handleGet);
+export const GET = withShadowLog(withAuth(handleGet));

@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { hashPassword } from '@/lib/auth/password';
-export async function POST(request: NextRequest) {
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
+async function _POST(request: NextRequest) {
 try {
     const { email, new_password } = await request.json();
 
@@ -90,3 +91,5 @@ try {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

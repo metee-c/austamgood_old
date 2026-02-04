@@ -10,11 +10,12 @@ import type { AdjustmentFilters } from '@/types/stock-adjustment-schema';
 import { cookies } from 'next/headers';
 import { setUserContext } from '@/lib/supabase/with-user-context';
 import { apiLog } from '@/lib/logging';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 export const dynamic = 'force-dynamic';
 
 // GET: List adjustments with optional filters
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const supabase = await createClient();
 
@@ -84,7 +85,7 @@ export async function GET(request: NextRequest) {
 }
 
 // POST: Create new adjustment
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
   // 🔒 Shadow logging - fire-and-forget, won't block or fail business logic
   const txId = await apiLog.start('ADJUSTMENT', request);
   
@@ -168,3 +169,6 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const POST = withShadowLog(_POST);

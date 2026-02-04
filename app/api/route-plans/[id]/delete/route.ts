@@ -4,6 +4,7 @@
 import { withAuth } from '@/lib/api/with-auth';
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 async function handleDelete(request: NextRequest, context: any) {
   const supabase = await createClient();
   const { id } = await context.params;
@@ -236,4 +237,4 @@ async function handleDelete(request: NextRequest, context: any) {
   }
 }
 
-export const DELETE = withAuth(handleDelete);
+export const DELETE = withShadowLog(withAuth(handleDelete));

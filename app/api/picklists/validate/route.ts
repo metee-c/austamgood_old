@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 export const dynamic = 'force-dynamic';
 
 /**
@@ -12,7 +13,7 @@ export const dynamic = 'force-dynamic';
  * - missing_items: order_items ที่หายไป
  * - quantity_mismatches: items ที่จำนวนไม่ตรง
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const searchParams = request.nextUrl.searchParams;
@@ -212,7 +213,7 @@ export async function GET(request: NextRequest) {
  * 
  * Body: { trip_id: number, auto_fix: boolean }
  */
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
     const supabase = await createClient();
     const { trip_id, auto_fix = false } = await request.json();
@@ -376,3 +377,6 @@ try {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const POST = withShadowLog(_POST);

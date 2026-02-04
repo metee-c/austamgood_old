@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { moveService, CreateMovePayload } from '@/lib/database/move';
 import { apiLog } from '@/lib/logging';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     
@@ -34,7 +35,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
   const txId = await apiLog.start('MOVE', request);
   
   try {
@@ -131,3 +132,6 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const POST = withShadowLog(_POST);

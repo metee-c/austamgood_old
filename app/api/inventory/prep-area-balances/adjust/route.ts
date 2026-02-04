@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * POST /api/inventory/prep-area-balances/adjust
  * 
  * Quick adjust preparation area inventory to match actual count
  * This directly updates wms_inventory_balances for all pallets of the SKU in the location
  */
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
     const supabase = await createClient();
     const body = await request.json();
@@ -195,3 +196,5 @@ try {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

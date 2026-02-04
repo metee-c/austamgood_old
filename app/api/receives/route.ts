@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { receiveService, CreateReceivePayload } from '@/lib/database/receive';
 import { withAuth } from '@/lib/api/with-auth';
 import { apiLog } from '@/lib/logging';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 async function handleGet(request: NextRequest, context: any) {
   try {
@@ -101,5 +102,5 @@ async function handlePost(request: NextRequest, context: any) {
 }
 
 // Export with auth wrappers
-export const GET = withAuth(handleGet);
-export const POST = withAuth(handlePost);
+export const GET = withShadowLog(withAuth(handleGet));
+export const POST = withShadowLog(withAuth(handlePost));

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * GET /api/system/alerts
  * Get system alerts with filtering options
@@ -9,7 +10,7 @@ import { createClient } from '@/lib/supabase/server';
  * - severity: 'info' | 'warning' | 'error' | 'critical'
  * - unacknowledged: boolean (default false)
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const searchParams = request.nextUrl.searchParams;
@@ -72,7 +73,7 @@ export async function GET(request: NextRequest) {
  * POST /api/system/alerts
  * Create a new alert (for testing or manual alerts)
  */
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
     const supabase = await createClient();
     const body = await request.json();
@@ -123,7 +124,7 @@ try {
  * 
  * Body: { alert_id: number, acknowledged_by?: number }
  */
-export async function PATCH(request: NextRequest) {
+async function _PATCH(request: NextRequest) {
 try {
     const supabase = await createClient();
     const body = await request.json();
@@ -165,3 +166,7 @@ try {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const POST = withShadowLog(_POST);
+export const PATCH = withShadowLog(_PATCH);

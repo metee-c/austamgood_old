@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 export const dynamic = 'force-dynamic';
 
 /**
@@ -12,7 +13,7 @@ export const dynamic = 'force-dynamic';
  * 4. Fail request if insufficient stock (no partial reservation)
  * 5. Transaction rollback on any failure
  */
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 let picklist: any = null;
   let picklistItems: any[] = [];
 
@@ -904,3 +905,5 @@ let picklist: any = null;
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

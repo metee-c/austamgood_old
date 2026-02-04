@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 interface SplitStopItem {
   orderItemId: number;
   moveWeightKg: number;
@@ -19,7 +20,7 @@ interface SplitStopRequestBody {
   note?: string | null;
 }
 
-export async function POST(
+async function _POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -489,3 +490,5 @@ try {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 export const dynamic = 'force-dynamic';
 
 /**
  * GET /api/storage-strategies
  * ดึงข้อมูล storage strategies ทั้งหมด
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -75,7 +76,7 @@ export async function GET(request: NextRequest) {
  * POST /api/storage-strategies
  * สร้าง storage strategy ใหม่
  */
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
     const supabase = await createClient();
     const body = await request.json();
@@ -123,7 +124,7 @@ try {
  * PUT /api/storage-strategies
  * อัปเดต storage strategy
  */
-export async function PUT(request: NextRequest) {
+async function _PUT(request: NextRequest) {
   try {
     const supabase = await createClient();
     const body = await request.json();
@@ -179,7 +180,7 @@ export async function PUT(request: NextRequest) {
  * DELETE /api/storage-strategies
  * ลบ storage strategy
  */
-export async function DELETE(request: NextRequest) {
+async function _DELETE(request: NextRequest) {
 try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -215,3 +216,8 @@ try {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const POST = withShadowLog(_POST);
+export const PUT = withShadowLog(_PUT);
+export const DELETE = withShadowLog(_DELETE);

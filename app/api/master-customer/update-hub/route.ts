@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 interface UpdateHubRequest {
   updates: Array<{
     customer_id: string;
@@ -7,7 +8,7 @@ interface UpdateHubRequest {
   }>;
 }
 
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
     const supabase = await createClient();
     const body: UpdateHubRequest = await request.json();
@@ -81,3 +82,5 @@ try {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

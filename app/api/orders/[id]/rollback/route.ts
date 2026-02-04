@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { orderRollbackService } from '@/lib/database/order-rollback';
 import { withAuth } from '@/lib/api/with-auth';
 import { apiLog } from '@/lib/logging';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 /**
  * POST /api/orders/[id]/rollback
@@ -108,13 +109,13 @@ async function handlePost(
   }
 }
 
-export const POST = withAuth(handlePost);
+export const POST = withShadowLog(withAuth(handlePost));
 
 /**
  * GET /api/orders/[id]/rollback
  * ตรวจสอบว่า Order สามารถ Rollback ได้หรือไม่
  */
-export async function GET(
+async function _GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -151,3 +152,5 @@ export async function GET(
     );
   }
 }
+
+export const GET = withShadowLog(_GET);

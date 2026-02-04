@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { ordersService } from '@/lib/database/orders.service';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * POST /api/orders/import/confirm
  *
  * ยืนยันการอัพเดตออเดอร์ที่มี conflicts
  * รับรายการออเดอร์ที่ผู้ใช้ยืนยันให้อัพเดต
  */
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
     const body = await request.json();
     const { confirmedOrders, newOrders } = body;
@@ -202,3 +203,5 @@ try {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

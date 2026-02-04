@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 /**
  * GET /api/bonus-face-sheets/unloaded-packages?id=xxx
  * ดึงรายการแพ็คที่ยังไม่ได้โหลด (ไม่มี trip_number หรือยังไม่ถูกโหลด)
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -146,3 +147,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);

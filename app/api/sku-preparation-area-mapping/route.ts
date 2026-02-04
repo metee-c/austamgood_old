@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 export const dynamic = 'force-dynamic';
 
@@ -12,7 +13,7 @@ export const dynamic = 'force-dynamic';
  *                  and which SKUs are mapped to it
  * - sku_id: Get the designated picking home for a specific SKU
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
     try {
         const supabase = createServiceRoleClient();
         const { searchParams } = new URL(request.url);
@@ -191,3 +192,5 @@ export async function GET(request: NextRequest) {
         );
     }
 }
+
+export const GET = withShadowLog(_GET);

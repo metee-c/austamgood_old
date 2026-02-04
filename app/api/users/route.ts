@@ -5,11 +5,12 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 import { logAuditEntry } from '@/lib/auth/audit';
 import { getClientIP } from '@/lib/auth/middleware';
 import { hashPassword } from '@/lib/auth/password';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * GET /api/users
  * Get all users with optional filters
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     // Get current user from JWT token
     const token = request.cookies.get('auth_token')?.value;
@@ -127,7 +128,7 @@ export async function GET(request: NextRequest) {
  * POST /api/users
  * Create a new user
  */
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
     // Get current user from JWT token
     const token = request.cookies.get('auth_token')?.value;
@@ -273,3 +274,6 @@ try {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const POST = withShadowLog(_POST);

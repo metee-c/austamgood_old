@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 /**
  * GET /api/users/list
  * ดึงรายชื่อผู้ใช้งานทั้งหมดจาก master_system_user (สำหรับ dropdown เลือกผู้รับผิดชอบ)
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const supabase = await createClient();
 
@@ -47,3 +48,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
+
+export const GET = withShadowLog(_GET);

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 export const dynamic = 'force-dynamic';
 
 /**
  * POST /api/online-packing/release-lock
  * Release packing order lock - used by sendBeacon on page unload
  */
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
     const supabase = await createClient();
     
@@ -56,3 +57,5 @@ try {
     return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
+
+export const POST = withShadowLog(_POST);

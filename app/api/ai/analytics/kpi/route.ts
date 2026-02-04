@@ -8,6 +8,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 export interface AIKPIParams {
   date_from?: string;
@@ -73,7 +74,7 @@ export interface AIKPIResponse {
   error?: string;
 }
 
-export async function GET(request: NextRequest): Promise<NextResponse<AIKPIResponse>> {
+async function _GET(request: NextRequest): Promise<NextResponse<AIKPIResponse>> {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -437,3 +438,5 @@ export async function GET(request: NextRequest): Promise<NextResponse<AIKPIRespo
     }, { status: 500 });
   }
 }
+
+export const GET = withShadowLog(_GET);

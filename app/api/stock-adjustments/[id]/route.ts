@@ -10,11 +10,12 @@ import {
   updateAdjustmentSchema,
   type UpdateAdjustmentPayload,
 } from '@/types/stock-adjustment-schema';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 export const dynamic = 'force-dynamic';
 
 // GET: Get adjustment by ID
-export async function GET(
+async function _GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -56,7 +57,7 @@ export async function GET(
 }
 
 // PATCH: Update adjustment (draft only)
-export async function PATCH(
+async function _PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -109,7 +110,7 @@ try {
 }
 
 // DELETE: Delete adjustment (draft only)
-export async function DELETE(
+async function _DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -158,3 +159,7 @@ try {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const PATCH = withShadowLog(_PATCH);
+export const DELETE = withShadowLog(_DELETE);

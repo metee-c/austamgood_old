@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * GET /api/bonus-face-sheets/[id]
  * ดึงรายละเอียดใบปะหน้าของแถม
  */
-export async function GET(
+async function _GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -99,7 +100,7 @@ export async function GET(
  * PATCH /api/bonus-face-sheets/[id]
  * อัปเดตสถานะของใบปะหน้าของแถม
  */
-export async function PATCH(
+async function _PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -184,7 +185,7 @@ try {
  * PUT /api/bonus-face-sheets/[id]
  * อัพเดทข้อมูลใบปะหน้าของแถม
  */
-export async function PUT(
+async function _PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -391,3 +392,7 @@ export async function PUT(
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const PUT = withShadowLog(_PUT);
+export const PATCH = withShadowLog(_PATCH);

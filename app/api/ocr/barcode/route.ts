@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 // Pattern สำหรับ Barcode ID ของแถม: BFS-YYYYMMDD-XXX-PXXX
 const BFS_BARCODE_PATTERN = /BFS-\d{8}-\d{3}-P\d{3}/gi;
 
 // Pattern สำหรับ Barcode ID ปกติ: FS-YYYYMMDD-XXX-PXXX
 const FS_BARCODE_PATTERN = /FS-\d{8}-\d{3}-P\d{3}/gi;
 
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
     const formData = await request.formData();
     const imageFile = formData.get('image') as File | null;
@@ -96,3 +97,5 @@ try {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

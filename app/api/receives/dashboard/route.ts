@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { receiveService } from '@/lib/database/receive';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const { data, error } = await receiveService.getDashboardStats();
 
@@ -18,3 +19,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);

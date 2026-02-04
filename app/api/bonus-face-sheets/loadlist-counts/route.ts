@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 /**
  * GET /api/bonus-face-sheets/loadlist-counts?bonus_face_sheet_id=xxx&loadlist_ids=1,2,3
  * คืนค่าจำนวน bonus packages ที่ตรงกับ orders ในแต่ละ loadlist
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -139,3 +140,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+export const GET = withShadowLog(_GET);

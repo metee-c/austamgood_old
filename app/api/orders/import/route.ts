@@ -4,6 +4,7 @@ import * as XLSX from 'xlsx';
 import { createClient } from '@/lib/supabase/server';
 import { setDatabaseUserContext } from '@/lib/database/user-context';
 import { withAuth } from '@/lib/api/with-auth';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 function parseCSV(text: string): string[][] {
   const lines = text.split('\n');
   const result: string[][] = [];
@@ -783,4 +784,4 @@ try {
   }
 }
 
-export const POST = withAuth(handlePost);
+export const POST = withShadowLog(withAuth(handlePost));

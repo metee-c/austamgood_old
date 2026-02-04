@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { receiveService } from '@/lib/database/receive';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
   try {
     const { data, error } = await receiveService.generateReceiveNo();
 
@@ -22,3 +23,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

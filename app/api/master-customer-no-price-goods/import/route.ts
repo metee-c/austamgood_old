@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-export async function POST(request: NextRequest) {
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
+async function _POST(request: NextRequest) {
 try {
     const supabase = await createClient();
     const formData = await request.formData();
@@ -119,3 +120,5 @@ try {
     return NextResponse.json({ error: 'เกิดข้อผิดพลาดในการนำเข้าข้อมูล' }, { status: 500 });
   }
 }
+
+export const POST = withShadowLog(_POST);

@@ -1,7 +1,8 @@
 // API route for user login - Simple version without session management
 import { NextRequest, NextResponse } from 'next/server';
 import { simpleLogin } from '@/lib/auth/simple-auth';
-export async function POST(request: NextRequest) {
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
+async function _POST(request: NextRequest) {
 try {
     const body = await request.json();
     const { email, password } = body;
@@ -75,3 +76,5 @@ try {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

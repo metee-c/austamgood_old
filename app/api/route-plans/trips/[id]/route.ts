@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-export async function PATCH(
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
+async function _PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -95,3 +96,5 @@ try {
     );
   }
 }
+
+export const PATCH = withShadowLog(_PATCH);

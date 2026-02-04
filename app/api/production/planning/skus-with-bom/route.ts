@@ -5,8 +5,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getSkusWithBom } from '@/lib/database/production-planning';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const skus = await getSkusWithBom();
     return NextResponse.json({ data: skus });
@@ -18,3 +19,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);

@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * POST /api/loadlists/[id]/depart
  * เมื่อกดปุ่ม "ออกจัดส่ง" → เปลี่ยนสถานะจาก loading → loaded
  * Trigger จะอัปเดต Orders เป็น in_transit และ Route Plan เป็น in_transit อัตโนมัติ
  */
-export async function POST(
+async function _POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -76,3 +77,5 @@ try {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

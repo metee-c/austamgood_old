@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { createClient as createSupabaseClient } from '@supabase/supabase-js';
 import { withAuth } from '@/lib/api/with-auth';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 async function handlePost(request: NextRequest, context: any) {
 try {
     const supabase = await createClient();
@@ -388,5 +389,5 @@ async function handleGetGenerate(request: NextRequest, context: any) {
 }
 
 // Export with auth wrappers
-export const POST = withAuth(handlePost);
-export const GET = withAuth(handleGetGenerate);
+export const POST = withShadowLog(withAuth(handlePost));
+export const GET = withShadowLog(withAuth(handleGetGenerate));

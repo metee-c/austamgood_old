@@ -4,6 +4,7 @@
 import { withAuth } from '@/lib/api/with-auth';
 import { createClient } from '@/lib/supabase/server';
 import { NextRequest, NextResponse } from 'next/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 async function handleGet(request: NextRequest, context: any) {
   const supabase = await createClient();
@@ -110,4 +111,4 @@ async function handleGet(request: NextRequest, context: any) {
   }
 }
 
-export const GET = withAuth(handleGet);
+export const GET = withShadowLog(withAuth(handleGet));

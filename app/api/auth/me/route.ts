@@ -1,12 +1,13 @@
 // API route for getting current user information - Simple version
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromToken } from '@/lib/auth/simple-auth';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 /**
  * GET /api/auth/me
  * Get current user information
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     console.log('👤 [Auth Me API] Checking authentication...');
     
@@ -76,3 +77,4 @@ export async function GET(request: NextRequest) {
   }
 }
 
+export const GET = withShadowLog(_GET);

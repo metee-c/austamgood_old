@@ -4,6 +4,7 @@ import { getCurrentUserFromCookie } from '@/lib/auth/simple-auth';
 import { stockAdjustmentService } from '@/lib/database/stock-adjustment';
 import { canTransferToLocation } from '@/lib/database/prep-area-validation';
 import { isPrepArea, upsertPrepAreaBalance } from '@/lib/database/prep-area-balance';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 export const dynamic = 'force-dynamic';
 
 // Constants
@@ -18,7 +19,7 @@ const DEFAULT_WAREHOUSE_ID = 'WH001';
  * - Creates inventory ledger entry for stock movement
  * - Updates replenishment_queue status to completed
  */
-export async function POST(
+async function _POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -282,3 +283,5 @@ try {
     return NextResponse.json({ error: error.message || 'เกิดข้อผิดพลาด' }, { status: 500 });
   }
 }
+
+export const POST = withShadowLog(_POST);

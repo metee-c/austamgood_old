@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withAuth, withAdminAuth } from '@/lib/api/with-auth';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 async function handleGet(request: NextRequest, context: any) {
   try {
     const supabase = await createClient();
@@ -263,7 +264,7 @@ async function handleDelete(request: NextRequest, context: any) {
 }
 
 // Export with auth wrappers
-export const GET = withAuth(handleGet);
-export const POST = withAuth(handlePost);
-export const PUT = withAuth(handlePut);
-export const DELETE = withAdminAuth(handleDelete);
+export const GET = withShadowLog(withAuth(handleGet));
+export const POST = withShadowLog(withAuth(handlePost));
+export const PUT = withShadowLog(withAuth(handlePut));
+export const DELETE = withShadowLog(withAdminAuth(handleDelete));

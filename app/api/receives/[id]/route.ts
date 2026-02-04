@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { receiveService } from '@/lib/database/receive';
 import { apiLog } from '@/lib/logging';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
-export async function PATCH(
+async function _PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -77,7 +78,7 @@ export async function PATCH(
   }
 }
 
-export async function GET(
+async function _GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -110,3 +111,6 @@ export async function GET(
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const PATCH = withShadowLog(_PATCH);

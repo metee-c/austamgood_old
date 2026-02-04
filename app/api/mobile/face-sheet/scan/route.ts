@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { setDatabaseUserContext } from '@/lib/database/user-context';
 import { isPrepArea } from '@/lib/database/prep-area-balance';
 import { withAuth } from '@/lib/api/with-auth';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * ✅ Helper: ตรวจสอบว่า location เป็น Preparation Area หรือไม่
  * Preparation Area อนุญาตให้สต็อคติดลบได้
@@ -722,4 +723,4 @@ try {
 }
 
 // Export with auth wrapper
-export const POST = withAuth(handlePost);
+export const POST = withShadowLog(withAuth(handlePost));

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * POST /api/bonus-face-sheets/check-matching
  * ตรวจสอบ customer_id ที่ตรงกันระหว่าง BFS กับ Picklist หรือ Face Sheet
  * 
  * ✅ FIX (edit02): รองรับ available_package_ids เพื่อตรวจสอบเฉพาะ packages ที่ยังไม่ถูกแมพ
  */
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
     const supabase = await createClient();
     const body = await request.json();
@@ -307,3 +308,5 @@ try {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

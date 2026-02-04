@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+async function _GET() {
   try {
     // Define CSV headers based on preparation_area table structure
     const headers = [
@@ -106,3 +107,5 @@ export async function GET() {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);

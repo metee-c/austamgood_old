@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { parse } from 'csv-parse/sync';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 export const dynamic = 'force-dynamic';
 
 const STORAGE_STRATEGY_FIELDS = `
@@ -26,7 +27,7 @@ const STORAGE_STRATEGY_FIELDS = `
   )
 `;
 
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
     const supabase = createServiceRoleClient();
     const formData = await request.formData();
@@ -162,3 +163,5 @@ try {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

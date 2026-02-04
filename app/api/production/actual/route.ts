@@ -9,13 +9,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentSession } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { stockAdjustmentService } from '@/lib/database/stock-adjustment';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 // Constants
 // ADJ_LOSS_LOCATION ไม่ใช้แล้ว - ใช้ location จาก replenishment_queue แทน
 const PRODUCTION_VARIANCE_REASON_ID = 40; // reason_code = 'PRODUCTION_VARIANCE'
 const DEFAULT_WAREHOUSE_ID = 'WH001';
 const REPACK_LOCATION = 'Repack';
 
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -348,7 +349,7 @@ interface BomMaterialInput {
   production_order_item_id?: string; // ID ของ production_order_items (สำหรับ packaging)
 }
 
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
     const sessionResult = await getCurrentSession();
     if (!sessionResult.session) {
@@ -1003,3 +1004,6 @@ async function createPackagingReplenishment(
 
   return createdTasks;
 }
+
+export const GET = withShadowLog(_GET);
+export const POST = withShadowLog(_POST);

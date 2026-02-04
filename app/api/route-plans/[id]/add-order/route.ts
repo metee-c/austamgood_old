@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 export const dynamic = 'force-dynamic';
 
 interface AddOrderRequest {
@@ -14,7 +15,7 @@ interface AddOrderRequest {
  * - จะสร้าง stop ใหม่ใน trip ที่ระบุ
  * - อัปเดตสถานะออเดอร์เป็น 'confirmed' (หรือ 'route_planned')
  */
-export async function POST(
+async function _POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -320,3 +321,5 @@ try {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

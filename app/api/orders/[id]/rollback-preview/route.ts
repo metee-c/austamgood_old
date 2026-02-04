@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { orderRollbackService } from '@/lib/database/order-rollback';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 /**
  * GET /api/orders/[id]/rollback-preview
  * ดึงข้อมูล Preview ก่อนทำ Rollback
  * แสดงผลกระทบที่จะเกิดขึ้นโดยไม่ execute จริง
  */
-export async function GET(
+async function _GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -57,3 +58,5 @@ export async function GET(
     );
   }
 }
+
+export const GET = withShadowLog(_GET);

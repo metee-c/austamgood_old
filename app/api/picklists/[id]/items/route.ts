@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET(
+async function _GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -202,3 +203,5 @@ export async function GET(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+export const GET = withShadowLog(_GET);

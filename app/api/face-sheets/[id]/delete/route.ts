@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/api/with-auth';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * DELETE /api/face-sheets/[id]/delete
  * ลบ Face Sheet และปลดล็อคยอดจองในบ้านหยิบ
@@ -148,4 +149,4 @@ async function handleDelete(
   }
 }
 
-export const DELETE = withAuth(handleDelete);
+export const DELETE = withShadowLog(withAuth(handleDelete));

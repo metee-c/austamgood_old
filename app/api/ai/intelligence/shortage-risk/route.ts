@@ -10,8 +10,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { IntelligenceResponse, ShortageRisk, calculateConfidence } from '@/lib/intelligence/types';
 import { calculateShortageRisk, RISK_THRESHOLDS } from '@/lib/intelligence/risk-engine';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -160,3 +161,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);

@@ -7,7 +7,8 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createScenarioEngine, StorageScenarioParams, SIMULATION_DISCLAIMER } from '@/lib/simulation';
-export async function POST(request: NextRequest) {
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
+async function _POST(request: NextRequest) {
 try {
     const body = await request.json();
     const { reduction_percent, reduction_locations, affected_zones } = body;
@@ -84,7 +85,7 @@ try {
   }
 }
 
-export async function GET() {
+async function _GET() {
   return NextResponse.json({
     success: true,
     endpoint: '/api/ai/simulation/storage-reduction',
@@ -115,3 +116,6 @@ export async function GET() {
     },
   });
 }
+
+export const GET = withShadowLog(_GET);
+export const POST = withShadowLog(_POST);

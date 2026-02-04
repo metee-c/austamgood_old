@@ -7,8 +7,9 @@
 
 import { NextResponse } from 'next/server';
 import { SCENARIO_TEMPLATES } from '@/lib/simulation';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
-export async function GET() {
+async function _GET() {
   return NextResponse.json({
     success: true,
     data: {
@@ -31,3 +32,5 @@ export async function GET() {
     },
   });
 }
+
+export const GET = withShadowLog(_GET);

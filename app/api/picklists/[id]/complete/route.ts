@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { moveService } from '@/lib/database/move';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * POST /api/picklists/[id]/complete
  * เมื่อพนักงานเช็คสินค้าสแกน QR Code และยืนยันการเช็คเสร็จ
@@ -8,7 +9,7 @@ import { moveService } from '@/lib/database/move';
  * Trigger จะอัปเดต Orders เป็น picked และ Route Plan เป็น ready_to_load อัตโนมัติ
  * ย้ายสต็อกจาก source_location ไปยัง Dispatch location อัตโนมัติ
  */
-export async function POST(
+async function _POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -210,3 +211,5 @@ try {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

@@ -2,7 +2,8 @@ import { createClient } from '@/lib/supabase/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { FileManagementService } from '@/lib/database/file-management';
-export async function GET(request: Request) {
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
+async function _GET(request: Request) {
   const supabase = await createClient();
   const fileService = new FileManagementService(supabase);
 
@@ -19,7 +20,7 @@ export async function GET(request: Request) {
   return NextResponse.json(data);
 }
 
-export async function POST(request: Request) {
+async function _POST(request: Request) {
 try {
     console.log('File upload request received');
     
@@ -177,3 +178,6 @@ try {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const POST = withShadowLog(_POST);

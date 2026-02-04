@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 // GET - ดึงรายการโลเคชั่นบ้านหยิบพรีเมี่ยมทั้งหมด (hardcoded)
-export async function GET() {
+async function _GET() {
   // โลเคชั่นบ้านหยิบพรีเมี่ยม: MR01-MR10, PQ01-PQ10, MRTD, PQTD
   const locations: { code: string }[] = [];
 
@@ -21,3 +22,5 @@ export async function GET() {
 
   return NextResponse.json({ success: true, data: locations });
 }
+
+export const GET = withShadowLog(_GET);

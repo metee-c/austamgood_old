@@ -1,11 +1,12 @@
 // API route for managing user sessions
 import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentSession, getUserActiveSessions, invalidateOtherSessions } from '@/lib/auth';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * GET /api/auth/sessions
  * Get all active sessions for current user
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     // Get current session
     const sessionResult = await getCurrentSession();
@@ -45,7 +46,7 @@ export async function GET(request: NextRequest) {
  * DELETE /api/auth/sessions
  * Invalidate all other sessions except current
  */
-export async function DELETE(request: NextRequest) {
+async function _DELETE(request: NextRequest) {
 try {
     // Get current session
     const sessionResult = await getCurrentSession();
@@ -83,3 +84,6 @@ try {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const DELETE = withShadowLog(_DELETE);

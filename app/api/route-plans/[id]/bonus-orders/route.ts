@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 // GET /api/route-plans/[id]/bonus-orders
 // ดึง bonus order_no (order_type = 'special') และ delivery_number จาก loadlist
 // กรองตาม delivery_date ของ route plan เพื่อให้ได้เฉพาะออเดอร์ของแถมที่ตรงกับวันส่ง
-export async function GET(
+async function _GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -155,3 +156,5 @@ export async function GET(
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+export const GET = withShadowLog(_GET);

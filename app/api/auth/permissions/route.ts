@@ -2,12 +2,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromToken } from '@/lib/auth/simple-auth';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 /**
  * GET /api/auth/permissions
  * Get permissions for the current authenticated user
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     console.log('🔑 [API /auth/permissions] Checking authentication...');
     
@@ -136,3 +137,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);

@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 /**
  * GET /api/warehouse/prep-area-packages?zone=PQ|MR
  * ดึงข้อมูล packages ที่อยู่ใน PQ01-PQ10, MR01-MR10
  * และแพ็คที่รอโหลดใน PQTD/MRTD (จาก loadlist ที่ยังไม่โหลด)
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -203,3 +204,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+export const GET = withShadowLog(_GET);

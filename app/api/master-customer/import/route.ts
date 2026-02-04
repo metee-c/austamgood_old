@@ -1,7 +1,8 @@
 
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
-export async function POST(request: Request) {
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
+async function _POST(request: Request) {
 const supabase = await createClient();
   const customers = await request.json();
 
@@ -18,3 +19,5 @@ const supabase = await createClient();
 
   return NextResponse.json(data);
 }
+
+export const POST = withShadowLog(_POST);

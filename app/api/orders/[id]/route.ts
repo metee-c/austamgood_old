@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/api/with-auth';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 async function handlePatch(
   request: NextRequest,
   context: { params?: Promise<{ id: string }>; user: any }
@@ -143,5 +144,5 @@ async function handleDelete(
 }
 
 // Export with auth wrapper
-export const PATCH = withAuth(handlePatch);
-export const DELETE = withAuth(handleDelete);
+export const PATCH = withShadowLog(withAuth(handlePatch));
+export const DELETE = withShadowLog(withAuth(handleDelete));

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 /**
  * GET /api/bonus-face-sheets/mapped-face-sheets?loadlist_id=xxx&bonus_face_sheet_id=yyy
@@ -10,7 +11,7 @@ import { createClient } from '@/lib/supabase/server';
  * 
  * ✅ FIX (edit09): Group by Picklist/Face Sheet และรวม matched_package_ids จากทุก BFS
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -182,3 +183,5 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
+
+export const GET = withShadowLog(_GET);

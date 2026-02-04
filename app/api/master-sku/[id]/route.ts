@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 export const dynamic = 'force-dynamic';
 
 /**
  * PATCH /api/master-sku/[id]
  * อัพเดทข้อมูลมาสเตอร์ SKU (เฉพาะฟิลด์ที่ส่งมา)
  */
-export async function PATCH(
+async function _PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -112,7 +113,7 @@ try {
  * GET /api/master-sku/[id]
  * ดึงข้อมูลมาสเตอร์ SKU ตาม ID
  */
-export async function GET(
+async function _GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -139,3 +140,6 @@ export async function GET(
     }, { status: 500 });
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const PATCH = withShadowLog(_PATCH);

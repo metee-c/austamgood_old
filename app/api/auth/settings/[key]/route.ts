@@ -4,11 +4,12 @@ import { getCurrentSession } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { logAuditEntry } from '@/lib/auth/audit';
 import { getClientIP } from '@/lib/auth/middleware';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * GET /api/auth/settings/[key]
  * Get specific setting by key
  */
-export async function GET(
+async function _GET(
   request: NextRequest,
   { params }: { params: Promise<{ key: string }> }
 ) {
@@ -66,7 +67,7 @@ export async function GET(
  * PUT /api/auth/settings/[key]
  * Update setting value
  */
-export async function PUT(
+async function _PUT(
   request: NextRequest,
   { params }: { params: Promise<{ key: string }> }
 ) {
@@ -193,3 +194,6 @@ export async function PUT(
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const PUT = withShadowLog(_PUT);

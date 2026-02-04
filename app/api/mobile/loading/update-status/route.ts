@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServerClient } from '@/lib/supabase/server';
-export async function POST(request: NextRequest) {
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
+async function _POST(request: NextRequest) {
 try {
     const supabase = await createServerClient();
     const body = await request.json();
@@ -101,3 +102,5 @@ try {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

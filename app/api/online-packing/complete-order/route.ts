@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { getCurrentSession } from '@/lib/auth/session';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 export const dynamic = 'force-dynamic';
 
 /**
@@ -12,7 +13,7 @@ export const dynamic = 'force-dynamic';
  * - Row-level locking ป้องกัน race condition
  * - Idempotency key ป้องกัน process ซ้ำ
  */
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
     const supabase = await createClient();
     const body = await request.json();
@@ -113,3 +114,5 @@ try {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 /**
  * ✅ OPTIMIZED VERSION - Bug #11 Fix
@@ -12,7 +13,7 @@ import { createClient } from '@/lib/supabase/server';
  * - 85% faster response time (2-3s → 200-500ms)
  */
 
-export async function GET(
+async function _GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -438,3 +439,5 @@ export async function GET(
     );
   }
 }
+
+export const GET = withShadowLog(_GET);

@@ -1,8 +1,9 @@
 // API route for user logout - Simple version
 import { NextRequest, NextResponse } from 'next/server';
 import { apiLog } from '@/lib/logging';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
   const txId = await apiLog.start('AUTH', request);
   
   try {
@@ -25,3 +26,5 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

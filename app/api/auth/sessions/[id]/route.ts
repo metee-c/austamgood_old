@@ -4,11 +4,12 @@ import { getCurrentSession } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
 import { logAuditEntry } from '@/lib/auth/audit';
 import { getClientIP } from '@/lib/auth/middleware';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * DELETE /api/auth/sessions/[id]
  * Invalidate a specific session
  */
-export async function DELETE(
+async function _DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -88,3 +89,5 @@ try {
     );
   }
 }
+
+export const DELETE = withShadowLog(_DELETE);

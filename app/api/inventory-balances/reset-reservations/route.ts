@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withAdminAuth } from '@/lib/api/with-auth';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * POST /api/inventory-balances/reset-reservations
  * ล้างยอดจองทั้งหมดในระบบ (ใช้เมื่อมีการจองค้างที่ไม่ถูกต้อง)
@@ -79,4 +80,4 @@ try {
 }
 
 // Export with admin auth wrapper
-export const POST = withAdminAuth(handlePost);
+export const POST = withShadowLog(withAdminAuth(handlePost));

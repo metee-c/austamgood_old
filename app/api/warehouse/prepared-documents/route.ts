@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 export const dynamic = 'force-dynamic';
 
@@ -45,7 +46,7 @@ interface PreparedDocument {
   items: PreparedDocumentItem[];
 }
 
-export async function GET(request: Request) {
+async function _GET(request: Request) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -448,3 +449,5 @@ export async function GET(request: Request) {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);

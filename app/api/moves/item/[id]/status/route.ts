@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { moveService } from '@/lib/database/move';
-export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
+async function _PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
 try {
     const { id } = await params;
     const { status } = await request.json();
@@ -25,3 +26,5 @@ try {
     );
   }
 }
+
+export const PATCH = withShadowLog(_PATCH);

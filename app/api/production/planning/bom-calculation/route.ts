@@ -6,7 +6,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { calculateBomRequirements } from '@/lib/database/production-planning';
 import { BomCalculationRequest } from '@/types/production-planning-schema';
-export async function POST(request: NextRequest) {
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
+async function _POST(request: NextRequest) {
 try {
     const body: BomCalculationRequest = await request.json();
 
@@ -42,3 +43,5 @@ try {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/api/with-auth';
 import { SupabaseClient } from '@supabase/supabase-js';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * ✅ NEW: Helper function สำหรับสร้าง loadlist จากออเดอร์ออนไลน์ (packing_backup_orders)
  * - ดึงออเดอร์ที่สแกนขึ้นรถแล้วจาก packing_backup_orders
@@ -1806,5 +1807,5 @@ try {
 }
 
 // Export with auth wrappers
-export const GET = withAuth(handleGet);
-export const POST = withAuth(handlePost);
+export const GET = withShadowLog(withAuth(handleGet));
+export const POST = withShadowLog(withAuth(handlePost));

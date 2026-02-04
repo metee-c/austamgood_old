@@ -4,8 +4,9 @@ import { createClient as createSupabaseClient } from '@supabase/supabase-js'
 import { getCurrentUserFromCookie } from '@/lib/auth/simple-auth'
 import { receiveService } from '@/lib/database/receive'
 import { apiLog } from '@/lib/logging'
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
   const txId = await apiLog.start('MOVE', request)
   
   try {
@@ -403,3 +404,5 @@ export async function POST(request: NextRequest) {
     )
   }
 }
+
+export const POST = withShadowLog(_POST);

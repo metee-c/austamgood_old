@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 const UPDATABLE_FIELDS = new Set([
   'status',
   'confirmed_pack_qty',
@@ -28,7 +29,7 @@ function sanitizePayload(input: Record<string, unknown>) {
   return result;
 }
 
-export async function GET(
+async function _GET(
   _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -76,7 +77,7 @@ export async function GET(
   }
 }
 
-export async function PATCH(
+async function _PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -270,3 +271,6 @@ try {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const PATCH = withShadowLog(_PATCH);

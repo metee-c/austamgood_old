@@ -13,6 +13,7 @@ import {
   reorderStopsByMethod,
   enforceVehicleLimit
 } from '@/lib/vrp/algorithms';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 /**
  * Timeout wrapper สำหรับป้องกัน VRP optimization ค้างนานเกินไป
@@ -134,7 +135,7 @@ async function performVRPOptimization(
   return allTrips;
 }
 
-export async function POST(request: Request) {
+async function _POST(request: Request) {
 try {
     const supabase = await createClient();
     const { planId } = await request.json();
@@ -774,3 +775,5 @@ try {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

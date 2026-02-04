@@ -2,7 +2,8 @@ import { createClient } from '@/lib/supabase/server';
 import { NextResponse } from 'next/server';
 import { z } from 'zod';
 import { EmployeeSchema, Employee } from '@/types/employee-schema';
-export async function POST(request: Request) {
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
+async function _POST(request: Request) {
 const supabase = await createClient();
   const employeesRaw = await request.json();
 
@@ -58,3 +59,5 @@ const supabase = await createClient();
 
   return NextResponse.json({ message: `${data.length} employees imported successfully.`, data });
 }
+
+export const POST = withShadowLog(_POST);

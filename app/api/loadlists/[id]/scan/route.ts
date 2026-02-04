@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * POST /api/loadlists/[id]/scan
  * สแกนขึ้นรถ - เพิ่ม Order เข้า Loadlist
  * Trigger จะอัปเดต Order status เป็น loaded อัตโนมัติ
  */
-export async function POST(
+async function _POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -153,7 +154,7 @@ try {
  * GET /api/loadlists/[id]/scan
  * ดึงรายการ Orders ที่อยู่ใน Loadlist
  */
-export async function GET(
+async function _GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -200,3 +201,6 @@ export async function GET(
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const POST = withShadowLog(_POST);

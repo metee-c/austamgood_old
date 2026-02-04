@@ -41,3 +41,9 @@ export {
   apiLog,
   type ApiLogOptions,
 } from './api-middleware';
+
+// Universal lightweight wrapper (100% API coverage)
+export {
+  withShadowLog,
+  deriveOperationType,
+} from './with-shadow-log';

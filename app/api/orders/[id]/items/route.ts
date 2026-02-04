@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 /**
  * GET /api/orders/[id]/items
  * ดึงรายการสินค้าของ Order สำหรับใช้ในการรับสินค้าตีกลับ
  * รวมถึงข้อมูลวันผลิต/วันหมดอายุจาก inventory ที่ถูก pick ไปแล้ว
  */
-export async function GET(
+async function _GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -189,3 +190,5 @@ export async function GET(
     );
   }
 }
+
+export const GET = withShadowLog(_GET);

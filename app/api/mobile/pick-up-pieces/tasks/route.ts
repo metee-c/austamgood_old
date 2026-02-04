@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 /**
  * GET /api/mobile/pick-up-pieces/tasks
  * ดึงรายการ Picklists สำหรับหยิบรายชิ้น (status = assigned หรือ picking)
  * ใช้โครงสร้างเดียวกับ /api/mobile/pick/tasks
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -85,3 +86,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);

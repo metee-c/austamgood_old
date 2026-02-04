@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 /**
  * GET /api/route-plans/all-trips
@@ -7,7 +8,7 @@ import { createClient } from '@/lib/supabase/server';
  * ไม่กรอง trips ที่มี picklist แล้ว (ต่างจาก /api/route-plans/published)
  * ใช้สำหรับ dropdown เลือกสายรถในฟอร์มสร้างใบโหลดสินค้า
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -124,3 +125,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);

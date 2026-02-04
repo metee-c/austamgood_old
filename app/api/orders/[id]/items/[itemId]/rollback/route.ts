@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/api/with-auth';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * POST /api/orders/[id]/items/[itemId]/rollback
  * Rollback รายการสินค้าเดียวใน Order
@@ -88,4 +89,4 @@ try {
   }
 }
 
-export const POST = withAuth(handlePost);
+export const POST = withShadowLog(withAuth(handlePost));

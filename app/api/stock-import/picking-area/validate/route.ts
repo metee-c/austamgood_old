@@ -6,6 +6,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { stockImportService } from '@/lib/database/stock-import';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 export const dynamic = 'force-dynamic';
 
 const supabase = createClient(
@@ -13,7 +14,7 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
 
     // รับข้อมูล
@@ -94,3 +95,5 @@ try {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

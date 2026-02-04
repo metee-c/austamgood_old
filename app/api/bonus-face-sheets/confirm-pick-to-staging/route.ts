@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { setDatabaseUserContext } from '@/lib/database/user-context';
 import { withAuth } from '@/lib/api/with-auth';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * GET /api/bonus-face-sheets/confirm-pick-to-staging?loadlist_id=xxx
  * ตรวจสอบสถานะการย้ายสต็อกไป staging
@@ -12,7 +13,7 @@ import { withAuth } from '@/lib/api/with-auth';
  * - pending_packages: จำนวน packages ที่ยังไม่ได้ย้าย (storage_location != null)
  * - is_complete: true ถ้าย้ายครบแล้ว หรือ loadlist status = 'loaded'
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const searchParams = request.nextUrl.searchParams;
@@ -693,4 +694,6 @@ try {
   }
 }
 
-export const POST = withAuth(handlePost);
+export const POST = withShadowLog(withAuth(handlePost));
+
+export const GET = withShadowLog(_GET);

@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * GET /api/picklists/[id]
  * ดึง Picklist by ID พร้อมรายละเอียดทั้งหมด
  */
-export async function GET(
+async function _GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -87,7 +88,7 @@ export async function GET(
  * อัปเดต Picklist (รวมถึงอัปเดตสถานะออเดอร์)
  * เมื่อเปลี่ยนสถานะเป็น 'assigned' → ออเดอร์ทั้งหมดใน picklist เปลี่ยนเป็น 'in_picking'
  */
-export async function PATCH(
+async function _PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -465,7 +466,7 @@ try {
  * DELETE /api/picklists/[id]
  * ลบ Picklist (เปลี่ยนสถานะเป็น cancelled)
  */
-export async function DELETE(
+async function _DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -586,3 +587,7 @@ try {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const PATCH = withShadowLog(_PATCH);
+export const DELETE = withShadowLog(_DELETE);

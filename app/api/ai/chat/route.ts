@@ -28,6 +28,7 @@ import {
   SAFE_RESPONSES,
   getLogStats,
 } from '@/lib/ai/guardrails';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 export interface AIChatRequest {
   message: string;
@@ -41,7 +42,7 @@ export interface AIChatRequest {
   enable_analysis?: boolean;
 }
 
-export async function POST(request: NextRequest): Promise<NextResponse<ChatResponse>> {
+async function _POST(request: NextRequest): Promise<NextResponse<ChatResponse>> {
   const startTime = Date.now();
   let userRole = 'viewer';
   let detectedTools: string[] = [];
@@ -354,7 +355,7 @@ function getBaseUrl(request: NextRequest): string {
 /**
  * GET endpoint for health check
  */
-export async function GET(): Promise<NextResponse> {
+async function _GET(): Promise<NextResponse> {
   return NextResponse.json({
     status: 'ok',
     service: 'AI Chat',
@@ -362,3 +363,6 @@ export async function GET(): Promise<NextResponse> {
     timestamp: new Date().toISOString(),
   });
 }
+
+export const GET = withShadowLog(_GET);
+export const POST = withShadowLog(_POST);

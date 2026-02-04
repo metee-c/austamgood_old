@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 export const dynamic = 'force-dynamic';
 
 /**
  * API endpoint สำหรับจัดลำดับจุดส่งใหม่ภายในเที่ยวเดียวกัน
  * รองรับการลาก (drag-and-drop) จุดส่งในแผนที่
  */
-export async function PUT(
+async function _PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -147,3 +148,5 @@ export async function PUT(
     );
   }
 }
+
+export const PUT = withShadowLog(_PUT);

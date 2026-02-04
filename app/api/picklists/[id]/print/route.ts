@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * POST /api/picklists/[id]/print
  * เมื่อกดปุ่มพิมพ์เอกสาร Picklist (ไม่อัปเดตสถานะอัตโนมัติ)
  */
-export async function POST(
+async function _POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -43,3 +44,5 @@ try {
     );
   }
 }
+
+export const POST = withShadowLog(_POST);

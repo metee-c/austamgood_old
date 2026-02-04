@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-export async function GET(request: NextRequest) {
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
+async function _GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -37,7 +38,7 @@ export async function GET(request: NextRequest) {
   }
 }
 
-export async function POST(request: NextRequest) {
+async function _POST(request: NextRequest) {
 try {
     const supabase = await createClient();
     const body = await request.json();
@@ -60,7 +61,7 @@ try {
   }
 }
 
-export async function PUT(request: NextRequest) {
+async function _PUT(request: NextRequest) {
   try {
     const supabase = await createClient();
     const body = await request.json();
@@ -85,7 +86,7 @@ export async function PUT(request: NextRequest) {
   }
 }
 
-export async function DELETE(request: NextRequest) {
+async function _DELETE(request: NextRequest) {
 try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -111,3 +112,8 @@ try {
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const POST = withShadowLog(_POST);
+export const PUT = withShadowLog(_PUT);
+export const DELETE = withShadowLog(_DELETE);

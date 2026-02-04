@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getForecastData, ForecastFilters } from '@/lib/database/forecast';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 // Force reload: Zone Selective Rack + Zone Block Stack only
 export const dynamic = 'force-dynamic';
 
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     
@@ -27,3 +28,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);

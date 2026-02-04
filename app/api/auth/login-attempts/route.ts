@@ -6,12 +6,13 @@ import {
   getSuspiciousLoginPatterns,
   getRecentLoginAttempts 
 } from '@/lib/auth';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 /**
  * GET /api/auth/login-attempts
  * Get login attempts statistics and data
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     // Get current session (require admin role for this endpoint)
     const sessionResult = await getCurrentSession();
@@ -116,3 +117,5 @@ export async function GET(request: NextRequest) {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);

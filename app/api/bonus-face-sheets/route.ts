@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withAuth } from '@/lib/api/with-auth';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * GET /api/bonus-face-sheets
  * ดึงรายการใบปะหน้าของแถมทั้งหมด
@@ -206,5 +207,5 @@ try {
 }
 
 // Export with auth wrappers
-export const GET = withAuth(handleGet);
-export const POST = withAuth(handlePost);
+export const GET = withShadowLog(withAuth(handleGet));
+export const POST = withShadowLog(withAuth(handlePost));

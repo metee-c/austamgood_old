@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 export const dynamic = 'force-dynamic';
 
 /**
@@ -10,7 +11,7 @@ export const dynamic = 'force-dynamic';
  * - status: pending | in_progress | all (default: pending)
  * - priority: กรองตามความสำคัญขั้นต่ำ
  */
-export async function GET(request: NextRequest) {
+async function _GET(request: NextRequest) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -74,7 +75,7 @@ export async function GET(request: NextRequest) {
  * อัปเดตสถานะของการแจ้งเตือน
  * Body: { alert_id, status, notes }
  */
-export async function PATCH(request: NextRequest) {
+async function _PATCH(request: NextRequest) {
 try {
     const supabase = await createClient();
     const body = await request.json();
@@ -132,3 +133,6 @@ try {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const PATCH = withShadowLog(_PATCH);

@@ -4,11 +4,12 @@ import { getUserFromToken } from '@/lib/auth/simple-auth';
 import { createServiceRoleClient, createClient } from '@/lib/supabase/server';
 import { logAuditEntry } from '@/lib/auth/audit';
 import { getClientIP } from '@/lib/auth/middleware';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 /**
  * GET /api/users/[id]
  * Get a single user by ID
  */
-export async function GET(
+async function _GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -100,7 +101,7 @@ export async function GET(
  * PATCH /api/users/[id]
  * Update a user
  */
-export async function PATCH(
+async function _PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -228,7 +229,7 @@ try {
  * DELETE /api/users/[id]
  * Delete a user (hard delete - permanently remove from database)
  */
-export async function DELETE(
+async function _DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
@@ -297,3 +298,7 @@ try {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
+export const PATCH = withShadowLog(_PATCH);
+export const DELETE = withShadowLog(_DELETE);

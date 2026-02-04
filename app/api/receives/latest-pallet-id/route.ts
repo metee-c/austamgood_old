@@ -1,7 +1,8 @@
 import { NextResponse } from 'next/server';
 import { receiveService } from '@/lib/database/receive';
+import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
-export async function GET() {
+async function _GET() {
   try {
     const { data, error } = await receiveService.getLatestPalletId();
 
@@ -21,3 +22,5 @@ export async function GET() {
     );
   }
 }
+
+export const GET = withShadowLog(_GET);
