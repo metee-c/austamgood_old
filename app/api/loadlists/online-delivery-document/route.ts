@@ -12,6 +12,7 @@ interface OnlineOrder {
   platform: string;
   shipping_provider: string;
   created_at?: string;
+  packed_at?: string;
   loaded_at?: string;
 }
 
@@ -62,7 +63,8 @@ function formatThaiDate(date: string): string {
 }
 
 function generateDeliveryHTML(loadlist: LoadlistData): string {
-  const totalOrders = loadlist.online_orders?.length || 0;
+  const uniqueTrackings = new Set(loadlist.online_orders?.map(o => o.tracking_number) || []);
+  const totalOrders = uniqueTrackings.size;
   const totalQuantity = loadlist.online_orders?.reduce((sum, order) => sum + order.quantity, 0) || 0;
 
   // Group orders by platform
@@ -204,8 +206,8 @@ function generateDeliveryHTML(loadlist: LoadlistData): string {
         }
         
         .orders-table td:nth-child(1),
-        .orders-table td:nth-child(5),
-        .orders-table td:nth-child(6) {
+        .orders-table td:nth-child(4),
+        .orders-table td:nth-child(5) {
             text-align: center;
         }
         
@@ -348,7 +350,7 @@ function generateDeliveryHTML(loadlist: LoadlistData): string {
             <div class="summary-grid">
                 <div class="summary-item">
                     <div class="summary-value">${totalOrders}</div>
-                    <div class="summary-label">ออเดอร์ทั้งหมด</div>
+                    <div class="summary-label">Tracking ทั้งหมด</div>
                 </div>
                 <div class="summary-item">
                     <div class="summary-value">${totalQuantity}</div>
@@ -365,18 +367,17 @@ function generateDeliveryHTML(loadlist: LoadlistData): string {
         ${Object.entries(ordersByPlatform).map(([platform, orders]) => `
             <div class="platform-section">
                 <div class="platform-header">
-                    ${platform} (${orders.length} ออเดอร์)
+                    ${platform} (${new Set(orders.map(o => o.tracking_number)).size} Tracking)
                 </div>
                 <table class="orders-table">
                     <thead>
                         <tr>
                             <th style="width: 40px;">#</th>
-                            <th style="width: 140px;">เลขออเดอร์</th>
+                            <th style="width: 160px;">Tracking</th>
                             <th style="width: 120px;">ชื่อผู้ซื้อ</th>
-                            <th style="width: 140px;">Tracking</th>
                             <th style="width: 50px;">จำนวน</th>
                             <th style="width: 100px;">ขนส่ง</th>
-                            <th style="width: 90px;">วันที่สั่ง</th>
+                            <th style="width: 90px;">วันที่แพ็ค</th>
                             <th style="width: 130px;">วันที่สแกนขึ้นรถ</th>
                         </tr>
                     </thead>
@@ -384,12 +385,11 @@ function generateDeliveryHTML(loadlist: LoadlistData): string {
                         ${orders.map((order, index) => `
                             <tr>
                                 <td>${index + 1}</td>
-                                <td style="font-family: monospace; font-size: 10px;">${order.order_number}</td>
-                                <td style="font-size: 11px;">${order.buyer_name}</td>
                                 <td style="font-family: monospace; font-size: 10px;">${order.tracking_number}</td>
+                                <td style="font-size: 11px;">${order.buyer_name}</td>
                                 <td style="font-weight: 600; text-align: center;">${order.quantity}</td>
                                 <td style="font-size: 10px;">${order.shipping_provider}</td>
-                                <td style="font-size: 10px;">${order.created_at ? new Date(order.created_at).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '-'}</td>
+                                <td style="font-size: 10px;">${order.packed_at ? new Date(order.packed_at).toLocaleDateString('th-TH', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '-'}</td>
                                 <td style="font-size: 10px;">${order.loaded_at ? new Date(order.loaded_at).toLocaleString('th-TH', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }) : '-'}</td>
                             </tr>
                         `).join('')}

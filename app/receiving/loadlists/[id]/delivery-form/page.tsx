@@ -257,13 +257,10 @@ export default function OnlineLoadlistDeliveryForm() {
                   <tr className="bg-gray-100">
                     <th className="border border-gray-300 px-2 py-2 text-left w-8">#</th>
                     <th className="border border-gray-300 px-2 py-2 text-left">
-                      เลขออเดอร์
+                      Tracking
                     </th>
                     <th className="border border-gray-300 px-2 py-2 text-left">
                       ชื่อผู้ซื้อ
-                    </th>
-                    <th className="border border-gray-300 px-2 py-2 text-left">
-                      Tracking
                     </th>
                     <th className="border border-gray-300 px-2 py-2 text-left">
                       สินค้า
@@ -283,13 +280,10 @@ export default function OnlineLoadlistDeliveryForm() {
                         {index + 1}
                       </td>
                       <td className="border border-gray-300 px-2 py-2 font-mono text-xs">
-                        {order.order_number}
+                        {order.tracking_number}
                       </td>
                       <td className="border border-gray-300 px-2 py-2">
                         {order.buyer_name}
-                      </td>
-                      <td className="border border-gray-300 px-2 py-2 font-mono text-xs">
-                        {order.tracking_number}
                       </td>
                       <td className="border border-gray-300 px-2 py-2">
                         <div className="text-xs text-gray-600 mb-1">

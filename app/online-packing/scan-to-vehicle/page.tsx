@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createClient } from '@/lib/supabase/client';
-import { Truck, ArrowLeft, Package, CheckCircle, XCircle, Loader2 } from 'lucide-react';
+import { Truck, ArrowLeft, Package, CheckCircle, XCircle, Loader2, Ban } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 
 // =====================================================
@@ -46,6 +46,7 @@ export default function ScanToVehiclePage() {
   const [scannedPackages, setScannedPackages] = useState<ScannedPackage[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [todayCount, setTodayCount] = useState(0);
+  const [isCancelMode, setIsCancelMode] = useState(false);
 
   // Audio for beep sounds using files
   const playSound = useCallback((type: 'success' | 'error') => {
@@ -128,6 +129,72 @@ export default function ScanToVehiclePage() {
     return () => document.removeEventListener('click', handleClick);
   }, [isProcessing]);
 
+  // Handle cancel scan - remove loaded_at/loaded_by
+  const handleCancelScan = async (trackingNumber: string) => {
+    try {
+      // Check if package exists
+      const { data: allPackages, error: findError } = await supabase
+        .from('packing_backup_orders')
+        .select('id, tracking_number, order_number, buyer_name, platform, loaded_at, loadlist_id')
+        .eq('tracking_number', trackingNumber);
+
+      if (findError) throw findError;
+
+      if (!allPackages || allPackages.length === 0) {
+        setScanError(`ไม่พบพัสดุหมายเลข: ${trackingNumber}`);
+        playSound('error');
+        return;
+      }
+
+      // Check if in loadlist - cannot cancel
+      const inLoadlist = allPackages.find(p => p.loadlist_id);
+      if (inLoadlist) {
+        setScanError(`ไม่สามารถยกเลิกได้ พัสดุนี้อยู่ในใบโหลดแล้ว (Loadlist ID: ${inLoadlist.loadlist_id})`);
+        playSound('error');
+        return;
+      }
+
+      // Check if package was actually loaded
+      const loadedPackages = allPackages.filter(p => p.loaded_at);
+      if (loadedPackages.length === 0) {
+        setScanError(`พัสดุหมายเลข ${trackingNumber} ยังไม่ได้สแกนขึ้นรถ`);
+        playSound('error');
+        return;
+      }
+
+      // Clear loaded_at and loaded_by for all packages with this tracking number
+      const { error: updateError } = await supabase
+        .from('packing_backup_orders')
+        .update({
+          loaded_at: null,
+          loaded_by: null
+        })
+        .eq('tracking_number', trackingNumber)
+        .is('loadlist_id', null);
+
+      if (updateError) throw updateError;
+
+      // Success
+      setScanSuccess(`ยกเลิกพัสดุสำเร็จ: ${trackingNumber} (${loadedPackages.length} รายการ)`);
+      playSound('success');
+
+      // Remove from scanned list
+      setScannedPackages(prev => prev.filter(p => p.tracking_number !== trackingNumber));
+      setTodayCount(prev => Math.max(0, prev - loadedPackages.length));
+      setTotalCount(prev => Math.max(0, prev - loadedPackages.length));
+
+      // Clear success message after 2 seconds
+      setTimeout(() => {
+        setScanSuccess('');
+      }, 2000);
+
+    } catch (error: any) {
+      console.error('Cancel scan error:', error);
+      setScanError(`เกิดข้อผิดพลาด: ${error.message}`);
+      playSound('error');
+    }
+  };
+
   // Handle scan
   const handleScan = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -140,6 +207,11 @@ export default function ScanToVehiclePage() {
     setScanSuccess('');
 
     try {
+      if (isCancelMode) {
+        await handleCancelScan(trackingNumber);
+        return;
+      }
+
       // Check if package exists in packing_backup_orders
       const { data: allPackages, error: findError } = await supabase
         .from('packing_backup_orders')
@@ -285,16 +357,42 @@ export default function ScanToVehiclePage() {
             <Truck className="w-5 h-5 text-primary-600" />
             <h1 className="text-lg font-bold text-gray-800 font-thai">สแกนขึ้นรถ</h1>
           </div>
-          <div className="w-16"></div> {/* Spacer for centering */}
+          <button
+            type="button"
+            onClick={() => {
+              setIsCancelMode(prev => !prev);
+              setScanError('');
+              setScanSuccess('');
+              inputRef.current?.focus();
+            }}
+            className={`flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-xs font-semibold font-thai transition-colors ${
+              isCancelMode
+                ? 'bg-gray-200 text-gray-700'
+                : 'bg-red-100 text-red-700'
+            }`}
+          >
+            <Ban className="w-3.5 h-3.5" />
+            {isCancelMode ? 'ปกติ' : 'ยกเลิก'}
+          </button>
         </div>
       </header>
 
+      {/* Cancel Mode Banner */}
+      {isCancelMode && (
+        <div className="bg-red-500 text-white px-4 py-2 text-center">
+          <p className="text-sm font-semibold font-thai flex items-center justify-center gap-2">
+            <Ban className="w-4 h-4" />
+            โหมดยกเลิกพัสดุ — สแกนเพื่อลบพัสดุที่เคยสแกนขึ้นรถ
+          </p>
+        </div>
+      )}
+
       {/* Scan Input Section */}
-      <section className="bg-white px-4 py-4 border-b border-gray-200">
+      <section className={`px-4 py-4 border-b border-gray-200 ${isCancelMode ? 'bg-red-50' : 'bg-white'}`}>
         <form onSubmit={handleScan} className="space-y-3">
           <div>
-            <label className="text-sm font-semibold text-gray-700 font-thai mb-1.5 block">
-              สแกนหมายเลข Tracking
+            <label className={`text-sm font-semibold font-thai mb-1.5 block ${isCancelMode ? 'text-red-700' : 'text-gray-700'}`}>
+              {isCancelMode ? 'สแกนหมายเลข Tracking ที่ต้องการยกเลิก' : 'สแกนหมายเลข Tracking'}
             </label>
             <input
               ref={inputRef}
@@ -302,12 +400,12 @@ export default function ScanToVehiclePage() {
               value={scanInput}
               onChange={(e) => setScanInput(e.target.value)}
               readOnly={isProcessing}
-              className="w-full px-4 py-3 text-base font-mono rounded-lg border-2 transition-all duration-200 bg-white font-thai focus:outline-none"
+              className={`w-full px-4 py-3 text-base font-mono rounded-lg border-2 transition-all duration-200 font-thai focus:outline-none ${isCancelMode ? 'bg-red-50' : 'bg-white'}`}
               style={{
-                borderColor: scanError ? '#ef4444' : scanSuccess ? '#22c55e' : '#d1d5db',
-                boxShadow: scanError ? '0 0 0 3px rgba(239, 68, 68, 0.2)' : scanSuccess ? '0 0 0 3px rgba(34, 197, 94, 0.2)' : 'none'
+                borderColor: scanError ? '#ef4444' : scanSuccess ? '#22c55e' : isCancelMode ? '#f87171' : '#d1d5db',
+                boxShadow: scanError ? '0 0 0 3px rgba(239, 68, 68, 0.2)' : scanSuccess ? '0 0 0 3px rgba(34, 197, 94, 0.2)' : isCancelMode ? '0 0 0 3px rgba(248, 113, 113, 0.2)' : 'none'
               }}
-              placeholder="พิมพ์หรือสแกนหมายเลข Tracking..."
+              placeholder={isCancelMode ? 'สแกนพัสดุที่ต้องการยกเลิก...' : 'พิมพ์หรือสแกนหมายเลข Tracking...'}
               autoFocus
             />
           </div>
