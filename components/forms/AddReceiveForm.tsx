@@ -825,7 +825,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
         ...item,
         location_id: item.location_id || undefined
       })) as any,
-      created_by: currentUser?.employee_id || data.received_by, // Use employee_id (FK to master_employee)
+      created_by: currentUser?.user_id || data.received_by, // Use user_id (FK to master_system_user)
     };
 
     console.log('📦 Payload ที่ส่งไป API:', JSON.stringify(payload, null, 2));

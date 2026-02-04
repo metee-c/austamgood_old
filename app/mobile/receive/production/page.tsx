@@ -440,7 +440,7 @@ function MobileReceiveProductionContent() {
         status: data.status,
         notes: data.notes?.trim() || undefined,
         items: processedItems,
-        created_by: currentUser?.employee_id || data.received_by,
+        created_by: currentUser?.user_id || data.received_by,
       };
 
       const { error } = await createReceive(payload as any);

@@ -414,7 +414,7 @@ export default function MobileReceiveNewPage() {
         receive_images: data.receive_images,
         receive_image_names: data.receive_image_names,
         items: processedItems,
-        created_by: currentUser?.employee_id || data.received_by || undefined,
+        created_by: currentUser?.user_id || data.received_by || undefined,
       };
 
       const { error } = await createReceive(payload as any);
