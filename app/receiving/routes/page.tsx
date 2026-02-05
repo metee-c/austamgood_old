@@ -21,7 +21,11 @@ import {
     PlayCircle,
     CheckCircle,
     AlertTriangle,
-    FileSpreadsheet
+    FileSpreadsheet,
+    ChevronLeft,
+    ChevronRight,
+    ChevronsLeft,
+    ChevronsRight
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
@@ -260,6 +264,10 @@ const RoutesPage = () => {
         warning: string | null;
     } | null>(null);
     const [isDeleting, setIsDeleting] = useState(false);
+
+    // Pagination state
+    const [currentPage, setCurrentPage] = useState(1);
+    const pageSize = 50;
 
     const fetchDraftOrders = useCallback(async (warehouseId: string, planDate: string, signal?: AbortSignal) => {
         try {
@@ -541,6 +549,11 @@ const RoutesPage = () => {
             abortController.abort();
         };
     }, [fetchWarehouses, fetchRoutePlans]);
+
+    // Reset page when filters change
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [searchTerm, selectedStatus, startDate, endDate]);
 
     const handleSelectOrder = (orderId: number) => {
         const next = new Set(selectedOrders);
@@ -2032,6 +2045,11 @@ const RoutesPage = () => {
         });
     }, [draftOrders, draftOrderFilter]);
 
+    // Paginated plans
+    const paginatedPlans = useMemo(() => {
+        return filteredPlans.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+    }, [filteredPlans, currentPage, pageSize]);
+
     const previewWarehouse = useMemo(() => {
         if (!previewPlan) return null;
         const latCandidate = Number(
@@ -2203,7 +2221,7 @@ const RoutesPage = () => {
                     <div className="flex-1 min-h-0 bg-white border rounded-lg shadow-sm flex flex-col overflow-hidden">
                         <div className="flex-1 overflow-auto">
                             <RoutesPlanTable
-                                plans={filteredPlans}
+                                plans={paginatedPlans}
                                 isLoading={loading}
                                 expandedPlanIds={expandedPlanIds}
                                 planTripsData={planTripsData}
@@ -2222,6 +2240,51 @@ const RoutesPage = () => {
                                 sortDirection={sortDirection}
                                 onSort={handleSort}
                             />
+                        </div>
+                        {/* Pagination Bar */}
+                        <div className="flex-shrink-0 flex items-center justify-between px-3 py-1 border-t border-gray-200 bg-gray-50 rounded-b-lg text-xs">
+                            <div className="text-sm text-thai-gray-600 font-thai">
+                                {loading ? 'กำลังโหลด...' : 
+                                 filteredPlans.length === 0 ? 'ไม่พบข้อมูล' :
+                                 `แสดง ${((currentPage - 1) * pageSize) + 1} - ${Math.min(currentPage * pageSize, filteredPlans.length)} จาก ${filteredPlans.length.toLocaleString()} รายการ`}
+                            </div>
+                            <div className="flex items-center gap-2">
+                                <button
+                                    onClick={() => setCurrentPage(1)}
+                                    disabled={currentPage === 1 || filteredPlans.length === 0}
+                                    className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title="หน้าแรก"
+                                >
+                                    <ChevronsLeft className="w-4 h-4" />
+                                </button>
+                                <button
+                                    onClick={() => setCurrentPage(currentPage - 1)}
+                                    disabled={currentPage === 1 || filteredPlans.length === 0}
+                                    className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title="หน้าก่อนหน้า"
+                                >
+                                    <ChevronLeft className="w-4 h-4" />
+                                </button>
+                                <span className="px-3 py-1 text-sm font-thai">
+                                    หน้า {filteredPlans.length === 0 ? 0 : currentPage} / {Math.max(1, Math.ceil(filteredPlans.length / pageSize))}
+                                </span>
+                                <button
+                                    onClick={() => setCurrentPage(currentPage + 1)}
+                                    disabled={currentPage >= Math.ceil(filteredPlans.length / pageSize) || filteredPlans.length === 0}
+                                    className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title="หน้าถัดไป"
+                                >
+                                    <ChevronRight className="w-4 h-4" />
+                                </button>
+                                <button
+                                    onClick={() => setCurrentPage(Math.ceil(filteredPlans.length / pageSize))}
+                                    disabled={currentPage >= Math.ceil(filteredPlans.length / pageSize) || filteredPlans.length === 0}
+                                    className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    title="หน้าสุดท้าย"
+                                >
+                                    <ChevronsRight className="w-4 h-4" />
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

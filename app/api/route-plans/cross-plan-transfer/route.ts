@@ -407,6 +407,22 @@ async function resequenceStops(supabase: any, tripId: number) {
       .update({ sequence_no: i + 1 })
       .eq('stop_id', stops[i].stop_id);
   }
+
+  // Calculate new distance after reordering
+  const { data: distanceData } = await supabase.rpc('calculate_trip_distance', {
+    p_trip_id: tripId
+  });
+  const totalDistance = distanceData || 0;
+  const totalDriveMinutes = Math.round(totalDistance * 1.5);
+
+  await supabase
+    .from('receiving_route_trips')
+    .update({
+      total_distance_km: totalDistance,
+      total_drive_minutes: totalDriveMinutes,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('trip_id', tripId);
 }
 
 async function updateTripMetrics(supabase: any, tripId: number) {
@@ -421,12 +437,22 @@ async function updateTripMetrics(supabase: any, tripId: number) {
   const totalVolume = stops.reduce((sum: number, s: any) => sum + (Number(s.load_volume_cbm) || 0), 0);
   const totalStops = stops.length;
 
+  // Calculate distance using SQL function
+  const { data: distanceData } = await supabase.rpc('calculate_trip_distance', {
+    p_trip_id: tripId
+  });
+  const totalDistance = distanceData || 0;
+  const totalDriveMinutes = Math.round(totalDistance * 1.5); // 1.5 min per km
+
   await supabase
     .from('receiving_route_trips')
     .update({
       total_weight_kg: totalWeight,
       total_volume_cbm: totalVolume,
       total_stops: totalStops,
+      total_distance_km: totalDistance,
+      total_drive_minutes: totalDriveMinutes,
+      updated_at: new Date().toISOString(),
     })
     .eq('trip_id', tripId);
 }

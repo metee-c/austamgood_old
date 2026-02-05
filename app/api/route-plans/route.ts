@@ -1,13 +1,17 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withShadowLog } from '@/lib/logging/with-shadow-log';
+
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 async function _GET(request: Request) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
 
     const status = searchParams.get('status');
-    const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 50;
+    const limit = searchParams.get('limit') ? parseInt(searchParams.get('limit')!) : 1000;
 
     // 1. Fetch route plans with warehouse data
     let query = supabase
@@ -208,7 +212,16 @@ async function _GET(request: Request) {
       }))
     });
 
-    return NextResponse.json({ data: plansWithTrips || [], error: null });
+    return NextResponse.json(
+      { data: plansWithTrips || [], error: null },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      }
+    );
   } catch (error: any) {
     console.error('Unexpected error fetching route plans:', error);
     console.error('Error stack:', error?.stack);

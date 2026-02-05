@@ -348,6 +348,11 @@ const LoadlistsPage = () => {
     fetchAvailableShippingProviders(); // ✅ NEW: ดึงรายการขนส่งจากฐานข้อมูล
   }, []);
 
+  // ✅ DEBUG: Log when availableShippingProviders changes
+  useEffect(() => {
+    console.log('🔔 availableShippingProviders state changed:', availableShippingProviders);
+  }, [availableShippingProviders]);
+
   // ✅ ฟังก์ชันดึงรายการขนส่งทั้งหมดจากออเดอร์ออนไลน์
   const fetchAvailableShippingProviders = async () => {
     console.log('🔍 Fetching shipping providers...');
@@ -374,10 +379,7 @@ const LoadlistsPage = () => {
       
       setAvailableShippingProviders(uniqueProviders as string[]);
       
-      // ✅ Verify state was set
-      setTimeout(() => {
-        console.log('⏰ State after 100ms:', uniqueProviders);
-      }, 100);
+      console.log('✅ State set complete');
     } catch (error) {
       console.error('❌ Error in fetchAvailableShippingProviders:', error);
       setAvailableShippingProviders([]);
@@ -3188,11 +3190,14 @@ const LoadlistsPage = () => {
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500"
                 >
                   <option value="">-- เลือกขนส่ง --</option>
-                  {availableShippingProviders.map((provider) => (
-                    <option key={provider} value={provider}>
-                      {provider}
-                    </option>
-                  ))}
+                  {(() => {
+                    console.log('🎨 Rendering dropdown with providers:', availableShippingProviders);
+                    return availableShippingProviders.map((provider) => (
+                      <option key={provider} value={provider}>
+                        {provider}
+                      </option>
+                    ));
+                  })()}
                 </select>
               </div>
 

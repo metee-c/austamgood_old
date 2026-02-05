@@ -267,7 +267,7 @@ try {
       console.error('Error updating order status:', orderUpdateError);
     }
 
-    // 11. อัปเดต trip totals
+    // 11. อัปเดต trip totals และคำนวณระยะทางใหม่
     const { data: tripStops } = await supabase
       .from('receiving_route_stops')
       .select('load_weight_kg')
@@ -275,10 +275,19 @@ try {
 
     const tripTotalWeight = tripStops?.reduce((sum, s) => sum + Number(s.load_weight_kg || 0), 0) || 0;
 
+    // Calculate new distance after adding stop
+    const { data: distanceData } = await supabase.rpc('calculate_trip_distance', {
+      p_trip_id: tripId
+    });
+    const totalDistance = distanceData || 0;
+    const totalDriveMinutes = Math.round(totalDistance * 1.5);
+
     await supabase
       .from('receiving_route_trips')
       .update({
         total_weight_kg: tripTotalWeight,
+        total_distance_km: totalDistance,
+        total_drive_minutes: totalDriveMinutes,
         updated_at: new Date().toISOString()
       })
       .eq('trip_id', tripId);
@@ -289,7 +298,8 @@ try {
       tripId,
       stopId: newStop.stop_id,
       sequence: newSequence,
-      weight: totalWeight
+      weight: totalWeight,
+      distance: totalDistance
     });
 
     return NextResponse.json({
@@ -306,10 +316,12 @@ try {
         trip: {
           trip_id: tripId,
           daily_trip_number: trip.daily_trip_number,
-          new_total_weight: tripTotalWeight
+          new_total_weight: tripTotalWeight,
+          new_total_distance_km: totalDistance,
+          new_total_drive_minutes: totalDriveMinutes
         }
       },
-      message: `เพิ่มออเดอร์ ${order.order_no} เข้าคันที่ ${trip.daily_trip_number} จุดที่ ${newSequence} สำเร็จ`
+      message: `เพิ่มออเดอร์ ${order.order_no} เข้าคันที่ ${trip.daily_trip_number} จุดที่ ${newSequence} สำเร็จ (ระยะทาง ${totalDistance.toFixed(2)} km)`
     });
 
   } catch (error: any) {

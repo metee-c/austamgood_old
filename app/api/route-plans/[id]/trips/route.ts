@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
+export const dynamic = 'force-dynamic';
+export const revalidate = 0;
+
 async function _GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -55,7 +58,16 @@ async function _GET(
       };
     });
 
-    return NextResponse.json({ data: processedTrips, error: null });
+    return NextResponse.json(
+      { data: processedTrips, error: null },
+      {
+        headers: {
+          'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+          'Pragma': 'no-cache',
+          'Expires': '0'
+        }
+      }
+    );
   } catch (error: any) {
     console.error('Error in trips API:', error);
     return NextResponse.json(

@@ -127,8 +127,21 @@ async function _PUT(
       }
     }
 
-    // TODO: คำนวณระยะทางและเวลาใหม่ (ถ้าต้องการ)
-    // สามารถเรียก Mapbox API เพื่อคำนวณ route ใหม่ได้
+    // Calculate new distance after reordering stops
+    const { data: distanceData } = await supabase.rpc('calculate_trip_distance', {
+      p_trip_id: tripId
+    });
+    const totalDistance = distanceData || 0;
+    const totalDriveMinutes = Math.round(totalDistance * 1.5);
+
+    await supabase
+      .from('receiving_route_trips')
+      .update({
+        total_distance_km: totalDistance,
+        total_drive_minutes: totalDriveMinutes,
+        updated_at: new Date().toISOString(),
+      })
+      .eq('trip_id', tripId);
 
     return NextResponse.json({
       success: true,
@@ -136,7 +149,9 @@ async function _PUT(
       data: {
         tripId,
         updatedStops: finalUpdates.length,
-        newOrder: orderedStopIds
+        newOrder: orderedStopIds,
+        totalDistanceKm: totalDistance,
+        totalDriveMinutes: totalDriveMinutes,
       }
     });
 

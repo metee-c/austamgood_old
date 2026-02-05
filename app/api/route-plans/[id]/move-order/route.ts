@@ -222,8 +222,6 @@ try {
     }
 
     // 5. Recalculate trip metrics (weight, distance, etc.)
-    // TODO: Implement metric recalculation based on new stop arrangement
-
     // Recalculate trip metrics (weight and stop count)
     const { data: fromTripStops } = await supabase
       .from('receiving_route_stops')
@@ -238,11 +236,27 @@ try {
     const fromTripWeight = fromTripStops?.reduce((sum, s) => sum + Number(s.load_weight_kg || 0), 0) || 0;
     const toTripWeight = toTripStops?.reduce((sum, s) => sum + Number(s.load_weight_kg || 0), 0) || 0;
 
+    // Calculate distances for both trips
+    const { data: fromDistanceData } = await supabase.rpc('calculate_trip_distance', {
+      p_trip_id: fromTripId
+    });
+    const fromDistance = fromDistanceData || 0;
+    const fromDriveMinutes = Math.round(fromDistance * 1.5);
+
+    const { data: toDistanceData } = await supabase.rpc('calculate_trip_distance', {
+      p_trip_id: toTripId
+    });
+    const toDistance = toDistanceData || 0;
+    const toDriveMinutes = Math.round(toDistance * 1.5);
+
     await supabase
       .from('receiving_route_trips')
       .update({
         total_weight_kg: fromTripWeight,
-        total_stops: fromTripStops?.length || 0
+        total_stops: fromTripStops?.length || 0,
+        total_distance_km: fromDistance,
+        total_drive_minutes: fromDriveMinutes,
+        updated_at: new Date().toISOString()
       })
       .eq('trip_id', fromTripId);
 
@@ -250,7 +264,10 @@ try {
       .from('receiving_route_trips')
       .update({
         total_weight_kg: toTripWeight,
-        total_stops: toTripStops?.length || 0
+        total_stops: toTripStops?.length || 0,
+        total_distance_km: toDistance,
+        total_drive_minutes: toDriveMinutes,
+        updated_at: new Date().toISOString()
       })
       .eq('trip_id', toTripId);
 
@@ -281,7 +298,11 @@ try {
         toTripId,
         newSequenceNo,
         wasConsolidated: isConsolidatedStop,
-        deletedEmptyTrip
+        deletedEmptyTrip,
+        fromTripDistance: fromDistance,
+        toTripDistance: toDistance,
+        fromTripDriveMinutes: fromDriveMinutes,
+        toTripDriveMinutes: toDriveMinutes
       }
     });
 

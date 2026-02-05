@@ -442,7 +442,7 @@ try {
       }
     }
 
-    // Recalculate trip weights
+    // Recalculate trip weights and distances
     for (const tripId of [sourceTripId, finalTargetTripId]) {
       if (!tripId) continue;
       
@@ -454,11 +454,21 @@ try {
       const totalWeight = tripStops?.reduce((sum, s) => sum + Number(s.load_weight_kg || 0), 0) || 0;
       const totalStops = tripStops?.length || 0;
 
+      // Calculate new distance after split
+      const { data: distanceData } = await supabase.rpc('calculate_trip_distance', {
+        p_trip_id: tripId
+      });
+      const totalDistance = distanceData || 0;
+      const totalDriveMinutes = Math.round(totalDistance * 1.5);
+
       await supabase
         .from('receiving_route_trips')
         .update({
           total_weight_kg: totalWeight,
-          total_stops: totalStops
+          total_stops: totalStops,
+          total_distance_km: totalDistance,
+          total_drive_minutes: totalDriveMinutes,
+          updated_at: new Date().toISOString()
         })
         .eq('trip_id', tripId);
     }
@@ -479,7 +489,9 @@ try {
       deletedEmptyTrip,
       movedItems: items.length,
       totalMoveWeight,
-      totalMoveQty
+      totalMoveQty,
+      sourceTripDistance: sourceTripId ? (await supabase.rpc('calculate_trip_distance', { p_trip_id: sourceTripId })).data : 0,
+      targetTripDistance: finalTargetTripId ? (await supabase.rpc('calculate_trip_distance', { p_trip_id: finalTargetTripId })).data : 0
     });
 
   } catch (error: any) {
