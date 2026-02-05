@@ -40,7 +40,7 @@ async function _GET(
 
     const [stopsResult, skusResult, locationsResult, orderItemsResult] = await Promise.all([
       supabase.from('receiving_route_stops').select('stop_id, sequence_no, stop_name, address, customer_id, order_id, tags').in('stop_id', stopIds),
-      supabase.from('master_sku').select('sku_id, sku_name, uom_base, default_location').in('sku_id', skuIds),
+      supabase.from('master_sku').select('sku_id, sku_name, uom_base, default_location, weight_per_piece_kg').in('sku_id', skuIds),
       locationIds.length > 0
         ? supabase.from('master_location').select('location_id').in('location_id', locationIds)
         : { data: [], error: null },
@@ -170,6 +170,7 @@ async function _GET(
           quantities_to_pick: [item.quantity_to_pick],
           quantities_picked: [item.quantity_picked],
           no_price_goods_note: noPriceGoodsNote || null,
+          weight_per_piece_kg: sku?.weight_per_piece_kg || 0,
           stop: {
             stop_id: item.stop_id,
             stop_sequence: stop?.sequence_no || 0,

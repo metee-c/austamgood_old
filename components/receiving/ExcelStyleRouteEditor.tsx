@@ -1,9 +1,10 @@
 'use client';
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
-import { Plus, Trash2, Save, X, AlertTriangle, ChevronDown, ChevronUp, Scissors, ArrowRight, ExternalLink, Search, Package } from 'lucide-react';
+import { Plus, Trash2, Save, X, AlertTriangle, ChevronDown, ChevronUp, Scissors, ArrowRight, ExternalLink, Search, Package, Lock } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
+import { useAuthContext } from '@/contexts/AuthContext';
 
 // Types
 interface OrderItem {
@@ -120,6 +121,10 @@ export default function ExcelStyleRouteEditor({
   draftOrdersLoading = false,
   onRefreshDraftOrders
 }: ExcelStyleRouteEditorProps) {
+  // Get current user
+  const { user } = useAuthContext();
+  const isMetee = user?.email === 'metee.c@buzzpetsfood.com';
+
   // Convert trips data to flat rows
   const initialRows = useMemo(() => {
     const rows: OrderRow[] = [];
@@ -317,15 +322,17 @@ export default function ExcelStyleRouteEditor({
 
   // Handle trip number change
   const handleTripChange = useCallback((rowId: string, newTripNumber: number) => {
-    // ตรวจสอบว่า trip ต้นทางหรือปลายทางมี picklist หรือไม่
-    const currentRow = rows.find(r => r.rowId === rowId);
-    if (currentRow) {
-      const sourceTripHasPicklist = tripPicklistMap.get(currentRow.tripNumber);
-      const targetTripHasPicklist = tripPicklistMap.get(newTripNumber);
-      
-      if (sourceTripHasPicklist || targetTripHasPicklist) {
-        setShowPicklistWarning(true);
-        return;
+    // ตรวจสอบว่า trip ต้นทางหรือปลายทางมี picklist หรือไม่ (ยกเว้น metee)
+    if (!isMetee) {
+      const currentRow = rows.find(r => r.rowId === rowId);
+      if (currentRow) {
+        const sourceTripHasPicklist = tripPicklistMap.get(currentRow.tripNumber);
+        const targetTripHasPicklist = tripPicklistMap.get(newTripNumber);
+        
+        if (sourceTripHasPicklist || targetTripHasPicklist) {
+          setShowPicklistWarning(true);
+          return;
+        }
       }
     }
 
@@ -346,11 +353,13 @@ export default function ExcelStyleRouteEditor({
 
   // Handle stop sequence change - properly reorder all stops
   const handleSequenceChange = useCallback((rowId: string, newSequence: number) => {
-    // ตรวจสอบว่า trip มี picklist หรือไม่
-    const currentRow = rows.find(r => r.rowId === rowId);
-    if (currentRow && tripPicklistMap.get(currentRow.tripNumber)) {
-      setShowPicklistWarning(true);
-      return;
+    // ตรวจสอบว่า trip มี picklist หรือไม่ (ยกเว้น metee)
+    if (!isMetee) {
+      const currentRow = rows.find(r => r.rowId === rowId);
+      if (currentRow && tripPicklistMap.get(currentRow.tripNumber)) {
+        setShowPicklistWarning(true);
+        return;
+      }
     }
 
     setRows(prev => {
@@ -396,8 +405,8 @@ export default function ExcelStyleRouteEditor({
 
   // Open split modal
   const handleOpenSplit = useCallback((row: OrderRow) => {
-    // ตรวจสอบว่า trip มี picklist หรือไม่
-    if (tripPicklistMap.get(row.tripNumber)) {
+    // ตรวจสอบว่า trip มี picklist หรือไม่ (ยกเว้น metee)
+    if (!isMetee && tripPicklistMap.get(row.tripNumber)) {
       setShowPicklistWarning(true);
       return;
     }
@@ -578,11 +587,13 @@ export default function ExcelStyleRouteEditor({
 
   // Delete row (cancel stop)
   const handleDeleteRow = useCallback((rowId: string) => {
-    // ตรวจสอบว่า trip มี picklist หรือไม่
-    const currentRow = rows.find(r => r.rowId === rowId);
-    if (currentRow && tripPicklistMap.get(currentRow.tripNumber)) {
-      setShowPicklistWarning(true);
-      return;
+    // ตรวจสอบว่า trip มี picklist หรือไม่ (ยกเว้น metee)
+    if (!isMetee) {
+      const currentRow = rows.find(r => r.rowId === rowId);
+      if (currentRow && tripPicklistMap.get(currentRow.tripNumber)) {
+        setShowPicklistWarning(true);
+        return;
+      }
     }
 
     setRows(prev => prev.filter(r => r.rowId !== rowId));

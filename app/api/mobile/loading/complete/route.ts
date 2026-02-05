@@ -3,6 +3,7 @@ import { createClient } from '@/lib/supabase/server';
 import { setDatabaseUserContext } from '@/lib/database/user-context';
 import { withAuth } from '@/lib/api/with-auth';
 import { withShadowLog } from '@/lib/logging/with-shadow-log';
+import { expandBundleSku } from '@/lib/online-packing/product-bundles';
 /**
  * POST /api/mobile/loading/complete
  * ยืนยันการโหลดสินค้าเสร็จสิ้น
@@ -535,23 +536,38 @@ try {
       }
     }
 
-    // ✅ NEW: Collect online order items (map barcode → sku_id)
+    // ✅ NEW: Collect online order items (expand bundles + map barcode → sku_id)
     if (hasOnlineOrders) {
-      const uniqueParentSkus = [...new Set(onlineOrders!.map(o => o.parent_sku).filter(Boolean))];
+      // Step 1: Expand bundle products first
+      const expandedOnlineItems: { skuId: string; quantity: number; trackingNumber: string }[] = [];
+      for (const order of onlineOrders!) {
+        if (!order.parent_sku || !order.quantity || order.quantity <= 0) continue;
+        const expanded = expandBundleSku(order.parent_sku, order.quantity);
+        for (const comp of expanded) {
+          expandedOnlineItems.push({
+            skuId: comp.sku_id,
+            quantity: comp.quantity,
+            trackingNumber: order.tracking_number || ''
+          });
+        }
+      }
 
-      if (uniqueParentSkus.length > 0) {
+      // Step 2: Map expanded SKUs to WMS sku_id (by barcode or direct sku_id)
+      const uniqueExpandedSkus = [...new Set(expandedOnlineItems.map(i => i.skuId).filter(Boolean))];
+      const barcodeToSkuMap = new Map<string, string>();
+
+      if (uniqueExpandedSkus.length > 0) {
+        // Try matching by barcode
         const { data: skuMappings } = await supabase
           .from('master_sku')
           .select('sku_id, barcode')
-          .in('barcode', uniqueParentSkus);
-
-        const barcodeToSkuMap = new Map<string, string>();
+          .in('barcode', uniqueExpandedSkus);
         skuMappings?.forEach((ms: any) => {
           if (ms.barcode) barcodeToSkuMap.set(ms.barcode, ms.sku_id);
         });
 
-        // Also check if parent_sku is directly a sku_id
-        const unmappedSkus = uniqueParentSkus.filter(s => !barcodeToSkuMap.has(s));
+        // Also check if sku is directly a sku_id
+        const unmappedSkus = uniqueExpandedSkus.filter(s => !barcodeToSkuMap.has(s));
         if (unmappedSkus.length > 0) {
           const { data: directSkus } = await supabase
             .from('master_sku')
@@ -561,24 +577,23 @@ try {
             barcodeToSkuMap.set(ms.sku_id, ms.sku_id);
           });
         }
-
-        for (const order of onlineOrders!) {
-          if (!order.parent_sku || !order.quantity || order.quantity <= 0) continue;
-          const actualSkuId = barcodeToSkuMap.get(order.parent_sku) || order.parent_sku;
-          if (isSticker(actualSkuId)) {
-            console.log(`⏭️ Skipping sticker SKU (online): ${actualSkuId}`);
-            continue;
-          }
-          allDispatchItems.push({
-            sku_id: actualSkuId,
-            qty: order.quantity,
-            source: 'online_order',
-            docCode: order.tracking_number || ''
-          });
-        }
-
-        console.log(`📦 Added ${allDispatchItems.filter(i => i.source === 'online_order').length} online items to dispatch validation`);
       }
+
+      for (const item of expandedOnlineItems) {
+        const actualSkuId = barcodeToSkuMap.get(item.skuId) || item.skuId;
+        if (isSticker(actualSkuId)) {
+          console.log(`⏭️ Skipping sticker SKU (online): ${actualSkuId}`);
+          continue;
+        }
+        allDispatchItems.push({
+          sku_id: actualSkuId,
+          qty: item.quantity,
+          source: 'online_order',
+          docCode: item.trackingNumber
+        });
+      }
+
+      console.log(`📦 Added ${allDispatchItems.filter(i => i.source === 'online_order').length} online items to dispatch validation`);
     }
 
     // Step 2: รวมจำนวนตาม SKU
@@ -594,15 +609,18 @@ try {
     const skuBalanceCache = new Map<string, { availableQty: number; balance: any }>();
 
     for (const [skuId, totalQtyNeeded] of skuTotalQtyMap) {
-      // Get SKU info
+      // Get SKU info (use maybeSingle to avoid error when SKU not found)
       const { data: skuInfo, error: skuError } = await supabase
         .from('master_sku')
         .select('qty_per_pack, sku_name')
         .eq('sku_id', skuId)
-        .single();
+        .maybeSingle();
 
       if (skuError) {
         console.error(`❌ Error fetching SKU ${skuId}:`, skuError);
+      }
+      if (!skuInfo) {
+        console.warn(`⚠️ SKU ${skuId} not found in master_sku - will use defaults`);
       }
 
       // Check Dispatch balance - SUM all rows
@@ -650,7 +668,7 @@ try {
           .from('master_sku')
           .select('qty_per_pack')
           .eq('sku_id', item.sku_id)
-          .single();
+          .maybeSingle();
 
         const qtyPerPack = skuInfo?.qty_per_pack || 1;
         const qtyPack = item.qty / qtyPerPack;

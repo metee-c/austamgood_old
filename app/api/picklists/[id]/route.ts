@@ -55,7 +55,9 @@ async function _GET(
           master_sku (
             sku_name,
             barcode,
-            default_location
+            default_location,
+            weight_per_piece_kg,
+            qty_per_pack
           )
         )
       `)

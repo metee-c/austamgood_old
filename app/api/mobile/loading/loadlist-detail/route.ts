@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
 import { withShadowLog } from '@/lib/logging/with-shadow-log';
+import { expandBundleSku } from '@/lib/online-packing/product-bundles';
 
 async function _GET(request: NextRequest) {
   try {
@@ -318,6 +319,84 @@ async function _GET(request: NextRequest) {
             package_number: packageNumberMap[item.package_id] || '-'
           });
         }
+      }
+    }
+
+    // Get online orders from packing_backup_orders (e-commerce orders linked to this loadlist)
+    const { data: onlineOrders } = await supabase
+      .from('packing_backup_orders')
+      .select('id, order_number, buyer_name, tracking_number, parent_sku, product_name, quantity, platform, packing_status')
+      .eq('loadlist_id', loadlist.id);
+
+    if (onlineOrders && onlineOrders.length > 0) {
+      // Expand bundle products and collect all component SKU IDs
+      const expandedOnlineItems: { orderNumber: string; buyerName: string; trackingNumber: string; platform: string; skuId: string; productName: string; quantity: number; originalProductName: string }[] = [];
+
+      for (const onlineOrder of onlineOrders) {
+        const qty = onlineOrder.quantity || 1;
+        const expanded = expandBundleSku(onlineOrder.parent_sku, qty);
+        for (const comp of expanded) {
+          expandedOnlineItems.push({
+            orderNumber: onlineOrder.order_number,
+            buyerName: onlineOrder.buyer_name,
+            trackingNumber: onlineOrder.tracking_number,
+            platform: onlineOrder.platform,
+            skuId: comp.sku_id,
+            productName: comp.product_name,
+            quantity: comp.quantity,
+            originalProductName: onlineOrder.product_name
+          });
+        }
+      }
+
+      // Get weight info for expanded SKUs (these are actual WMS sku_ids or barcodes)
+      const allExpandedSkuIds = [...new Set(expandedOnlineItems.map(i => i.skuId).filter(Boolean))];
+      let onlineSkuMap: Record<string, any> = {};
+      if (allExpandedSkuIds.length > 0) {
+        // Try matching by sku_id first
+        const { data: skuData } = await supabase
+          .from('master_sku')
+          .select('sku_id, sku_name, weight_per_piece_kg, barcode')
+          .in('sku_id', allExpandedSkuIds);
+        skuData?.forEach((sku: any) => {
+          onlineSkuMap[sku.sku_id] = sku;
+        });
+
+        // For unmapped SKUs, try matching by barcode
+        const unmappedSkus = allExpandedSkuIds.filter(id => !onlineSkuMap[id]);
+        if (unmappedSkus.length > 0) {
+          const { data: barcodeData } = await supabase
+            .from('master_sku')
+            .select('sku_id, sku_name, weight_per_piece_kg, barcode')
+            .in('barcode', unmappedSkus);
+          barcodeData?.forEach((sku: any) => {
+            onlineSkuMap[sku.barcode] = sku;
+          });
+        }
+      }
+
+      for (const item of expandedOnlineItems) {
+        const orderKey = `online-${item.orderNumber}`;
+        const sku = onlineSkuMap[item.skuId];
+        const weight = parseFloat(sku?.weight_per_piece_kg) || 0;
+        totalWeight += item.quantity * weight;
+
+        if (!ordersMap.has(orderKey)) {
+          ordersMap.set(orderKey, {
+            order_code: item.orderNumber || '-',
+            customer_name: item.buyerName || '-',
+            tracking_number: item.trackingNumber || '-',
+            platform: item.platform || '-',
+            items: []
+          });
+        }
+        const orderData = ordersMap.get(orderKey);
+        orderData.items.push({
+          sku_id: sku?.sku_id || item.skuId || '-',
+          sku_name: sku?.sku_name || item.productName || item.originalProductName || '-',
+          quantity: item.quantity,
+          weight: weight
+        });
       }
     }
 

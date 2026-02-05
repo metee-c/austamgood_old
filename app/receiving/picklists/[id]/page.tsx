@@ -35,6 +35,7 @@ interface PicklistItem {
   };
   pack_no?: string;
   no_price_goods_note?: string | null;
+  weight_per_piece_kg?: number;
 }
 
 interface Picklist {
@@ -320,6 +321,15 @@ const PicklistDetailPage = ({ params }: { params: Promise<{ id: string }> }) => 
               <div>
                 <span style="font-weight: 600;">รายการสินค้าทั้งหมด:</span> ${picklist.total_lines} รายการ
                 <span style="margin-left: 15px;"><span style="font-weight: 600;">จำนวนรวม:</span> ${picklist.total_quantity} ชิ้น</span>
+                <span style="margin-left: 15px;"><span style="font-weight: 600;">น้ำหนักรวม:</span> ${(() => {
+                  if (!items) return '0.00';
+                  const totalWeight = items.reduce((sum, item) => {
+                    const qty = Number(item.total_quantity_to_pick || item.quantity_to_pick || 0);
+                    const unitWeight = item.weight_per_piece_kg || 0;
+                    return sum + (qty * unitWeight);
+                  }, 0);
+                  return totalWeight.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                })()} kg</span>
               </div>
               ${picklist.receiving_route_trips?.receiving_route_plans?.plan_code ? `<div style="color: #4b5563;">รหัสแผน: ${picklist.receiving_route_trips.receiving_route_plans.plan_code}</div>` : ''}
             </div>
@@ -567,7 +577,7 @@ const PicklistDetailPage = ({ params }: { params: Promise<{ id: string }> }) => 
 
         {/* Summary Stats */}
         <div className="bg-white/80 backdrop-blur-sm border border-white/20 rounded-xl p-3 shadow-sm">
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-3 gap-4">
             <div>
               <span className="text-sm text-gray-600 font-thai">รายการสินค้า: </span>
               <span className="font-bold text-lg text-gray-900">{picklist.total_lines}</span>
@@ -577,6 +587,21 @@ const PicklistDetailPage = ({ params }: { params: Promise<{ id: string }> }) => 
               <span className="text-sm text-gray-600 font-thai">จำนวนรวม: </span>
               <span className="font-bold text-lg text-gray-900">{picklist.total_quantity}</span>
               <span className="text-sm text-gray-600 font-thai ml-1">ชิ้น</span>
+            </div>
+            <div>
+              <span className="text-sm text-gray-600 font-thai">น้ำหนักรวม: </span>
+              <span className="font-bold text-lg text-blue-600">
+                {(() => {
+                  if (!items) return '0.00';
+                  const totalWeight = items.reduce((sum, item) => {
+                    const qty = Number(item.total_quantity_to_pick || item.quantity_to_pick || 0);
+                    const unitWeight = item.weight_per_piece_kg || 0;
+                    return sum + (qty * unitWeight);
+                  }, 0);
+                  return totalWeight.toLocaleString('th-TH', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                })()}
+              </span>
+              <span className="text-sm text-gray-600 font-thai ml-1">kg</span>
             </div>
           </div>
         </div>
