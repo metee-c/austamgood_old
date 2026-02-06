@@ -64,11 +64,30 @@ const ERP_BUNDLE_NAMES = {
 const BUNDLE_SKU_MAPPING = {
   // barcode เก่า -> parent_sku ใหม่
   '8854052503703': 'BS-BAP-C|HNS|070',
-  '8854052501709': 'BS-BAP-C|IND|070', 
+  '8854052501709': 'BS-BAP-C|IND|070',
   '8854052504700': 'BS-BAP-C|KNP|070',
   '8854052502706': 'BS-BAP-C|WEP|070',
   '5424052641014': 'BS-NET-D|CHI-S|100',
   '5424052630018': 'BS-NET-D|SAL-S|100'
+}
+
+// แมพ SKU ปกติที่ต้องการใช้ parent_sku ใหม่ แต่คง barcode เดิม
+// ใช้สำหรับกรณีที่สินค้าเปลี่ยน SKU แต่ barcode ยังคงเดิม
+// สินค้า Buzz Beyond: มี sticker (ใช้ barcode ปกติ) -> แสดงเป็น No Sticker version
+const PRODUCT_ALIAS_MAPPING = {
+  // Buzz Beyond แมว | 1 กก. (barcode มี sticker -> แสดง SKU No Sticker)
+  '8854052308100': 'B-BEY-C|LAM|NS|010',  // แกะ
+  '8854052311100': 'B-BEY-C|MCK|NS|010',  // ปลาทู
+  '8854052312107': 'B-BEY-C|MNB|NS|010',  // แม่และลูกแมว
+  '8854052309107': 'B-BEY-C|SAL|NS|010',  // แซลมอน
+  '8854052310103': 'B-BEY-C|TUN|NS|010',  // ทูน่า
+
+  // Buzz Beyond สุนัข | 1 กก. และ 1.2 กก.
+  '8854052411121': 'B-BEY-D|BEF|NS|012',  // เนื้ออบ 1.2กก.
+  '8854052410124': 'B-BEY-D|CNL|NS|012',  // ไก่อบและตับ 1.2กก.
+  '8854052408121': 'B-BEY-D|LAM|NS|012',  // แกะ 1.2กก.
+  '8854052412128': 'B-BEY-D|MNB|NS|010',  // แม่และลูกสุนัข 1กก.
+  '8854052409128': 'B-BEY-D|SAL|NS|012',  // แซลมอน 1.2กก.
 }
 
 type ERPOrder = Order & {
@@ -136,7 +155,7 @@ export default function ERPPage() {
         ...p,
         id: p.sku_id,
         parent_sku: p.sku_id,
-        product_name: p.ecommerce_name || p.sku_name
+        product_name: p.sku_name  // ใช้ sku_name เพราะมี [No Sticker] ต่อท้าย
       }))
       setProducts(transformedProducts)
     } catch (error) {
@@ -634,25 +653,34 @@ export default function ERPPage() {
 
   // ฟังก์ชันใหม่สำหรับหาชื่อสินค้า (รวม Bundle)
   const getBestProductName = (orderParentSku: string) => {
-    // 1. หา product จากฐานข้อมูล
-    let product = products.find(p => p.barcode === orderParentSku)
-    
+    // 1. ตรวจสอบ Product Alias Mapping ก่อน
+    let searchSku = orderParentSku
+    if (PRODUCT_ALIAS_MAPPING[orderParentSku as keyof typeof PRODUCT_ALIAS_MAPPING]) {
+      searchSku = PRODUCT_ALIAS_MAPPING[orderParentSku as keyof typeof PRODUCT_ALIAS_MAPPING]
+      console.log('🔄 getBestProductName - พบ Alias Mapping:', orderParentSku, '→', searchSku)
+    }
+
+    // 2. หา product จากฐานข้อมูลด้วย SKU ที่แมพแล้ว
+    let product = products.find(p => p.barcode === searchSku)
+
     // หากไม่พบจาก barcode ให้ลองหาจาก parent_sku
     if (!product) {
-      product = products.find(p => p.parent_sku === orderParentSku)
+      product = products.find(p => p.parent_sku === searchSku)
     }
-    
-    // 2. ตรวจสอบว่าเป็นสินค้าชุดหรือไม่
+
+    // 3. ตรวจสอบว่าเป็นสินค้าชุดหรือไม่
     // ลองหาจาก barcode ก่อน
     let bundleName = ERP_BUNDLE_NAMES[orderParentSku as keyof typeof ERP_BUNDLE_NAMES]
-    
+
     // ถ้าไม่พบ ลองหาจาก parent_sku ของ products
     if (!bundleName && product?.parent_sku) {
       bundleName = ERP_BUNDLE_NAMES[product.parent_sku as keyof typeof ERP_BUNDLE_NAMES]
     }
-    
-    // 3. คืนค่าตามลำดับความสำคัญ: Bundle Name > Product Name > null
-    return bundleName || (product ? product.product_name : null)
+
+    // 4. คืนค่าตามลำดับความสำคัญ: Bundle Name > Product Name > null
+    const result = bundleName || (product ? product.product_name : null)
+    console.log('📝 getBestProductName ผลลัพธ์สำหรับ', orderParentSku, ':', result || 'ไม่พบ')
+    return result
   }
 
   // ฟังก์ชันสำหรับหา parent_sku ที่ถูกต้องสำหรับแสดงในรายงาน
@@ -661,26 +689,31 @@ export default function ERPPage() {
     if (BUNDLE_SKU_MAPPING[orderParentSku as keyof typeof BUNDLE_SKU_MAPPING]) {
       return BUNDLE_SKU_MAPPING[orderParentSku as keyof typeof BUNDLE_SKU_MAPPING]
     }
-    
-    // 2. ถ้าเป็น parent_sku ใหม่อยู่แล้ว (BS-xxx) และเป็นสินค้าชุด
+
+    // 2. ตรวจสอบ Product Alias Mapping (สินค้าที่เปลี่ยน SKU แต่ barcode ยังคงเดิม)
+    if (PRODUCT_ALIAS_MAPPING[orderParentSku as keyof typeof PRODUCT_ALIAS_MAPPING]) {
+      return PRODUCT_ALIAS_MAPPING[orderParentSku as keyof typeof PRODUCT_ALIAS_MAPPING]
+    }
+
+    // 3. ถ้าเป็น parent_sku ใหม่อยู่แล้ว (BS-xxx) และเป็นสินค้าชุด
     if (ERP_BUNDLE_NAMES[orderParentSku as keyof typeof ERP_BUNDLE_NAMES]) {
       return orderParentSku
     }
-    
-    // 3. หา product จากฐานข้อมูล
+
+    // 4. หา product จากฐานข้อมูล
     let product = products.find(p => p.barcode === orderParentSku)
-    
+
     // หากไม่พบจาก barcode ให้ลองหาจาก parent_sku
     if (!product) {
       product = products.find(p => p.parent_sku === orderParentSku)
     }
-    
-    // 4. ถ้าพบ product ใช้ parent_sku จากฐานข้อมูล
+
+    // 5. ถ้าพบ product ใช้ parent_sku จากฐานข้อมูล
     if (product?.parent_sku) {
       return product.parent_sku
     }
-    
-    // 5. สุดท้ายถ้าไม่มีอะไรเลย คืนค่า orderParentSku เดิม
+
+    // 6. สุดท้ายถ้าไม่มีอะไรเลย คืนค่า orderParentSku เดิม
     return orderParentSku
   }
 
@@ -689,33 +722,41 @@ export default function ERPPage() {
   const getERPProductName = (orderParentSku: string) => {
     console.log('🔍 กำลังหา ERP Product Name สำหรับ Order SKU:', orderParentSku)
     console.log('📋 Products ในฐานข้อมูล:', products.length, 'รายการ')
-    
+
     if (products.length > 0) {
       console.log('🔍 Products ตัวอย่าง (barcode/parent_sku):', products.slice(0, 3).map(p => ({ parent_sku: p.parent_sku, barcode: p.barcode })))
     }
-    
-    // แมพ orders.parent_sku กับ products.barcode หรือ products.parent_sku
-    let product = products.find(p => p.barcode === orderParentSku)
-    
+
+    // 1. ตรวจสอบ Product Alias Mapping ก่อน
+    let searchSku = orderParentSku
+    if (PRODUCT_ALIAS_MAPPING[orderParentSku as keyof typeof PRODUCT_ALIAS_MAPPING]) {
+      searchSku = PRODUCT_ALIAS_MAPPING[orderParentSku as keyof typeof PRODUCT_ALIAS_MAPPING]
+      console.log('🔄 พบ Alias Mapping:', orderParentSku, '→', searchSku)
+    }
+
+    // 2. แมพ SKU กับ products.barcode หรือ products.parent_sku
+    let product = products.find(p => p.barcode === searchSku)
+
     // หากไม่พบจาก barcode ให้ลองหาจาก parent_sku
     if (!product) {
-      product = products.find(p => p.parent_sku === orderParentSku)
+      product = products.find(p => p.parent_sku === searchSku)
     }
-    
+
     if (product) {
-      console.log('✅ พบการแมพ:', { 
+      console.log('✅ พบการแมพ:', {
         orderSku: orderParentSku,
+        mappedSku: searchSku,
         productBarcode: product.barcode,
         productParentSku: product.parent_sku,
         productName: product.product_name
       })
     } else {
-      console.log('❌ ไม่พบการแมพสำหรับ:', orderParentSku)
+      console.log('❌ ไม่พบการแมพสำหรับ:', searchSku)
     }
-    
+
     const result = product ? product.product_name : null
     console.log('📝 ผลลัพธ์สำหรับ', orderParentSku, ':', result || 'ไม่พบ')
-    
+
     return result
   }
 
