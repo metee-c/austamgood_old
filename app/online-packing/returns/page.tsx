@@ -1005,6 +1005,9 @@ export default function ReturnsPage() {
                               <Table.Head onClick={() => requestSort('quantity')}>
                                 <span className="flex items-center">จำนวน{getSortIndicator('quantity')}</span>
                               </Table.Head>
+                              <Table.Head onClick={() => requestSort('created_at')}>
+                                <span className="flex items-center">วันเวลานำเข้า{getSortIndicator('created_at')}</span>
+                              </Table.Head>
                               <Table.Head onClick={() => requestSort('platform')}>
                                 <span className="flex items-center">แพลตฟอร์ม{getSortIndicator('platform')}</span>
                               </Table.Head>
@@ -1026,6 +1029,15 @@ export default function ReturnsPage() {
                                 <Table.Cell className="font-semibold">{order.buyer_name}</Table.Cell>
                                 <Table.Cell>{order.product_name}</Table.Cell>
                                 <Table.Cell className="font-bold">{order.quantity} ชิ้น</Table.Cell>
+                                <Table.Cell className="text-xs text-gray-500">
+                                  {order.created_at ? new Date(order.created_at).toLocaleString('th-TH', {
+                                    year: 'numeric',
+                                    month: '2-digit',
+                                    day: '2-digit',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  }) : '-'}
+                                </Table.Cell>
                                 <Table.Cell>{order.platform}</Table.Cell>
                               </Table.Row>
                             ))}

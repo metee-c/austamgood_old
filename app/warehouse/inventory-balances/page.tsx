@@ -1252,8 +1252,31 @@ const InventoryBalancesPage = () => {
                               );
                             }
 
-                            // Location with stock - show each balance
-                            return balances.map((balance, idx) => (
+                            // Location with stock - consolidate balances by SKU
+                            // รวมยอดสต็อกตาม SKU (สำหรับกรณีที่มีหลาย lot/pallet แต่ SKU เดียวกัน)
+                            const consolidatedBalances = balances.reduce((acc, balance) => {
+                              const existing = acc.find(b => b.sku_id === balance.sku_id);
+                              if (existing) {
+                                // รวมยอดสต็อก
+                                existing.total_piece_qty += balance.total_piece_qty || 0;
+                                existing.total_pack_qty += balance.total_pack_qty || 0;
+                                existing.reserved_piece_qty += balance.reserved_piece_qty || 0;
+                                existing.reserved_pack_qty += balance.reserved_pack_qty || 0;
+                                // เก็บข้อมูลอื่นๆ จาก record แรก (หรืออัปเดตตาม logic ที่ต้องการ)
+                                if (!existing.lot_no && balance.lot_no) existing.lot_no = balance.lot_no;
+                                if (!existing.pallet_id_external && balance.pallet_id_external) {
+                                  existing.pallet_id_external = balance.pallet_id_external;
+                                }
+                                if (!existing.pallet_id && balance.pallet_id) {
+                                  existing.pallet_id = balance.pallet_id;
+                                }
+                              } else {
+                                acc.push({ ...balance });
+                              }
+                              return acc;
+                            }, [] as InventoryBalance[]);
+
+                            return consolidatedBalances.map((balance, idx) => (
                               <tr
                                 key={`${location.location_id}-${balance.balance_id}`}
                                 className={`hover:bg-blue-50/30 transition-colors duration-150 ${

@@ -177,7 +177,11 @@ function MobileTransferListPage() {
   // Partial Move State - ย้ายแบบแบ่งชิ้น
   const [isPartialMove, setIsPartialMove] = useState(false);
   const [partialQty, setPartialQty] = useState<{ [skuId: string]: number }>({});
-  
+
+  // Multiple Location Selection State - เมื่อพาเลทอยู่หลาย location
+  const [selectedSourceLocationId, setSelectedSourceLocationId] = useState<string | null>(null);
+  const [multipleLocationsDetected, setMultipleLocationsDetected] = useState(false);
+
   // Picking Home Error Modal State
   const [pickingHomeError, setPickingHomeError] = useState<{
     skuId: string;
@@ -246,6 +250,8 @@ function MobileTransferListPage() {
     setPalletDetails([]);
     setIsPartialMove(false);
     setPartialQty({});
+    setSelectedSourceLocationId(null);
+    setMultipleLocationsDetected(false);
   };
 
   const handleScanPallet = async () => {
@@ -300,6 +306,22 @@ function MobileTransferListPage() {
         setQuickMoveError(`Pallet ID: ${palletId} ไม่มีสต็อกคงเหลือ`);
         playErrorSound();
         return;
+      }
+
+      // ✅ FIX: ตรวจสอบว่า pallet อยู่หลาย location หรือไม่
+      const locationIds: string[] = filteredData.map((item: any) => item.location_id as string);
+      const uniqueLocationIds: string[] = [...new Set(locationIds)];
+      const hasMultipleLocations = uniqueLocationIds.length > 1;
+
+      if (hasMultipleLocations) {
+        // ⚠️ พบ pallet อยู่หลาย location - ให้ผู้ใช้เลือก
+        console.warn('⚠️ Pallet exists in multiple locations:', uniqueLocationIds);
+        setMultipleLocationsDetected(true);
+        setSelectedSourceLocationId(null); // ให้ผู้ใช้เลือก
+      } else {
+        // ✓ Pallet อยู่ location เดียว - ใช้ location นั้นเลย
+        setMultipleLocationsDetected(false);
+        setSelectedSourceLocationId(uniqueLocationIds[0] || null);
       }
 
       setPalletDetails(filteredData);
@@ -585,8 +607,16 @@ function MobileTransferListPage() {
         // Fallback: If check fails, allow the move but log the error
       }
 
-      // ✅ FIX: ส่ง from_location_id จาก palletDetails เพื่อระบุต้นทางที่ถูกต้อง
-      const sourceLocationId = palletDetails[0]?.location_id || null;
+      // ✅ FIX: ใช้ selectedSourceLocationId แทน palletDetails[0]
+      // ถ้ามีหลาย location ต้องให้ผู้ใช้เลือกก่อน
+      if (multipleLocationsDetected && !selectedSourceLocationId) {
+        setQuickMoveError('⚠️ พาเลทนี้อยู่หลาย Location กรุณาเลือก Location ต้นทางที่ต้องการย้าย');
+        playErrorSound();
+        setSavingQuickMove(false);
+        return;
+      }
+
+      const sourceLocationId = selectedSourceLocationId;
 
       // Execute quick move with offline support
       const { success, offline, error: moveError } = await executeQuickMove(
@@ -1623,8 +1653,74 @@ function MobileTransferListPage() {
                       </div>
                     </div>
 
+                    {/* ⚠️ Multiple Locations Warning */}
+                    {multipleLocationsDetected && (
+                      <div className="mt-2 pt-2 border-t border-orange-300 bg-orange-50">
+                        <div className="flex items-start gap-2 mb-2">
+                          <AlertTriangle className="w-4 h-4 text-orange-600 flex-shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-[10px] font-bold text-orange-800 font-thai">
+                              ⚠️ พบพาเลทอยู่หลาย Location!
+                            </p>
+                            <p className="text-[9px] text-orange-700 font-thai mt-0.5">
+                              กรุณาเลือก Location ต้นทางที่ต้องการย้าย
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Source Location Selection */}
+                        <div className="space-y-1">
+                          {[...new Set(palletDetails.map((item: any) => item.location_id as string))].map((locationId: string) => {
+                            const itemsInLocation = palletDetails.filter((item: any) => item.location_id === locationId);
+                            const locationInfo = itemsInLocation[0]?.master_location;
+                            const totalQty = itemsInLocation.reduce((sum: number, item: any) => sum + (item.total_piece_qty || 0), 0);
+
+                            return (
+                              <label
+                                key={locationId}
+                                className={`block p-2 rounded cursor-pointer transition-colors ${
+                                  selectedSourceLocationId === locationId
+                                    ? 'bg-orange-600 text-white'
+                                    : 'bg-white border border-orange-300 text-gray-900 hover:bg-orange-100'
+                                }`}
+                              >
+                                <input
+                                  type="radio"
+                                  name="source_location"
+                                  value={locationId}
+                                  checked={selectedSourceLocationId === locationId}
+                                  onChange={() => setSelectedSourceLocationId(locationId)}
+                                  className="sr-only"
+                                />
+                                <div className="flex items-center justify-between">
+                                  <div className="flex-1">
+                                    <p className={`text-[10px] font-bold font-thai ${
+                                      selectedSourceLocationId === locationId ? 'text-white' : 'text-gray-900'
+                                    }`}>
+                                      📍 {locationInfo?.location_code || locationId}
+                                    </p>
+                                    <p className={`text-[9px] font-thai ${
+                                      selectedSourceLocationId === locationId ? 'text-orange-100' : 'text-gray-600'
+                                    }`}>
+                                      {locationInfo?.location_name || 'N/A'}
+                                    </p>
+                                  </div>
+                                  <div className={`text-right ${
+                                    selectedSourceLocationId === locationId ? 'text-white' : 'text-orange-600'
+                                  }`}>
+                                    <p className="text-[10px] font-bold">{totalQty}</p>
+                                    <p className="text-[9px]">ชิ้น</p>
+                                  </div>
+                                </div>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Pallet Details - Compact */}
-                    {palletDetails.length > 0 && (
+                    {palletDetails.length > 0 && (multipleLocationsDetected ? selectedSourceLocationId : true) && (
                       <div className="mt-2 pt-2 border-t border-sky-200">
                         {/* Partial Move Toggle */}
                         <div className="flex items-center justify-between mb-2">
@@ -1640,7 +1736,10 @@ function MobileTransferListPage() {
                                 } else {
                                   // Initialize with current quantities
                                   const initialQty: { [key: string]: number } = {};
-                                  palletDetails.forEach(item => {
+                                  const itemsToShow = multipleLocationsDetected
+                                    ? palletDetails.filter((item: any) => item.location_id === selectedSourceLocationId)
+                                    : palletDetails;
+                                  itemsToShow.forEach((item: any) => {
                                     initialQty[item.sku_id] = item.total_piece_qty || 0;
                                   });
                                   setPartialQty(initialQty);
@@ -1651,9 +1750,12 @@ function MobileTransferListPage() {
                             <span className="text-[10px] text-sky-700 font-thai font-medium">ย้ายบางส่วน</span>
                           </label>
                         </div>
-                        
+
                         <div className="space-y-1.5 max-h-36 overflow-y-auto">
-                          {palletDetails.map((item, idx) => (
+                          {(multipleLocationsDetected
+                            ? palletDetails.filter((item: any) => item.location_id === selectedSourceLocationId)
+                            : palletDetails
+                          ).map((item: any, idx: number) => (
                             <div key={idx} className="bg-white rounded p-1.5 text-[10px]">
                               <div className="flex items-start justify-between gap-1">
                                 <div className="flex-1 min-w-0">
@@ -1703,13 +1805,24 @@ function MobileTransferListPage() {
                               <>
                                 ย้าย: <span className="font-bold text-sky-600">
                                   {Object.values(partialQty).reduce((sum, qty) => sum + qty, 0)}
-                                </span> / {palletDetails.reduce((sum, item) => sum + (item.total_piece_qty || 0), 0)} ชิ้น
+                                </span> / {(multipleLocationsDetected
+                                  ? palletDetails.filter((item: any) => item.location_id === selectedSourceLocationId)
+                                  : palletDetails
+                                ).reduce((sum: number, item: any) => sum + (item.total_piece_qty || 0), 0)} ชิ้น
                               </>
                             ) : (
                               <>
-                                รวม: <span className="font-bold">{palletDetails.length}</span> รายการ,
+                                รวม: <span className="font-bold">{
+                                  (multipleLocationsDetected
+                                    ? palletDetails.filter((item: any) => item.location_id === selectedSourceLocationId)
+                                    : palletDetails
+                                  ).length
+                                }</span> รายการ,
                                 <span className="font-bold ml-1">
-                                  {palletDetails.reduce((sum, item) => sum + (item.total_piece_qty || 0), 0)}
+                                  {(multipleLocationsDetected
+                                    ? palletDetails.filter((item: any) => item.location_id === selectedSourceLocationId)
+                                    : palletDetails
+                                  ).reduce((sum: number, item: any) => sum + (item.total_piece_qty || 0), 0)}
                                 </span> ชิ้น
                               </>
                             )}

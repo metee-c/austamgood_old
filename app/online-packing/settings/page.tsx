@@ -37,13 +37,20 @@ export default function SettingsPage() {
     const supabase = createClient()
     setIsLoading(true)
     try {
-      const [
-        boxesRes,
-        inventoryRes
-      ] = await Promise.all([
-        supabase.from('packing_boxes').select('*').order('box_code'),
-        // Fetch inventory balances from Zone E-Commerce for boxes
-        supabase
+      // Fetch boxes
+      const boxesRes = await supabase.from('packing_boxes').select('*').order('box_code')
+
+      // Fetch inventory balances with pagination (Supabase has 1000 row limit)
+      let allInventoryData: any[] = []
+      const batchSize = 1000
+      let from = 0
+      let hasMore = true
+      let batchNum = 1
+
+      while (hasMore) {
+        console.log(`[Settings] Fetching inventory batch ${batchNum} (${from}-${from + batchSize - 1})...`)
+        
+        const { data, error } = await supabase
           .from('wms_inventory_balances')
           .select(`
             sku_id,
@@ -59,49 +66,82 @@ export default function SettingsPage() {
             )
           `)
           .gt('total_piece_qty', 0)
-      ])
+          .range(from, from + batchSize - 1)
+
+        if (error) {
+          console.error(`[Settings] Inventory batch ${batchNum} error:`, error)
+          throw error
+        }
+
+        if (data && data.length > 0) {
+          console.log(`[Settings] Batch ${batchNum} fetched ${data.length} rows`)
+          allInventoryData.push(...data)
+          from += batchSize
+          hasMore = data.length === batchSize
+          batchNum++
+        } else {
+          hasMore = false
+        }
+      }
+
+      console.log(`[Settings] Total inventory records fetched: ${allInventoryData.length}`)
 
       if (boxesRes.error) console.error('Boxes error:', boxesRes.error)
-      if (inventoryRes.error) console.error('Inventory error:', inventoryRes.error)
 
       if (boxesRes.error && !boxesRes.error.message.includes('does not exist')) throw boxesRes.error
-      if (inventoryRes.error && !inventoryRes.error.message.includes('does not exist')) throw inventoryRes.error
 
       setBoxes(boxesRes.data || [])
       
-      // Filter and transform inventory data for boxes in E-Commerce zone
-      const boxInventory = (inventoryRes.data || [])
-        .filter((item: any) => {
-          const zone = item.master_location?.zone
-          const skuName = item.master_sku?.sku_name || ''
-          // Filter for Zone E-Commerce and items with "กล่อง" in name
-          return zone === 'Zone E-Commerce' && skuName.includes('กล่อง')
-        })
-        .map((item: any) => ({
-          sku_id: item.sku_id,
-          sku_name: item.master_sku?.sku_name || item.sku_id,
-          location_id: item.location_id,
-          total_piece_qty: item.total_piece_qty,
-          reserved_piece_qty: item.reserved_piece_qty,
-          available_qty: item.total_piece_qty - item.reserved_piece_qty,
-          location_name: item.master_location?.location_name,
-          zone: item.master_location?.zone
-        }))
+      // Group inventory by SKU first (across all locations)
+      const inventoryBySku = new Map<string, {
+        sku_id: string
+        sku_name: string
+        total_piece_qty: number
+        reserved_piece_qty: number
+        zone: string
+        location_name: string
+      }>()
       
-      // Group by SKU to sum up quantities across locations
-      const groupedBoxes = new Map<string, BoxStock>()
-      boxInventory.forEach((item: BoxStock) => {
-        if (groupedBoxes.has(item.sku_id)) {
-          const existing = groupedBoxes.get(item.sku_id)!
-          existing.total_piece_qty += item.total_piece_qty
-          existing.reserved_piece_qty += item.reserved_piece_qty
-          existing.available_qty += item.available_qty
-        } else {
-          groupedBoxes.set(item.sku_id, { ...item })
+      allInventoryData.forEach((item: any) => {
+        const zone = item.master_location?.zone
+        const skuName = item.master_sku?.sku_name || ''
+        
+        // Filter for Zone E-Commerce and items with "กล่อง" in name
+        if (zone === 'Zone E-Commerce' && skuName.includes('กล่อง')) {
+          if (inventoryBySku.has(item.sku_id)) {
+            const existing = inventoryBySku.get(item.sku_id)!
+            existing.total_piece_qty += Number(item.total_piece_qty) || 0
+            existing.reserved_piece_qty += Number(item.reserved_piece_qty) || 0
+          } else {
+            inventoryBySku.set(item.sku_id, {
+              sku_id: item.sku_id,
+              sku_name: item.master_sku?.sku_name || item.sku_id,
+              total_piece_qty: Number(item.total_piece_qty) || 0,
+              reserved_piece_qty: Number(item.reserved_piece_qty) || 0,
+              zone: item.master_location?.zone,
+              location_name: item.master_location?.location_name
+            })
+          }
         }
       })
       
-      setBoxStocks(Array.from(groupedBoxes.values()))
+      console.log(`[Settings] Grouped into ${inventoryBySku.size} unique SKUs`)
+      
+      // Convert to BoxStock array
+      const boxInventory = Array.from(inventoryBySku.values()).map(item => ({
+        sku_id: item.sku_id,
+        sku_name: item.sku_name,
+        location_id: 'Zone E-Commerce',
+        total_piece_qty: item.total_piece_qty,
+        reserved_piece_qty: item.reserved_piece_qty,
+        available_qty: item.total_piece_qty - item.reserved_piece_qty,
+        location_name: item.location_name,
+        zone: item.zone
+      }))
+      
+      console.log('[Settings] Final box stocks:', boxInventory.map(b => ({ sku: b.sku_id, qty: b.total_piece_qty })))
+      
+      setBoxStocks(boxInventory)
 
     } catch (error) {
       console.error('Error loading settings data:', error)
