@@ -1670,7 +1670,15 @@ function MobileTransferListPage() {
 
                         {/* Source Location Selection */}
                         <div className="space-y-1">
-                          {[...new Set(palletDetails.map((item: any) => item.location_id as string))].map((locationId: string) => {
+                          {[...new Set(palletDetails.map((item: any) => item.location_id as string))]
+                            .filter((locationId: string) => {
+                              // Filter out ADJ locations - don't show duplicate pallets in ADJ
+                              const itemsInLocation = palletDetails.filter((item: any) => item.location_id === locationId);
+                              const locationInfo = itemsInLocation[0]?.master_location;
+                              const locationCode = locationInfo?.location_code || locationId;
+                              return !locationCode.includes('ADJ');
+                            })
+                            .map((locationId: string) => {
                             const itemsInLocation = palletDetails.filter((item: any) => item.location_id === locationId);
                             const locationInfo = itemsInLocation[0]?.master_location;
                             const totalQty = itemsInLocation.reduce((sum: number, item: any) => sum + (item.total_piece_qty || 0), 0);
