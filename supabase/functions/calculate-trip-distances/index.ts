@@ -49,6 +49,18 @@ async function getMapboxDistance(coords: Array<[number, number]>, accessToken: s
   }
 }
 
+// Haversine formula for fallback
+function calculateDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371 // Earth's radius in km
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLon = (lon2 - lon1) * Math.PI / 180
+  const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon/2) * Math.sin(dLon/2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+  return R * c
+}
+
 Deno.serve(async (req) => {
   // Handle CORS preflight
   if (req.method === 'OPTIONS') {
@@ -151,65 +163,87 @@ Deno.serve(async (req) => {
         continue
       }
 
-      // Calculate total distance: warehouse -> stop1 -> stop2 -> ... -> warehouse
-      let totalDistance = 0
-      let prevLat = warehouseLat
-      let prevLon = warehouseLon
-      const stopDistances: any[] = []
+      // Get Mapbox token
+      const mapboxToken = Deno.env.get('MAPBOX_ACCESS_TOKEN')
+      if (!mapboxToken) {
+        console.warn(`⚠️ Trip ${tripId}: Missing Mapbox token`)
+        results.push({ trip_id: tripId, status: 'skipped', reason: 'missing mapbox token' })
+        continue
+      }
 
+      // Build coordinates array: warehouse -> stops -> warehouse
+      const coords: Array<[number, number]> = [[warehouseLon, warehouseLat]]
+      
       for (const stop of stops) {
         const stopLat = stop.latitude ? parseFloat(stop.latitude) : null
         const stopLon = stop.longitude ? parseFloat(stop.longitude) : null
-
-        if (!stopLat || !stopLon) {
-          console.warn(`⚠️ Trip ${tripId}, Stop ${stop.stop_id}: Missing coordinates`)
-          stopDistances.push({ stop_id: stop.stop_id, sequence: stop.sequence_no, distance: 0, note: 'missing coordinates' })
-          continue
+        if (stopLat && stopLon) {
+          coords.push([stopLon, stopLat])
         }
+      }
+      
+      // Add return to warehouse
+      coords.push([warehouseLon, warehouseLat])
 
-        const distance = calculateDistance(prevLat, prevLon, stopLat, stopLon)
-        totalDistance += distance
-        stopDistances.push({
-          stop_id: stop.stop_id,
-          sequence: stop.sequence_no,
-          stop_name: stop.stop_name,
-          distance_km: Math.round(distance * 100) / 100
+      // Call Mapbox API for real road distance
+      const mapboxResult = await getMapboxDistance(coords, mapboxToken)
+      
+      if (!mapboxResult) {
+        console.warn(`⚠️ Trip ${tripId}: Mapbox API failed, falling back to Haversine`)
+        // Fallback to Haversine
+        let fallbackDistance = 0
+        let prevLat = warehouseLat
+        let prevLon = warehouseLon
+        for (const stop of stops) {
+          const stopLat = stop.latitude ? parseFloat(stop.latitude) : null
+          const stopLon = stop.longitude ? parseFloat(stop.longitude) : null
+          if (stopLat && stopLon) {
+            fallbackDistance += calculateDistance(prevLat, prevLon, stopLat, stopLon)
+            prevLat = stopLat
+            prevLon = stopLon
+          }
+        }
+        fallbackDistance += calculateDistance(prevLat, prevLon, warehouseLat, warehouseLon)
+        
+        await supabase
+          .from('receiving_route_trips')
+          .update({
+            total_distance_km: Math.round(fallbackDistance * 100) / 100,
+            total_drive_minutes: Math.round(fallbackDistance * 1.5),
+            updated_at: new Date().toISOString()
+          })
+          .eq('trip_id', tripId)
+        
+        results.push({
+          trip_id: tripId,
+          status: 'updated_fallback',
+          total_distance_km: Math.round(fallbackDistance * 100) / 100,
+          method: 'haversine'
         })
-
-        prevLat = stopLat
-        prevLon = stopLon
+        continue
       }
 
-      // Return to warehouse
-      const returnDistance = calculateDistance(prevLat, prevLon, warehouseLat, warehouseLon)
-      totalDistance += returnDistance
-
-      // Update trip with calculated distance
-      const { error: updateError } = await supabase
+      // Update with Mapbox distance
+      await supabase
         .from('receiving_route_trips')
         .update({
-          total_distance_km: Math.round(totalDistance * 100) / 100,
+          total_distance_km: Math.round(mapboxResult.distance * 100) / 100,
+          total_drive_minutes: Math.round(mapboxResult.duration),
           updated_at: new Date().toISOString()
         })
         .eq('trip_id', tripId)
 
-      if (updateError) {
-        console.error(`❌ Trip ${tripId}: Error updating distance:`, updateError)
-        results.push({ trip_id: tripId, status: 'error', reason: updateError.message })
-        continue
-      }
-
-      console.log(`✅ Trip ${tripId}: Distance calculated = ${Math.round(totalDistance * 100) / 100} km (${stops.length} stops)`)
+      console.log(`✅ Trip ${tripId}: Mapbox distance = ${Math.round(mapboxResult.distance * 100) / 100} km (${stops.length} stops)`)
 
       results.push({
         trip_id: tripId,
         plan_id: plan.plan_id,
         trip_sequence: trip.trip_sequence,
         status: 'updated',
-        total_distance_km: Math.round(totalDistance * 100) / 100,
+        total_distance_km: Math.round(mapboxResult.distance * 100) / 100,
+        total_drive_minutes: Math.round(mapboxResult.duration),
         stops_count: stops.length,
-        return_distance_km: Math.round(returnDistance * 100) / 100,
-        stop_details: stopDistances
+        method: 'mapbox'
       })
     }
 

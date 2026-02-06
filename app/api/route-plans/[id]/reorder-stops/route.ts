@@ -127,12 +127,12 @@ async function _PUT(
       }
     }
 
-    // Calculate new distance after reordering stops
-    const { data: distanceData } = await supabase.rpc('calculate_trip_distance', {
+    // Calculate new distance after reordering stops using optimized route (nearest to farthest)
+    const { data: distanceData } = await supabase.rpc('calculate_trip_distance_optimized', {
       p_trip_id: tripId
     });
     const totalDistance = distanceData || 0;
-    const totalDriveMinutes = Math.round(totalDistance * 1.5);
+    const totalDriveMinutes = Math.round(totalDistance * 1.2);
 
     await supabase
       .from('receiving_route_trips')

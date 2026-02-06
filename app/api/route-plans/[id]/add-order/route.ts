@@ -275,12 +275,12 @@ try {
 
     const tripTotalWeight = tripStops?.reduce((sum, s) => sum + Number(s.load_weight_kg || 0), 0) || 0;
 
-    // Calculate new distance after adding stop
-    const { data: distanceData } = await supabase.rpc('calculate_trip_distance', {
+    // Calculate new distance after adding stop using optimized route (nearest to farthest)
+    const { data: distanceData } = await supabase.rpc('calculate_trip_distance_optimized', {
       p_trip_id: tripId
     });
     const totalDistance = distanceData || 0;
-    const totalDriveMinutes = Math.round(totalDistance * 1.5);
+    const totalDriveMinutes = Math.round(totalDistance * 1.2);
 
     await supabase
       .from('receiving_route_trips')

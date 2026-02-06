@@ -408,12 +408,12 @@ async function resequenceStops(supabase: any, tripId: number) {
       .eq('stop_id', stops[i].stop_id);
   }
 
-  // Calculate new distance after reordering
-  const { data: distanceData } = await supabase.rpc('calculate_trip_distance', {
+  // Calculate new distance after reordering using optimized route (nearest to farthest)
+  const { data: distanceData } = await supabase.rpc('calculate_trip_distance_optimized', {
     p_trip_id: tripId
   });
   const totalDistance = distanceData || 0;
-  const totalDriveMinutes = Math.round(totalDistance * 1.5);
+  const totalDriveMinutes = Math.round(totalDistance * 1.2);
 
   await supabase
     .from('receiving_route_trips')
@@ -437,12 +437,12 @@ async function updateTripMetrics(supabase: any, tripId: number) {
   const totalVolume = stops.reduce((sum: number, s: any) => sum + (Number(s.load_volume_cbm) || 0), 0);
   const totalStops = stops.length;
 
-  // Calculate distance using SQL function
-  const { data: distanceData } = await supabase.rpc('calculate_trip_distance', {
+  // Calculate distance using optimized SQL function (nearest to farthest from warehouse)
+  const { data: distanceData } = await supabase.rpc('calculate_trip_distance_optimized', {
     p_trip_id: tripId
   });
   const totalDistance = distanceData || 0;
-  const totalDriveMinutes = Math.round(totalDistance * 1.5); // 1.5 min per km
+  const totalDriveMinutes = Math.round(totalDistance * 1.2); // 1.2 min per km
 
   await supabase
     .from('receiving_route_trips')

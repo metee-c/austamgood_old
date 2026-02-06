@@ -236,18 +236,18 @@ try {
     const fromTripWeight = fromTripStops?.reduce((sum, s) => sum + Number(s.load_weight_kg || 0), 0) || 0;
     const toTripWeight = toTripStops?.reduce((sum, s) => sum + Number(s.load_weight_kg || 0), 0) || 0;
 
-    // Calculate distances for both trips
-    const { data: fromDistanceData } = await supabase.rpc('calculate_trip_distance', {
+    // Calculate distances for both trips using optimized route (nearest to farthest)
+    const { data: fromDistanceData } = await supabase.rpc('calculate_trip_distance_optimized', {
       p_trip_id: fromTripId
     });
     const fromDistance = fromDistanceData || 0;
-    const fromDriveMinutes = Math.round(fromDistance * 1.5);
+    const fromDriveMinutes = Math.round(fromDistance * 1.2);
 
-    const { data: toDistanceData } = await supabase.rpc('calculate_trip_distance', {
+    const { data: toDistanceData } = await supabase.rpc('calculate_trip_distance_optimized', {
       p_trip_id: toTripId
     });
     const toDistance = toDistanceData || 0;
-    const toDriveMinutes = Math.round(toDistance * 1.5);
+    const toDriveMinutes = Math.round(toDistance * 1.2);
 
     await supabase
       .from('receiving_route_trips')

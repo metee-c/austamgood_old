@@ -48,10 +48,6 @@ export default function ReturnsPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [currentUser, setCurrentUser] = useState<any>(null)
 
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
-  const [returnQuantity, setReturnQuantity] = useState(1)
-  const [returnReason, setReturnReason] = useState('')
-  const [customReturnReason, setCustomReturnReason] = useState('')
   const [isLoading, setIsLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [searchTerm, setSearchTerm] = useState('')
@@ -67,7 +63,27 @@ export default function ReturnsPage() {
   const [imagePreviewUrls, setImagePreviewUrls] = useState<string[]>([])
   const [showDetailViewModal, setShowDetailViewModal] = useState(false)
   const [viewingReturn, setViewingReturn] = useState<ReturnRequest | null>(null)
+  const [showManualModal, setShowManualModal] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [showCreateReturnModal, setShowCreateReturnModal] = useState(false)
+  const [selectedOrdersForReturn, setSelectedOrdersForReturn] = useState<Order[]>([])
+  const [returnItems, setReturnItems] = useState<{ [key: string]: { quantity: number } }>({})
+  const [returnFormData, setReturnFormData] = useState({
+    reason: '',
+    customReason: '',
+    newReason: '',
+    description: '',
+    status: 'pending', // pending = รอเข้าคลัง
+    createdDate: new Date().toISOString().split('T')[0],
+    createdBy: ''
+  })
+  const [reasonOptions, setReasonOptions] = useState([
+    'สินค้าชำรุด',
+    'สินค้าผิดรุ่น',
+    'สินค้าไม่ตรงตามรายละเอียด',
+    'ลูกค้าเปลี่ยนใจ',
+    'จัดส่งผิดที่อยู่'
+  ])
 
   const [isManualEntry, setIsManualEntry] = useState(false);
   const [manualReturnData, setManualReturnData] = useState({
@@ -88,13 +104,24 @@ export default function ReturnsPage() {
     fetchCurrentUser()
   }, [])
 
+  // Update createdBy when currentUser is loaded
+  useEffect(() => {
+    if (currentUser?.full_name && showCreateReturnModal) {
+      setReturnFormData(prev => ({
+        ...prev,
+        createdBy: currentUser.full_name
+      }))
+    }
+  }, [currentUser, showCreateReturnModal])
+
   const fetchAllDeliveredOrders = async (): Promise<Order[]> => {
     const supabase = createClient()
     const batchSize = 1000
-    let from = 0
-    let to = batchSize - 1
     let allOrders: Order[] = []
 
+    // Fetch from packing_orders (delivered orders)
+    let from = 0
+    let to = batchSize - 1
     while (true) {
       const { data, error } = await supabase
         .from('packing_orders')
@@ -108,15 +135,85 @@ export default function ReturnsPage() {
 
       allOrders = allOrders.concat(data as Order[])
 
-      if (data.length < batchSize) {
-        break
-      }
-
+      if (data.length < batchSize) break
       from += batchSize
       to += batchSize
     }
 
-    return allOrders
+    // Fetch from packing_backup_orders (shipped orders, pre-delivery returns)
+    from = 0
+    to = batchSize - 1
+    let backupOrdersCount = 0
+    while (true) {
+      const { data, error } = await supabase
+        .from('packing_backup_orders')
+        .select('*')
+        .order('id', { ascending: false })
+        .range(from, to)
+
+      if (error) {
+        console.error('❌ Error fetching from packing_backup_orders:', error)
+        break
+      }
+      if (!data || data.length === 0) break
+
+      console.log(`📦 Fetched ${data.length} orders from packing_backup_orders (batch ${from}-${to})`)
+
+      // Transform backup orders to Order type
+      const backupOrders = data.map((item: any) => ({
+        id: item.id || item.order_id || String(Date.now() + Math.random()),
+        order_number: item.order_number || item.tracking_number || 'N/A',
+        buyer_name: item.buyer_name || item.recipient_name || 'ไม่ระบุ',
+        tracking_number: item.tracking_number || null,
+        product_name: item.product_name || null,
+        parent_sku: item.parent_sku || item.sku || null,
+        quantity: item.quantity || null,
+        fulfillment_status: 'shipped' as const,
+        platform: item.platform || 'unknown',
+        created_at: item.created_at || new Date().toISOString(),
+        updated_at: item.updated_at || item.created_at || new Date().toISOString(),
+        source: 'backup' // Mark source for debugging
+      })) as Order[]
+
+      backupOrdersCount += backupOrders.length
+      allOrders = allOrders.concat(backupOrders)
+
+      if (data.length < batchSize) break
+      from += batchSize
+      to += batchSize
+    }
+
+    console.log(`📦 Total backup orders loaded: ${backupOrdersCount}`)
+    console.log(`📦 Total all orders (before dedup): ${allOrders.length}`)
+
+    // Remove duplicates based on order ID to prevent duplicate keys
+    const uniqueOrders = allOrders.filter((order, index, self) =>
+      index === self.findIndex((o) => o.id === order.id)
+    )
+
+    console.log(`📦 Total unique orders (after dedup): ${uniqueOrders.length}`)
+    console.log(`📦 Duplicates removed: ${allOrders.length - uniqueOrders.length}`)
+
+    // Debug: Check if target order was removed
+    const targetInAll = allOrders.find(o =>
+      o.tracking_number && o.tracking_number.toUpperCase() === 'THT41012EE86D4Z'
+    );
+    const targetInUnique = uniqueOrders.find(o =>
+      o.tracking_number && o.tracking_number.toUpperCase() === 'THT41012EE86D4Z'
+    );
+
+    if (targetInAll && !targetInUnique) {
+      console.log('❌ Target order was REMOVED during deduplication!', targetInAll);
+      // Find duplicate
+      const duplicate = allOrders.find(o => o.id === targetInAll.id && o !== targetInAll);
+      if (duplicate) {
+        console.log('🔍 Duplicate order found:', duplicate);
+      }
+    } else if (targetInUnique) {
+      console.log('✅ Target order exists in unique orders:', targetInUnique);
+    }
+
+    return uniqueOrders
   }
 
   const fetchAllReturns = async (): Promise<ReturnRequest[]> => {
@@ -150,86 +247,27 @@ export default function ReturnsPage() {
   }
 
   const fetchCurrentUser = async () => {
-    const supabase = createClient()
     try {
-      // Method 1: Try localStorage (most reliable for this app)
-      const storedUser = localStorage.getItem('currentUser');
-      if (storedUser) {
-        try {
-          const userData = JSON.parse(storedUser);
-          if (userData.full_name) {
-            console.log('Found user in localStorage:', userData);
-            setCurrentUser({ full_name: userData.full_name });
-            return;
-          }
-        } catch (e) {
-          console.log('Could not parse localStorage user data');
+      // Use the main auth API (same as useAuth hook)
+      const response = await fetch('/api/auth/me', {
+        credentials: 'include'
+      });
+
+      if (response.ok) {
+        const data = await response.json();
+        console.log('✅ Current user from /api/auth/me:', data.user);
+
+        if (data.user && data.user.full_name) {
+          setCurrentUser({ full_name: data.user.full_name });
+          return;
         }
       }
 
-      // Method 2: Try session cookie
-      const userSession = document.cookie.split(';').find(c => c.trim().startsWith('user_session='));
-      console.log('User session cookie:', userSession);
-
-      if (userSession) {
-        try {
-          const sessionData = JSON.parse(decodeURIComponent(userSession.split('=')[1]));
-          console.log('Session data:', sessionData);
-
-          if (sessionData.full_name) {
-            setCurrentUser({ full_name: sessionData.full_name });
-            return;
-          }
-        } catch (parseError) {
-          console.log('Could not parse session cookie:', parseError);
-        }
-      }
-
-      // Method 3: Try calling user-details API
-      try {
-        const response = await fetch('/api/check-auth', {
-          method: 'GET',
-          credentials: 'include'
-        });
-
-        if (response.ok) {
-          const authData = await response.json();
-          console.log('Auth data from API:', authData);
-
-          if (authData.user && authData.user.full_name) {
-            setCurrentUser({ full_name: authData.user.full_name });
-            return;
-          }
-        }
-      } catch (apiError) {
-        console.log('API call failed:', apiError);
-      }
-
-      // Method 4: Fallback to Supabase auth
-      const { data: { user }, error: authError } = await supabase.auth.getUser();
-      console.log('Supabase auth user:', user, 'Auth error:', authError);
-
-      if (user) {
-        const { data: userData, error: userError } = await supabase
-          .from('packing_users')
-          .select('full_name')
-          .eq('id', user.id)
-          .single();
-        console.log('Database user data:', userData, 'User error:', userError);
-
-        if (userData && userData.full_name) {
-          setCurrentUser(userData);
-        } else {
-          setCurrentUser({
-            full_name: user.email?.split('@')[0] || user.user_metadata?.full_name || 'ผู้ใช้งาน'
-          });
-        }
-      } else {
-        console.log('No authenticated user found, using default');
-        setCurrentUser({ full_name: 'ผู้ใช้งาน' });
-      }
+      // Fallback: No authenticated user
+      console.log('⚠️ No authenticated user, using default');
+      setCurrentUser({ full_name: 'ผู้ใช้งาน' });
     } catch (error) {
-      console.error('Error fetching current user:', error);
+      console.error('❌ Error fetching current user:', error);
       setCurrentUser({ full_name: 'ผู้ใช้งาน' });
     }
   }
@@ -239,6 +277,22 @@ export default function ReturnsPage() {
     setIsLoading(true)
     try {
       const ordersData = await fetchAllDeliveredOrders()
+      console.log('📦 Loaded orders:', ordersData.length)
+      console.log('📦 Orders with tracking numbers:', ordersData.filter(o => o.tracking_number).length)
+      console.log('📦 Sample tracking numbers:', ordersData.slice(0, 5).map(o => o.tracking_number))
+
+      // Debug specific tracking number
+      const targetTracking = 'THT41012EE86D4Z';
+      const foundOrder = ordersData.find(o =>
+        o.tracking_number && o.tracking_number.toUpperCase().includes(targetTracking.toUpperCase())
+      );
+      if (foundOrder) {
+        console.log('✅ Found target order:', foundOrder);
+      } else {
+        console.log('❌ Target tracking number NOT found in loaded orders:', targetTracking);
+        console.log('📦 All tracking numbers:', ordersData.map(o => o.tracking_number).slice(0, 20));
+      }
+
       setOrders(ordersData || [])
 
       const returnsData = await fetchAllReturns()
@@ -253,7 +307,11 @@ export default function ReturnsPage() {
         parent_sku: p.sku_id,
         product_name: p.ecommerce_name || p.sku_name
       }))
-      setProducts(transformedProducts)
+      // Remove duplicates based on sku_id to prevent duplicate keys
+      const uniqueProducts = transformedProducts.filter((product, index, self) =>
+        index === self.findIndex((p) => p.sku_id === product.sku_id)
+      )
+      setProducts(uniqueProducts)
 
     } catch (error) {
       console.error('Error fetching data:', error)
@@ -262,13 +320,22 @@ export default function ReturnsPage() {
   }
 
   const filteredOrders = useMemo(() => {
-    return orders.filter(order =>
-      order.order_number.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.buyer_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (order.product_name && order.product_name.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (order.parent_sku && order.parent_sku.toLowerCase().includes(searchTerm.toLowerCase())) ||
-      (order.tracking_number && order.tracking_number.toLowerCase().includes(searchTerm.toLowerCase()))
-    )
+    const trimmedSearch = searchTerm.trim().toLowerCase();
+    if (!trimmedSearch) return orders;
+
+    return orders.filter(order => {
+      // Helper function to safely check string fields
+      const matches = (value: string | null | undefined) =>
+        value && value.toLowerCase().trim().includes(trimmedSearch);
+
+      return (
+        matches(order.order_number) ||
+        matches(order.buyer_name) ||
+        matches(order.product_name) ||
+        matches(order.parent_sku) ||
+        matches(order.tracking_number)
+      );
+    });
   }, [orders, searchTerm]);
 
   const sortedOrders = useMemo(() => {
@@ -311,7 +378,7 @@ export default function ReturnsPage() {
       grouped.get(key)!.push(returnReq);
     });
 
-    return Array.from(grouped.entries()).map(([orderNumber, returnItems]) => {
+    const result = Array.from(grouped.entries()).map(([orderNumber, returnItems]) => {
       const firstItem = returnItems[0];
       const totalReturnQuantity = returnItems.reduce((sum, item) => sum + (item.return_quantity || 0), 0);
       const totalOriginalQuantity = returnItems.reduce((sum, item) => sum + (item.quantity || 0), 0);
@@ -319,6 +386,8 @@ export default function ReturnsPage() {
       const allSKUs = returnItems.map(item => item.parent_sku).filter(Boolean);
       const allReasons = [...new Set(returnItems.map(item => item.return_reason).filter(Boolean))];
       const statuses = [...new Set(returnItems.map(item => item.return_status))];
+
+      // Prioritize "pending" status
       const primaryStatus: 'pending' | 'approved' | 'rejected' | 'completed' =
         statuses.includes('pending') ? 'pending' :
         statuses.includes('approved') ? 'approved' :
@@ -336,6 +405,17 @@ export default function ReturnsPage() {
         is_grouped: returnItems.length > 1
       };
     });
+
+    // Sort: "pending" (รอเข้าคลัง) first, then by created_at descending
+    return result.sort((a, b) => {
+      if (a.return_status === 'pending' && b.return_status !== 'pending') return -1;
+      if (a.return_status !== 'pending' && b.return_status === 'pending') return 1;
+
+      // Both same status, sort by created_at descending
+      const dateA = a.created_at ? new Date(a.created_at).getTime() : 0;
+      const dateB = b.created_at ? new Date(b.created_at).getTime() : 0;
+      return dateB - dateA;
+    });
   }, [filteredReturns]);
 
   const requestSort = (key: OrderKey) => {
@@ -351,23 +431,99 @@ export default function ReturnsPage() {
     return sortConfig.direction === 'ascending' ? ' 🔼' : ' 🔽';
   };
 
-  const handleCreateReturn = async () => {
-    if (!selectedOrder || !returnReason || returnQuantity <= 0) return
+  const handleOpenCreateReturnModal = (order: Order) => {
+    // Find all orders with the same tracking number
+    const relatedOrders = sortedOrders.filter(o =>
+      o.tracking_number && o.tracking_number === order.tracking_number
+    )
+
+    setSelectedOrdersForReturn(relatedOrders.length > 0 ? relatedOrders : [order])
+
+    // Initialize return items with default values (quantity only)
+    const initialItems: { [key: string]: { quantity: number } } = {}
+    relatedOrders.forEach(o => {
+      initialItems[o.id] = { quantity: o.quantity || 1 }
+    })
+    setReturnItems(initialItems)
+
+    // Reset form data
+    setReturnFormData({
+      reason: '',
+      customReason: '',
+      newReason: '',
+      description: '',
+      status: 'pending',
+      createdDate: new Date().toISOString().split('T')[0],
+      createdBy: currentUser?.full_name || ''
+    })
+
+    setShowCreateReturnModal(true)
+  }
+
+  const handleCreateReturnFromModal = async () => {
     const supabase = createClient()
+
+    // Validate form
+    if (!returnFormData.reason) {
+      alert('กรุณาระบุเหตุผลการตีกลับ')
+      return
+    }
+
+    const finalReturnReason = returnFormData.reason === 'อื่นๆ' ? returnFormData.customReason : returnFormData.reason
+    if (!finalReturnReason) {
+      alert('กรุณาระบุเหตุผลการตีกลับ')
+      return
+    }
+
     setIsSubmitting(true)
     try {
-      const finalReturnReason = returnReason === 'อื่นๆ' ? customReturnReason : returnReason
-      if (!finalReturnReason) {
-        alert('กรุณาระบุเหตุผลการตีกลับ')
+      const insertPromises = selectedOrdersForReturn.map(order => {
+        const item = returnItems[order.id]
+        if (!item || item.quantity <= 0) return null
+
+        return supabase.from('packing_returns').insert({
+          order_id: order.id,
+          order_number: order.order_number,
+          buyer_name: order.buyer_name,
+          product_name: order.product_name || '',
+          parent_sku: order.parent_sku || '',
+          quantity: order.quantity || 0,
+          return_quantity: item.quantity,
+          return_reason: finalReturnReason,
+          return_status: returnFormData.status,
+          notes: returnFormData.description || null,
+          processed_by: returnFormData.createdBy || currentUser?.full_name || 'N/A',
+          created_at: new Date().toISOString()
+        })
+      }).filter(Boolean)
+
+      if (insertPromises.length === 0) {
+        alert('กรุณาระบุจำนวนสินค้าที่ต้องการตีกลับ')
         setIsSubmitting(false)
         return
       }
-      await supabase.from('packing_returns').insert({ order_id: selectedOrder.id, order_number: selectedOrder.order_number, buyer_name: selectedOrder.buyer_name, product_name: selectedOrder.product_name || '', parent_sku: selectedOrder.parent_sku || '', quantity: selectedOrder.quantity || 0, return_quantity: returnQuantity, return_reason: finalReturnReason, return_status: 'pending', processed_by: currentUser?.full_name || 'N/A' })
+
+      const results = await Promise.all(insertPromises)
+      const hasError = results.some(res => res?.error)
+      if (hasError) {
+        // Log detailed errors
+        results.forEach((res, idx) => {
+          if (res?.error) {
+            console.error(`❌ Error inserting return ${idx}:`, res.error)
+            console.error('❌ Failed data:', {
+              order_id: selectedOrdersForReturn[idx]?.id,
+              order_number: selectedOrdersForReturn[idx]?.order_number,
+              return_status: returnFormData.status
+            })
+          }
+        })
+        throw new Error('เกิดข้อผิดพลาดในการสร้างคำขอตีกลับบางรายการ')
+      }
+
       await fetchData()
-      setSelectedOrder(null)
-      setReturnQuantity(1)
-      setReturnReason('')
-      setCustomReturnReason('')
+      setShowCreateReturnModal(false)
+      setSelectedOrdersForReturn([])
+      setReturnItems({})
       setActiveTab('manage')
     } catch (error) {
       console.error('Error creating return request:', error)
@@ -450,7 +606,7 @@ export default function ReturnsPage() {
       }
 
       await fetchData();
-      setIsManualEntry(false);
+      setShowManualModal(false);
       setManualReturnData({ tracking_number: '', buyer_name: '', return_reason: '', custom_return_reason: '', shipped_date: '', items: [{ key: Date.now(), product_name: '', parent_sku: '', return_quantity: 1 }] });
       setActiveTab('manage');
 
@@ -569,10 +725,10 @@ export default function ReturnsPage() {
 
   const getStatusText = (status: string) => {
     switch (status) {
-      case 'pending': return 'รอพิจารณา'
+      case 'pending': return 'รอเข้าคลัง'
       case 'approved': return 'อนุมัติแล้ว'
-      case 'rejected': return 'ปฏิเสธ'
-      case 'completed': return 'เสร็จสิ้น'
+      case 'rejected': return 'ยกเลิกก่อนออกจากคลัง'
+      case 'completed': return 'เข้าคลังแล้ว'
       default: return status
     }
   }
@@ -618,7 +774,7 @@ export default function ReturnsPage() {
           {activeTab === 'create' && (
             <div>
               {/* Search bar - compact style matching receiving/orders */}
-              {!isManualEntry && (
+              {!showManualModal && (
                 <div className="flex items-center gap-2 mb-3">
                   <div className="flex-1 min-w-[200px] max-w-[500px] relative">
                     <Search className="absolute left-2 top-1/2 transform -translate-y-1/2 w-3.5 h-3.5 text-thai-gray-400" />
@@ -636,10 +792,7 @@ export default function ReturnsPage() {
                     <Button
                       variant="primary"
                       size="sm"
-                      onClick={() => {
-                        setIsManualEntry(true);
-                        setSelectedOrder(null);
-                      }}
+                      onClick={() => setShowManualModal(true)}
                       className="text-xs"
                     >
                       <Plus className="w-3 h-3 mr-1" />
@@ -649,207 +802,183 @@ export default function ReturnsPage() {
                 </div>
               )}
 
-              {isManualEntry ? (
-                <div className="bg-gradient-to-r from-green-50/50 to-blue-50/50 rounded-2xl p-8 border border-green-200/50 shadow-sm">
-                  <div className="mb-6">
-                    <div className="flex items-center gap-3 mb-3">
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => { setIsManualEntry(false); setSelectedOrder(null); }}
-                        className="text-xs"
+              {showManualModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                  <div className="bg-white rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+                    {/* Header */}
+                    <div className="flex items-center justify-between px-4 py-3 border-b bg-gray-50">
+                      <h3 className="text-sm font-semibold text-gray-800">เพิ่มรายการตีกลับด้วยตนเอง</h3>
+                      <button
+                        onClick={() => setShowManualModal(false)}
+                        className="text-gray-400 hover:text-gray-600"
                       >
-                        <RotateCcw className="w-3 h-3 mr-1" />
-                        ค้นหาจากประวัติ
-                      </Button>
-                      <h3 className="text-sm font-bold text-gray-800 font-thai">กรอกข้อมูลออเดอร์ด้วยตนเอง</h3>
+                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
                     </div>
-                    <p className="text-xs text-gray-600 bg-blue-50 p-2 rounded-lg border-l-4 border-blue-400 font-thai">
-                      ใช้สำหรับออเดอร์ที่ไม่มีในระบบ หรือต้องการเพิ่มข้อมูลเป็นพิเศษ
-                    </p>
-                  </div>
 
-                  <div className="bg-white/70 rounded-xl p-6 mb-6 border">
-                    <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-                      <span className="text-lg">🔍</span> ข้อมูลพื้นฐานของออเดอร์
-                    </h4>
-                    <div className="grid md:grid-cols-4 gap-6">
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">หมายเลขติดตามพัสดุ *</label>
-                        <input
-                          name="tracking_number"
-                          value={manualReturnData.tracking_number}
-                          onChange={handleManualFormChange}
-                          placeholder="เช่น TH123456789TH"
-                          className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 transition-all"
-                        />
-                        <p className="text-xs text-gray-500 mt-1">📦 หมายเลขติดตามพัสดุที่ใช้ในการจัดส่ง</p>
+                    {/* Body */}
+                    <div className="flex-1 overflow-auto p-4">
+                      <div className="bg-blue-50 border border-blue-200 rounded p-2 mb-4 text-xs text-blue-700">
+                        ใช้สำหรับออเดอร์ที่ไม่มีในระบบ หรือต้องการเพิ่มข้อมูลเป็นพิเศษ
                       </div>
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">ชื่อผู้ซื้อ (ลูกค้า) *</label>
-                        <input
-                          name="buyer_name"
-                          value={manualReturnData.buyer_name}
-                          onChange={handleManualFormChange}
-                          placeholder="ชื่อ-นามสกุล ลูกค้า"
-                          className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 transition-all"
-                        />
-                        <p className="text-xs text-gray-500 mt-1">👤 ชื่อผู้ซื้อตามที่ระบุในออเดอร์</p>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">วันที่จัดสินค้า</label>
-                        <input
-                          name="shipped_date"
-                          type="date"
-                          value={manualReturnData.shipped_date}
-                          onChange={handleManualFormChange}
-                          className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 transition-all"
-                        />
-                        <p className="text-xs text-gray-500 mt-1">📅 วันที่ที่สินค้าถูกจัดส่ง</p>
-                      </div>
-                      <div>
-                        <label className="block text-sm font-semibold text-gray-700 mb-2">ชื่อผู้สร้างคำขอ</label>
-                        <input
-                          name="creator_name"
-                          value={currentUser ? (currentUser.full_name || 'ไม่ระบุ') : 'กำลังโหลด...'}
-                          readOnly
-                          className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl bg-gray-50 text-gray-600 cursor-not-allowed"
-                        />
-                        <p className="text-xs text-gray-500 mt-1">👨‍💼 พนักงานที่สร้างคำขอตีกลับนี้</p>
-                      </div>
-                    </div>
-                    <div className="mt-4">
-                      <label className="block text-sm font-semibold text-gray-700 mb-2">เหตุผลการตีกลับ *</label>
-                      <select
-                        name="return_reason"
-                        value={manualReturnData.return_reason}
-                        onChange={handleManualFormChange}
-                        className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 transition-all"
-                      >
-                        <option value="">-- เลือกเหตุผลการตีกลับ --</option>
-                        <option value="สินค้าชำรุด">🔨 สินค้าชำรุด (สินค้าเสียหาย)</option>
-                        <option value="สินค้าผิดรุ่น">🔄 สินค้าผิดรุ่น (ส่งผิดแบบ/ขนาด)</option>
-                        <option value="สินค้าไม่ตรงตามรายละเอียด">📋 สินค้าไม่ตรงตามรายละเอียด</option>
-                        <option value="ลูกค้าเปลี่ยนใจ">💭 ลูกค้าเปลี่ยนใจ (ไม่ต้องการแล้ว)</option>
-                        <option value="จัดส่งผิดที่อยู่">📍 จัดส่งผิดที่อยู่</option>
-                        <option value="อื่นๆ">❓ อื่นๆ (เหตุผลอื่น)</option>
-                      </select>
-                      {manualReturnData.return_reason === 'อื่นๆ' && (
+
+                      {/* Order Info Section */}
+                      <div className="mb-4">
+                        <h4 className="text-xs font-semibold text-gray-700 mb-2 uppercase tracking-wide">ข้อมูลพื้นฐาน</h4>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <label className="block text-xs text-gray-600 mb-1">หมายเลขติดตาม <span className="text-red-500">*</span></label>
+                            <input
+                              name="tracking_number"
+                              value={manualReturnData.tracking_number}
+                              onChange={handleManualFormChange}
+                              placeholder="เช่น TH123456789TH"
+                              className="w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-600 mb-1">ชื่อผู้ซื้อ <span className="text-red-500">*</span></label>
+                            <input
+                              name="buyer_name"
+                              value={manualReturnData.buyer_name}
+                              onChange={handleManualFormChange}
+                              placeholder="ชื่อ-นามสกุล ลูกค้า"
+                              className="w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-600 mb-1">วันที่จัดส่ง</label>
+                            <input
+                              name="shipped_date"
+                              type="date"
+                              value={manualReturnData.shipped_date}
+                              onChange={handleManualFormChange}
+                              className="w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-xs text-gray-600 mb-1">ผู้สร้าง</label>
+                            <input
+                              value={currentUser?.full_name || 'ไม่ระบุ'}
+                              readOnly
+                              className="w-full px-2 py-1.5 text-sm border rounded bg-gray-50 text-gray-500"
+                            />
+                          </div>
+                        </div>
                         <div className="mt-3">
-                          <input
-                            type="text"
-                            name="custom_return_reason"
-                            value={manualReturnData.custom_return_reason}
-                            onChange={handleManualFormChange}
-                            placeholder="กรุณาระบุเหตุผลอื่นๆ เป็นภาษาไทยอย่างชัดเจน..."
-                            className="w-full px-4 py-3 border-2 border-yellow-300 rounded-xl focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 transition-all bg-yellow-50"
-                            required
-                          />
-                          <p className="text-xs text-yellow-700 mt-1 bg-yellow-100 p-3 rounded border-l-4 border-yellow-400">
-                            ⚠️ <strong>สำคัญ:</strong> กรุณาระบุเหตุผลการตีกลับอย่างละเอียดและชัดเจน เพื่อช่วยในการจัดการและติดตาม
-                          </p>
-                        </div>
-                      )}
-                      <p className="text-xs text-gray-500 mt-1">📝 เลือกเหตุผลหลักที่ลูกค้าต้องการตีกลับสินค้า</p>
-                    </div>
-                  </div>
-
-                  <div className="bg-white/70 rounded-xl p-6 border">
-                    <h4 className="font-bold text-gray-800 mb-4 flex items-center gap-2">
-                      <span className="text-lg">📦</span> รายการสินค้าที่ตีกลับ
-                    </h4>
-                    <p className="text-sm text-gray-600 mb-4 bg-yellow-50 p-3 rounded-lg border-l-4 border-yellow-400">
-                      ⚠️ <strong>สำคัญ:</strong> ระบุสินค้าที่ลูกค้าต้องการตีกลับ สามารถเพิ่มได้หลายรายการ
-                    </p>
-                    {manualReturnData.items.map((item, index) => (
-                      <div key={item.key} className="grid md:grid-cols-4 gap-4 mb-4 p-4 bg-white border-2 border-gray-200 rounded-xl relative shadow-sm">
-                        <div className="md:col-span-2">
-                          <label className="block text-xs font-semibold text-gray-600 mb-1">เลือกสินค้า *</label>
+                          <label className="block text-xs text-gray-600 mb-1">เหตุผลการตีกลับ <span className="text-red-500">*</span></label>
                           <select
-                            name="product_name"
-                            value={item.product_name}
-                            onChange={(e) => handleItemChange(index, e)}
-                            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 transition-all"
+                            name="return_reason"
+                            value={manualReturnData.return_reason}
+                            onChange={handleManualFormChange}
+                            className="w-full px-2 py-1.5 text-sm border rounded focus:ring-1 focus:ring-primary-500 focus:border-primary-500"
                           >
-                            <option value="">-- เลือกสินค้า --</option>
-                            {products.map(p => <option key={p.id} value={p.product_name}>{p.product_name}</option>)}
+                            <option value="">-- เลือกเหตุผล --</option>
+                            <option value="สินค้าชำรุด">สินค้าชำรุด</option>
+                            <option value="สินค้าผิดรุ่น">สินค้าผิดรุ่น</option>
+                            <option value="สินค้าไม่ตรงตามรายละเอียด">สินค้าไม่ตรงตามรายละเอียด</option>
+                            <option value="ลูกค้าเปลี่ยนใจ">ลูกค้าเปลี่ยนใจ</option>
+                            <option value="จัดส่งผิดที่อยู่">จัดส่งผิดที่อยู่</option>
+                            <option value="อื่นๆ">อื่นๆ</option>
                           </select>
+                          {manualReturnData.return_reason === 'อื่นๆ' && (
+                            <input
+                              type="text"
+                              name="custom_return_reason"
+                              value={manualReturnData.custom_return_reason}
+                              onChange={handleManualFormChange}
+                              placeholder="ระบุเหตุผล..."
+                              className="w-full mt-2 px-2 py-1.5 text-sm border border-yellow-400 rounded bg-yellow-50 focus:ring-1 focus:ring-yellow-500"
+                              required
+                            />
+                          )}
                         </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-600 mb-1">รหัสสินค้า (SKU)</label>
-                          <input
-                            name="parent_sku"
-                            value={item.parent_sku}
-                            readOnly
-                            placeholder="จะแสดงอัตโนมัติ"
-                            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl bg-gray-50 text-gray-600"
-                          />
-                          <p className="text-xs text-gray-500 mt-1">🏷️ แสดงอัตโนมัติเมื่อเลือกสินค้า</p>
-                        </div>
-                        <div>
-                          <label className="block text-xs font-semibold text-gray-600 mb-1">จำนวนที่ตีกลับ *</label>
-                          <input
-                            type="number"
-                            name="return_quantity"
-                            value={item.return_quantity}
-                            onChange={(e) => handleItemChange(index, e)}
-                            placeholder="1"
-                            min="1"
-                            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 transition-all text-center font-bold"
-                          />
-                          <p className="text-xs text-gray-500 mt-1">🔢 จำนวนชิ้นที่ต้องการตีกลับ</p>
-                        </div>
-                        {manualReturnData.items.length > 1 && (
-                          <button
-                            onClick={() => removeItem(index)}
-                            className="absolute -top-2 -right-2 bg-red-500 hover:bg-red-600 text-white rounded-full w-8 h-8 flex items-center justify-center text-sm font-bold transition-all hover:scale-110 shadow-md"
-                            title="ลบรายการนี้"
-                          >
-                            ×
-                          </button>
-                        )}
                       </div>
-                    ))}
 
-                    <button
-                      onClick={addItem}
-                      className="mt-4 mb-4 text-sm bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-xl font-medium transition-all hover:shadow-lg flex items-center gap-2"
-                    >
-                      <span className="text-lg">+</span> เพิ่มสินค้ารายการอื่น
-                    </button>
-                    <p className="text-xs text-gray-500">💡 หากลูกค้าตีกลับสินค้าหลายรายการ กดปุ่มด้านบนเพื่อเพิ่มรายการใหม่</p>
-                  </div>
+                      {/* Products Section */}
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <h4 className="text-xs font-semibold text-gray-700 uppercase tracking-wide">รายการสินค้า</h4>
+                          <button
+                            onClick={addItem}
+                            className="text-xs bg-green-500 hover:bg-green-600 text-white px-2 py-1 rounded transition-colors"
+                          >
+                            + เพิ่มรายการ
+                          </button>
+                        </div>
+                        {manualReturnData.items.map((item, index) => (
+                          <div key={item.key} className="grid grid-cols-12 gap-2 mb-2 p-2 border rounded bg-gray-50 relative">
+                            <div className="col-span-5">
+                              <label className="block text-[10px] text-gray-500 mb-0.5">สินค้า *</label>
+                              <select
+                                name="product_name"
+                                value={item.product_name}
+                                onChange={(e) => handleItemChange(index, e)}
+                                className="w-full px-2 py-1 text-sm border rounded focus:ring-1 focus:ring-primary-500"
+                              >
+                                <option value="">เลือก...</option>
+                                {products.map((p, idx) => <option key={`${p.sku_id}-${idx}`} value={p.product_name}>{p.product_name}</option>)}
+                              </select>
+                            </div>
+                            <div className="col-span-4">
+                              <label className="block text-[10px] text-gray-500 mb-0.5">SKU</label>
+                              <input
+                                name="parent_sku"
+                                value={item.parent_sku}
+                                readOnly
+                                placeholder="อัตโนมัติ"
+                                className="w-full px-2 py-1 text-sm border rounded bg-gray-100 text-gray-500"
+                              />
+                            </div>
+                            <div className="col-span-2">
+                              <label className="block text-[10px] text-gray-500 mb-0.5">จำนวน *</label>
+                              <input
+                                type="number"
+                                name="return_quantity"
+                                value={item.return_quantity}
+                                onChange={(e) => handleItemChange(index, e)}
+                                min="1"
+                                className="w-full px-2 py-1 text-sm border rounded text-center focus:ring-1 focus:ring-primary-500"
+                              />
+                            </div>
+                            {manualReturnData.items.length > 1 && (
+                              <button
+                                onClick={() => removeItem(index)}
+                                className="col-span-1 flex items-center justify-center text-red-500 hover:text-red-700"
+                              >
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                                </svg>
+                              </button>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
 
-                  <div className="mt-6 p-6 bg-gradient-to-r from-primary-50 to-blue-50 rounded-xl border-2 border-primary-200">
-                    <button
-                      onClick={handleCreateManualReturn}
-                      disabled={isSubmitting || !manualReturnData.tracking_number || !manualReturnData.buyer_name || !manualReturnData.return_reason || (manualReturnData.return_reason === 'อื่นๆ' && !manualReturnData.custom_return_reason)}
-                      className={`w-full px-8 py-4 rounded-xl font-bold text-lg transition-all ${
-                        isSubmitting || !manualReturnData.tracking_number || !manualReturnData.buyer_name || !manualReturnData.return_reason || (manualReturnData.return_reason === 'อื่นๆ' && !manualReturnData.custom_return_reason)
-                          ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                          : 'primary-button text-white hover:shadow-lg transform hover:scale-[1.02]'
-                      }`}
-                    >
-                      {isSubmitting ? (
-                        <div className="flex items-center justify-center gap-2">
-                          <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                          กำลังสร้างคำขอ...
-                        </div>
-                      ) : (
-                        <div className="flex items-center justify-center gap-2">
-                          <span className="text-xl">✅</span>
-                          สร้างคำขอตีกลับ
-                        </div>
-                      )}
-                    </button>
-                    <p className="text-xs text-center text-gray-600 mt-2">
-                      📋 กรุณาตรวจสอบข้อมูลให้ครบถ้วนก่อนสร้างคำขอ
-                    </p>
+                    {/* Footer */}
+                    <div className="px-4 py-3 border-t bg-gray-50 flex justify-end gap-2">
+                      <button
+                        onClick={() => setShowManualModal(false)}
+                        className="px-3 py-1.5 text-sm text-gray-600 hover:text-gray-800 transition-colors"
+                      >
+                        ยกเลิก
+                      </button>
+                      <button
+                        onClick={handleCreateManualReturn}
+                        disabled={isSubmitting || !manualReturnData.tracking_number || !manualReturnData.buyer_name || !manualReturnData.return_reason || (manualReturnData.return_reason === 'อื่นๆ' && !manualReturnData.custom_return_reason) || manualReturnData.items.some(item => !item.product_name)}
+                        className="px-4 py-1.5 text-sm bg-primary-600 hover:bg-primary-700 disabled:bg-gray-300 disabled:cursor-not-allowed text-white rounded transition-colors"
+                      >
+                        {isSubmitting ? 'กำลังสร้าง...' : 'สร้างคำขอ'}
+                      </button>
+                    </div>
                   </div>
                 </div>
-              ) : (
-                <>
-                  {isLoading ? (
+              )}
+              <>
+                {isLoading ? (
                      <div className="text-center py-16"><p>Loading...</p></div>
                   ) : sortedOrders.length === 0 ? (
                     <div className="text-center py-16 text-gray-500">
@@ -861,9 +990,12 @@ export default function ReturnsPage() {
                         <Table>
                           <Table.Header>
                             <tr>
+                              <Table.Head className="text-center w-[100px]">การจัดการ</Table.Head>
                               <Table.Head onClick={() => requestSort('order_number')}>
                                 <span className="flex items-center">หมายเลขออเดอร์{getSortIndicator('order_number')}</span>
                               </Table.Head>
+                              <Table.Head>SKU</Table.Head>
+                              <Table.Head>เลขติดตาม</Table.Head>
                               <Table.Head onClick={() => requestSort('buyer_name')}>
                                 <span className="flex items-center">ผู้ซื้อ{getSortIndicator('buyer_name')}</span>
                               </Table.Head>
@@ -876,28 +1008,25 @@ export default function ReturnsPage() {
                               <Table.Head onClick={() => requestSort('platform')}>
                                 <span className="flex items-center">แพลตฟอร์ม{getSortIndicator('platform')}</span>
                               </Table.Head>
-                              <Table.Head className="text-center">การจัดการ</Table.Head>
                             </tr>
                           </Table.Header>
                           <Table.Body>
                             {sortedOrders.map((order) => (
                               <Table.Row key={order.id}>
-                                <Table.Cell>
-                                  <div className="font-semibold">{order.order_number}</div>
-                                  <div className="text-[10px] text-gray-500 font-mono">SKU: {order.parent_sku}</div>
-                                  {order.tracking_number && <div className="text-[10px] text-primary-600">ติดตาม: {order.tracking_number}</div>}
+                                <Table.Cell className="text-center">
+                                  <button
+                                    onClick={() => handleOpenCreateReturnModal(order)}
+                                    className="px-3 py-1.5 rounded-lg font-medium text-xs shadow-sm bg-red-500 hover:bg-red-600 text-white transition-colors">
+                                    สร้างคำขอ
+                                  </button>
                                 </Table.Cell>
+                                <Table.Cell className="font-semibold">{order.order_number}</Table.Cell>
+                                <Table.Cell className="text-xs font-mono text-gray-600">{order.parent_sku || '-'}</Table.Cell>
+                                <Table.Cell className="text-xs text-primary-600">{order.tracking_number || '-'}</Table.Cell>
                                 <Table.Cell className="font-semibold">{order.buyer_name}</Table.Cell>
                                 <Table.Cell>{order.product_name}</Table.Cell>
                                 <Table.Cell className="font-bold">{order.quantity} ชิ้น</Table.Cell>
                                 <Table.Cell>{order.platform}</Table.Cell>
-                                <Table.Cell className="text-center">
-                                  <button
-                                    onClick={() => setSelectedOrder(order)}
-                                    className={`px-4 py-1.5 rounded-lg font-medium text-xs shadow-sm ${selectedOrder?.id === order.id ? 'primary-button text-white' : 'bg-primary-50 text-primary-600'}`}>
-                                    {selectedOrder?.id === order.id ? '✓ เลือกแล้ว' : 'สร้างคำขอ'}
-                                  </button>
-                                </Table.Cell>
                               </Table.Row>
                             ))}
                           </Table.Body>
@@ -905,77 +1034,7 @@ export default function ReturnsPage() {
                       </div>
                     </div>
                   )}
-
-                  {selectedOrder && (
-                    <div className="bg-gradient-to-r from-primary-50/50 to-blue-50/50 rounded-2xl p-8 border">
-                      <h3 className="font-bold text-gray-800 mb-6 text-lg flex items-center gap-2">
-                        <span className="text-xl">📋</span> รายละเอียดการตีกลับ
-                      </h3>
-                      <div className="grid md:grid-cols-3 gap-6 mb-6">
-                        <div>
-                          <label className="block text-sm font-semibold mb-3 text-gray-700">จำนวนที่ต้องการตีกลับ</label>
-                          <input
-                            type="number"
-                            min="1"
-                            max={selectedOrder.quantity || 0}
-                            value={returnQuantity}
-                            onChange={(e) => setReturnQuantity(parseInt(e.target.value) || 1)}
-                            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 transition-all text-center font-bold"
-                          />
-                          <div className="text-xs text-gray-500 mt-2">📦 สูงสุด: <span className="font-bold text-primary-600">{selectedOrder.quantity || 0}</span> ชิ้น</div>
-                        </div>
-                        <div>
-                          <label className="block text-sm font-semibold mb-3 text-gray-700">เหตุผลการตีกลับ</label>
-                          <select
-                            value={returnReason}
-                            onChange={(e) => setReturnReason(e.target.value)}
-                            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:border-primary-500 focus:ring-2 focus:ring-primary-200 transition-all"
-                          >
-                            <option value="">-- เลือกเหตุผล --</option>
-                            <option value="สินค้าชำรุด">🔨 สินค้าชำรุด</option>
-                            <option value="สินค้าผิดรุ่น">🔄 สินค้าผิดรุ่น</option>
-                            <option value="สินค้าไม่ตรงตามรายละเอียด">📋 สินค้าไม่ตรงตามรายละเอียด</option>
-                            <option value="ลูกค้าเปลี่ยนใจ">💭 ลูกค้าเปลี่ยนใจ</option>
-                            <option value="จัดส่งผิดที่อยู่">📍 จัดส่งผิดที่อยู่</option>
-                            <option value="อื่นๆ">❓ อื่นๆ</option>
-                          </select>
-                          {returnReason === 'อื่นๆ' && (
-                            <div className="mt-3">
-                              <input
-                                type="text"
-                                value={customReturnReason}
-                                onChange={(e) => setCustomReturnReason(e.target.value)}
-                                placeholder="กรุณาระบุเหตุผลอื่นๆ..."
-                                className="w-full px-4 py-3 border-2 border-yellow-300 rounded-xl focus:border-yellow-500 focus:ring-2 focus:ring-yellow-200 transition-all bg-yellow-50"
-                                required
-                              />
-                              <p className="text-xs text-yellow-700 mt-1 bg-yellow-100 p-2 rounded border-l-4 border-yellow-400">
-                                ⚠️ กรุณาระบุเหตุผลการตีกลับอย่างละเอียด
-                              </p>
-                            </div>
-                          )}
-                        </div>
-                        <div>
-                          <label className="block text-sm font-semibold mb-3 text-gray-700">ชื่อผู้สร้างคำขอ</label>
-                          <input
-                            value={currentUser ? (currentUser.full_name || 'ไม่ระบุ') : 'กำลังโหลด...'}
-                            readOnly
-                            className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl bg-gray-50 text-gray-600 cursor-not-allowed"
-                          />
-                          <div className="text-xs text-gray-500 mt-2">👨‍💼 พนักงานที่สร้างคำขอตีกลับนี้</div>
-                        </div>
-                      </div>
-                      <button
-                        onClick={handleCreateReturn}
-                        disabled={!returnReason || (returnReason === 'อื่นๆ' && !customReturnReason) || isSubmitting}
-                        className="w-full primary-button text-white px-8 py-4 rounded-xl font-bold text-lg disabled:bg-gray-400 disabled:cursor-not-allowed"
-                      >
-                        {isSubmitting ? 'กำลังสร้างคำขอ...' : 'สร้างคำขอตีกลับ'}
-                      </button>
-                    </div>
-                  )}
                 </>
-              )}
             </div>
           )}
 
@@ -1004,8 +1063,10 @@ export default function ReturnsPage() {
                     <Table.Header>
                       <tr>
                         <Table.Head>หมายเลขออเดอร์</Table.Head>
+                        <Table.Head>SKU</Table.Head>
                         <Table.Head>ผู้ซื้อ</Table.Head>
                         <Table.Head>สินค้า</Table.Head>
+                        <Table.Head>จำนวนเดิม</Table.Head>
                         <Table.Head>จำนวนตีกลับ</Table.Head>
                         <Table.Head>เหตุผล</Table.Head>
                         <Table.Head>สถานะ</Table.Head>
@@ -1014,21 +1075,23 @@ export default function ReturnsPage() {
                     </Table.Header>
                     <Table.Body>
                       {groupedReturns.map((groupedReturn) => (
-                        <Table.Row key={`grouped-${groupedReturn.order_number}`}>
+                        <Table.Row
+                          key={`grouped-${groupedReturn.order_number}`}
+                          className={`cursor-pointer hover:bg-blue-50/50 transition-colors ${groupedReturn.return_status === 'pending' ? 'bg-red-50/30' : ''}`}
+                          onClick={() => handleViewReturnDetails(groupedReturn)}
+                        >
                           <Table.Cell>
                             <div className="font-semibold">{groupedReturn.order_number}</div>
-                            <div className="text-[10px] text-gray-500 font-mono">SKU: {groupedReturn.parent_sku}</div>
                             {groupedReturn.is_grouped && (
                               <div className="text-[10px] text-blue-600 bg-blue-50 px-1.5 py-0.5 rounded mt-0.5 inline-block">
                                 รวม {groupedReturn.grouped_items.length} รายการ
                               </div>
                             )}
                           </Table.Cell>
+                          <Table.Cell className="text-xs font-mono text-gray-600">{groupedReturn.parent_sku || '-'}</Table.Cell>
                           <Table.Cell className="font-semibold">{groupedReturn.buyer_name}</Table.Cell>
-                          <Table.Cell>
-                            <div>{groupedReturn.product_name}</div>
-                            <div className="text-[10px] text-gray-500">ต้นฉบับ: {groupedReturn.quantity} ชิ้น</div>
-                          </Table.Cell>
+                          <Table.Cell>{groupedReturn.product_name}</Table.Cell>
+                          <Table.Cell className="text-gray-600">{groupedReturn.quantity} ชิ้น</Table.Cell>
                           <Table.Cell className="font-bold text-red-600">{groupedReturn.return_quantity} ชิ้น</Table.Cell>
                           <Table.Cell>{groupedReturn.return_reason}</Table.Cell>
                           <Table.Cell>
@@ -1037,7 +1100,7 @@ export default function ReturnsPage() {
                             </span>
                           </Table.Cell>
                           <Table.Cell>
-                            <div className="flex space-x-1">
+                            <div className="flex space-x-1" onClick={(e) => e.stopPropagation()}>
                               {groupedReturn.return_status === 'pending' && (
                                 <>
                                   {groupedReturn.is_grouped ? (
@@ -1047,8 +1110,8 @@ export default function ReturnsPage() {
                                     </div>
                                   ) : (
                                     <>
-                                      <button onClick={() => handleReceiveReturn(groupedReturn)} className="px-2 py-1 primary-button text-white text-xs rounded-lg">รับสินค้าคืน</button>
-                                      <button onClick={() => updateReturnStatus(groupedReturn.id, 'rejected')} className="px-2 py-1 bg-gray-400 text-white text-xs rounded-lg">ปฏิเสธ</button>
+                                      <button onClick={(e) => { e.stopPropagation(); handleReceiveReturn(groupedReturn); }} className="px-2 py-1 primary-button text-white text-xs rounded-lg">รับสินค้าคืน</button>
+                                      <button onClick={(e) => { e.stopPropagation(); updateReturnStatus(groupedReturn.id, 'rejected'); }} className="px-2 py-1 bg-gray-400 text-white text-xs rounded-lg">ปฏิเสธ</button>
                                     </>
                                   )}
                                 </>
@@ -1056,7 +1119,9 @@ export default function ReturnsPage() {
                               {(groupedReturn.return_status === 'completed' || groupedReturn.return_status === 'approved') && (
                                 <button onClick={() => handleViewReturnDetails(groupedReturn)} className="primary-button text-white px-2 py-1 text-xs rounded-lg">ดูรายละเอียด</button>
                               )}
-                              {groupedReturn.return_status === 'rejected' && <span className="px-2 py-1 bg-gray-100 text-gray-600 text-[10px] rounded-lg border">ถูกปฏิเสธ</span>}
+                              {groupedReturn.return_status === 'rejected' && (
+                                <span className="px-2 py-1 bg-gray-100 text-gray-600 text-[10px] rounded-lg border">ถูกปฏิเสธ</span>
+                              )}
                             </div>
                           </Table.Cell>
                         </Table.Row>
@@ -1104,6 +1169,14 @@ export default function ReturnsPage() {
                     <div className="font-semibold text-gray-800">{selectedReturn.product_name}</div>
                   </div>
                   <div>
+                    <span className="text-gray-600">SKU:</span>
+                    <div className="font-mono text-xs text-gray-700">{selectedReturn.parent_sku}</div>
+                  </div>
+                  <div>
+                    <span className="text-gray-600">จำนวนเดิม:</span>
+                    <div className="font-semibold text-gray-700">{selectedReturn.quantity} ชิ้น</div>
+                  </div>
+                  <div>
                     <span className="text-gray-600">จำนวนตีกลับ:</span>
                     <div className="font-bold text-red-600">{selectedReturn.return_quantity} ชิ้น</div>
                   </div>
@@ -1111,29 +1184,29 @@ export default function ReturnsPage() {
                     <span className="text-gray-600">เหตุผลการตีกลับ:</span>
                     <div className="font-semibold text-gray-800">{selectedReturn.return_reason}</div>
                   </div>
-                  {(() => {
-                    // Extract shipped_date from notes if it exists
-                    const notes = selectedReturn.notes || '';
-                    const shippedDateMatch = notes.match(/Shipped Date: (\d{4}-\d{2}-\d{2})/);
-                    const shippedDate = shippedDateMatch ? shippedDateMatch[1] : null;
-
-                    if (shippedDate) {
-                      return (
-                        <div>
-                          <span className="text-gray-600">วันที่จัดส่งสินค้า:</span>
-                          <div className="font-semibold text-gray-800">📅 {new Date(shippedDate).toLocaleDateString('en-GB')}</div>
-                        </div>
-                      );
-                    }
-                    return null;
-                  })()}
+                  <div>
+                    <span className="text-gray-600">สถานะ:</span>
+                    <div>
+                      <span className={`inline-flex px-2 py-0.5 text-xs font-semibold rounded-full border ${getStatusColor(selectedReturn.return_status)}`}>
+                        {getStatusText(selectedReturn.return_status)}
+                      </span>
+                    </div>
+                  </div>
+                  {selectedReturn.notes && (
+                    <div className="md:col-span-2">
+                      <span className="text-gray-600">รายละเอียดเพิ่มเติม:</span>
+                      <div className="font-medium text-gray-700 bg-white/80 p-2 rounded border border-gray-200 mt-1">
+                        {selectedReturn.notes}
+                      </div>
+                    </div>
+                  )}
                   <div>
                     <span className="text-gray-600">ผู้สร้างคำขอตีกลับ:</span>
                     <div className="font-semibold text-gray-800">👨‍💼 {selectedReturn.processed_by || 'ไม่ระบุ'}</div>
                   </div>
                   <div>
                     <span className="text-gray-600">วันที่สร้างคำขอ:</span>
-                    <div className="font-semibold text-gray-800">{new Date(selectedReturn.created_at).toLocaleDateString('en-GB')}</div>
+                    <div className="font-semibold text-gray-800">{new Date(selectedReturn.created_at).toLocaleDateString('th-TH')}</div>
                   </div>
                 </div>
               </div>
@@ -1349,7 +1422,7 @@ export default function ReturnsPage() {
                     <h5 className="font-semibold text-gray-800 mt-4 mb-3">รายละเอียดแต่ละรายการ:</h5>
                     <div className="space-y-3">
                       {(viewingReturn as any).grouped_items.map((item: ReturnRequest, index: number) => (
-                        <div key={item.id} className="border rounded-lg p-3 bg-white">
+                        <div key={`return-item-${item.id}-${index}`} className="border rounded-lg p-3 bg-white">
                           <div className="grid md:grid-cols-3 gap-3 text-sm">
                             <div>
                               <span className="text-gray-600">สินค้าที่ {index + 1}:</span>
@@ -1479,7 +1552,7 @@ export default function ReturnsPage() {
                           <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-2">
                             {viewingReturn.confirmation_images && viewingReturn.confirmation_images.length > 0 ? (
                               viewingReturn.confirmation_images.map((imageBase64, index) => (
-                                <div key={index} className="relative">
+                                <div key={`confirm-img-${viewingReturn.id}-${index}`} className="relative">
                                   <img
                                     src={imageBase64}
                                     alt={`รูปยืนยัน ${index + 1}`}
@@ -1502,7 +1575,7 @@ export default function ReturnsPage() {
                               ))
                             ) : (
                               Array.from({ length: warehouseData.confirmation_images_count || 0 }, (_, index) => (
-                                <div key={index} className="relative">
+                                <div key={`placeholder-img-${viewingReturn.id}-${index}`} className="relative">
                                   <div className="w-full h-24 bg-gray-200 rounded-lg border border-gray-300 flex items-center justify-center">
                                     <div className="text-center text-gray-500">
                                       <svg className="w-8 h-8 mx-auto mb-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1597,6 +1670,247 @@ export default function ReturnsPage() {
                   ปิด
                 </Button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create Return Request Modal */}
+      {showCreateReturnModal && selectedOrdersForReturn.length > 0 && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b bg-gradient-to-r from-red-50 to-orange-50">
+              <div>
+                <h3 className="text-lg font-bold text-gray-800 font-thai">สร้างคำขอสินค้าตีกลับ</h3>
+                <p className="text-xs text-gray-600 mt-1">
+                  เลขติดตาม: <span className="font-semibold text-primary-600">{selectedOrdersForReturn[0]?.tracking_number || 'N/A'}</span>
+                  {' • '}
+                  ผู้ซื้อ: <span className="font-semibold">{selectedOrdersForReturn[0]?.buyer_name}</span>
+                </p>
+              </div>
+              <button
+                onClick={() => setShowCreateReturnModal(false)}
+                className="text-gray-400 hover:text-gray-600 p-2 rounded-lg transition-colors"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            {/* Body - Scrollable */}
+            <div className="flex-1 overflow-y-auto p-6">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4 text-xs text-blue-700">
+                ℹ️ รายการด้านล่างคือสินค้าทั้งหมดที่มีเลขติดตามเดียวกัน ({selectedOrdersForReturn.length} รายการ) - กรอกจำนวนสินค้าที่ต้องการตีกลับ
+              </div>
+
+              {/* ตารางรายการสินค้า */}
+              <div className="overflow-x-auto border border-gray-200 rounded-lg mb-6">
+                <Table>
+                  <Table.Header>
+                    <tr>
+                      <Table.Head className="w-[60px]">#</Table.Head>
+                      <Table.Head className="w-[140px]">หมายเลขออเดอร์</Table.Head>
+                      <Table.Head className="min-w-[250px]">ชื่อสินค้า</Table.Head>
+                      <Table.Head className="w-[120px]">SKU</Table.Head>
+                      <Table.Head className="w-[100px] text-center">จำนวนเดิม</Table.Head>
+                      <Table.Head className="w-[120px] text-center">จำนวนตีกลับ <span className="text-red-500">*</span></Table.Head>
+                    </tr>
+                  </Table.Header>
+                  <Table.Body>
+                    {selectedOrdersForReturn.map((order, index) => (
+                      <Table.Row key={order.id}>
+                        {/* # */}
+                        <Table.Cell className="text-center">
+                          <span className="px-2 py-1 bg-primary-100 text-primary-700 text-xs font-bold rounded">
+                            {index + 1}
+                          </span>
+                        </Table.Cell>
+
+                        {/* หมายเลขออเดอร์ */}
+                        <Table.Cell className="text-xs font-mono text-gray-600">
+                          {order.order_number}
+                        </Table.Cell>
+
+                        {/* ชื่อสินค้า */}
+                        <Table.Cell>
+                          <div className="text-sm font-semibold text-gray-800 leading-tight">
+                            {order.product_name}
+                          </div>
+                        </Table.Cell>
+
+                        {/* SKU */}
+                        <Table.Cell className="text-xs font-mono text-gray-600">
+                          {order.parent_sku}
+                        </Table.Cell>
+
+                        {/* จำนวนเดิม */}
+                        <Table.Cell className="text-center">
+                          <span className="font-bold text-gray-700">{order.quantity}</span>
+                          <span className="text-xs text-gray-500 ml-1">ชิ้น</span>
+                        </Table.Cell>
+
+                        {/* จำนวนตีกลับ */}
+                        <Table.Cell className="text-center">
+                          <input
+                            type="number"
+                            min="0"
+                            max={order.quantity || 0}
+                            value={returnItems[order.id]?.quantity || 0}
+                            onChange={(e) => {
+                              const value = Math.min(parseInt(e.target.value) || 0, order.quantity || 0)
+                              setReturnItems(prev => ({
+                                ...prev,
+                                [order.id]: { quantity: value }
+                              }))
+                            }}
+                            className="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-2 focus:ring-red-500 focus:border-red-500 text-sm text-center font-bold"
+                          />
+                        </Table.Cell>
+                      </Table.Row>
+                    ))}
+                  </Table.Body>
+                </Table>
+              </div>
+
+              {/* ฟอร์มข้อมูลการตีกลับ (สำหรับทั้งเลขติดตาม) */}
+              <div className="border border-gray-300 rounded-lg p-3 bg-gradient-to-r from-orange-50 to-red-50">
+                <h4 className="text-xs font-bold text-gray-800 mb-3 flex items-center gap-1.5">
+                  <span>📋</span> ข้อมูลการตีกลับ (สำหรับทั้งเลขติดตาม)
+                </h4>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {/* เหตุผลการตีกลับ */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      เหตุผลการตีกลับ <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={returnFormData.reason}
+                      onChange={(e) => {
+                        setReturnFormData(prev => ({ ...prev, reason: e.target.value, customReason: '' }))
+                      }}
+                      className="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-1 focus:ring-red-500 focus:border-red-500 text-xs"
+                    >
+                      <option value="">-- เลือกเหตุผล --</option>
+                      {reasonOptions.map((reason, idx) => (
+                        <option key={idx} value={reason}>{reason}</option>
+                      ))}
+                      <option value="อื่นๆ">อื่นๆ</option>
+                      <option value="__ADD_NEW__">+ เพิ่มตัวเลือกใหม่</option>
+                    </select>
+
+                    {/* Custom Reason (ถ้าเลือก "อื่นๆ") */}
+                    {returnFormData.reason === 'อื่นๆ' && (
+                      <input
+                        type="text"
+                        value={returnFormData.customReason}
+                        onChange={(e) => setReturnFormData(prev => ({ ...prev, customReason: e.target.value }))}
+                        placeholder="กรุณาระบุเหตุผลอื่นๆ..."
+                        className="w-full mt-1.5 px-2 py-1.5 border border-yellow-400 rounded focus:ring-1 focus:ring-yellow-500 bg-yellow-50 text-xs"
+                      />
+                    )}
+
+                    {/* Add New Reason */}
+                    {returnFormData.reason === '__ADD_NEW__' && (
+                      <div className="mt-1.5 flex gap-1.5">
+                        <input
+                          type="text"
+                          value={returnFormData.newReason}
+                          onChange={(e) => setReturnFormData(prev => ({ ...prev, newReason: e.target.value }))}
+                          placeholder="พิมพ์เหตุผลใหม่..."
+                          className="flex-1 px-2 py-1.5 border border-green-400 rounded focus:ring-1 focus:ring-green-500 bg-green-50 text-xs"
+                        />
+                        <button
+                          onClick={() => {
+                            if (returnFormData.newReason.trim()) {
+                              setReasonOptions(prev => [...prev, returnFormData.newReason.trim()])
+                              setReturnFormData(prev => ({ ...prev, reason: returnFormData.newReason.trim(), newReason: '' }))
+                            }
+                          }}
+                          className="px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded text-xs font-semibold"
+                        >
+                          เพิ่ม
+                        </button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* สถานะ */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      สถานะ <span className="text-red-500">*</span>
+                    </label>
+                    <select
+                      value={returnFormData.status}
+                      onChange={(e) => setReturnFormData(prev => ({ ...prev, status: e.target.value }))}
+                      className="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-1 focus:ring-red-500 focus:border-red-500 text-xs"
+                    >
+                      <option value="rejected">ยกเลิกก่อนออกจากคลัง</option>
+                      <option value="pending">รอเข้าคลัง</option>
+                      <option value="completed">เข้าคลังแล้ว</option>
+                    </select>
+                  </div>
+
+                  {/* วันที่สร้าง */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      วันที่สร้าง
+                    </label>
+                    <input
+                      type="date"
+                      value={returnFormData.createdDate}
+                      readOnly
+                      className="w-full px-2 py-1.5 border border-gray-200 rounded bg-gray-50 text-gray-600 cursor-not-allowed text-xs"
+                    />
+                  </div>
+
+                  {/* ชื่อผู้สร้าง */}
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      ชื่อผู้สร้าง
+                    </label>
+                    <input
+                      type="text"
+                      value={returnFormData.createdBy}
+                      readOnly
+                      className="w-full px-2 py-1.5 border border-gray-200 rounded bg-gray-50 text-gray-600 cursor-not-allowed text-xs font-semibold"
+                    />
+                  </div>
+
+                  {/* รายละเอียด */}
+                  <div className="col-span-2">
+                    <label className="block text-xs font-semibold text-gray-700 mb-1">
+                      รายละเอียดเพิ่มเติม
+                    </label>
+                    <textarea
+                      value={returnFormData.description}
+                      onChange={(e) => setReturnFormData(prev => ({ ...prev, description: e.target.value }))}
+                      rows={2}
+                      placeholder="ระบุรายละเอียดเพิ่มเติม..."
+                      className="w-full px-2 py-1.5 border border-gray-300 rounded focus:ring-1 focus:ring-red-500 focus:border-red-500 text-xs resize-none"
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-4 border-t bg-gray-50 flex justify-end gap-3">
+              <button
+                onClick={() => setShowCreateReturnModal(false)}
+                className="px-5 py-2.5 text-gray-600 hover:text-gray-800 font-medium rounded-lg transition-colors"
+              >
+                ยกเลิก
+              </button>
+              <button
+                onClick={handleCreateReturnFromModal}
+                disabled={isSubmitting}
+                className="px-6 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg font-bold transition-all shadow-lg hover:shadow-xl"
+              >
+                {isSubmitting ? 'กำลังสร้าง...' : 'สร้างคำขอตีกลับ'}
+              </button>
             </div>
           </div>
         </div>
