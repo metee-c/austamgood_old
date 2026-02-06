@@ -170,6 +170,7 @@ export default function ReturnsPage() {
         quantity: item.quantity || null,
         fulfillment_status: 'shipped' as const,
         platform: item.platform || 'unknown',
+        packed_at: item.packed_at || null,
         created_at: item.created_at || new Date().toISOString(),
         updated_at: item.updated_at || item.created_at || new Date().toISOString(),
         source: 'backup' // Mark source for debugging
@@ -1030,7 +1031,7 @@ export default function ReturnsPage() {
                                 <Table.Cell>{order.product_name}</Table.Cell>
                                 <Table.Cell className="font-bold">{order.quantity} ชิ้น</Table.Cell>
                                 <Table.Cell className="text-xs text-gray-500">
-                                  {order.created_at ? new Date(order.created_at).toLocaleString('th-TH', {
+                                  {order.packed_at ? new Date(order.packed_at).toLocaleString('th-TH', {
                                     year: 'numeric',
                                     month: '2-digit',
                                     day: '2-digit',
