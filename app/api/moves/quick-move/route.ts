@@ -375,14 +375,62 @@ async function _POST(request: NextRequest) {
       )
     }
 
-    // ✅ ไม่ต้อง UPDATE balance location โดยตรง
-    // ให้ trigger sync_inventory_ledger_to_balance จัดการเอง
-    // Trigger จะ:
-    // 1. ลบ balance ที่ from_location (OUT entry)
-    // 2. เพิ่ม balance ที่ to_location (IN entry)
-    // 
-    // หมายเหตุ: Balance จะถูกจัดการโดย trigger อัตโนมัติ
-    // ไม่ต้องทำอะไรเพิ่มเติมที่นี่
+    // Backend-driven inventory: สร้าง movements จาก moveItems โดยตรง
+    const { executeStockMovements } = await import('@/lib/database/inventory-transaction');
+    const movements: any[] = [];
+
+    for (const item of moveItems) {
+      const outPalletId = (item as any).parent_pallet_id || item.pallet_id;
+      const inPalletId = item.pallet_id;
+      const balance = balanceRecords.find(b => b.sku_id === item.sku_id);
+
+      if (item.from_location_id) {
+        movements.push({
+          direction: 'out',
+          warehouse_id: warehouse_id,
+          location_id: item.from_location_id,
+          sku_id: item.sku_id,
+          pallet_id: outPalletId,
+          pallet_id_external: balance?.pallet_id_external || null,
+          production_date: item.production_date,
+          expiry_date: item.expiry_date,
+          lot_no: balance?.lot_no || null,
+          pack_qty: item.confirmed_pack_qty || 0,
+          piece_qty: item.confirmed_piece_qty || 0,
+          transaction_type: 'move',
+          reference_no: move_no,
+          reference_doc_type: 'move',
+          created_by: userId,
+        });
+      }
+
+      if (item.to_location_id) {
+        movements.push({
+          direction: 'in',
+          warehouse_id: warehouse_id,
+          location_id: item.to_location_id,
+          sku_id: item.sku_id,
+          pallet_id: inPalletId,
+          pallet_id_external: balance?.pallet_id_external || null,
+          production_date: item.production_date,
+          expiry_date: item.expiry_date,
+          lot_no: balance?.lot_no || null,
+          pack_qty: item.confirmed_pack_qty || 0,
+          piece_qty: item.confirmed_piece_qty || 0,
+          transaction_type: 'move',
+          reference_no: move_no,
+          reference_doc_type: 'move',
+          created_by: userId,
+        });
+      }
+    }
+
+    if (movements.length > 0) {
+      const invResult = await executeStockMovements(movements);
+      if (!invResult.success) {
+        console.error('[quick-move] Failed to record inventory:', invResult.error);
+      }
+    }
 
     apiLog.success(txId, 'STOCK_QUICK_MOVE', {
       entityType: 'MOVE',

@@ -1,5 +1,6 @@
 // Stock Adjustment Service Layer
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { executeStockMovements, type StockMovement } from '@/lib/database/inventory-transaction';
 import type {
   AdjustmentRecord,
   AdjustmentReason,
@@ -707,30 +708,35 @@ class StockAdjustmentService {
         }
       });
 
-      const { data, error } = await this.supabase
-        .from('wms_inventory_ledger')
-        .insert(ledgerRecords)
-        .select('ledger_id');
+      // Atomic: Insert ledger entries + update balances via RPC (no trigger dependency)
+      const movements: StockMovement[] = ledgerRecords.map(r => ({
+        ...r,
+        reference_doc_id: r.reference_doc_id,
+      }));
 
-      if (error) {
-        console.error('[StockAdjustmentService] recordAdjustmentToLedger error', error);
-        return { data: null, error: error.message };
+      const result = await executeStockMovements(movements);
+
+      if (!result.success) {
+        console.error('[StockAdjustmentService] recordAdjustmentToLedger RPC error', result.error);
+        return { data: null, error: result.error || 'Failed to record adjustment' };
       }
 
       // Update adjustment items with ledger_id (use first ledger entry for each item)
-      if (data && data.length > 0) {
+      if (result.entries && result.entries.length > 0) {
         const items = adjustment.wms_stock_adjustment_items;
         for (let i = 0; i < items.length; i++) {
           // For decrease, we have 2 entries per item, so index is i*2
           // For increase, we have 1 entry per item, so index is i
           const ledgerIndex = adjustment.adjustment_type === 'decrease' ? i * 2 : i;
-          const ledgerId = data[ledgerIndex]?.ledger_id;
+          const ledgerId = result.entries[ledgerIndex]?.ledger_id;
           const itemId = items[i].adjustment_item_id;
 
-          await this.supabase
-            .from('wms_stock_adjustment_items')
-            .update({ ledger_id: ledgerId })
-            .eq('adjustment_item_id', itemId);
+          if (ledgerId) {
+            await this.supabase
+              .from('wms_stock_adjustment_items')
+              .update({ ledger_id: ledgerId })
+              .eq('adjustment_item_id', itemId);
+          }
         }
       }
 

@@ -1,4 +1,5 @@
 import { createServiceRoleClient } from '@/lib/supabase/server';
+import { executeStockMovements, type StockMovement } from '@/lib/database/inventory-transaction';
 
 // Use service role client for admin operations (bypasses RLS)
 // This is intentional for move operations that need full access
@@ -563,8 +564,9 @@ class MoveService {
       // ดึงข้อมูล production_date และ expiry_date จาก balance ต้นทาง (ถ้ามี)
       let productionDate = moveItem.production_date;
       let expiryDate = moveItem.expiry_date;
+      let lotNo = (moveItem as any).lot_no || null;
 
-      // ดึงข้อมูล production_date และ expiry_date จาก balance ต้นทาง
+      // ดึงข้อมูล production_date, expiry_date, lot_no จาก balance ต้นทาง
       if (moveItem.from_location_id && !productionDate && !expiryDate) {
         // For partial pallet moves, use parent_pallet_id to find source balance
         const sourcePalletId = (moveItem as any).parent_pallet_id || moveItem.pallet_id;
@@ -588,6 +590,7 @@ class MoveService {
         if (sourceBalance) {
           productionDate = sourceBalance.production_date;
           expiryDate = sourceBalance.expiry_date;
+          lotNo = sourceBalance.lot_no || lotNo;
         }
       }
 
@@ -599,19 +602,15 @@ class MoveService {
         }
       }
 
-      const ledgerRecords = [];
+      const movements: StockMovement[] = [];
 
       // For partial pallet moves, use parent_pallet_id for OUT and new pallet_id for IN
       const outPalletId = (moveItem as any).parent_pallet_id || moveItem.pallet_id;
       const inPalletId = moveItem.pallet_id;
 
       if (moveItem.from_location_id) {
-        ledgerRecords.push({
-          movement_at: new Date().toISOString(),
-          transaction_type: moveHeader.move_type,
+        movements.push({
           direction: 'out',
-          move_item_id: moveItem.move_item_id,
-          receive_item_id: moveItem.receive_item_id,
           warehouse_id: warehouseId,
           location_id: moveItem.from_location_id,
           sku_id: moveItem.sku_id,
@@ -619,21 +618,22 @@ class MoveService {
           pallet_id_external: moveItem.pallet_id_external,
           production_date: productionDate,
           expiry_date: expiryDate,
+          lot_no: lotNo,
           pack_qty: packQty,
           piece_qty: pieceQty,
+          transaction_type: 'move',
           reference_no: moveHeader.move_no,
+          reference_doc_type: 'move',
+          move_item_id: moveItem.move_item_id,
+          receive_item_id: moveItem.receive_item_id,
           remarks: moveItem.remarks,
-          created_by: moveItem.created_by
+          created_by: moveItem.created_by,
         });
       }
 
       if (moveItem.to_location_id) {
-        ledgerRecords.push({
-          movement_at: new Date().toISOString(),
-          transaction_type: moveHeader.move_type,
+        movements.push({
           direction: 'in',
-          move_item_id: moveItem.move_item_id,
-          receive_item_id: moveItem.receive_item_id,
           warehouse_id: warehouseId,
           location_id: moveItem.to_location_id,
           sku_id: moveItem.sku_id,
@@ -641,31 +641,30 @@ class MoveService {
           pallet_id_external: moveItem.pallet_id_external,
           production_date: productionDate,
           expiry_date: expiryDate,
+          lot_no: lotNo,
           pack_qty: packQty,
           piece_qty: pieceQty,
+          transaction_type: 'move',
           reference_no: moveHeader.move_no,
+          reference_doc_type: 'move',
+          move_item_id: moveItem.move_item_id,
+          receive_item_id: moveItem.receive_item_id,
           remarks: moveItem.remarks,
-          created_by: moveItem.created_by
+          created_by: moveItem.created_by,
         });
       }
 
-      if (ledgerRecords.length === 0) {
+      if (movements.length === 0) {
         return { data: null, error: 'No locations specified for inventory movement' };
       }
 
-      const { error: ledgerError } = await this.supabase
-        .from('wms_inventory_ledger')
-        .insert(ledgerRecords);
+      // Atomic: Insert ledger entries + update balances via RPC (no trigger dependency)
+      const result = await executeStockMovements(movements);
 
-      if (ledgerError) {
-        console.error('[MoveService] recordInventoryMovement ledger error', ledgerError);
-        return { data: null, error: ledgerError.message };
+      if (!result.success) {
+        console.error('[MoveService] recordInventoryMovement RPC error', result.error);
+        return { data: null, error: result.error || 'Failed to record inventory movement' };
       }
-
-      // Balance updates are now handled by the database trigger (sync_inventory_ledger_to_balance)
-      // which automatically syncs from ledger to balance table
-      // Location current_qty is also automatically synced by trigger (sync_location_qty_from_balance)
-      // This ensures single source of truth and prevents duplicate updates
 
       return { data: { success: true }, error: null };
     } catch (err) {

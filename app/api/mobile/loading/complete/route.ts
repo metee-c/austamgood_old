@@ -28,8 +28,6 @@ try {
     const body = await request.json();
     const { loadlist_id, loadlist_code, scanned_code, checker_employee_id } = body;
 
-    console.log('🔍 Complete request:', { loadlist_id, loadlist_code, scanned_code, checker_employee_id });
-
     if (!loadlist_id && !loadlist_code) {
       return NextResponse.json(
         { error: 'กรุณาระบุ loadlist_id หรือ loadlist_code' },
@@ -58,10 +56,7 @@ try {
 
     const { data: loadlist, error: loadlistError } = await query.single();
 
-    console.log('📦 Loadlist query result:', { loadlist, error: loadlistError });
-
     if (loadlistError || !loadlist) {
-      console.error('❌ Loadlist not found:', loadlistError);
       return NextResponse.json(
         { error: 'ไม่พบใบโหลดสินค้า', details: loadlistError?.message },
         { status: 404 }
@@ -116,7 +111,6 @@ try {
       .eq('loadlist_id', loadlist.id);
 
     const hasOnlineOrders = (onlineOrders && onlineOrders.length > 0);
-    console.log(`📦 Online orders in loadlist: ${onlineOrders?.length || 0}`);
 
     // ✅ FIX: หา BFS ที่แมพกับ PL/FS ที่อยู่ใน loadlist นี้ (จาก loadlist อื่น)
     // เพื่อให้ process BFS items ด้วยเมื่อโหลด PL/FS
@@ -131,7 +125,6 @@ try {
         .is('loaded_at', null); // เฉพาะที่ยังไม่ได้โหลด
 
       relatedBfsMappingsFromPL = bfsMappings || [];
-      console.log(`🔍 Found ${relatedBfsMappingsFromPL.length} BFS mappings from PL (unloaded)`);
     }
 
     if (faceSheetIds.length > 0) {
@@ -142,7 +135,6 @@ try {
         .is('loaded_at', null); // เฉพาะที่ยังไม่ได้โหลด
 
       relatedBfsMappingsFromFS = bfsMappings || [];
-      console.log(`🔍 Found ${relatedBfsMappingsFromFS.length} BFS mappings from FS (unloaded)`);
     }
 
     // รวม BFS IDs และ matched_package_ids จากทั้ง loadlist ปัจจุบันและที่แมพกับ PL/FS
@@ -283,15 +275,9 @@ try {
         .in('face_sheet_id', bonusFaceSheetIds);
 
       matchedPackageIds = new Set<number>(allPackages?.map(p => p.id) || []);
-      console.log(`📦 Fallback: found ${matchedPackageIds.size} packages from ${bonusFaceSheetIds.length} BFS`);
     }
 
-    console.log('📦 Matched package IDs from loadlist mapping:', [...matchedPackageIds]);
-
-    console.log('📋 Document IDs:', { picklistIds, faceSheetIds, bonusFaceSheetIds });
-
     if (picklistIds.length === 0 && faceSheetIds.length === 0 && bonusFaceSheetIds.length === 0 && !hasOnlineOrders) {
-      console.error('❌ No picklists, face sheets, bonus face sheets, or online orders found');
       return NextResponse.json(
         { error: 'ไม่พบใบจัดสินค้า ใบปะหน้า ใบปะหน้าของแถม หรือออเดอร์ออนไลน์ในใบโหลดนี้' },
         { status: 400 }
@@ -332,7 +318,6 @@ try {
     // เพราะ Face Sheet และ BFS เป็นคนละ document - ต้องโหลดทั้งสองอย่าง
     let faceSheets: any[] = [];
     if (faceSheetIds.length > 0) {
-      console.log('🔍 Fetching face sheets:', faceSheetIds);
       const { data: faceSheetData, error: faceSheetsError } = await supabase
         .from('face_sheets')
         .select(`
@@ -346,8 +331,6 @@ try {
           )
         `)
         .in('id', faceSheetIds);
-
-      console.log('📄 Face sheets result:', { data: faceSheetData, error: faceSheetsError });
 
       if (faceSheetsError) {
         console.error('❌ Face sheets error:', faceSheetsError);
@@ -364,9 +347,6 @@ try {
     let bonusFaceSheets: any[] = [];
 
     if (bonusFaceSheetIds.length > 0) {
-      console.log('🔍 Fetching bonus face sheets:', bonusFaceSheetIds);
-      console.log('📦 Using matched package IDs:', [...matchedPackageIds]);
-
       const { data: bonusFaceSheetData, error: bonusFaceSheetsError } = await supabase
         .from('bonus_face_sheets')
         .select(`
@@ -382,10 +362,7 @@ try {
         `)
         .in('id', bonusFaceSheetIds);
 
-      console.log('📄 Bonus face sheets result:', { data: bonusFaceSheetData, error: bonusFaceSheetsError });
-
       if (bonusFaceSheetsError) {
-        console.error('❌ Bonus face sheets error:', bonusFaceSheetsError);
         return NextResponse.json(
           { error: 'ไม่พบข้อมูลใบปะหน้าของแถม', details: bonusFaceSheetsError?.message },
           { status: 404 }
@@ -406,13 +383,13 @@ try {
         ) || [];
 
         if (packagesNotMovedToStaging.length > 0) {
-          console.log(`📦 Auto-moving ${packagesNotMovedToStaging.length} packages to staging...`);
 
-          // Clear storage_location สำหรับ packages เหล่านี้
+          // ✅ FIX: ตั้ง storage_location เป็น 'Delivery-In-Progress' แทน null
+          // เพื่อไม่ให้ปุ่ม "จัดสรรโลเคชั่น" กลับมา (null = ยังไม่ได้จัดสรร)
           const packageIdsToMove = packagesNotMovedToStaging.map((p: any) => p.id);
           const { error: clearStorageError } = await supabase
             .from('bonus_face_sheet_packages')
-            .update({ storage_location: null })
+            .update({ storage_location: 'Delivery-In-Progress' })
             .in('id', packageIdsToMove);
 
           if (clearStorageError) {
@@ -423,21 +400,13 @@ try {
             );
           }
 
-          console.log(`✅ Cleared storage_location for ${packageIdsToMove.length} packages`);
         }
       }
 
       bonusFaceSheets = bonusFaceSheetData || [];
     }
 
-    console.log('📄 Documents fetched:', {
-      picklists: picklists.length,
-      faceSheets: faceSheets.length,
-      bonusFaceSheets: bonusFaceSheets.length
-    });
-
     if (picklists.length === 0 && faceSheets.length === 0 && bonusFaceSheets.length === 0 && !hasOnlineOrders) {
-      console.error('❌ No document data found');
       return NextResponse.json(
         { error: 'ไม่พบข้อมูลใบจัดสินค้า ใบปะหน้า ใบปะหน้าของแถม หรือออเดอร์ออนไลน์' },
         { status: 404 }
@@ -504,10 +473,7 @@ try {
       for (const item of picklist.picklist_items) {
         const qty = Number(item.quantity_picked) || Number(item.quantity_to_pick) || 0;
         if (qty <= 0) continue;
-        if (isSticker(item.sku_id)) {
-          console.log(`⏭️ Skipping sticker SKU: ${item.sku_id} (not tracked in inventory)`);
-          continue;
-        }
+        if (isSticker(item.sku_id)) continue;
         allDispatchItems.push({
           sku_id: item.sku_id,
           qty,
@@ -523,10 +489,7 @@ try {
       for (const item of faceSheet.face_sheet_items) {
         const qty = Number(item.quantity_picked) || Number(item.quantity_to_pick) || 0;
         if (qty <= 0) continue;
-        if (isSticker(item.sku_id)) {
-          console.log(`⏭️ Skipping sticker SKU: ${item.sku_id} (not tracked in inventory)`);
-          continue;
-        }
+        if (isSticker(item.sku_id)) continue;
         allDispatchItems.push({
           sku_id: item.sku_id,
           qty,
@@ -581,10 +544,7 @@ try {
 
       for (const item of expandedOnlineItems) {
         const actualSkuId = barcodeToSkuMap.get(item.skuId) || item.skuId;
-        if (isSticker(actualSkuId)) {
-          console.log(`⏭️ Skipping sticker SKU (online): ${actualSkuId}`);
-          continue;
-        }
+        if (isSticker(actualSkuId)) continue;
         allDispatchItems.push({
           sku_id: actualSkuId,
           qty: item.quantity,
@@ -593,7 +553,6 @@ try {
         });
       }
 
-      console.log(`📦 Added ${allDispatchItems.filter(i => i.source === 'online_order').length} online items to dispatch validation`);
     }
 
     // Step 2: รวมจำนวนตาม SKU
@@ -602,8 +561,6 @@ try {
       const current = skuTotalQtyMap.get(item.sku_id) || 0;
       skuTotalQtyMap.set(item.sku_id, current + item.qty);
     }
-
-    console.log(`📦 Total unique SKUs from Dispatch: ${skuTotalQtyMap.size}`);
 
     // Step 3: เช็คสต็อกแบบรวม (ต่อ SKU)
     const skuBalanceCache = new Map<string, { availableQty: number; balance: any }>();
@@ -642,8 +599,6 @@ try {
 
       const availableQty = (dispatchBalances || []).reduce((sum, b) => sum + Number(b.total_piece_qty || 0), 0);
       const dispatchBalance = dispatchBalances?.[0] || null;
-
-      console.log(`📊 SKU ${skuId}: need ${totalQtyNeeded}, available ${availableQty} at Dispatch`);
 
       // Cache balance info for later use
       skuBalanceCache.set(skuId, { availableQty, balance: dispatchBalance });
@@ -746,26 +701,16 @@ try {
         (item: any) => item.package_id && matchedPackageIds.has(item.package_id)
       );
 
-      console.log(`🔍 Processing bonus face sheet ${bonusFaceSheet.face_sheet_no}: total items=${bonusFaceSheet.bonus_face_sheet_items.length}, filtered (with trip)=${filteredItems.length}`);
-
       for (const item of filteredItems) {
         // ✅ FIX: Convert to Number (Supabase returns string for numeric)
         const qty = Number(item.quantity_picked) || Number(item.quantity_to_pick) || 0;
-        console.log(`📦 Bonus face sheet item: sku=${item.sku_id}, qty_picked=${item.quantity_picked}, qty_to_pick=${item.quantity_to_pick}, final_qty=${qty}, package_id=${item.package_id}`);
 
-        if (qty <= 0) {
-          console.log(`⚠️ Skipping item with qty=${qty}`);
-          continue;
-        }
+        if (qty <= 0) continue;
 
         // ✅ FIX: ข้ามสติ๊กเกอร์ - ไม่ต้องเช็คสต็อก (ไม่ได้ track ในระบบ)
-        if (isSticker(item.sku_id)) {
-          console.log(`⏭️ Skipping sticker SKU: ${item.sku_id} (not tracked in inventory)`);
-          continue;
-        }
+        if (isSticker(item.sku_id)) continue;
 
         // Get SKU info
-        console.log(`🔍 Fetching SKU info for ${item.sku_id}`);
         const { data: skuInfo, error: skuError } = await supabase
           .from('master_sku')
           .select('qty_per_pack, sku_name')
@@ -773,7 +718,6 @@ try {
           .single();
 
         if (skuError) {
-          console.error(`❌ Error fetching SKU ${item.sku_id}:`, skuError);
           return NextResponse.json(
             { error: `ไม่พบข้อมูล SKU: ${item.sku_id}`, details: skuError.message },
             { status: 500 }
@@ -782,7 +726,6 @@ try {
 
         const qtyPerPack = skuInfo?.qty_per_pack || 1;
         const qtyPack = qty / qtyPerPack;
-        console.log(`✅ SKU info: qty_per_pack=${qtyPerPack}, qtyPack=${qtyPack}`);
 
         // ✅ Get package info (storage_location only - hub ไม่จำเป็นต้องใช้)
         const packageInfo = packageInfoMap.get(item.package_id) || { hub: '', storage_location: null };
@@ -800,8 +743,7 @@ try {
 
         // 1. ตรวจสอบ prep area ก่อน (ถ้า package ยังมี storage_location)
         if (packageStorageLocation && prepAreaLocationMap.has(packageStorageLocation)) {
-          const prepAreaLocationId = prepAreaLocationMap.get(packageStorageLocation)!;
-          console.log(`🔍 Checking prep area ${packageStorageLocation} balance for ${item.sku_id}`);
+          const prepAreaLocationId = prepAreaLocationMap.get(packageStorageLocation)!
 
           const { data: prepAreaBalances, error: prepAreaError } = await supabase
             .from('wms_inventory_balances')
@@ -818,13 +760,11 @@ try {
             sourceBalance = prepAreaBalance;
             sourceLocationId = prepAreaLocationId;
             sourceLocationName = packageStorageLocation;
-            console.log(`✅ Found stock at prep area ${packageStorageLocation}: ${prepAreaAvailableQty} pieces`);
           }
         }
 
         // 2. ตรวจสอบ PQTD
         if (!sourceBalance && pqtdLocation?.location_id) {
-          console.log(`🔍 Checking PQTD balance for ${item.sku_id}`);
           const { data: pqtdBalances, error: pqtdError } = await supabase
             .from('wms_inventory_balances')
             .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
@@ -840,13 +780,11 @@ try {
             sourceBalance = pqtdBalance;
             sourceLocationId = pqtdLocation.location_id;
             sourceLocationName = 'PQTD';
-            console.log(`✅ Found stock at PQTD: ${pqtdAvailableQty} pieces`);
           }
         }
 
         // 3. ตรวจสอบ MRTD
         if (!sourceBalance && mrtdLocation?.location_id) {
-          console.log(`🔍 Checking MRTD balance for ${item.sku_id}`);
           const { data: mrtdBalances, error: mrtdError } = await supabase
             .from('wms_inventory_balances')
             .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
@@ -862,13 +800,11 @@ try {
             sourceBalance = mrtdBalance;
             sourceLocationId = mrtdLocation.location_id;
             sourceLocationName = 'MRTD';
-            console.log(`✅ Found stock at MRTD: ${mrtdAvailableQty} pieces`);
           }
         }
 
         // 4. ✅ FIX: ตรวจสอบ MR/PQ locations ทั้งหมด (กรณีสต็อกอยู่ที่ MR/PQ แต่ package ไม่มี storage_location)
         if (!sourceBalance && prepAreaLocations && prepAreaLocations.length > 0) {
-          console.log(`🔍 Checking ALL MR/PQ locations for ${item.sku_id}`);
           
           for (const prepLoc of prepAreaLocations) {
             const { data: prepBalances, error: prepError } = await supabase
@@ -886,43 +822,13 @@ try {
               sourceBalance = prepBalance;
               sourceLocationId = prepLoc.location_id;
               sourceLocationName = prepLoc.location_code;
-              console.log(`✅ Found stock at ${prepLoc.location_code}: ${prepAvailableQty} pieces`);
               break; // พบแล้ว หยุดค้นหา
             }
           }
         }
 
-        // 5. ตรวจสอบ Dispatch (legacy data)
-        if (!sourceBalance) {
-          console.log(`🔍 Checking Dispatch balance for ${item.sku_id}`);
-          const { data: dispatchBonusBalances, error: dispatchError } = await supabase
-            .from('wms_inventory_balances')
-            .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
-            .eq('warehouse_id', 'WH001')
-            .eq('location_id', dispatchLocation.location_id)
-            .eq('sku_id', item.sku_id)
-            .gt('total_piece_qty', 0);
-
-          const dispatchAvailableQty = (dispatchBonusBalances || []).reduce((sum, b) => sum + Number(b.total_piece_qty || 0), 0);
-          const dispatchBonusBalance = dispatchBonusBalances?.[0] || null;
-
-          console.log(`📊 Dispatch query result:`, {
-            rows: dispatchBonusBalances?.length || 0,
-            error: dispatchError,
-            availableQty: dispatchAvailableQty,
-            requiredQty: qty,
-            isEnough: dispatchAvailableQty >= qty
-          });
-
-          if (!dispatchError && dispatchAvailableQty >= qty) {
-            sourceBalance = dispatchBonusBalance;
-            sourceLocationId = dispatchLocation.location_id;
-            sourceLocationName = 'Dispatch';
-            console.log(`✅ Found stock at Dispatch: ${dispatchAvailableQty} pieces`);
-          }
-        }
-
         // ถ้าไม่พบสต็อกที่ไหนเลย → insufficient stock
+        // BFS ไม่ค้นที่ Dispatch เพราะ BFS หยิบไปจุดพัก (MR/PQ/MRTD/PQTD) ไม่ใช่ Dispatch
         if (!sourceBalance || !sourceLocationId) {
           insufficientStockItems.push({
             sku_id: item.sku_id,
@@ -931,7 +837,7 @@ try {
             required: qty,
             available: 0,
             shortage: qty,
-            location: 'PQTD, MRTD, Dispatch'
+            location: 'MR/PQ, PQTD, MRTD'
           });
         } else {
           // เก็บข้อมูลไว้สำหรับ process ทีหลัง

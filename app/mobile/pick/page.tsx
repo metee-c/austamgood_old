@@ -87,6 +87,7 @@ const PICKLIST_STATUSES = [
   'all',
   'pending',
   'assigned',
+  'picking',
   'completed',
   'cancelled'
 ] as const;
@@ -430,6 +431,7 @@ function MobilePickPage() {
                 {status === 'all' && 'ทั้งหมด'}
                 {status === 'pending' && 'รอดำเนินการ'}
                 {status === 'assigned' && 'มอบหมายแล้ว'}
+                {status === 'picking' && 'รอหยิบ'}
                 {status === 'completed' && 'เสร็จสิ้น'}
                 {status === 'cancelled' && 'ยกเลิก'}
               </button>

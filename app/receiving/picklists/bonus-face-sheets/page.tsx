@@ -707,12 +707,15 @@ const BonusFaceSheetsPage = () => {
 
       setSuccess(`จัดสรรโลเคชั่นสำเร็จ ${result.assigned_packages?.length || 0} แพ็ค`);
       
-      // Refresh list
+      // Refresh list and wait for completion before resetting button state
       await fetchBonusFaceSheets();
+      
+      // Reset button state after data is fully refreshed
+      setAssigningLocationId(null);
     } catch (err: any) {
       console.error('Error assigning locations:', err);
       setError(err.message || 'ไม่สามารถจัดสรรโลเคชั่นได้');
-    } finally {
+      // Reset button state on error
       setAssigningLocationId(null);
     }
   };

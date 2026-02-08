@@ -130,8 +130,11 @@ async function _GET(request: NextRequest) {
     // ✅ FIX: นับ packages จาก matched_package_ids (ไม่ต้องตรวจสอบ trip_number)
     const totalPackages = packages?.length || 0;
     
-    // นับ packages ที่ย้ายไป staging แล้ว (storage_location = null หรือ empty)
-    const movedPackages = packages?.filter(p => !p.storage_location || p.storage_location.trim() === '').length || 0;
+    // นับ packages ที่ย้ายไป staging แล้ว (storage_location = null/empty/PQTD/MRTD/Delivery-In-Progress)
+    const movedPackages = packages?.filter(p => {
+      const loc = p.storage_location?.trim();
+      return !loc || loc === '' || loc === 'PQTD' || loc === 'MRTD' || loc === 'Delivery-In-Progress';
+    }).length || 0;
     const pendingPackages = totalPackages - movedPackages;
 
     // ✅ FIX (edit40): ตรวจสอบจาก storage_location ของ matched packages เท่านั้น
@@ -373,10 +376,13 @@ try {
 
     const warehouseId = bonusFaceSheets[0].warehouse_id || 'WH001';
     const now = new Date().toISOString();
-    const ledgerEntries: any[] = [];
     let totalMoved = 0;
 
-    // 6. ย้ายสต็อกจากแต่ละ storage_location ไป staging (PQTD/MRTD)
+    // ✅ ATOMIC APPROACH: ใช้ executeStockMovements RPC แทน manual balance updates
+    const { executeStockMovements } = await import('@/lib/database/inventory-transaction');
+    const movements: any[] = [];
+
+    // 6. สร้าง movements จากแต่ละ storage_location ไป staging (PQTD/MRTD)
     for (const [storageLocation, locationItems] of locationGroups) {
       // Determine staging location based on storage location prefix
       const stagingLocation = storageLocation.startsWith('PQ') ? 'PQTD' : 'MRTD';
@@ -408,7 +414,7 @@ try {
         skuGroups.set(item.sku_id, currentQty + (item.quantity_picked || item.quantity));
       }
 
-      // Move stock for each SKU
+      // Build movements for each SKU
       for (const [skuId, quantity] of skuGroups) {
         // Get SKU info for pack calculation
         const { data: skuInfo } = await supabase
@@ -420,7 +426,7 @@ try {
         const qtyPerPack = skuInfo?.qty_per_pack || 1;
         const packQty = quantity / qtyPerPack;
 
-        // Deduct from source location
+        // Query source balance เพื่อเอา production_date/expiry_date และตรวจสอบสต็อก
         const { data: sourceBalance } = await supabase
           .from('wms_inventory_balances')
           .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
@@ -433,7 +439,7 @@ try {
           .maybeSingle();
 
         if (sourceBalance) {
-          // 🔴 CRITICAL: PRE-VALIDATION - ตรวจสอบสต็อกก่อนย้าย
+          // PRE-VALIDATION - ตรวจสอบสต็อกก่อนย้าย
           if (sourceBalance.total_piece_qty < quantity) {
             console.error(`🔴 CRITICAL: Insufficient stock at ${storageLocation} for SKU ${skuId}: need ${quantity}, have ${sourceBalance.total_piece_qty}`);
             return NextResponse.json({
@@ -447,148 +453,40 @@ try {
             }, { status: 400 });
           }
 
-          // Update source balance
-          const { error: sourceUpdateError } = await supabase
-            .from('wms_inventory_balances')
-            .update({
-              total_piece_qty: sourceBalance.total_piece_qty - quantity,
-              total_pack_qty: sourceBalance.total_pack_qty - packQty,
-              updated_at: now
-            })
-            .eq('balance_id', sourceBalance.balance_id);
-
-          if (sourceUpdateError) {
-            console.error(`🔴 CRITICAL: Failed to update source balance at ${storageLocation}:`, sourceUpdateError);
-            return NextResponse.json({
-              success: false,
-              error: `ไม่สามารถอัปเดตสต็อกต้นทางที่ ${storageLocation} ได้`,
-              error_code: 'SOURCE_UPDATE_FAILED',
-              details: sourceUpdateError.message
-            }, { status: 500 });
-          }
-
-          // Ledger OUT from source
-          ledgerEntries.push({
-            movement_at: now,
-            transaction_type: 'transfer',
+          // OUT movement จาก source (PQ/MR)
+          movements.push({
             direction: 'out',
             warehouse_id: warehouseId,
             location_id: sourceLocation.location_id,
             sku_id: skuId,
+            production_date: sourceBalance.production_date || null,
+            expiry_date: sourceBalance.expiry_date || null,
             pack_qty: packQty,
             piece_qty: quantity,
-            production_date: sourceBalance.production_date,
-            expiry_date: sourceBalance.expiry_date,
+            transaction_type: 'transfer',
             reference_no: bfsNos,
             reference_doc_type: 'bonus_face_sheet_staging',
             reference_doc_id: bfsIds[0],
             remarks: `ย้ายจาก ${storageLocation} ไป ${stagingLocation}`,
             created_by: userId,
-            skip_balance_sync: true
           });
 
-          // Add to destination (PQTD/MRTD)
-          // ✅ FIX: Handle null values properly - use .is() for null comparisons
-          let destBalanceQuery = supabase
-            .from('wms_inventory_balances')
-            .select('balance_id, total_piece_qty, total_pack_qty')
-            .eq('warehouse_id', warehouseId)
-            .eq('location_id', destLocation.location_id)
-            .eq('sku_id', skuId);
-
-          // Handle production_date - use .is() for null, .eq() for values
-          if (sourceBalance.production_date === null) {
-            destBalanceQuery = destBalanceQuery.is('production_date', null);
-          } else {
-            destBalanceQuery = destBalanceQuery.eq('production_date', sourceBalance.production_date);
-          }
-
-          // Handle expiry_date
-          if (sourceBalance.expiry_date === null) {
-            destBalanceQuery = destBalanceQuery.is('expiry_date', null);
-          } else {
-            destBalanceQuery = destBalanceQuery.eq('expiry_date', sourceBalance.expiry_date);
-          }
-
-          // Handle lot_no
-          if (sourceBalance.lot_no === null) {
-            destBalanceQuery = destBalanceQuery.is('lot_no', null);
-          } else {
-            destBalanceQuery = destBalanceQuery.eq('lot_no', sourceBalance.lot_no);
-          }
-
-          const { data: destBalance } = await destBalanceQuery.maybeSingle();
-
-          if (destBalance) {
-            const { error: destUpdateError } = await supabase
-              .from('wms_inventory_balances')
-              .update({
-                total_piece_qty: destBalance.total_piece_qty + quantity,
-                total_pack_qty: destBalance.total_pack_qty + packQty,
-                last_movement_at: now,
-                updated_at: now
-              })
-              .eq('balance_id', destBalance.balance_id);
-
-            if (destUpdateError) {
-              console.error(`🔴 CRITICAL: Failed to update destination balance at ${stagingLocation}:`, destUpdateError);
-              return NextResponse.json({
-                success: false,
-                error: `ไม่สามารถอัปเดตสต็อกปลายทางที่ ${stagingLocation} ได้ กรุณาติดต่อผู้ดูแลระบบ`,
-                error_code: 'DESTINATION_UPDATE_FAILED',
-                details: destUpdateError.message,
-                critical: true,
-                message: `สต็อกถูกหักจาก ${storageLocation} แล้วแต่ไม่เพิ่มที่ ${stagingLocation}`
-              }, { status: 500 });
-            }
-          } else {
-            const { error: destInsertError } = await supabase
-              .from('wms_inventory_balances')
-              .insert({
-                warehouse_id: warehouseId,
-                location_id: destLocation.location_id,
-                sku_id: skuId,
-                total_pack_qty: packQty,
-                total_piece_qty: quantity,
-                reserved_pack_qty: 0,
-                reserved_piece_qty: 0,
-                production_date: sourceBalance.production_date,
-                expiry_date: sourceBalance.expiry_date,
-                lot_no: sourceBalance.lot_no,
-                last_movement_at: now
-              });
-
-            if (destInsertError) {
-              console.error(`🔴 CRITICAL: Failed to insert destination balance at ${stagingLocation}:`, destInsertError);
-              return NextResponse.json({
-                success: false,
-                error: `ไม่สามารถสร้างสต็อกปลายทางที่ ${stagingLocation} ได้ กรุณาติดต่อผู้ดูแลระบบ`,
-                error_code: 'DESTINATION_INSERT_FAILED',
-                details: destInsertError.message,
-                critical: true,
-                message: `สต็อกถูกหักจาก ${storageLocation} แล้วแต่ไม่เพิ่มที่ ${stagingLocation}`
-              }, { status: 500 });
-            }
-          }
-
-          // Ledger IN to destination
-          ledgerEntries.push({
-            movement_at: now,
-            transaction_type: 'transfer',
+          // IN movement ไป destination (PQTD/MRTD)
+          movements.push({
             direction: 'in',
             warehouse_id: warehouseId,
             location_id: destLocation.location_id,
             sku_id: skuId,
+            production_date: sourceBalance.production_date || null,
+            expiry_date: sourceBalance.expiry_date || null,
             pack_qty: packQty,
             piece_qty: quantity,
-            production_date: sourceBalance.production_date,
-            expiry_date: sourceBalance.expiry_date,
+            transaction_type: 'transfer',
             reference_no: bfsNos,
             reference_doc_type: 'bonus_face_sheet_staging',
             reference_doc_id: bfsIds[0],
             remarks: `รับจาก ${storageLocation} ไป ${stagingLocation}`,
             created_by: userId,
-            skip_balance_sync: true
           });
 
           totalMoved += quantity;
@@ -596,23 +494,18 @@ try {
       }
     }
 
-    // 7. Insert ledger entries
-    // 🔴 CRITICAL FIX: Ledger error ต้อง FAIL request ทันที
-    // เพราะสต็อกถูกย้ายแล้ว แต่ไม่มี audit trail = data integrity issue
-    if (ledgerEntries.length > 0) {
-      const { error: ledgerError } = await supabase
-        .from('wms_inventory_ledger')
-        .insert(ledgerEntries);
+    // 7. ✅ ATOMIC: Execute ทุก movements ใน single transaction (ledger + balance)
+    if (movements.length > 0) {
+      const movementResult = await executeStockMovements(movements);
 
-      if (ledgerError) {
-        console.error('🔴 CRITICAL: Ledger insert failed! Stock has been moved but no audit trail.', ledgerError);
+      if (!movementResult.success) {
+        console.error('🔴 CRITICAL: executeStockMovements failed:', movementResult.error);
         return NextResponse.json({
           success: false,
-          error: 'ไม่สามารถบันทึกประวัติการเคลื่อนย้ายสต็อกได้ กรุณาติดต่อผู้ดูแลระบบ',
-          error_code: 'LEDGER_INSERT_FAILED',
-          details: ledgerError.message,
-          critical: true,
-          message: 'สต็อกอาจถูกย้ายแล้วแต่ไม่มีบันทึก กรุณาตรวจสอบ'
+          error: 'ไม่สามารถบันทึกการเคลื่อนย้ายสต็อกได้ กรุณาติดต่อผู้ดูแลระบบ',
+          error_code: 'INVENTORY_MOVEMENT_FAILED',
+          details: movementResult.error,
+          critical: true
         }, { status: 500 });
       }
     }
@@ -681,7 +574,7 @@ try {
       message: `ย้ายสินค้าไปจุดพักรอโหลดสำเร็จ ${totalMoved} ชิ้น จาก ${bonusFaceSheets.length} ใบปะหน้า`,
       total_moved: totalMoved,
       packages_processed: packages.length,
-      ledger_entries: ledgerEntries.length,
+      movements_executed: movements.length,
       bonus_face_sheets_processed: bonusFaceSheets.length
     });
 

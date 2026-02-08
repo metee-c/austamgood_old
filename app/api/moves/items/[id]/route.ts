@@ -246,10 +246,28 @@ try {
 
     const { moveService } = await import('@/lib/database/move');
 
-    // NOTE: ไม่ต้องเรียก recordInventoryMovement() ที่นี่
-    // เพราะ database trigger sync_move_item_to_ledger จะสร้าง ledger entries อัตโนมัติ
-    // เมื่อ move_item status เปลี่ยนเป็น 'completed'
-    // การเรียกซ้ำจะทำให้เกิด duplicate ledger entries
+    // Backend-driven inventory: เรียก recordInventoryMovement() แทน trigger
+    if (isCompletingItem && data) {
+      // Get move header for warehouse_id and move_no
+      const { data: moveHeader, error: headerError } = await supabase
+        .from('wms_moves')
+        .select('*')
+        .eq('move_id', data.move_id)
+        .single();
+
+      if (headerError || !moveHeader) {
+        console.error('[PATCH moves/items] Failed to fetch move header:', headerError);
+      } else {
+        const invResult = await moveService.recordInventoryMovement(data, moveHeader);
+        if (invResult.error) {
+          console.error('[PATCH moves/items] Failed to record inventory:', invResult.error);
+          return NextResponse.json(
+            { data: null, error: 'Failed to record inventory movement: ' + invResult.error },
+            { status: 500 }
+          );
+        }
+      }
+    }
 
     const recalcResult = await moveService.recalculateMoveHeaderStatus(data.move_id);
     if (recalcResult.error) {

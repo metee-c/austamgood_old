@@ -85,6 +85,8 @@ async function _GET(request: NextRequest) {
         loadlist_id,
         bonus_face_sheet_id,
         mapped_picklist_id,
+        mapped_face_sheet_id,
+        mapping_type,
         matched_package_ids,
         loadlists:loadlist_id (
           id,
@@ -117,9 +119,50 @@ async function _GET(request: NextRequest) {
       });
     }
 
+    // ✅ NEW: กรอง BFS ที่แมพกับ Face Sheet ที่มีสถานะ picking ออกไป
+    // เก็บรายการ face_sheet_id ที่ต้องกรอง
+    const faceSheetIdsToCheck: number[] = [];
+    const bfsMappingsFiltered: typeof bfsMappings = [];
+
+    for (const mapping of bfsMappings) {
+      // ถ้ามี mapped_face_sheet_id ให้เช็คสถานะ (ไม่ว่า mapping_type จะเป็นค่าอะไร)
+      if (mapping.mapped_face_sheet_id) {
+        faceSheetIdsToCheck.push(mapping.mapped_face_sheet_id);
+      } else {
+        // ถ้าไม่ได้แมพกับ Face Sheet (เป็น picklist หรือไม่มี mapping) ให้เก็บไว้
+        bfsMappingsFiltered.push(mapping);
+      }
+    }
+
+    // ดึงสถานะของ Face Sheets ที่ต้องตรวจสอบ
+    let pickingFaceSheetIds = new Set<number>();
+    if (faceSheetIdsToCheck.length > 0) {
+      const { data: faceSheets } = await supabase
+        .from('face_sheets')
+        .select('id, status')
+        .in('id', [...new Set(faceSheetIdsToCheck)]);
+
+      faceSheets?.forEach((fs: any) => {
+        if (fs.status === 'picking') {
+          pickingFaceSheetIds.add(fs.id);
+        }
+      });
+    }
+
+    // กรอง BFS ที่แมพกับ Face Sheet ที่ picking ออกไป
+    for (const mapping of bfsMappings) {
+      if (mapping.mapped_face_sheet_id) {
+        if (!pickingFaceSheetIds.has(mapping.mapped_face_sheet_id)) {
+          // Face Sheet ไม่ใช่ picking ให้เก็บไว้
+          bfsMappingsFiltered.push(mapping);
+        }
+        // ถ้า Face Sheet เป็น picking จะไม่ถูกเพิ่มเข้า bfsMappingsFiltered (ถูกกรองออก)
+      }
+    }
+
     // 3. รวบรวม package_ids ทั้งหมดเพื่อดึง order_no
     const allPackageIds: number[] = [];
-    bfsMappings.forEach((m: any) => {
+    bfsMappingsFiltered.forEach((m: any) => {
       if (m.matched_package_ids && Array.isArray(m.matched_package_ids)) {
         allPackageIds.push(...m.matched_package_ids);
       }
@@ -169,7 +212,7 @@ async function _GET(request: NextRequest) {
       total_packages: number;
     }>();
 
-    bfsMappings.forEach((m: any) => {
+    bfsMappingsFiltered.forEach((m: any) => {
       const loadlistData = m.loadlists;
       const bfsData = m.bonus_face_sheets;
       

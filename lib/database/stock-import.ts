@@ -4,6 +4,7 @@
 // ============================================================================
 
 import { createClient } from '@/lib/supabase/server';
+import { stockImportIn } from '@/lib/database/inventory-transaction';
 import type {
   StockImportBatch,
   StockImportStaging,
@@ -512,9 +513,35 @@ export class StockImportService {
 
         const locationId = existingLocation.location_id;
 
-        // 3. สร้าง Inventory Ledger (ส่ง supabase client และ location_id ที่ถูกต้อง)
-        // Trigger จะสร้าง/อัพเดท Balance อัตโนมัติ
-        const ledgerId = await this.insertInventoryLedger(record, batchId, userId, supabase, locationId);
+        // 3. สร้าง Inventory Ledger + Balance ผ่าน RPC (atomic, ไม่ใช้ trigger)
+        const importResult = await stockImportIn({
+          warehouse_id: record.warehouse_id!,
+          location_id: locationId,
+          sku_id: record.sku_id!,
+          pallet_id: record.pallet_id_external || null,
+          pallet_id_external: record.pallet_id_external || null,
+          production_date: record.parsed_received_date ? new Date(record.parsed_received_date).toISOString().split('T')[0] : null,
+          expiry_date: record.parsed_expiration_date ? new Date(record.parsed_expiration_date).toISOString().split('T')[0] : null,
+          lot_no: record.lot_no || null,
+          pack_qty: Number(record.pack_qty || 0),
+          piece_qty: Number(record.piece_qty || 0),
+          reference_no: batchId,
+          created_by: userId,
+          remarks: [
+            'นำเข้าจากระบบเก่า',
+            record.lot_no ? `Lot: ${record.lot_no}` : null,
+            record.remarks,
+            record.pallet_color ? `สีพาเลท: ${record.pallet_color}` : null,
+            record.name_edit ? `แก้ไขโดย: ${record.name_edit}` : null,
+            record.stock_status ? `สถานะ: ${record.stock_status}` : null
+          ].filter(Boolean).join(' | '),
+        });
+
+        if (!importResult.success) {
+          throw new Error(`ไม่สามารถสร้าง Inventory ได้: ${importResult.error}`);
+        }
+
+        const ledgerId = importResult.entries[0]?.ledger_id;
         ledgerEntriesCreated++;
 
         // อัพเดท staging
@@ -975,9 +1002,35 @@ export class StockImportService {
         // อัพเดท pack_qty ใน record
         record.pack_qty = calculatedPackQty;
 
-        // สร้าง Inventory Ledger เท่านั้น (ไม่ต้องสร้าง location)
-        // Trigger จะสร้าง/อัพเดท Balance อัตโนมัติ
-        const ledgerId = await this.insertInventoryLedger(record, batchId, userId, supabase, locationId);
+        // สร้าง Inventory Ledger + Balance ผ่าน RPC (atomic, ไม่ใช้ trigger)
+        const importResult = await stockImportIn({
+          warehouse_id: record.warehouse_id!,
+          location_id: locationId,
+          sku_id: record.sku_id!,
+          pallet_id: record.pallet_id_external || null,
+          pallet_id_external: record.pallet_id_external || null,
+          production_date: record.parsed_received_date ? new Date(record.parsed_received_date).toISOString().split('T')[0] : null,
+          expiry_date: record.parsed_expiration_date ? new Date(record.parsed_expiration_date).toISOString().split('T')[0] : null,
+          lot_no: record.lot_no || null,
+          pack_qty: Number(record.pack_qty || 0),
+          piece_qty: Number(record.piece_qty || 0),
+          reference_no: batchId,
+          created_by: userId,
+          remarks: [
+            'นำเข้าจากระบบเก่า (Picking Area)',
+            record.lot_no ? `Lot: ${record.lot_no}` : null,
+            record.remarks,
+            record.pallet_color ? `สีพาเลท: ${record.pallet_color}` : null,
+            record.name_edit ? `แก้ไขโดย: ${record.name_edit}` : null,
+            record.stock_status ? `สถานะ: ${record.stock_status}` : null
+          ].filter(Boolean).join(' | '),
+        });
+
+        if (!importResult.success) {
+          throw new Error(`ไม่สามารถสร้าง Inventory ได้: ${importResult.error}`);
+        }
+
+        const ledgerId = importResult.entries[0]?.ledger_id;
         ledgerEntriesCreated++;
 
         // อัพเดท staging

@@ -95,7 +95,8 @@
       "mcp__supabase__apply_migration",
       "Bash(npx next build:*)",
       "Bash(npx eslint:*)",
-      "mcp__supabase__get_logs"
+      "mcp__supabase__get_logs",
+      "mcp__supabase__list_migrations"
     ],
     "deny": [],
     "ask": []

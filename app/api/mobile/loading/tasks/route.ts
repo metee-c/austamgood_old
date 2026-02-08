@@ -107,17 +107,27 @@ async function handleGet(request: NextRequest, context: any) {
     });
 
     // ✅ NEW: Query for loadlists with online orders
-    const { data: onlineOrderLoadlists } = await supabase
-      .from('packing_backup_orders')
-      .select('loadlist_id')
-      .not('loadlist_id', 'is', null)
-      .order('loadlist_id');
+    // Paginate to avoid Supabase default 1000 row limit
+    const loadlistIdsWithOnlineOrders = new Set<number>();
+    let offset = 0;
+    const pageSize = 1000;
+    let hasMore = true;
+    while (hasMore) {
+      const { data: page } = await supabase
+        .from('packing_backup_orders')
+        .select('loadlist_id')
+        .not('loadlist_id', 'is', null)
+        .order('loadlist_id')
+        .range(offset, offset + pageSize - 1);
 
-    const loadlistIdsWithOnlineOrders = new Set(
-      onlineOrderLoadlists?.map((o: any) => o.loadlist_id) || []
-    );
-    console.log(`📦 Found ${loadlistIdsWithOnlineOrders.size} loadlists with online orders`);
-
+      if (page && page.length > 0) {
+        page.forEach((o: any) => loadlistIdsWithOnlineOrders.add(o.loadlist_id));
+        offset += pageSize;
+        hasMore = page.length === pageSize;
+      } else {
+        hasMore = false;
+      }
+    }
     // หา BFS IDs ที่แมพกับ loadlist ที่มี picklist/face sheet
     const bfsIdsWithMainLoadlist = new Set<number>();
     allLoadlists?.forEach((loadlist: any) => {

@@ -1,4 +1,5 @@
 ﻿import { createServiceRoleClient } from '@/lib/supabase/server';
+import { executeStockMovements, consumeProductionMaterials, type StockMovement } from '@/lib/database/inventory-transaction';
 
 // Use service role client for admin operations (bypasses RLS)
 // This is intentional for database service layer operations
@@ -463,7 +464,36 @@ export class ReceiveService {
       return { data: null, error: `Failed to create receive items: ${itemsError.message}. The receive document was rolled back.` };
     }
 
-    // Step 3: Return the created header data
+    // Step 3: Create inventory entries if status is 'รับเข้าแล้ว'
+    if (header.status === 'รับเข้าแล้ว') {
+      const invResult = await this.createInventoryFromReceiveItems(
+        header.receive_id,
+        header.warehouse_id,
+        header.receive_no,
+        itemsToInsert
+      );
+      if (!invResult.success) {
+        console.error('[Receive] Failed to create inventory entries:', invResult.error);
+      }
+
+      // Step 3b: Consume production materials if receive_type = 'การผลิต'
+      if (payload.receive_type === 'การผลิต') {
+        const prodOrderId = itemsToInsert.find((item: any) => item.production_order_id)?.production_order_id;
+        if (prodOrderId) {
+          const matResult = await consumeProductionMaterials({
+            receive_id: header.receive_id,
+            warehouse_id: header.warehouse_id,
+            production_order_id: prodOrderId,
+            created_by: payload.created_by ? Number(payload.created_by) : null,
+          });
+          if (!matResult.success) {
+            console.error('[Receive] Failed to consume production materials:', matResult.error);
+          }
+        }
+      }
+    }
+
+    // Step 4: Return the created header data
     return { data: header, error: null };
   }
 
@@ -833,6 +863,106 @@ export class ReceiveService {
     } catch (err) {
       console.error('Error validating pallet scan:', err);
       return { data: null, error: 'Failed to validate pallet scan' };
+    }
+  }
+
+  // ============================================================
+  // Create inventory entries from receive items (replaces triggers)
+  // ============================================================
+  /**
+   * Creates inventory ledger+balance entries for receive items.
+   * Replaces triggers: create_ledger_from_receive, update_ledger_from_receive,
+   * update_ledger_from_receive_status.
+   *
+   * Only creates entries for items with location_id IS NOT NULL.
+   * production_date/expiry_date are varchar in wms_receive_items → converted to date strings.
+   */
+  async createInventoryFromReceiveItems(
+    receiveId: number,
+    warehouseId: string,
+    receiveNo: string,
+    items?: any[] // Optional: pass items directly (from createReceive). If not provided, queries DB.
+  ): Promise<{ success: boolean; error?: string }> {
+    try {
+      // If items not provided, query from DB
+      let receiveItems = items;
+      if (!receiveItems) {
+        const { data, error } = await this.supabase
+          .from('wms_receive_items')
+          .select('*')
+          .eq('receive_id', receiveId);
+
+        if (error) {
+          console.error('[Receive] Error querying receive items:', error);
+          return { success: false, error: error.message };
+        }
+        receiveItems = data || [];
+      }
+
+      // Filter items that have location_id
+      const itemsWithLocation = receiveItems.filter(
+        (item: any) => item.location_id && item.location_id.trim() !== ''
+      );
+
+      if (itemsWithLocation.length === 0) {
+        return { success: true }; // No items to process
+      }
+
+      // Check for existing ledger entries to avoid duplicates
+      const { data: existingEntries } = await this.supabase
+        .from('wms_inventory_ledger')
+        .select('receive_item_id')
+        .eq('reference_doc_type', 'receive')
+        .eq('reference_doc_id', receiveId)
+        .eq('direction', 'in');
+
+      const existingItemIds = new Set(
+        (existingEntries || []).map((e: any) => Number(e.receive_item_id))
+      );
+
+      // Build movements for items that don't already have ledger entries
+      const movements: StockMovement[] = [];
+      for (const item of itemsWithLocation) {
+        const itemId = item.item_id || item.receive_item_id;
+        if (existingItemIds.has(Number(itemId))) {
+          continue; // Already has ledger entry
+        }
+
+        movements.push({
+          direction: 'in',
+          warehouse_id: warehouseId,
+          location_id: item.location_id,
+          sku_id: item.sku_id,
+          pallet_id: item.pallet_id || null,
+          pallet_id_external: item.pallet_id_external || null,
+          production_date: item.production_date || null,
+          expiry_date: item.expiry_date || null,
+          lot_no: item.lot_no || null,
+          pack_qty: Number(item.pack_quantity) || 0,
+          piece_qty: Number(item.piece_quantity) || 0,
+          transaction_type: 'receive',
+          reference_no: receiveNo,
+          reference_doc_type: 'receive',
+          reference_doc_id: receiveId,
+          receive_item_id: itemId,
+          created_by: item.created_by || null,
+        });
+      }
+
+      if (movements.length === 0) {
+        return { success: true }; // All items already have entries
+      }
+
+      const result = await executeStockMovements(movements);
+      if (!result.success) {
+        console.error('[Receive] executeStockMovements failed:', result.error);
+        return { success: false, error: result.error };
+      }
+
+      return { success: true };
+    } catch (err) {
+      console.error('[Receive] createInventoryFromReceiveItems error:', err);
+      return { success: false, error: 'Failed to create inventory entries' };
     }
   }
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { receiveService } from '@/lib/database/receive';
+import { consumeProductionMaterials } from '@/lib/database/inventory-transaction';
 import { apiLog } from '@/lib/logging';
 import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
@@ -59,6 +60,44 @@ async function _PATCH(
         { data: null, error },
         { status: 500 }
       );
+    }
+
+    // When status changes TO 'รับเข้าแล้ว', create inventory entries for all items
+    if (updateData.status === 'รับเข้าแล้ว' && data) {
+      const invResult = await receiveService.createInventoryFromReceiveItems(
+        id,
+        data.warehouse_id,
+        data.receive_no
+      );
+      if (!invResult.success) {
+        console.error('[PATCH /api/receives] Failed to create inventory entries:', invResult.error);
+      }
+
+      // Consume production materials if this is a production receive
+      if (data.receive_type === 'การผลิต') {
+        // Query items to find production_order_id
+        const { createServiceRoleClient } = await import('@/lib/supabase/server');
+        const supabase = createServiceRoleClient();
+        const { data: items } = await supabase
+          .from('wms_receive_items')
+          .select('production_order_id')
+          .eq('receive_id', id)
+          .not('production_order_id', 'is', null)
+          .limit(1);
+
+        const prodOrderId = items?.[0]?.production_order_id;
+        if (prodOrderId) {
+          const matResult = await consumeProductionMaterials({
+            receive_id: id,
+            warehouse_id: data.warehouse_id,
+            production_order_id: prodOrderId,
+            created_by: data.created_by ? Number(data.created_by) : null,
+          });
+          if (!matResult.success) {
+            console.error('[PATCH /api/receives] Failed to consume production materials:', matResult.error);
+          }
+        }
+      }
     }
 
     apiLog.success(txId, 'STOCK_RECEIVE_UPDATE', {

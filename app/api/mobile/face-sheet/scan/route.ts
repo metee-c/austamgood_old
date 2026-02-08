@@ -178,8 +178,11 @@ try {
 
     console.log('📦 Reservations found:', reservations?.length || 0);
 
+    // ✅ ATOMIC APPROACH: ใช้ executeStockMovements RPC แทน manual balance updates
+    const { executeStockMovements } = await import('@/lib/database/inventory-transaction');
+
     let remainingQty = quantity_picked;
-    const ledgerEntries = [];
+    const movements: any[] = [];
     const processedReservations: number[] = [];
     let sourceProductionDate: string | null = null;
     let sourceExpiryDate: string | null = null;
@@ -210,50 +213,28 @@ try {
           );
         }
 
-        // ✅ FIX: Check if this is a Virtual Pallet
-        // รองรับทั้ง "VIRTUAL-" และ "VIRT-" prefix รวมถึง location "VIRTUAL-PALLET"
         const isVirtualPallet = (balance.pallet_id && (balance.pallet_id.startsWith('VIRTUAL-') || balance.pallet_id.startsWith('VIRT-'))) ||
                                 (balance.location_id && balance.location_id === 'VIRTUAL-PALLET');
-        
-        // ✅ FIX: ถ้า balance มีสต็อค 0 แล้ว (อาจถูกหักไปแล้วจากการ scan ซ้ำ) ให้ข้ามไป
-        // แต่ถ้าเป็น Virtual Pallet ให้ดำเนินการต่อ (อนุญาตให้ติดลบ)
+
+        // ถ้า balance depleted แล้ว (ไม่ใช่ Virtual) → ข้ามไป
         if (!isVirtualPallet && balance.total_piece_qty === 0 && balance.reserved_piece_qty === 0) {
-          console.log(`⚠️ Balance ${balance.balance_id} already depleted (0 stock), skipping and releasing reservation`);
-          // Release reservation ที่ไม่ถูกต้อง
+          console.log(`⚠️ Balance ${balance.balance_id} already depleted, releasing reservation`);
           await supabase
             .from('face_sheet_item_reservations')
-            .update({
-              status: 'released',
-              picked_at: now,
-              updated_at: now
-            })
+            .update({ status: 'released', picked_at: now, updated_at: now })
             .eq('reservation_id', reservation.reservation_id);
           continue;
         }
-        
-        if (isVirtualPallet && balance.total_piece_qty === 0 && balance.reserved_piece_qty === 0) {
-          console.log(`✅ Virtual Pallet ${balance.pallet_id} at 0 stock - allowing to go negative`);
-        }
 
         // เก็บวันที่จาก balance แรก
-        if (!sourceProductionDate && balance.production_date) {
-          sourceProductionDate = balance.production_date;
-        }
-        if (!sourceExpiryDate && balance.expiry_date) {
-          sourceExpiryDate = balance.expiry_date;
-        }
-        if (!sourceLotNo && balance.lot_no) {
-          sourceLotNo = balance.lot_no;
-        }
+        if (!sourceProductionDate && balance.production_date) sourceProductionDate = balance.production_date;
+        if (!sourceExpiryDate && balance.expiry_date) sourceExpiryDate = balance.expiry_date;
+        if (!sourceLotNo && balance.lot_no) sourceLotNo = balance.lot_no;
 
-        // ตรวจสอบว่ามีสต็อคเพียงพอ
-        // ✅ FIX: รองรับ Virtual Pallet และ Preparation Area อนุญาตให้ติดลบ
+        // ตรวจสอบสต็อค (Block negative outside Virtual Pallet / Prep Area)
         if (balance.total_piece_qty < qtyToDeduct) {
-          // ตรวจสอบว่าเป็น Virtual Pallet หรือ Preparation Area หรือไม่
           const isPrepAreaLocation = await isPreparationArea(supabase, balance.location_id);
-
           if (!isVirtualPallet && !isPrepAreaLocation) {
-            // 🔴 ไม่ใช่ Virtual Pallet หรือ Preparation Area - ไม่อนุญาตติดลบ
             console.error(`🔴 Block negative: ${balance.location_id} is not a Virtual Pallet or Prep Area`);
             return NextResponse.json({
               success: false,
@@ -262,175 +243,66 @@ try {
               location_id: balance.location_id
             }, { status: 400 });
           }
-
-          // ✅ Virtual Pallet หรือ Preparation Area - อนุญาตให้ติดลบ
-          if (isVirtualPallet) {
-            console.log(`⚠️ Virtual Pallet (${balance.pallet_id}): อนุญาตหักติดลบ ${qtyToDeduct - balance.total_piece_qty} ชิ้น`);
-          } else {
-            console.log(`⚠️ Prep Area (${balance.location_id}): อนุญาตหักติดลบ ${qtyToDeduct - balance.total_piece_qty} ชิ้น`);
-          }
+          console.log(`⚠️ ${isVirtualPallet ? 'Virtual Pallet' : 'Prep Area'} (${balance.location_id}): อนุญาตหักติดลบ`);
         }
 
-        // ลดยอดจองและสต็อคจริง (อนุญาตติดลบสำหรับ Virtual Pallet/Prep Area - checked above)
-        console.log(`🔄 Updating balance ${balance.balance_id}:`, {
-          before: { total: balance.total_piece_qty, reserved: balance.reserved_piece_qty },
-          deduct: { total: qtyToDeduct, reserved: qtyToDeduct },
-          after: {
-            total: balance.total_piece_qty - qtyToDeduct,
-            reserved: Math.max(0, balance.reserved_piece_qty - qtyToDeduct)
-          }
-        });
-
-        const { error: updateError } = await supabase
+        // ลดยอดจอง (reserved_qty เท่านั้น - RPC จะจัดการ total_qty)
+        const { error: unreserveError } = await supabase
           .from('wms_inventory_balances')
           .update({
             reserved_piece_qty: Math.max(0, balance.reserved_piece_qty - qtyToDeduct),
             reserved_pack_qty: Math.max(0, balance.reserved_pack_qty - packToDeduct),
-            total_piece_qty: balance.total_piece_qty - qtyToDeduct, // ✅ อนุญาตติดลบ (checked above)
-            total_pack_qty: balance.total_pack_qty - packToDeduct,   // ✅ อนุญาตติดลบ (checked above)
             updated_at: now
           })
           .eq('balance_id', balance.balance_id);
 
-        if (updateError) {
-          console.error('❌ Error updating balance:', updateError);
-          return NextResponse.json(
-            { error: 'ไม่สามารถอัปเดตสต็อคได้', details: updateError.message },
-            { status: 500 }
-          );
+        if (unreserveError) {
+          console.error('Error unreserving balance:', unreserveError);
         }
 
-        console.log(`✅ Balance ${balance.balance_id} updated successfully`);
-
-        // บันทึก ledger: OUT จาก source_location (skip sync เพราะ update balance เองแล้ว)
-        // ✅ CRITICAL FIX: Include order_id and order_item_id for BRCGS traceability
-        // ✅ FIX: Include production_date and expiry_date for proper balance matching
-        // ⚠️ NOTE: lot_no is NOT in wms_inventory_ledger schema - only in wms_inventory_balances
-        ledgerEntries.push({
-          movement_at: now,
-          transaction_type: 'pick',
+        // สร้าง OUT movement จาก source location
+        movements.push({
           direction: 'out',
           warehouse_id: warehouseId,
           location_id: balance.location_id,
           sku_id: item.sku_id,
+          pallet_id: balance.pallet_id || null,
+          production_date: balance.production_date || null,
+          expiry_date: balance.expiry_date || null,
           pack_qty: packToDeduct,
           piece_qty: qtyToDeduct,
-          production_date: balance.production_date || null,  // ✅ FIX: Include for balance matching
-          expiry_date: balance.expiry_date || null,          // ✅ FIX: Include for balance matching
+          transaction_type: 'pick',
           reference_no: (item.face_sheets as any).face_sheet_no,
           reference_doc_type: 'face_sheet',
           reference_doc_id: face_sheet_id,
-          order_id: item.order_id,           // ✅ BRCGS: Link to order
-          order_item_id: item.order_item_id, // ✅ BRCGS: Link to order line
+          order_id: item.order_id,
+          order_item_id: item.order_item_id,
           remarks: `หยิบจาก ${balance.location_id} (balance_id: ${balance.balance_id})`,
           created_by: userId,
-          skip_balance_sync: true  // ✅ Keep true because we manually update balance above
         });
 
         processedReservations.push(reservation.reservation_id);
         remainingQty -= qtyToDeduct;
       }
 
-      // ✅ FIX: ถ้าจองไว้ไม่พอ → ใช้ Virtual Pallet ติดลบแทน (ไม่ FAIL)
+      // ถ้าจองไว้ไม่พอ → ใช้ Virtual Pallet (RPC จะสร้าง negative balance ให้)
       if (remainingQty > 0) {
         console.log(`⚠️ สต็อคที่จองไว้ไม่พอ ขาดอีก ${remainingQty} ชิ้น → ใช้ Virtual Pallet`);
-        
         const virtualPalletId = `VIRT-FS-${(item.face_sheets as any).face_sheet_no}-${item.sku_id}`;
         const shortfall = remainingQty;
         const shortfallPack = shortfall / qtyPerPack;
 
-        // หาหรือสร้าง Virtual Pallet balance
-        const { data: virtualBalance } = await supabase
-          .from('wms_inventory_balances')
-          .select('balance_id, total_piece_qty, total_pack_qty')
-          .eq('warehouse_id', warehouseId)
-          .eq('location_id', 'VIRTUAL-PALLET')
-          .eq('sku_id', item.sku_id)
-          .eq('pallet_id', virtualPalletId)
-          .maybeSingle();
-
-        let virtualBalanceId: number;
-        let virtualCurrentPiece = 0;
-        let virtualCurrentPack = 0;
-
-        if (virtualBalance) {
-          virtualBalanceId = virtualBalance.balance_id;
-          virtualCurrentPiece = virtualBalance.total_piece_qty || 0;
-          virtualCurrentPack = virtualBalance.total_pack_qty || 0;
-          console.log(`✅ Found existing Virtual Pallet balance: ${virtualBalanceId}`);
-        } else {
-          // สร้าง Virtual Pallet balance ใหม่
-          const { data: newVirtualBalance, error: virtualInsertError } = await supabase
-            .from('wms_inventory_balances')
-            .insert({
-              warehouse_id: warehouseId,
-              location_id: 'VIRTUAL-PALLET',
-              sku_id: item.sku_id,
-              pallet_id: virtualPalletId,
-              pallet_id_external: null,
-              lot_no: null,
-              production_date: sourceProductionDate,
-              expiry_date: sourceExpiryDate,
-              total_pack_qty: 0,
-              total_piece_qty: 0,
-              reserved_pack_qty: 0,
-              reserved_piece_qty: 0,
-              last_movement_at: now
-            })
-            .select('balance_id')
-            .single();
-
-          if (virtualInsertError || !newVirtualBalance) {
-            console.error('❌ Error creating Virtual Pallet balance:', virtualInsertError);
-            return NextResponse.json(
-              { error: 'ไม่สามารถสร้าง Virtual Pallet ได้', details: virtualInsertError?.message },
-              { status: 500 }
-            );
-          }
-          virtualBalanceId = newVirtualBalance.balance_id;
-          console.log(`✅ Created new Virtual Pallet balance: ${virtualBalanceId}`);
-        }
-
-        // หักจาก Virtual Pallet (ติดลบได้)
-        const newVirtualPiece = virtualCurrentPiece - shortfall;
-        const newVirtualPack = virtualCurrentPack - shortfallPack;
-
-        console.log(`🔄 Deducting from Virtual Pallet:`, {
-          before: { piece: virtualCurrentPiece, pack: virtualCurrentPack },
-          deduct: { piece: shortfall, pack: shortfallPack },
-          after: { piece: newVirtualPiece, pack: newVirtualPack }
-        });
-
-        const { error: updateVirtualError } = await supabase
-          .from('wms_inventory_balances')
-          .update({
-            total_piece_qty: newVirtualPiece,
-            total_pack_qty: newVirtualPack,
-            updated_at: now
-          })
-          .eq('balance_id', virtualBalanceId);
-
-        if (updateVirtualError) {
-          console.error('❌ Error updating Virtual Pallet:', updateVirtualError);
-          return NextResponse.json(
-            { error: 'ไม่สามารถอัปเดต Virtual Pallet ได้', details: updateVirtualError.message },
-            { status: 500 }
-          );
-        }
-
-        // บันทึก ledger: OUT จาก Virtual Pallet
-        ledgerEntries.push({
-          movement_at: now,
-          transaction_type: 'pick',
+        movements.push({
           direction: 'out',
           warehouse_id: warehouseId,
           location_id: 'VIRTUAL-PALLET',
           sku_id: item.sku_id,
           pallet_id: virtualPalletId,
-          pack_qty: shortfallPack,
-          piece_qty: shortfall,
           production_date: sourceProductionDate,
           expiry_date: sourceExpiryDate,
+          pack_qty: shortfallPack,
+          piece_qty: shortfall,
+          transaction_type: 'pick',
           reference_no: (item.face_sheets as any).face_sheet_no,
           reference_doc_type: 'face_sheet',
           reference_doc_id: face_sheet_id,
@@ -438,39 +310,73 @@ try {
           order_item_id: item.order_item_id,
           remarks: `หยิบจาก Virtual Pallet (ขาด ${shortfall} ชิ้น) - ${(item.face_sheets as any).face_sheet_no}`,
           created_by: userId,
-          skip_balance_sync: true
         });
 
-        console.log(`✅ Virtual Pallet deducted: ${shortfall} pieces (balance now: ${newVirtualPiece})`);
-        remainingQty = 0; // หักครบแล้ว
+        remainingQty = 0;
       }
 
-      // อัปเดตสถานะการจอง (ปล่อย reservation จาก Bulk/Rack)
+      // อัปเดตสถานะการจอง
       if (processedReservations.length > 0) {
         await supabase
           .from('face_sheet_item_reservations')
-          .update({
-            status: 'released',
-            picked_at: now,
-            updated_at: now
-          })
+          .update({ status: 'released', picked_at: now, updated_at: now })
           .in('reservation_id', processedReservations);
       }
+    } else {
+      return NextResponse.json(
+        { error: 'ไม่พบข้อมูลการจองสต็อค กรุณาสร้างใบปะหน้าใหม่' },
+        { status: 400 }
+      );
+    }
 
-      // สร้าง staging reservation ที่ Dispatch
-      const { data: dispatchBalance, error: dispatchBalanceError } = await supabase
+    // IN ไปยัง Dispatch (RPC จะ upsert balance ให้อัตโนมัติ)
+    movements.push({
+      direction: 'in',
+      warehouse_id: warehouseId,
+      location_id: dispatchLocation.location_id,
+      sku_id: item.sku_id,
+      pallet_id: null,
+      production_date: sourceProductionDate || null,
+      expiry_date: sourceExpiryDate || null,
+      pack_qty: packQty,
+      piece_qty: quantity_picked,
+      transaction_type: 'pick',
+      reference_no: (item.face_sheets as any).face_sheet_no,
+      reference_doc_type: 'face_sheet',
+      reference_doc_id: face_sheet_id,
+      order_id: item.order_id,
+      order_item_id: item.order_item_id,
+      remarks: `ย้ายไป Dispatch`,
+      created_by: userId,
+    });
+
+    // ✅ ATOMIC: Execute ทุก movements ใน single transaction (ledger + balance)
+    const movementResult = await executeStockMovements(movements);
+
+    if (!movementResult.success) {
+      console.error('🔴 CRITICAL: executeStockMovements failed:', movementResult.error);
+      return NextResponse.json({
+        success: false,
+        error: 'ไม่สามารถบันทึกการเคลื่อนย้ายสต็อกได้ กรุณาติดต่อผู้ดูแลระบบ',
+        error_code: 'INVENTORY_MOVEMENT_FAILED',
+        details: movementResult.error,
+        critical: true
+      }, { status: 500 });
+    }
+
+    // สร้าง staging reservation ที่ Dispatch (ถ้ามี RPC)
+    try {
+      const { data: dispatchBalanceForStaging } = await supabase
         .from('wms_inventory_balances')
         .select('balance_id')
         .eq('warehouse_id', warehouseId)
         .eq('location_id', dispatchLocation.location_id)
         .eq('sku_id', item.sku_id)
-        .eq('production_date', sourceProductionDate || null)
-        .eq('expiry_date', sourceExpiryDate || null)
-        .eq('lot_no', sourceLotNo || null)
+        .is('pallet_id', null)
         .maybeSingle();
 
-      if (dispatchBalance) {
-        const { data: stagingResult, error: stagingError } = await supabase.rpc(
+      if (dispatchBalanceForStaging) {
+        const { error: stagingError } = await supabase.rpc(
           'create_staging_reservation_after_pick',
           {
             p_document_type: 'face_sheet',
@@ -478,162 +384,16 @@ try {
             p_sku_id: item.sku_id,
             p_quantity_piece: quantity_picked,
             p_staging_location_id: dispatchLocation.location_id,
-            p_balance_id: dispatchBalance.balance_id,
+            p_balance_id: dispatchBalanceForStaging.balance_id,
             p_quantity_pack: packQty
           }
         );
-
-        if (stagingError || !stagingResult?.success) {
-          console.error('⚠️ Failed to create staging reservation:', stagingError || stagingResult?.message);
-          // Don't fail the whole operation, just log warning
-        } else {
-          console.log('✅ Staging reservation created:', stagingResult.reservation_id);
-        }
-      } else {
-        console.warn('⚠️ No dispatch balance found for staging reservation');
-      }
-    } else {
-      // ไม่มี reservations - ต้องมีการจองก่อน
-      return NextResponse.json(
-        { error: 'ไม่พบข้อมูลการจองสต็อค กรุณาสร้างใบปะหน้าใหม่' },
-        { status: 400 }
-      );
-    }
-
-    // 9. เพิ่มสต็อคที่ Dispatch (ใช้ raw SQL เพื่อ UPSERT และหลีกเลี่ยง race condition)
-    const { error: upsertError } = await supabase.rpc('upsert_dispatch_balance', {
-      p_warehouse_id: warehouseId,
-      p_location_id: dispatchLocation.location_id,
-      p_sku_id: item.sku_id,
-      p_production_date: sourceProductionDate,
-      p_expiry_date: sourceExpiryDate,
-      p_lot_no: sourceLotNo,
-      p_pack_qty: packQty,
-      p_piece_qty: quantity_picked
-    });
-
-    if (upsertError) {
-      console.error('❌ Error upserting dispatch balance:', upsertError);
-      // 🔴 CRITICAL FIX: Fallback ต้องมี error handling
-      // Fallback to manual upsert
-      const { data: dispatchBalance, error: fetchError } = await supabase
-        .from('wms_inventory_balances')
-        .select('balance_id, total_piece_qty, total_pack_qty')
-        .eq('warehouse_id', warehouseId)
-        .eq('location_id', dispatchLocation.location_id)
-        .eq('sku_id', item.sku_id)
-        .eq('production_date', sourceProductionDate || null)
-        .eq('expiry_date', sourceExpiryDate || null)
-        .eq('lot_no', sourceLotNo || null)
-        .maybeSingle();
-
-      if (fetchError) {
-        console.error('🔴 CRITICAL: Failed to fetch dispatch balance:', fetchError);
-        return NextResponse.json({
-          success: false,
-          error: 'ไม่สามารถดึงข้อมูล Dispatch balance ได้ กรุณาติดต่อผู้ดูแลระบบ',
-          error_code: 'DISPATCH_FETCH_FAILED',
-          details: fetchError.message,
-          critical: true
-        }, { status: 500 });
-      }
-
-      if (dispatchBalance) {
-        const { error: updateError } = await supabase
-          .from('wms_inventory_balances')
-          .update({
-            total_piece_qty: dispatchBalance.total_piece_qty + quantity_picked,
-            total_pack_qty: dispatchBalance.total_pack_qty + packQty,
-            last_movement_at: now,
-            updated_at: now
-          })
-          .eq('balance_id', dispatchBalance.balance_id);
-
-        if (updateError) {
-          console.error('🔴 CRITICAL: Failed to update dispatch balance:', updateError);
-          return NextResponse.json({
-            success: false,
-            error: 'ไม่สามารถอัปเดต Dispatch balance ได้ กรุณาติดต่อผู้ดูแลระบบ',
-            error_code: 'DISPATCH_UPDATE_FAILED',
-            details: updateError.message,
-            critical: true,
-            message: 'สต็อกถูกหักจากต้นทางแล้วแต่ไม่เพิ่มที่ Dispatch'
-          }, { status: 500 });
-        }
-      } else {
-        const { error: insertError } = await supabase
-          .from('wms_inventory_balances')
-          .insert({
-            warehouse_id: warehouseId,
-            location_id: dispatchLocation.location_id,
-            sku_id: item.sku_id,
-            total_pack_qty: packQty,
-            total_piece_qty: quantity_picked,
-            reserved_pack_qty: 0,
-            reserved_piece_qty: 0,
-            production_date: sourceProductionDate,
-            expiry_date: sourceExpiryDate,
-            lot_no: sourceLotNo,
-            last_movement_at: now
-          });
-
-        if (insertError) {
-          console.error('🔴 CRITICAL: Failed to insert dispatch balance:', insertError);
-          return NextResponse.json({
-            success: false,
-            error: 'ไม่สามารถสร้าง Dispatch balance ได้ กรุณาติดต่อผู้ดูแลระบบ',
-            error_code: 'DISPATCH_INSERT_FAILED',
-            details: insertError.message,
-            critical: true,
-            message: 'สต็อกถูกหักจากต้นทางแล้วแต่ไม่เพิ่มที่ Dispatch'
-          }, { status: 500 });
+        if (stagingError) {
+          console.error('⚠️ Failed to create staging reservation:', stagingError);
         }
       }
-    }
-
-    // บันทึก ledger: IN ไปยัง Dispatch (skip sync เพราะ update balance เองแล้ว)
-    // ✅ CRITICAL FIX: Include order_id and order_item_id for BRCGS traceability
-    // ✅ FIX: Include production_date and expiry_date for proper balance matching
-    // ⚠️ NOTE: lot_no is NOT in wms_inventory_ledger schema - only in wms_inventory_balances
-    ledgerEntries.push({
-      movement_at: now,
-      transaction_type: 'pick',
-      direction: 'in',
-      warehouse_id: warehouseId,
-      location_id: dispatchLocation.location_id,
-      sku_id: item.sku_id,
-      pack_qty: packQty,
-      piece_qty: quantity_picked,
-      production_date: sourceProductionDate || null,  // ✅ FIX: Include for balance matching
-      expiry_date: sourceExpiryDate || null,          // ✅ FIX: Include for balance matching
-      reference_no: (item.face_sheets as any).face_sheet_no,
-      reference_doc_type: 'face_sheet',
-      reference_doc_id: face_sheet_id,
-      order_id: item.order_id,           // ✅ BRCGS: Link to order
-      order_item_id: item.order_item_id, // ✅ BRCGS: Link to order line
-      remarks: `ย้ายไป Dispatch`,
-      created_by: userId,
-      skip_balance_sync: true  // ✅ Keep true because we manually upsert balance above
-    });
-
-    // 10. บันทึก ledger entries
-    // 🔴 CRITICAL FIX: Ledger error ต้อง FAIL request ทันที
-    // เพราะสต็อกถูกย้ายแล้ว แต่ไม่มี audit trail = data integrity issue
-    const { error: ledgerError } = await supabase
-      .from('wms_inventory_ledger')
-      .insert(ledgerEntries);
-
-    if (ledgerError) {
-      console.error('🔴 CRITICAL: Ledger insert failed! Stock has been moved but no audit trail.', ledgerError);
-      // TODO: ในอนาคตควร rollback balance changes ด้วย
-      return NextResponse.json({
-        success: false,
-        error: 'ไม่สามารถบันทึกประวัติการเคลื่อนย้ายสต็อกได้ กรุณาติดต่อผู้ดูแลระบบ',
-        error_code: 'LEDGER_INSERT_FAILED',
-        details: ledgerError.message,
-        critical: true,
-        message: 'สต็อกอาจถูกย้ายแล้วแต่ไม่มีบันทึก กรุณาตรวจสอบ'
-      }, { status: 500 });
+    } catch (e) {
+      console.warn('⚠️ Staging reservation skipped:', e);
     }
 
     // 11. อัปเดต face_sheet_item
