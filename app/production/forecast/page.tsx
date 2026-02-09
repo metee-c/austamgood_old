@@ -71,6 +71,24 @@ interface BalanceDetail {
   available_qty: number;
 }
 
+interface PrepAreaDetail {
+  preparation_area_code: string;
+  preparation_area_name: string;
+  sku_name: string;
+  total_piece_qty: number;
+  reserved_piece_qty: number;
+  available_piece_qty: number;
+  total_pack_qty: number;
+  reserved_pack_qty: number;
+  available_pack_qty: number;
+  latest_production_date: string | null;
+  latest_expiry_date: string | null;
+  latest_lot_no: string | null;
+  days_until_expiry: number | null;
+  is_expired: boolean;
+  last_movement_at: string | null;
+}
+
 const ForecastPage = () => {
   const [forecastData, setForecastData] = useState<ForecastSKU[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,6 +123,7 @@ const ForecastPage = () => {
   // Expandable rows state
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
   const [balanceDetails, setBalanceDetails] = useState<Record<string, BalanceDetail[]>>({});
+  const [prepAreaDetails, setPrepAreaDetails] = useState<Record<string, PrepAreaDetail[]>>({});
   const [loadingBalances, setLoadingBalances] = useState<Set<string>>(new Set());
 
   // Tooltip state
@@ -281,6 +300,10 @@ const ForecastPage = () => {
       setBalanceDetails(prev => ({
         ...prev,
         [skuId]: formattedBalances
+      }));
+      setPrepAreaDetails(prev => ({
+        ...prev,
+        [skuId]: result.prep_area_inventory || []
       }));
     } catch (err: any) {
       console.error('Error fetching balance details:', err);
@@ -1603,7 +1626,7 @@ const ForecastPage = () => {
                         <td className="px-2 py-1 text-center whitespace-nowrap">
                           <span className="text-thai-gray-600 font-thai">
                             {record.last_ship_date
-                              ? new Date(record.last_ship_date).toLocaleDateString('th-TH', {
+                              ? new Date(record.last_ship_date).toLocaleDateString('en-GB', {
                                   day: '2-digit',
                                   month: '2-digit',
                                   year: '2-digit',
@@ -1634,14 +1657,15 @@ const ForecastPage = () => {
                                     <Loader2 className="w-4 h-4 animate-spin mr-2" />
                                     <span className="text-xs font-thai">กำลังโหลดรายละเอียด...</span>
                                   </div>
-                                ) : balances.length === 0 ? (
+                                ) : balances.length === 0 && (prepAreaDetails[record.sku_id] || []).length === 0 ? (
                                   <div className="flex items-center justify-center py-4 text-gray-400">
                                     <span className="text-xs font-thai">ไม่มีสต็อกในคลัง</span>
                                   </div>
                                 ) : (
-                                  <div className="px-4 py-2">
-                                    {/* แสดงรายละเอียดแต่ละโลเคชั่น */}
+                                  <div className="px-4 py-2 space-y-3">
+                                    {/* แสดงรายละเอียดแต่ละโลเคชั่น (คลังหลัก) */}
                                     {(() => {
+                                      if (balances.length === 0) return null;
                                       // Sort by expiry_date, production_date, location
                                       const sortedBalances = [...balances].sort((a, b) => {
                                         const expA = a.expiry_date || '9999-12-31';
@@ -1697,7 +1721,7 @@ const ForecastPage = () => {
                                                   </td>
                                                   <td className="px-2 py-1 text-center border-r border-gray-200">
                                                     {balance.production_date
-                                                      ? new Date(balance.production_date).toLocaleDateString('th-TH', {
+                                                      ? new Date(balance.production_date).toLocaleDateString('en-GB', {
                                                           day: '2-digit',
                                                           month: '2-digit',
                                                           year: '2-digit',
@@ -1706,7 +1730,7 @@ const ForecastPage = () => {
                                                   </td>
                                                   <td className="px-2 py-1 text-center border-r border-gray-200">
                                                     {balance.expiry_date
-                                                      ? new Date(balance.expiry_date).toLocaleDateString('th-TH', {
+                                                      ? new Date(balance.expiry_date).toLocaleDateString('en-GB', {
                                                           day: '2-digit',
                                                           month: '2-digit',
                                                           year: '2-digit',
@@ -1741,6 +1765,91 @@ const ForecastPage = () => {
                                                     >
                                                       ดูเพิ่มเติม
                                                     </button>
+                                                  </td>
+                                                </tr>
+                                              ))}
+                                            </tbody>
+                                          </table>
+                                        </>
+                                      );
+                                    })()}
+
+                                    {/* สต็อกบ้านหยิบ (Preparation Area) */}
+                                    {(() => {
+                                      const prepItems = prepAreaDetails[record.sku_id] || [];
+                                      if (prepItems.length === 0) return null;
+
+                                      const totalPrepPiece = prepItems.reduce((sum, p) => sum + p.total_piece_qty, 0);
+                                      const totalPrepAvailable = prepItems.reduce((sum, p) => sum + p.available_piece_qty, 0);
+
+                                      return (
+                                        <>
+                                          <div className="text-xs font-semibold text-green-700 mb-2 font-thai">
+                                            สต็อกบ้านหยิบ: {record.sku_name} ({prepItems.length} บ้านหยิบ, รวม {totalPrepPiece.toLocaleString()} ชิ้น, พร้อมใช้ {totalPrepAvailable.toLocaleString()} ชิ้น)
+                                          </div>
+                                          <table className="w-full text-[10px] border border-green-200">
+                                            <thead className="bg-green-50">
+                                              <tr>
+                                                <th className="px-2 py-1 text-left border-r border-green-200 font-thai">บ้านหยิบ</th>
+                                                <th className="px-2 py-1 text-left border-r border-green-200 font-thai">ชื่อบ้านหยิบ</th>
+                                                <th className="px-2 py-1 text-center border-r border-green-200 font-thai">วันผลิต</th>
+                                                <th className="px-2 py-1 text-center border-r border-green-200 font-thai">วันหมดอายุ</th>
+                                                <th className="px-2 py-1 text-center border-r border-green-200 font-thai">เหลือ (วัน)</th>
+                                                <th className="px-2 py-1 text-center border-r border-green-200 font-thai">จำนวน (ชิ้น)</th>
+                                                <th className="px-2 py-1 text-center border-r border-green-200 font-thai">สำรอง</th>
+                                                <th className="px-2 py-1 text-center border-r border-green-200 font-thai">พร้อมใช้</th>
+                                                <th className="px-2 py-1 text-center font-thai">จำนวน (แพ็ค)</th>
+                                              </tr>
+                                            </thead>
+                                            <tbody className="bg-white">
+                                              {prepItems.map((item, idx) => (
+                                                <tr key={item.preparation_area_code} className={idx % 2 === 0 ? 'bg-white' : 'bg-green-50/30'}>
+                                                  <td className="px-2 py-1 text-left border-r border-green-200">
+                                                    <span className="font-mono text-xs font-semibold text-gray-700">
+                                                      {item.preparation_area_code}
+                                                    </span>
+                                                  </td>
+                                                  <td className="px-2 py-1 text-left border-r border-green-200">
+                                                    <span className="text-[10px] text-gray-700 font-thai">
+                                                      {item.preparation_area_name}
+                                                    </span>
+                                                  </td>
+                                                  <td className="px-2 py-1 text-center border-r border-green-200">
+                                                    {item.latest_production_date
+                                                      ? new Date(item.latest_production_date).toLocaleDateString('en-GB', {
+                                                          day: '2-digit', month: '2-digit', year: '2-digit',
+                                                        })
+                                                      : '-'}
+                                                  </td>
+                                                  <td className="px-2 py-1 text-center border-r border-green-200">
+                                                    <span className={item.is_expired ? 'text-red-600 font-semibold' : ''}>
+                                                      {item.latest_expiry_date
+                                                        ? new Date(item.latest_expiry_date).toLocaleDateString('en-GB', {
+                                                            day: '2-digit', month: '2-digit', year: '2-digit',
+                                                          })
+                                                        : '-'}
+                                                    </span>
+                                                  </td>
+                                                  <td className="px-2 py-1 text-center border-r border-green-200">
+                                                    <span className={`font-semibold ${
+                                                      item.is_expired ? 'text-red-600'
+                                                        : item.days_until_expiry != null && item.days_until_expiry <= 30 ? 'text-orange-600'
+                                                        : 'text-gray-600'
+                                                    }`}>
+                                                      {item.days_until_expiry != null ? item.days_until_expiry : '-'}
+                                                    </span>
+                                                  </td>
+                                                  <td className="px-2 py-1 text-center border-r border-green-200 font-semibold text-blue-600">
+                                                    {item.total_piece_qty.toLocaleString()}
+                                                  </td>
+                                                  <td className="px-2 py-1 text-center border-r border-green-200 text-orange-600">
+                                                    {item.reserved_piece_qty > 0 ? item.reserved_piece_qty.toLocaleString() : '-'}
+                                                  </td>
+                                                  <td className="px-2 py-1 text-center border-r border-green-200 font-semibold text-green-600">
+                                                    {item.available_piece_qty.toLocaleString()}
+                                                  </td>
+                                                  <td className="px-2 py-1 text-center font-semibold text-purple-600">
+                                                    {item.total_pack_qty.toLocaleString()}
                                                   </td>
                                                 </tr>
                                               ))}

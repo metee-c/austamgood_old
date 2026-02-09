@@ -22,7 +22,7 @@ interface Reservation {
 interface ReservationDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
-  balanceId: number;
+  balanceId?: number;
   skuId: string;
   skuName?: string;
   locationId?: string;
@@ -46,16 +46,23 @@ const ReservationDetailsModal: React.FC<ReservationDetailsModalProps> = ({
   const router = useRouter();
 
   useEffect(() => {
-    if (isOpen && balanceId) {
+    if (isOpen && (balanceId || (skuId && locationId))) {
       fetchReservations();
     }
-  }, [isOpen, balanceId]);
+  }, [isOpen, balanceId, skuId, locationId]);
 
   const fetchReservations = async () => {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch(`/api/inventory/reservations?balance_id=${balanceId}`);
+      // สร้าง URL ตาม params ที่มี
+      let url: string;
+      if (!balanceId && skuId && locationId) {
+        url = `/api/inventory/reservations?sku_id=${encodeURIComponent(skuId)}&location_id=${encodeURIComponent(locationId)}`;
+      } else {
+        url = `/api/inventory/reservations?balance_id=${balanceId}`;
+      }
+      const response = await fetch(url);
       const result = await response.json();
 
       if (!response.ok) {

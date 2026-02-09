@@ -5,64 +5,105 @@ import { withShadowLog } from '@/lib/logging/with-shadow-log';
 async function _GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    
-    // ✅ REMOVED PAGINATION: เอาการจำกัดออกเพื่อความเร็ว
+
     const balanceId = searchParams.get('balance_id');
-    if (!balanceId) {
+    const skuId = searchParams.get('sku_id');
+    const locationId = searchParams.get('location_id');
+
+    // รับได้ 2 แบบ:
+    // 1. balance_id (BIGINT) - สำหรับ inventory balances page
+    // 2. sku_id + location_id - สำหรับ preparation area inventory page (ยอดรวมไม่มี balance_id)
+    if (!balanceId && !(skuId && locationId)) {
       return NextResponse.json(
-        { error: 'balance_id is required' },
+        { error: 'balance_id or (sku_id + location_id) is required' },
         { status: 400 }
       );
     }
 
     const supabase = await createClient();
 
-    // Query picklist reservations - รวม reserved และ picked เพื่อแสดงข้อมูลทั้งหมด
-    // (picked = ถูก pick แล้วแต่ยังไม่ถูกย้ายไป Dispatch หรือ reserved_piece_qty ยังค้างอยู่)
+    // ถ้าใช้ sku_id + location_id → หา balance_ids ทั้งหมดจาก wms_inventory_balances ก่อน
+    let balanceIds: number[] = [];
+    let totalReservedInBalance = 0;
+
+    if (skuId && locationId) {
+      const { data: balances } = await supabase
+        .from('wms_inventory_balances')
+        .select('balance_id, reserved_piece_qty')
+        .eq('sku_id', skuId)
+        .eq('location_id', locationId)
+        .gt('reserved_piece_qty', 0);
+
+      balanceIds = (balances || []).map((b: any) => b.balance_id);
+      totalReservedInBalance = (balances || []).reduce((sum: number, b: any) => sum + Number(b.reserved_piece_qty || 0), 0);
+    } else if (balanceId) {
+      // ตรวจสอบว่า balance_id เป็น BIGINT ไม่ใช่ UUID
+      if (balanceId.includes('-')) {
+        // UUID format → ไม่ใช่ balance_id จริง (อาจเป็น inventory_id จาก prep area)
+        return NextResponse.json({
+          success: true,
+          data: [],
+          total: 0,
+          warning: 'balance_id is UUID format - use sku_id + location_id instead for preparation area inventory'
+        });
+      }
+      balanceIds = [parseInt(balanceId, 10)];
+    }
+
+    if (balanceIds.length === 0) {
+      // ไม่มี balance ที่มียอดจอง → อาจเป็นยอดค้าง (orphaned)
+      return NextResponse.json({
+        success: true,
+        data: [],
+        total: 0,
+        orphaned_reserved_qty: totalReservedInBalance > 0 ? totalReservedInBalance : undefined,
+        warning: totalReservedInBalance > 0 ? 'มียอดจองค้างใน balance แต่ไม่พบ reservation record (ยอดค้าง)' : undefined
+      });
+    }
+
+    // Query picklist reservations
     const { data: picklistReservations, error: picklistError } = await supabase
       .from('picklist_item_reservations')
       .select('*')
-      .eq('balance_id', balanceId)
+      .in('balance_id', balanceIds)
       .in('status', ['reserved', 'picked']);
 
     if (picklistError) {
       console.error('Error fetching picklist reservations:', picklistError);
     }
 
-    // Query face sheet reservations - รวม reserved และ picked
+    // Query face sheet reservations
     const { data: faceSheetReservations, error: faceSheetError } = await supabase
       .from('face_sheet_item_reservations')
       .select('*')
-      .eq('balance_id', balanceId)
+      .in('balance_id', balanceIds)
       .in('status', ['reserved', 'picked']);
 
     if (faceSheetError) {
       console.error('Error fetching face sheet reservations:', faceSheetError);
     }
 
-    // Query bonus face sheet reservations - รวม reserved และ picked
+    // Query bonus face sheet reservations
     const { data: bonusReservations, error: bonusError } = await supabase
       .from('bonus_face_sheet_item_reservations')
       .select('*')
-      .eq('balance_id', balanceId)
+      .in('balance_id', balanceIds)
       .in('status', ['reserved', 'picked']);
 
     if (bonusError) {
       console.error('Error fetching bonus reservations:', bonusError);
     }
 
-    // Transform and combine data - fetch related data separately
-    const reservations = [];
+    // Transform and combine data
+    const reservations: any[] = [];
 
     // Process picklist reservations
-    // ✅ แสดงทุก reservations ที่มี reserved_piece_qty > 0 (ไม่ว่า item status จะเป็นอะไร)
     if (picklistReservations && picklistReservations.length > 0) {
-      // กรองเฉพาะ reservations ที่ยังมี reserved_piece_qty > 0
       const activeReservations = picklistReservations.filter((r: any) => parseFloat(r.reserved_piece_qty) > 0);
-      
+
       if (activeReservations.length > 0) {
         const picklistItemIds = activeReservations.map((r: any) => r.picklist_item_id);
-        
+
         const { data: picklistItems } = await supabase
           .from('picklist_items')
           .select('id, order_id, order_no, picklist_id, status')
@@ -72,7 +113,7 @@ async function _GET(request: Request) {
         const orderIds = [...new Set(picklistItems?.map((i: any) => i.order_id) || [])];
 
         const [picklistsResult, ordersResult] = await Promise.all([
-          picklistIds.length > 0 
+          picklistIds.length > 0
             ? supabase.from('picklists').select('id, picklist_code').in('id', picklistIds)
             : { data: [] },
           orderIds.length > 0
@@ -108,15 +149,13 @@ async function _GET(request: Request) {
     // Process face sheet reservations
     if (faceSheetReservations && faceSheetReservations.length > 0) {
       const faceSheetItemIds = faceSheetReservations.map((r: any) => r.face_sheet_item_id);
-      
-      // ✅ ดึง face_sheet_items พร้อม status เพื่อกรองเฉพาะที่ยังไม่ถูก pick
+
       const { data: faceSheetItems } = await supabase
         .from('face_sheet_items')
         .select('id, order_id, face_sheet_id, status')
         .in('id', faceSheetItemIds)
-        .neq('status', 'picked');  // ✅ กรองเฉพาะที่ยังไม่ถูก pick
+        .neq('status', 'picked');
 
-      // ถ้าไม่มี items ที่ยังไม่ถูก pick ให้ข้ามไป
       if (faceSheetItems && faceSheetItems.length > 0) {
         const faceSheetIds = [...new Set(faceSheetItems.map((i: any) => i.face_sheet_id) || [])];
         const orderIds = [...new Set(faceSheetItems.map((i: any) => i.order_id) || [])];
@@ -135,7 +174,6 @@ async function _GET(request: Request) {
         const orderMap = new Map((ordersResult.data || []).map((o: any) => [o.order_id, o]));
         const itemMap = new Map((faceSheetItems || []).map((i: any) => [i.id, i]));
 
-        // ✅ กรองเฉพาะ reservations ที่ face_sheet_item ยังไม่ถูก pick
         faceSheetReservations
           .filter((res: any) => validItemIds.has(res.face_sheet_item_id))
           .forEach((res: any) => {
@@ -161,15 +199,13 @@ async function _GET(request: Request) {
     // Process bonus face sheet reservations
     if (bonusReservations && bonusReservations.length > 0) {
       const bonusItemIds = bonusReservations.map((r: any) => r.bonus_face_sheet_item_id);
-      
-      // ✅ ดึง bonus_face_sheet_items พร้อม status เพื่อกรองเฉพาะที่ยังไม่ถูก pick
+
       const { data: bonusItems } = await supabase
         .from('bonus_face_sheet_items')
         .select('id, face_sheet_id, package_id, status')
         .in('id', bonusItemIds)
-        .neq('status', 'picked');  // ✅ กรองเฉพาะที่ยังไม่ถูก pick
+        .neq('status', 'picked');
 
-      // ถ้าไม่มี items ที่ยังไม่ถูก pick ให้ข้ามไป
       if (bonusItems && bonusItems.length > 0) {
         const faceSheetIds = [...new Set(bonusItems.map((i: any) => i.face_sheet_id) || [])];
         const packageIds = [...new Set(bonusItems.map((i: any) => i.package_id) || [])];
@@ -188,7 +224,6 @@ async function _GET(request: Request) {
         const packageMap = new Map((packagesResult.data || []).map((p: any) => [p.id, p]));
         const itemMap = new Map((bonusItems || []).map((i: any) => [i.id, i]));
 
-        // ✅ กรองเฉพาะ reservations ที่ bonus_face_sheet_item ยังไม่ถูก pick
         bonusReservations
           .filter((res: any) => validItemIds.has(res.bonus_face_sheet_item_id))
           .forEach((res: any) => {
@@ -216,11 +251,16 @@ async function _GET(request: Request) {
       return new Date(b.reserved_at).getTime() - new Date(a.reserved_at).getTime();
     });
 
-    // Pagination removed for performance - return all data
+    // คำนวณยอดจองที่มี reservation records
+    const totalReservedWithRecords = reservations.reduce((sum, r) => sum + Number(r.reserved_piece_qty || 0), 0);
+
     return NextResponse.json({
       success: true,
       data: reservations,
-      total: reservations.length
+      total: reservations.length,
+      orphaned_reserved_qty: totalReservedInBalance > 0 && totalReservedInBalance > totalReservedWithRecords
+        ? totalReservedInBalance - totalReservedWithRecords
+        : undefined
     });
   } catch (error: any) {
     console.error('Error in reservations API:', error);

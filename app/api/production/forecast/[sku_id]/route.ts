@@ -139,11 +139,56 @@ async function _GET(
       available_qty: balance.total_piece_qty - (balance.reserved_piece_qty || 0),
     }));
 
+    // ดึงข้อมูลสต็อกบ้านหยิบ (preparation area inventory)
+    const { data: prepAreaInventory } = await supabase
+      .from('vw_preparation_area_inventory')
+      .select(`
+        preparation_area_code,
+        preparation_area_name,
+        sku_id,
+        sku_name,
+        total_piece_qty,
+        reserved_piece_qty,
+        available_piece_qty,
+        total_pack_qty,
+        reserved_pack_qty,
+        available_pack_qty,
+        latest_production_date,
+        latest_expiry_date,
+        latest_lot_no,
+        days_until_expiry,
+        is_expired,
+        last_movement_at
+      `)
+      .eq('sku_id', sku_id)
+      .gt('total_piece_qty', 0)
+      .order('latest_expiry_date', { ascending: true, nullsFirst: false });
+
+    const formattedPrepArea = (prepAreaInventory || []).map((item: any) => ({
+      preparation_area_code: item.preparation_area_code,
+      preparation_area_name: item.preparation_area_name,
+      sku_name: item.sku_name || '-',
+      total_piece_qty: Number(item.total_piece_qty || 0),
+      reserved_piece_qty: Number(item.reserved_piece_qty || 0),
+      available_piece_qty: Number(item.available_piece_qty || 0),
+      total_pack_qty: Number(item.total_pack_qty || 0),
+      reserved_pack_qty: Number(item.reserved_pack_qty || 0),
+      available_pack_qty: Number(item.available_pack_qty || 0),
+      latest_production_date: item.latest_production_date,
+      latest_expiry_date: item.latest_expiry_date,
+      latest_lot_no: item.latest_lot_no,
+      days_until_expiry: item.days_until_expiry,
+      is_expired: item.is_expired,
+      last_movement_at: item.last_movement_at,
+    }));
+
     return NextResponse.json({
       sku_id,
       sku_name: formattedBalances[0]?.sku_name || '',
       balances: formattedBalances,
       total_balances: formattedBalances.length,
+      prep_area_inventory: formattedPrepArea,
+      total_prep_area: formattedPrepArea.length,
     });
   } catch (error: any) {
     console.error('Error in forecast balance details:', error);

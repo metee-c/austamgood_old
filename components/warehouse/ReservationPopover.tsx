@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
-import { Package, Loader2, ExternalLink } from 'lucide-react';
+import { Package, Loader2, ExternalLink, AlertTriangle } from 'lucide-react';
 
 interface ReservationSummary {
   total_orders: number;
@@ -11,16 +11,21 @@ interface ReservationSummary {
     reserved_qty: number;
     document_type: string;
   }>;
+  orphaned_reserved_qty?: number;
 }
 
 interface ReservationPopoverProps {
-  balanceId: number;
+  balanceId?: number;
+  skuId?: string;
+  locationId?: string;
   children: React.ReactNode;
   onViewDetails: () => void;
 }
 
 const ReservationPopover: React.FC<ReservationPopoverProps> = ({
   balanceId,
+  skuId,
+  locationId,
   children,
   onViewDetails,
 }) => {
@@ -31,10 +36,10 @@ const ReservationPopover: React.FC<ReservationPopoverProps> = ({
   const triggerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (isOpen && balanceId) {
+    if (isOpen && (balanceId || (skuId && locationId))) {
       fetchSummary();
     }
-  }, [isOpen, balanceId]);
+  }, [isOpen, balanceId, skuId, locationId]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -60,7 +65,15 @@ const ReservationPopover: React.FC<ReservationPopoverProps> = ({
   const fetchSummary = async () => {
     setLoading(true);
     try {
-      const response = await fetch(`/api/inventory/reservations?balance_id=${balanceId}`);
+      // สร้าง URL ตาม params ที่มี
+      let url: string;
+      if (skuId && locationId) {
+        url = `/api/inventory/reservations?sku_id=${encodeURIComponent(skuId)}&location_id=${encodeURIComponent(locationId)}`;
+      } else {
+        url = `/api/inventory/reservations?balance_id=${balanceId}`;
+      }
+
+      const response = await fetch(url);
       const result = await response.json();
 
       if (response.ok && result.data) {
@@ -77,12 +90,13 @@ const ReservationPopover: React.FC<ReservationPopoverProps> = ({
             });
           }
           const order = orderMap.get(key);
-          order.reserved_qty += res.reserved_piece_qty;
+          order.reserved_qty += Number(res.reserved_piece_qty);
         });
 
         setSummary({
           total_orders: orderMap.size,
-          orders: Array.from(orderMap.values()).slice(0, 5), // Show first 5
+          orders: Array.from(orderMap.values()).slice(0, 5),
+          orphaned_reserved_qty: result.orphaned_reserved_qty,
         });
       }
     } catch (err) {
@@ -159,6 +173,15 @@ const ReservationPopover: React.FC<ReservationPopoverProps> = ({
                   </p>
                 )}
 
+                {summary.orphaned_reserved_qty && summary.orphaned_reserved_qty > 0 && (
+                  <div className="flex items-center gap-2 p-2 bg-amber-50 rounded border border-amber-200 mb-3">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                    <p className="text-xs text-amber-700 font-thai">
+                      ยอดจองค้าง {summary.orphaned_reserved_qty.toLocaleString()} ชิ้น (ไม่พบ reservation record)
+                    </p>
+                  </div>
+                )}
+
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
@@ -171,6 +194,19 @@ const ReservationPopover: React.FC<ReservationPopoverProps> = ({
                   ดูรายละเอียดทั้งหมด
                 </button>
               </>
+            ) : summary && summary.orphaned_reserved_qty && summary.orphaned_reserved_qty > 0 ? (
+              <div className="text-center py-4">
+                <AlertTriangle className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+                <p className="text-xs text-amber-700 font-thai font-semibold mb-1">
+                  ยอดจองค้าง {summary.orphaned_reserved_qty.toLocaleString()} ชิ้น
+                </p>
+                <p className="text-xs text-thai-gray-500 font-thai">
+                  ไม่พบ reservation record ที่ตรงกัน
+                </p>
+                <p className="text-xs text-thai-gray-500 font-thai">
+                  อาจต้องเคลียร์ยอดจองค้าง
+                </p>
+              </div>
             ) : (
               <div className="text-center py-6">
                 <Package className="w-8 h-8 text-thai-gray-400 mx-auto mb-2" />

@@ -705,8 +705,8 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
 
   const skuIds = skus.map(s => s.sku_id);
 
-  // 2. ดึงยอดสต็อกรวมเฉพาะ Zone Selective Rack และ Zone Block Stack
-  // ไม่รวมบ้านหยิบ (preparation_area)
+  // 2. ดึงยอดสต็อกจาก Zone Selective Rack และ Zone Block Stack
+  // (จะรวมบ้านหยิบเพิ่มในขั้นตอน 2.5)
   // ใช้ pagination เพื่อดึง location_id ทั้งหมด
   
   // ดึงรายการ preparation areas (บ้านหยิบ) ที่ต้อง exclude
@@ -802,7 +802,25 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
     stockBySkuId[b.sku_id].total += totalQty;
     stockBySkuId[b.sku_id].available += availableQty;
   });
-  
+
+  // 2.5 ดึงสต็อกบ้านหยิบ (preparation area) รวมเข้า total_stock ด้วย
+  const { data: prepAreaStock } = await supabase
+    .from('vw_preparation_area_inventory')
+    .select('sku_id, total_piece_qty, reserved_piece_qty, available_piece_qty')
+    .in('sku_id', skuIds)
+    .gt('total_piece_qty', 0);
+
+  (prepAreaStock || []).forEach((p: any) => {
+    const totalQty = Number(p.total_piece_qty || 0);
+    const availableQty = Number(p.available_piece_qty || 0);
+
+    if (!stockBySkuId[p.sku_id]) {
+      stockBySkuId[p.sku_id] = { total: 0, available: 0 };
+    }
+    stockBySkuId[p.sku_id].total += totalQty;
+    stockBySkuId[p.sku_id].available += availableQty;
+  });
+
   // 3. ดึงข้อมูลจาก Orders ย้อนหลัง 90 วัน (ใช้ยอดจาก orders แทน ship ledger)
   const ninetyDaysAgo = new Date();
   ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);

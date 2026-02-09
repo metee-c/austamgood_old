@@ -972,9 +972,21 @@ const InventoryBalancesPage = () => {
                                 </span>
                               </td>
                               <td className="px-3 py-1.5 text-center border-r border-gray-100 whitespace-nowrap bg-orange-50/30">
-                                <span className={`font-bold ${balance.reserved_piece_qty > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
-                                  {balance.reserved_piece_qty?.toLocaleString() || 0}
-                                </span>
+                                {balance.reserved_piece_qty > 0 ? (
+                                  <ReservationPopover
+                                    skuId={balance.sku_id}
+                                    locationId={balance.location_id}
+                                    onViewDetails={() => handleViewReservations(balance)}
+                                  >
+                                    <span className="font-bold text-orange-600 cursor-pointer hover:text-orange-700 hover:underline">
+                                      {balance.reserved_piece_qty?.toLocaleString()}
+                                    </span>
+                                  </ReservationPopover>
+                                ) : (
+                                  <span className="font-bold text-gray-400">
+                                    {balance.reserved_piece_qty?.toLocaleString() || 0}
+                                  </span>
+                                )}
                               </td>
                               <td className="px-3 py-1.5 text-center border-r border-gray-100 whitespace-nowrap bg-orange-50/30 hidden">
                                 <span className={`font-bold ${balance.reserved_pack_qty > 0 ? 'text-orange-600' : 'text-gray-400'}`}>
@@ -1415,7 +1427,6 @@ const InventoryBalancesPage = () => {
             setReservationModalOpen(false);
             setSelectedReservationBalance(null);
           }}
-          balanceId={selectedReservationBalance.balance_id}
           skuId={selectedReservationBalance.sku_id}
           skuName={selectedReservationBalance.sku_name}
           locationId={selectedReservationBalance.location_id}
