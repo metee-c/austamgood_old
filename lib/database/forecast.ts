@@ -830,36 +830,28 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
   // ใช้ทุกสถานะยกเว้น draft (ที่ยังไม่ยืนยัน)
   const validStatuses = ['confirmed', 'in_picking', 'picked', 'loaded', 'in_transit', 'delivered'];
 
-  const orderChunkSize = 20; // แบ่งทีละ 20 SKUs
-  const orderPromises = [];
+  // ใช้ RPC function แทน PostgREST .in() ที่มีปัญหากับ | (pipe) ใน sku_id
+  const { data: rpcOrderItems, error: rpcOrderError } = await supabase
+    .rpc('get_forecast_order_items', {
+      p_sku_ids: skuIds,
+      p_statuses: validStatuses,
+      p_date_from: ninetyDaysAgoStr
+    })
+    .limit(50000);
 
-  for (let i = 0; i < skuIds.length; i += orderChunkSize) {
-    const chunkSkus = skuIds.slice(i, i + orderChunkSize);
-    orderPromises.push(
-      supabase
-        .from('wms_order_items')
-        .select(`
-          sku_id,
-          order_qty,
-          wms_orders!inner (
-            status,
-            order_date,
-            delivery_date
-          )
-        `)
-        .in('sku_id', chunkSkus)
-        .in('wms_orders.status', validStatuses)
-        .gte('wms_orders.order_date', ninetyDaysAgoStr)
-        .limit(50000)
-    );
+  if (rpcOrderError) {
+    console.error('[forecast] Error fetching order items via RPC:', rpcOrderError);
   }
 
-  const orderResults = await Promise.all(orderPromises);
-  const orderItems: any[] = [];
-  orderResults.forEach(res => {
-    if (res.data) orderItems.push(...res.data);
-    if (res.error) console.error('Error fetching order items chunk:', res.error);
-  });
+  // แปลงให้เข้ากับ format เดิม
+  const orderItems = (rpcOrderItems || []).map((item: any) => ({
+    sku_id: item.sku_id,
+    order_qty: item.order_qty,
+    wms_orders: {
+      delivery_date: item.delivery_date,
+      order_date: item.order_date
+    }
+  }));
 
   // จัดกลุ่มข้อมูล Orders ตาม SKU และวัน
   const shipDataBySkuId: Record<string, { dailyShips: number[], lastShipDate: string | null, totalDays: number }> = {};
@@ -910,23 +902,28 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
   // สถานะที่ถือว่ายังไม่ส่ง: draft, confirmed, in_picking, picked
   const pendingStatuses = ['draft', 'confirmed', 'in_picking', 'picked'];
 
-  const { data: pendingOrderItems, error: pendingError } = await supabase
-    .from('wms_order_items')
-    .select(`
-      sku_id,
-      order_qty,
-      picked_qty,
-      wms_orders!inner (
-        status,
-        delivery_date
-      )
-    `)
-    .in('sku_id', skuIds)
-    .in('wms_orders.status', pendingStatuses);
+  // ใช้ RPC function สำหรับ pending orders (หลีกเลี่ยง PostgREST .in() pipe issue)
+  const { data: rpcPendingItems, error: pendingError } = await supabase
+    .rpc('get_forecast_pending_items', {
+      p_sku_ids: skuIds,
+      p_statuses: pendingStatuses
+    })
+    .limit(50000);
 
   if (pendingError) {
-    console.error('Error fetching pending orders:', pendingError);
+    console.error('Error fetching pending orders via RPC:', pendingError);
   }
+
+  // แปลงให้เข้ากับ format เดิม
+  const pendingOrderItems = (rpcPendingItems || []).map((item: any) => ({
+    sku_id: item.sku_id,
+    order_qty: item.order_qty,
+    picked_qty: item.picked_qty,
+    wms_orders: {
+      status: item.status,
+      delivery_date: item.delivery_date
+    }
+  }));
 
   // รวมยอดรอส่งตาม SKU และแยกยอดเร่งด่วน (ต้องส่งใน 3 วัน)
   const currentDate = new Date();
