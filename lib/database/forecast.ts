@@ -831,20 +831,30 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
   const validStatuses = ['confirmed', 'in_picking', 'picked', 'loaded', 'in_transit', 'delivered'];
 
   // ใช้ RPC function แทน PostgREST .in() ที่มีปัญหากับ | (pipe) ใน sku_id
-  const { data: rpcOrderItems, error: rpcOrderError } = await supabase
-    .rpc('get_forecast_order_items', {
-      p_sku_ids: skuIds,
-      p_statuses: validStatuses,
-      p_date_from: ninetyDaysAgoStr
-    })
-    .limit(50000);
+  // แบ่งเป็น chunk ทีละ 30 SKUs เพื่อหลีกเลี่ยง PostgREST max-rows limit (1000)
+  const rpcChunkSize = 30;
+  const orderItemsAll: any[] = [];
 
-  if (rpcOrderError) {
-    console.error('[forecast] Error fetching order items via RPC:', rpcOrderError);
+  for (let i = 0; i < skuIds.length; i += rpcChunkSize) {
+    const chunkSkuIds = skuIds.slice(i, i + rpcChunkSize);
+    const { data: rpcChunk, error: rpcChunkError } = await supabase
+      .rpc('get_forecast_order_items', {
+        p_sku_ids: chunkSkuIds,
+        p_statuses: validStatuses,
+        p_date_from: ninetyDaysAgoStr
+      })
+      .limit(10000);
+
+    if (rpcChunkError) {
+      console.error('[forecast] Error fetching order items via RPC chunk:', rpcChunkError);
+    }
+    if (rpcChunk) {
+      orderItemsAll.push(...rpcChunk);
+    }
   }
 
   // แปลงให้เข้ากับ format เดิม
-  const orderItems = (rpcOrderItems || []).map((item: any) => ({
+  const orderItems = orderItemsAll.map((item: any) => ({
     sku_id: item.sku_id,
     order_qty: item.order_qty,
     wms_orders: {
@@ -903,19 +913,28 @@ export async function getForecastData(filters: ForecastFilters = {}): Promise<Fo
   const pendingStatuses = ['draft', 'confirmed', 'in_picking', 'picked'];
 
   // ใช้ RPC function สำหรับ pending orders (หลีกเลี่ยง PostgREST .in() pipe issue)
-  const { data: rpcPendingItems, error: pendingError } = await supabase
-    .rpc('get_forecast_pending_items', {
-      p_sku_ids: skuIds,
-      p_statuses: pendingStatuses
-    })
-    .limit(50000);
+  // แบ่งเป็น chunk เหมือน order items
+  const pendingItemsAll: any[] = [];
 
-  if (pendingError) {
-    console.error('Error fetching pending orders via RPC:', pendingError);
+  for (let i = 0; i < skuIds.length; i += rpcChunkSize) {
+    const chunkSkuIds = skuIds.slice(i, i + rpcChunkSize);
+    const { data: pendingChunk, error: pendingChunkError } = await supabase
+      .rpc('get_forecast_pending_items', {
+        p_sku_ids: chunkSkuIds,
+        p_statuses: pendingStatuses
+      })
+      .limit(10000);
+
+    if (pendingChunkError) {
+      console.error('Error fetching pending orders via RPC chunk:', pendingChunkError);
+    }
+    if (pendingChunk) {
+      pendingItemsAll.push(...pendingChunk);
+    }
   }
 
   // แปลงให้เข้ากับ format เดิม
-  const pendingOrderItems = (rpcPendingItems || []).map((item: any) => ({
+  const pendingOrderItems = pendingItemsAll.map((item: any) => ({
     sku_id: item.sku_id,
     order_qty: item.order_qty,
     picked_qty: item.picked_qty,
