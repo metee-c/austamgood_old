@@ -414,7 +414,7 @@ try {
         skuGroups.set(item.sku_id, currentQty + (item.quantity_picked || item.quantity));
       }
 
-      // Build movements for each SKU
+      // Build movements for each SKU (FIFO across multiple balance rows)
       for (const [skuId, quantity] of skuGroups) {
         // Get SKU info for pack calculation
         const { data: skuInfo } = await supabase
@@ -424,34 +424,46 @@ try {
           .single();
 
         const qtyPerPack = skuInfo?.qty_per_pack || 1;
-        const packQty = quantity / qtyPerPack;
 
-        // Query source balance เพื่อเอา production_date/expiry_date และตรวจสอบสต็อก
-        const { data: sourceBalance } = await supabase
+        // Query ALL source balances (FIFO - oldest production_date first)
+        const { data: sourceBalances } = await supabase
           .from('wms_inventory_balances')
           .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
           .eq('warehouse_id', warehouseId)
           .eq('location_id', sourceLocation.location_id)
           .eq('sku_id', skuId)
           .gt('total_piece_qty', 0)
-          .order('production_date', { ascending: true })
-          .limit(1)
-          .maybeSingle();
+          .order('production_date', { ascending: true });
 
-        if (sourceBalance) {
-          // PRE-VALIDATION - ตรวจสอบสต็อกก่อนย้าย
-          if (sourceBalance.total_piece_qty < quantity) {
-            console.error(`🔴 CRITICAL: Insufficient stock at ${storageLocation} for SKU ${skuId}: need ${quantity}, have ${sourceBalance.total_piece_qty}`);
-            return NextResponse.json({
-              success: false,
-              error: `สต็อกไม่พอที่ ${storageLocation}: ต้องการ ${quantity} ชิ้น มีเพียง ${sourceBalance.total_piece_qty} ชิ้น`,
-              error_code: 'INSUFFICIENT_STOCK',
-              location: storageLocation,
-              sku_id: skuId,
-              required: quantity,
-              available: sourceBalance.total_piece_qty
-            }, { status: 400 });
-          }
+        if (!sourceBalances || sourceBalances.length === 0) {
+          console.warn(`⚠️ No balance at ${storageLocation} for SKU ${skuId}, skipping`);
+          continue;
+        }
+
+        // PRE-VALIDATION - ตรวจสอบสต็อกรวมทุก balance rows
+        const totalAvailable = sourceBalances.reduce((sum, b) => sum + Number(b.total_piece_qty || 0), 0);
+        if (totalAvailable < quantity) {
+          console.error(`🔴 CRITICAL: Insufficient stock at ${storageLocation} for SKU ${skuId}: need ${quantity}, have ${totalAvailable}`);
+          return NextResponse.json({
+            success: false,
+            error: `สต็อกไม่พอที่ ${storageLocation}: ต้องการ ${quantity} ชิ้น มีเพียง ${totalAvailable} ชิ้น`,
+            error_code: 'INSUFFICIENT_STOCK',
+            location: storageLocation,
+            sku_id: skuId,
+            required: quantity,
+            available: totalAvailable
+          }, { status: 400 });
+        }
+
+        // FIFO deduction across multiple balance rows
+        let remainingQty = quantity;
+        for (const bal of sourceBalances) {
+          if (remainingQty <= 0) break;
+          const available = Number(bal.total_piece_qty || 0);
+          if (available <= 0) continue;
+
+          const deductQty = Math.min(remainingQty, available);
+          const deductPackQty = qtyPerPack > 0 ? deductQty / qtyPerPack : 0;
 
           // OUT movement จาก source (PQ/MR)
           movements.push({
@@ -459,10 +471,11 @@ try {
             warehouse_id: warehouseId,
             location_id: sourceLocation.location_id,
             sku_id: skuId,
-            production_date: sourceBalance.production_date || null,
-            expiry_date: sourceBalance.expiry_date || null,
-            pack_qty: packQty,
-            piece_qty: quantity,
+            production_date: bal.production_date || null,
+            expiry_date: bal.expiry_date || null,
+            lot_no: bal.lot_no || null,
+            pack_qty: deductPackQty,
+            piece_qty: deductQty,
             transaction_type: 'transfer',
             reference_no: bfsNos,
             reference_doc_type: 'bonus_face_sheet_staging',
@@ -477,10 +490,11 @@ try {
             warehouse_id: warehouseId,
             location_id: destLocation.location_id,
             sku_id: skuId,
-            production_date: sourceBalance.production_date || null,
-            expiry_date: sourceBalance.expiry_date || null,
-            pack_qty: packQty,
-            piece_qty: quantity,
+            production_date: bal.production_date || null,
+            expiry_date: bal.expiry_date || null,
+            lot_no: bal.lot_no || null,
+            pack_qty: deductPackQty,
+            piece_qty: deductQty,
             transaction_type: 'transfer',
             reference_no: bfsNos,
             reference_doc_type: 'bonus_face_sheet_staging',
@@ -489,8 +503,10 @@ try {
             created_by: userId,
           });
 
-          totalMoved += quantity;
+          remainingQty -= deductQty;
         }
+
+        totalMoved += quantity;
       }
     }
 
