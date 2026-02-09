@@ -467,104 +467,38 @@ const StockDeductionModal = ({ isOpen, onClose, boxStocks, currentUser, onDataRe
     setIsSubmitting(true)
 
     try {
-      // Get E-Commerce location
-      const { data: ecomLocations, error: locError } = await supabase
-        .from('master_location')
-        .select('location_id')
-        .eq('zone', 'Zone E-Commerce')
-        .eq('active_status', 'active')
-        .limit(1)
+      // Build items array for the API
+      const items = Object.entries(deductions)
+        .filter(([_, qty]) => qty > 0)
+        .map(([sku_id, quantity]) => ({ sku_id, quantity }))
 
-      if (locError || !ecomLocations || ecomLocations.length === 0) {
-        throw new Error('ไม่พบ Location ใน Zone E-Commerce')
+      const response = await fetch('/api/online-packing/box-deduction', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          items,
+          reason: finalReason,
+          notes: notes || null,
+          user_id: currentUser?.id || null,
+          user_name: currentUser?.full_name || null,
+        })
+      })
+
+      const result = await response.json()
+
+      if (!response.ok) {
+        throw new Error(result.error || 'เกิดข้อผิดพลาด')
       }
 
-      const ecomLocationId = ecomLocations[0].location_id
-
-      // Create move transactions for each deduction
-      const movePromises = []
-      for (const [skuId, quantity] of Object.entries(deductions)) {
-        if (quantity > 0) {
-          const stock = boxStocks.find(s => s.sku_id === skuId)
-          if (!stock) continue
-
-          // Get inventory balance for this SKU in E-Commerce zone
-          const { data: balances, error: balError } = await supabase
-            .from('wms_inventory_balances')
-            .select('*')
-            .eq('sku_id', skuId)
-            .eq('location_id', ecomLocationId)
-            .gt('total_piece_qty', 0)
-            .limit(1)
-
-          if (balError || !balances || balances.length === 0) {
-            console.warn(`No balance found for SKU ${skuId}`)
-            continue
-          }
-
-          const balance = balances[0]
-
-          // Generate BOX reference number: BOX-YYYYMMDD-XXX
-          const today = new Date()
-          const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '')
-          const { count: todayCount } = await supabase
-            .from('wms_moves')
-            .select('*', { count: 'exact', head: true })
-            .like('move_no', `BOX-${dateStr}-%`)
-          const seqNum = String((todayCount || 0) + 1).padStart(3, '0')
-          const moveNo = `BOX-${dateStr}-${seqNum}`
-
-          // Create move record
-          const { data: moveData, error: moveError } = await supabase
-            .from('wms_moves')
-            .insert({
-              move_no: moveNo,
-              move_type: 'issue',
-              from_warehouse_id: balance.warehouse_id,
-              status: 'completed',
-              notes: `ตัดสต็อกกล่อง - ${finalReason}${notes ? ` | หมายเหตุ: ${notes}` : ''} | ตัดโดย: ${currentUser?.full_name || 'ไม่ระบุ'} | เวลา: ${currentDateTime.toLocaleString('th-TH')}`,
-              created_by: currentUser?.id || null,
-              completed_at: new Date().toISOString()
-            })
-            .select()
-            .single()
-
-          if (moveError) {
-            console.error('Move error details:', moveError)
-            throw new Error(`สร้างรายการเคลื่อนย้ายไม่สำเร็จ: ${moveError.message}`)
-          }
-
-          // Create move item
-          const { error: itemError } = await supabase
-            .from('wms_move_items')
-            .insert({
-              move_id: moveData.move_id,
-              from_location_id: ecomLocationId,
-              to_location_id: 'Delivery-In-Progress',
-              sku_id: skuId,
-              pallet_id: balance.pallet_id,
-              pallet_id_external: balance.pallet_id_external,
-              production_date: balance.production_date,
-              expiry_date: balance.expiry_date,
-              requested_pack_qty: 0,
-              requested_piece_qty: quantity,
-              confirmed_pack_qty: 0,
-              confirmed_piece_qty: quantity,
-              status: 'completed'
-            })
-
-          if (itemError) {
-            console.error('Move item error details:', itemError)
-            throw new Error(`สร้างรายการสินค้าไม่สำเร็จ: ${itemError.message}`)
-          }
-
-          movePromises.push(Promise.resolve())
-        }
+      // Check if any items failed
+      const failedItems = (result.results || []).filter((r: any) => !r.success)
+      if (failedItems.length > 0) {
+        const failedMsg = failedItems.map((r: any) => `${r.sku_id}: ${r.error}`).join('\n')
+        alert(`ตัดสต็อกบางรายการไม่สำเร็จ:\n${failedMsg}`)
+      } else {
+        alert('ตัดสต็อกกล่องเรียบร้อยแล้ว')
       }
 
-      await Promise.all(movePromises)
-
-      alert('ตัดสต็อกกล่องเรียบร้อยแล้ว')
       onDataRefresh()
       onClose()
     } catch (error: any) {
