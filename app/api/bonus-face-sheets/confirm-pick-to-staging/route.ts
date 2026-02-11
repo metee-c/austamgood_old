@@ -539,8 +539,7 @@ try {
       const { error: pqError } = await supabase
         .from('bonus_face_sheet_packages')
         .update({ 
-          storage_location: 'PQTD',
-          updated_at: now
+          storage_location: 'PQTD'
         })
         .in('id', pqPackageIds);
       
@@ -556,8 +555,7 @@ try {
       const { error: mrError } = await supabase
         .from('bonus_face_sheet_packages')
         .update({ 
-          storage_location: 'MRTD',
-          updated_at: now
+          storage_location: 'MRTD'
         })
         .in('id', mrPackageIds);
       

@@ -221,18 +221,22 @@ try {
       );
     }
 
-    // 6. ดึง Dispatch location
-    const { data: dispatchLocation, error: dispatchError } = await supabase
+    // 6. กำหนดปลายทาง: บ้านหยิบเฉพาะ (A09-xx, A10-xx) → E-Commerce, อื่นๆ (PK001/PK002) → Dispatch
+    const sourceLocId = item.source_location_id || '';
+    const isDedicatedPickHouse = sourceLocId.startsWith('A') && !sourceLocId.startsWith('ADJ');
+    const destinationCode = isDedicatedPickHouse ? 'E-Commerce' : 'Dispatch';
+
+    const { data: destinationLocation, error: destError } = await supabase
       .from('master_location')
       .select('location_id, location_code')
-      .eq('location_code', 'Dispatch')
+      .eq('location_code', destinationCode)
       .eq('warehouse_id', warehouseId)
       .eq('active_status', 'active')
       .single();
 
-    if (dispatchError || !dispatchLocation) {
+    if (destError || !destinationLocation) {
       return NextResponse.json(
-        { error: 'ไม่พบ Dispatch location', details: dispatchError?.message },
+        { error: `ไม่พบ ${destinationCode} location`, details: destError?.message },
         { status: 404 }
       );
     }
@@ -533,11 +537,11 @@ try {
       }
     }
 
-    // IN ไปยัง Dispatch (RPC จะ upsert balance ให้อัตโนมัติ)
+    // IN ไปยังปลายทาง (Dispatch หรือ E-Commerce)
     movements.push({
       direction: 'in',
       warehouse_id: warehouseId,
-      location_id: dispatchLocation.location_id,
+      location_id: destinationLocation.location_id,
       sku_id: item.sku_id,
       pallet_id: null,
       production_date: sourceProductionDate || null,
@@ -550,7 +554,7 @@ try {
       reference_doc_id: picklist_id,
       order_id: item.order_id,
       order_item_id: item.order_item_id,
-      remarks: `ย้ายไป Dispatch - ${item.picklists.picklist_code}`,
+      remarks: `ย้ายไป ${destinationCode} - ${item.picklists.picklist_code}`,
       created_by: userId,
     });
 

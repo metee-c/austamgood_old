@@ -585,7 +585,14 @@ class MoveService {
           query = query.eq('pallet_id', sourcePalletId);
         }
 
-        const { data: sourceBalance } = await query.maybeSingle();
+        // ใช้ FEFO ordering + limit(1) แทน maybeSingle()
+        // เพราะอาจมีหลาย balance rows ที่มี pallet_id=null → maybeSingle() จะ error
+        const { data: sourceBalance } = await query
+          .gt('total_piece_qty', 0)
+          .order('expiry_date', { ascending: true, nullsLast: true })
+          .order('production_date', { ascending: true, nullsLast: true })
+          .limit(1)
+          .maybeSingle();
 
         if (sourceBalance) {
           productionDate = sourceBalance.production_date;
