@@ -589,8 +589,8 @@ class MoveService {
         // เพราะอาจมีหลาย balance rows ที่มี pallet_id=null → maybeSingle() จะ error
         const { data: sourceBalance } = await query
           .gt('total_piece_qty', 0)
-          .order('expiry_date', { ascending: true, nullsLast: true })
-          .order('production_date', { ascending: true, nullsLast: true })
+          .order('expiry_date', { ascending: true, nullsFirst: false })
+          .order('production_date', { ascending: true, nullsFirst: false })
           .limit(1)
           .maybeSingle();
 
