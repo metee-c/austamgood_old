@@ -248,23 +248,36 @@ try {
 
     // Backend-driven inventory: เรียก recordInventoryMovement() แทน trigger
     if (isCompletingItem && data) {
-      // Get move header for warehouse_id and move_no
-      const { data: moveHeader, error: headerError } = await supabase
-        .from('wms_moves')
-        .select('*')
-        .eq('move_id', data.move_id)
-        .single();
+      // Idempotency check: ถ้ามี ledger entry สำหรับ move_item_id นี้แล้ว ข้ามไม่ต้องทำซ้ำ
+      // ป้องกัน double-processing เมื่อ frontend ส่ง request ซ้ำ (race condition)
+      const { data: existingLedger } = await supabase
+        .from('wms_inventory_ledger')
+        .select('ledger_id')
+        .eq('move_item_id', moveItemId)
+        .limit(1)
+        .maybeSingle();
 
-      if (headerError || !moveHeader) {
-        console.error('[PATCH moves/items] Failed to fetch move header:', headerError);
+      if (existingLedger) {
+        console.log(`[PATCH moves/items] Inventory already recorded for move_item_id=${moveItemId}, skipping`);
       } else {
-        const invResult = await moveService.recordInventoryMovement(data, moveHeader);
-        if (invResult.error) {
-          console.error('[PATCH moves/items] Failed to record inventory:', invResult.error);
-          return NextResponse.json(
-            { data: null, error: 'Failed to record inventory movement: ' + invResult.error },
-            { status: 500 }
-          );
+        // Get move header for warehouse_id and move_no
+        const { data: moveHeader, error: headerError } = await supabase
+          .from('wms_moves')
+          .select('*')
+          .eq('move_id', data.move_id)
+          .single();
+
+        if (headerError || !moveHeader) {
+          console.error('[PATCH moves/items] Failed to fetch move header:', headerError);
+        } else {
+          const invResult = await moveService.recordInventoryMovement(data, moveHeader);
+          if (invResult.error) {
+            console.error('[PATCH moves/items] Failed to record inventory:', invResult.error);
+            return NextResponse.json(
+              { data: null, error: 'Failed to record inventory movement: ' + invResult.error },
+              { status: 500 }
+            );
+          }
         }
       }
     }
