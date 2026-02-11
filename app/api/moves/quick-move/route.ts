@@ -337,6 +337,11 @@ async function _POST(request: NextRequest) {
         ? partial_quantities[balance.sku_id]
         : balance.total_piece_qty || 0
       
+      // คำนวณ pack_qty ตามสัดส่วนของ piece_qty ที่ย้ายจริง
+      const totalPiece = Number(balance.total_piece_qty) || 0
+      const totalPack = Number(balance.total_pack_qty) || 0
+      const movePack = totalPiece > 0 ? Math.round((moveQty / totalPiece) * totalPack) : moveQty
+      
       // ถ้าเป็น partial move ให้ใช้ new_pallet_id และเก็บ parent_pallet_id
       const usePalletId = isActualPartialMove && newPalletId ? newPalletId : balance.pallet_id
       const parentPalletId = isActualPartialMove && newPalletId ? balance.pallet_id : null
@@ -351,9 +356,9 @@ async function _POST(request: NextRequest) {
         status: 'completed',
         from_location_id,
         to_location_id,
-        requested_pack_qty: balance.total_pack_qty || 0,
+        requested_pack_qty: movePack,
         requested_piece_qty: moveQty,
-        confirmed_pack_qty: balance.total_pack_qty || 0,
+        confirmed_pack_qty: movePack,
         confirmed_piece_qty: moveQty,
         production_date: balance.production_date,
         expiry_date: balance.expiry_date,

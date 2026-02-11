@@ -1601,20 +1601,23 @@ const RoutesPage = () => {
         setSelectedPlanIdForContract(planId);
         setShowTransportContractModal(true);
         
-        // เปลี่ยนสถานะเป็น pending_approval หลังจากพิมพ์ใบว่าจ้าง
-        try {
-            const response = await fetch(`/api/route-plans/${planId}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ status: 'pending_approval' })
-            });
-            
-            if (response.ok) {
-                console.log('✅ เปลี่ยนสถานะเป็น pending_approval แล้ว');
-                await fetchRoutePlans(); // Refresh data
+        // เปลี่ยนสถานะเป็น pending_approval เฉพาะเมื่อสถานะปัจจุบันเป็น published เท่านั้น
+        const currentPlan = routePlans.find(p => p.plan_id === planId);
+        if (currentPlan?.status === 'published') {
+            try {
+                const response = await fetch(`/api/route-plans/${planId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ status: 'pending_approval' })
+                });
+                
+                if (response.ok) {
+                    console.log('✅ เปลี่ยนสถานะเป็น pending_approval แล้ว');
+                    await fetchRoutePlans(); // Refresh data
+                }
+            } catch (err) {
+                console.error('Error updating status:', err);
             }
-        } catch (err) {
-            console.error('Error updating status:', err);
         }
     };
 

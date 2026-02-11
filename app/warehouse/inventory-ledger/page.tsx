@@ -210,7 +210,6 @@ const InventoryLedgerPage = () => {
             `ledger_id.eq.${searchNum}`,
             `move_item_id.eq.${searchNum}`,
             `receive_item_id.eq.${searchNum}`,
-            `pack_qty.eq.${searchNum}`,
             `piece_qty.eq.${searchNum}`,
             `created_by.eq.${searchNum}`
           );
@@ -461,7 +460,6 @@ const InventoryLedgerPage = () => {
         'รหัสสินค้า': item.sku_id,
         'ชื่อสินค้า': item.master_sku?.sku_name || '-',
         'รหัสพาเลท': item.pallet_id || '-',
-        'แพ็ค': item.pack_qty || 0,
         'ชิ้น': item.piece_qty || 0,
         'น้ำหนัก (กก.)': ((item.piece_qty || 0) * (item.master_sku?.weight_per_piece_kg || 0)).toFixed(2),
         'วันผลิต': item.production_date ? new Date(item.production_date).toLocaleDateString('en-GB') : '-',
@@ -489,7 +487,6 @@ const InventoryLedgerPage = () => {
         { wch: 20 },  // รหัสสินค้า
         { wch: 30 },  // ชื่อสินค้า
         { wch: 20 },  // รหัสพาเลท
-        { wch: 10 },  // แพ็ค
         { wch: 10 },  // ชิ้น
         { wch: 12 },  // น้ำหนัก
         { wch: 12 },  // วันผลิต
@@ -948,7 +945,6 @@ const InventoryLedgerPage = () => {
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสสินค้า</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชื่อสินค้า</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสพาเลท</th>
-                      <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">แพ็ค</th>
                       <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">ชิ้น</th>
                       <th className="px-2 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">น้ำหนัก (กก.)</th>
                       <th className="px-2 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันผลิต</th>
@@ -1100,24 +1096,6 @@ const InventoryLedgerPage = () => {
                                 <span className="text-gray-400">-</span>
                               )}
                             </div>
-                          )}
-                        </td>
-                        <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">
-                          {ledger._isConsolidated ? (
-                            <div className="flex flex-col items-center gap-0.5">
-                              <span className="font-bold text-red-600 text-[10px]">
-                                -{ledger._outEntry?.pack_qty?.toLocaleString()}
-                              </span>
-                              <span className="font-bold text-green-600 text-[10px]">
-                                +{ledger._inEntry?.pack_qty?.toLocaleString()}
-                              </span>
-                            </div>
-                          ) : (
-                            <span className={`font-bold ${
-                              ledger.direction === 'in' ? 'text-green-600' : 'text-red-600'
-                            }`}>
-                              {ledger.direction === 'in' ? '+' : '-'}{ledger.pack_qty?.toLocaleString()}
-                            </span>
                           )}
                         </td>
                         <td className="px-2 py-0.5 text-center border-r border-gray-100 whitespace-nowrap">

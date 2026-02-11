@@ -1,5 +1,6 @@
 ﻿'use client';
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
+import * as XLSX from 'xlsx';
 import { useReceives, useReceiveDashboard } from '@/hooks/useReceive';
 import { ReceiveHeader, ReceiveItem, ReceiveFilters, ReceiveType, ReceiveStatus, PalletScanStatus, ReceiveRecord } from '@/lib/database/receive';
 import {
@@ -22,7 +23,9 @@ import {
   Save,
   ChevronUp as ChevronUpIcon,
   ChevronsUpDown,
-  Upload
+  Upload,
+  Download,
+  Loader2
 } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
@@ -62,6 +65,7 @@ const InboundPage = () => {
   const [sortField, setSortField] = useState<string>('');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [changingStatus, setChangingStatus] = useState<Record<number, boolean>>({});
+  const [exporting, setExporting] = useState(false);
   // Production order linking state
   const [editingProductionRef, setEditingProductionRef] = useState<Record<number, string>>({});
   const [savingProductionRef, setSavingProductionRef] = useState<Record<number, boolean>>({});
@@ -343,6 +347,97 @@ const InboundPage = () => {
     }
   };
 
+  // Export to Excel (sub-row level)
+  const handleExportExcel = useCallback(() => {
+    try {
+      setExporting(true);
+      const dataToExport = sortedReceives || [];
+      const exportRows: any[] = [];
+
+      for (const receive of dataToExport) {
+        const items = receive.wms_receive_items || [];
+        const supplierName = receive.master_supplier?.supplier_name || '-';
+        const customerName = receive.master_customer?.customer_name || '-';
+        const employeeName = receive.master_employee
+          ? `${receive.master_employee.first_name} ${receive.master_employee.last_name}`
+          : '-';
+
+        if (items.length === 0) {
+          exportRows.push({
+            'รหัสรับ': receive.receive_no || '-',
+            'อ้างอิง': receive.reference_doc || '-',
+            'ประเภท': receive.receive_type || '-',
+            'SKU': '-',
+            'ชื่อสินค้า': '-',
+            'บาร์โค้ด': '-',
+            'จำนวนชิ้น': 0,
+            'จำนวนแพ็ค': 0,
+            'รหัสพาเลท': '-',
+            'สี Pallet': '-',
+            'วันที่ผลิต': '-',
+            'วันหมดอายุ': '-',
+            'สถานะสแกน': '-',
+            'พาเลทภายนอก': '-',
+            'ที่จัดเก็บ': '-',
+            'ผู้ส่ง': supplierName,
+            'ลูกค้า': customerName,
+            'วันรับ': receive.receive_date ? new Date(receive.receive_date).toLocaleDateString('en-GB') : '-',
+            'สถานะ': receive.status || '-',
+            'ผู้รับ': employeeName,
+          });
+        } else {
+          for (const item of items) {
+            exportRows.push({
+              'รหัสรับ': receive.receive_no || '-',
+              'อ้างอิง': receive.reference_doc || '-',
+              'ประเภท': receive.receive_type || '-',
+              'SKU': item.sku_id || '-',
+              'ชื่อสินค้า': item.master_sku?.sku_name || item.product_name || '-',
+              'บาร์โค้ด': item.master_sku?.barcode || item.barcode || '-',
+              'จำนวนชิ้น': item.piece_quantity ?? 0,
+              'จำนวนแพ็ค': item.pack_quantity ?? 0,
+              'รหัสพาเลท': item.pallet_id || '-',
+              'สี Pallet': (item as any).pallet_color || '-',
+              'วันที่ผลิต': item.production_date || '-',
+              'วันหมดอายุ': item.expiry_date ? new Date(item.expiry_date).toLocaleDateString('en-GB') : '-',
+              'สถานะสแกน': item.pallet_scan_status || '-',
+              'พาเลทภายนอก': item.pallet_id_external || '-',
+              'ที่จัดเก็บ': item.master_location?.location_code || item.location_id || '-',
+              'ผู้ส่ง': supplierName,
+              'ลูกค้า': customerName,
+              'วันรับ': receive.receive_date ? new Date(receive.receive_date).toLocaleDateString('en-GB') : '-',
+              'สถานะ': receive.status || '-',
+              'ผู้รับ': employeeName,
+            });
+          }
+        }
+      }
+
+      if (exportRows.length === 0) {
+        alert('ไม่มีข้อมูลสำหรับส่งออก');
+        return;
+      }
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(exportRows);
+      ws['!cols'] = [
+        { wch: 18 }, { wch: 15 }, { wch: 15 }, { wch: 22 }, { wch: 30 },
+        { wch: 18 }, { wch: 12 }, { wch: 12 }, { wch: 22 }, { wch: 10 },
+        { wch: 12 }, { wch: 12 }, { wch: 12 }, { wch: 18 }, { wch: 12 },
+        { wch: 20 }, { wch: 20 }, { wch: 12 }, { wch: 12 }, { wch: 18 },
+      ];
+      XLSX.utils.book_append_sheet(wb, ws, 'รับสินค้าเข้าคลัง');
+
+      const dateStr = new Date().toISOString().split('T')[0];
+      XLSX.writeFile(wb, `inbound_${dateStr}.xlsx`);
+    } catch (err) {
+      console.error('Export error:', err);
+      alert('เกิดข้อผิดพลาดในการส่งออก');
+    } finally {
+      setExporting(false);
+    }
+  }, [sortedReceives]);
+
   // Receive types for dropdown
   const receiveTypes: { value: ReceiveType | 'all'; label: string }[] = [
     { value: 'all', label: 'ทั้งหมด' },
@@ -512,6 +607,16 @@ const InboundPage = () => {
                 </option>
               ))}
             </select>
+            <Button
+              variant="outline"
+              size="sm"
+              icon={exporting ? Loader2 : Download}
+              onClick={handleExportExcel}
+              disabled={receivesLoading || exporting}
+              className={`text-xs py-1 px-2 ${exporting ? 'animate-pulse' : ''}`}
+            >
+              {exporting ? 'กำลังส่งออก...' : 'Excel'}
+            </Button>
             <Button 
               variant="secondary" 
               size="sm"

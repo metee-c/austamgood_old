@@ -4,26 +4,26 @@ import { createServiceRoleClient } from '@/lib/supabase/server';
 export async function SystemHealth() {
   const supabase = createServiceRoleClient();
 
-  // Get counts from shadow tables
+  // Use estimated counts for large tables to avoid timeout
   const [
     { count: totalTransactions },
     { count: totalActivities },
     { count: totalErrors },
     { count: recentActivities },
   ] = await Promise.all([
-    supabase.from('wms_transactions').select('*', { count: 'exact', head: true }),
-    supabase.from('wms_activity_logs').select('*', { count: 'exact', head: true }),
-    supabase.from('wms_errors').select('*', { count: 'exact', head: true }),
+    supabase.from('wms_transactions').select('*', { count: 'estimated', head: true }),
+    supabase.from('wms_activity_logs').select('*', { count: 'estimated', head: true }),
+    supabase.from('wms_errors').select('*', { count: 'estimated', head: true }),
     supabase
       .from('wms_activity_logs')
-      .select('*', { count: 'exact', head: true })
+      .select('*', { count: 'estimated', head: true })
       .gte('logged_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()),
   ]);
 
   // Get error rate (errors in last 24h / activities in last 24h)
   const { count: recentErrors } = await supabase
     .from('wms_errors')
-    .select('*', { count: 'exact', head: true })
+    .select('*', { count: 'estimated', head: true })
     .gte('occurred_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString());
 
   const errorRate = recentActivities && recentActivities > 0 

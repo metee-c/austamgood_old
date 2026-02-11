@@ -330,6 +330,7 @@ const InventoryBalancesPage = () => {
             )
           `)
           .gt('total_piece_qty', 0) // ไม่แสดงแถวที่เป็น 0 ชิ้น
+          .order('balance_id')
           .range(from, from + batchSize - 1);
 
         // Exclude preparation areas
@@ -802,11 +803,11 @@ const InventoryBalancesPage = () => {
   useEffect(() => {
     const hasActiveFilters = Object.keys(advancedFilters).some(k => advancedFilters[k as keyof AdvancedFilters]);
     const hasUrlParams = searchParams.get('sku') || searchParams.get('production_date') || searchParams.get('expiry_date');
-    if (hasActiveFilters || showLowStock || showExpiringSoon || hasUrlParams) {
-      // Auto-expand all zones when filtering or coming from URL
+    if (hasActiveFilters || showLowStock || showExpiringSoon || hasUrlParams || debouncedSearchTerm) {
+      // Auto-expand all zones when filtering, searching, or coming from URL
       setExpandedZones(new Set(groupedByZone.zones));
     }
-  }, [advancedFilters, showLowStock, showExpiringSoon, groupedByZone.zones, searchParams]);
+  }, [advancedFilters, showLowStock, showExpiringSoon, groupedByZone.zones, searchParams, debouncedSearchTerm]);
 
   // Fetch receive info for Zone Receiving pallets
   useEffect(() => {
@@ -1252,29 +1253,9 @@ const InventoryBalancesPage = () => {
                               );
                             }
 
-                            // Location with stock - consolidate balances by SKU
-                            // รวมยอดสต็อกตาม SKU (สำหรับกรณีที่มีหลาย lot/pallet แต่ SKU เดียวกัน)
-                            const consolidatedBalances = balances.reduce((acc, balance) => {
-                              const existing = acc.find(b => b.sku_id === balance.sku_id);
-                              if (existing) {
-                                // รวมยอดสต็อก
-                                existing.total_piece_qty += balance.total_piece_qty || 0;
-                                existing.total_pack_qty += balance.total_pack_qty || 0;
-                                existing.reserved_piece_qty += balance.reserved_piece_qty || 0;
-                                existing.reserved_pack_qty += balance.reserved_pack_qty || 0;
-                                // เก็บข้อมูลอื่นๆ จาก record แรก (หรืออัปเดตตาม logic ที่ต้องการ)
-                                if (!existing.lot_no && balance.lot_no) existing.lot_no = balance.lot_no;
-                                if (!existing.pallet_id_external && balance.pallet_id_external) {
-                                  existing.pallet_id_external = balance.pallet_id_external;
-                                }
-                                if (!existing.pallet_id && balance.pallet_id) {
-                                  existing.pallet_id = balance.pallet_id;
-                                }
-                              } else {
-                                acc.push({ ...balance });
-                              }
-                              return acc;
-                            }, [] as InventoryBalance[]);
+                            // Location with stock - แสดงทุก balance แยกตาม pallet
+                            // ไม่รวม SKU เดียวกัน เพราะ pallet ต่างกันต้องแสดงแยกเพื่อตรวจสอบได้
+                            const consolidatedBalances = balances;
 
                             return consolidatedBalances.map((balance, idx) => (
                               <tr
