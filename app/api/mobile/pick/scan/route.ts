@@ -221,10 +221,10 @@ try {
       );
     }
 
-    // 6. กำหนดปลายทาง: บ้านหยิบเฉพาะ (A09-xx, A10-xx) → E-Commerce, อื่นๆ (PK001/PK002) → Dispatch
-    const sourceLocId = item.source_location_id || '';
-    const isDedicatedPickHouse = sourceLocId.startsWith('A') && !sourceLocId.startsWith('ADJ');
-    const destinationCode = isDedicatedPickHouse ? 'E-Commerce' : 'Dispatch';
+    // 6. กำหนดปลายทาง: Picklist ปกติ (จาก trip) → Dispatch เสมอ
+    // หมายเหตุ: E-Commerce ใช้เฉพาะ online_picklists เท่านั้น (ผ่าน /api/online-picklists/confirm)
+    // ก่อนหน้านี้ บ้านหยิบเฉพาะ (A09-xx, A10-xx) ถูกส่งไป E-Commerce ผิดพลาด ทำให้สต็อกค้าง
+    const destinationCode = 'Dispatch';
 
     const { data: destinationLocation, error: destError } = await supabase
       .from('master_location')

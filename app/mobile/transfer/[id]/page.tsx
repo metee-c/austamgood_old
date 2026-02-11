@@ -43,6 +43,8 @@ export default function MobileTransferDetailPage() {
   const [currentItemIndex, setCurrentItemIndex] = useState<number | null>(null);
   const [currentStep, setCurrentStep] = useState<'scan_pallet' | 'confirm_qty' | 'scan_to' | 'completed'>('scan_pallet');
   const [items, setItems] = useState<MoveItem[]>([]);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [processError, setProcessError] = useState<string | null>(null);
 
   useEffect(() => {
     if (move && move.wms_move_items) {
@@ -151,41 +153,57 @@ export default function MobileTransferDetailPage() {
   };
 
   const handleScanToLocation = async (code: string) => {
-    if (!currentItem) return;
-    if (code === currentItem.to_location_code || code === currentItem.to_location_id) {
-      try {
-        const response = await fetch(`/api/moves/items/${currentItem.move_item_id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            status: 'completed',
-            confirmed_pack_qty: currentItem.confirmed_pack_qty,
-            confirmed_piece_qty: currentItem.confirmed_piece_qty,
-            completed_at: new Date().toISOString()
-          })
-        });
+    if (!currentItem || isProcessing) return;
+    setProcessError(null);
 
-        const result = await response.json();
+    if (code !== currentItem.to_location_code && code !== currentItem.to_location_id) {
+      setProcessError('ตำแหน่งปลายทางไม่ตรงกัน กรุณาสแกนใหม่');
+      return;
+    }
 
-        if (!response.ok || result.error) {
-          alert('เกิดข้อผิดพลาด: ' + (result.error || 'ไม่สามารถบันทึกข้อมูลได้'));
-          return;
-        }
+    setIsProcessing(true);
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 วินาที timeout
 
-        updateCurrentItem({ to_location_scanned: true, status: 'completed' });
-        setCurrentStep('completed');
-        setScanCode('');
+      const response = await fetch(`/api/moves/items/${currentItem.move_item_id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          status: 'completed',
+          confirmed_pack_qty: currentItem.confirmed_pack_qty,
+          confirmed_piece_qty: currentItem.confirmed_piece_qty,
+          completed_at: new Date().toISOString()
+        }),
+        signal: controller.signal,
+      });
 
-        setTimeout(() => {
-          setCurrentItemIndex(null);
-          setCurrentStep('scan_pallet');
-        }, 1500);
-      } catch (err) {
-        console.error('Failed to complete move item', err);
-        alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
+      clearTimeout(timeoutId);
+      const result = await response.json();
+
+      if (!response.ok || result.error) {
+        setProcessError(result.error || 'ไม่สามารถบันทึกข้อมูลได้');
+        return;
       }
-    } else {
-      alert('ตำแหน่งปลายทางไม่ตรงกัน กรุณาสแกนใหม่');
+
+      setProcessError(null);
+      updateCurrentItem({ to_location_scanned: true, status: 'completed' });
+      setCurrentStep('completed');
+      setScanCode('');
+
+      setTimeout(() => {
+        setCurrentItemIndex(null);
+        setCurrentStep('scan_pallet');
+      }, 1500);
+    } catch (err) {
+      console.error('Failed to complete move item', err);
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        setProcessError('การเชื่อมต่อหมดเวลา (30 วินาที) กรุณาตรวจสอบเน็ตแล้วลองใหม่');
+      } else {
+        setProcessError('เกิดข้อผิดพลาดในการเชื่อมต่อ กรุณาลองใหม่');
+      }
+    } finally {
+      setIsProcessing(false);
     }
   };
 
@@ -426,23 +444,45 @@ export default function MobileTransferDetailPage() {
 
         {currentStep === 'scan_to' && currentItem && (
           <div className="bg-white rounded-lg shadow-sm p-4">
-            <ScannerInput
-              value={scanCode}
-              onChange={setScanCode}
-              onScan={() => handleScanToLocation(scanCode)}
-              placeholder="สแกน QR Code ตำแหน่งปลายทาง"
-              label="ขั้นตอนที่ 3: สแกนตำแหน่งปลายทาง"
-            />
+            {isProcessing ? (
+              <div className="flex flex-col items-center justify-center py-8">
+                <Loader2 className="w-10 h-10 animate-spin text-thai-blue mb-3" />
+                <p className="text-sm font-semibold text-thai-gray-700">กำลังบันทึกการย้ายสินค้า...</p>
+                <p className="text-xs text-thai-gray-500 mt-1">กรุณารอสักครู่</p>
+              </div>
+            ) : (
+              <>
+                <ScannerInput
+                  value={scanCode}
+                  onChange={setScanCode}
+                  onScan={() => handleScanToLocation(scanCode)}
+                  placeholder="สแกน QR Code ตำแหน่งปลายทาง"
+                  label="ขั้นตอนที่ 3: สแกนตำแหน่งปลายทาง"
+                />
 
-            <div className="mt-3 bg-blue-50 border-l-4 border-blue-400 p-3 rounded">
-              <div className="flex items-start">
-                <MapPin className="w-5 h-5 text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
-                <div className="text-sm text-blue-700">
-                  <p className="font-semibold">{currentItem.to_location_name}</p>
-                  <p className="mt-1">สแกน QR Code ที่ตำแหน่งปลายทาง</p>
+                <div className="mt-3 bg-blue-50 border-l-4 border-blue-400 p-3 rounded">
+                  <div className="flex items-start">
+                    <MapPin className="w-5 h-5 text-blue-600 mr-2 mt-0.5 flex-shrink-0" />
+                    <div className="text-sm text-blue-700">
+                      <p className="font-semibold">{currentItem.to_location_name}</p>
+                      <p className="mt-1">สแกน QR Code ที่ตำแหน่งปลายทาง</p>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
+
+            {processError && (
+              <div className="mt-3 bg-red-50 border-l-4 border-red-400 p-3 rounded">
+                <div className="flex items-start">
+                  <AlertCircle className="w-5 h-5 text-red-600 mr-2 mt-0.5 flex-shrink-0" />
+                  <div className="text-sm text-red-700">
+                    <p className="font-semibold">ย้ายไม่สำเร็จ</p>
+                    <p className="mt-1">{processError}</p>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
