@@ -906,7 +906,10 @@ const InventoryBalancesPage = () => {
                         <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">รหัสสินค้า</th>
                         <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap min-w-[200px]">ชื่อสินค้า</th>
                         {activeTab !== 'premium' && (
-                          <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันผลิต/หมดอายุ</th>
+                          <>
+                            <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันผลิต</th>
+                            <th className="px-3 py-2 text-left text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap">วันหมดอายุ</th>
+                          </>
                         )}
                         <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-green-50">ชิ้นรวม</th>
                         <th className="px-3 py-2 text-center text-xs font-semibold border-b border-r border-gray-200 whitespace-nowrap bg-green-50 hidden">แพ็ครวม</th>
@@ -946,16 +949,18 @@ const InventoryBalancesPage = () => {
                                 </span>
                               </td>
                               {activeTab !== 'premium' && (
-                                <td className="px-3 py-1.5 border-r border-gray-100 whitespace-nowrap">
-                                  <div className="flex flex-col text-[10px]">
-                                    <span className="text-gray-500">
-                                      ผลิต: {balance.production_date ? new Date(balance.production_date).toLocaleDateString('en-GB') : '-'}
+                                <>
+                                  <td className="px-3 py-1.5 border-r border-gray-100 whitespace-nowrap text-xs">
+                                    <span className="text-gray-700">
+                                      {balance.production_date ? new Date(balance.production_date).toLocaleDateString('en-GB') : '-'}
                                     </span>
-                                    <span className={`${isExpired(balance.expiry_date || '') ? 'text-red-600 font-bold' : isExpiringSoon(balance.expiry_date || '') ? 'text-orange-600' : 'text-gray-500'}`}>
-                                      หมด: {balance.expiry_date ? new Date(balance.expiry_date).toLocaleDateString('en-GB') : '-'}
+                                  </td>
+                                  <td className="px-3 py-1.5 border-r border-gray-100 whitespace-nowrap text-xs">
+                                    <span className={`${isExpired(balance.expiry_date || '') ? 'text-red-600 font-bold' : isExpiringSoon(balance.expiry_date || '') ? 'text-orange-600' : 'text-gray-700'}`}>
+                                      {balance.expiry_date ? new Date(balance.expiry_date).toLocaleDateString('en-GB') : '-'}
                                     </span>
-                                  </div>
-                                </td>
+                                  </td>
+                                </>
                               )}
                               <td 
                                 className="px-3 py-1.5 text-center border-r border-gray-100 whitespace-nowrap bg-green-50/30 cursor-pointer hover:bg-green-100/50 transition-colors"

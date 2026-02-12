@@ -6,6 +6,7 @@ import { createClient } from '@/lib/supabase/client'
 import { Upload, FileSpreadsheet, CheckCircle, AlertCircle, X, RefreshCw } from 'lucide-react'
 import { PageContainer, PageHeaderWithFilters, FilterSelect } from '@/components/ui/page-components'
 import Button from '@/components/ui/Button'
+import { PermissionGuard } from '@/components/auth/PermissionGuard'
 
 type Platform = 'shopee' | 'tiktok' | 'lazada'
 
@@ -79,7 +80,7 @@ const PLATFORM_OPTIONS = [
   { value: 'lazada', label: 'Lazada Thailand' }
 ]
 
-export default function ImportPage() {
+function ImportPageContent() {
   const [mounted, setMounted] = useState(false)
   const [selectedPlatform, setSelectedPlatform] = useState<Platform>('shopee')
   const [file, setFile] = useState<File | null>(null)
@@ -621,4 +622,15 @@ export default function ImportPage() {
       </div>
     </PageContainer>
   )
+}
+
+export default function ImportPage() {
+  return (
+    <PermissionGuard
+      permission="online-packing.import"
+      fallback={<div className="flex items-center justify-center min-h-[400px]"><p className="text-red-500 font-thai">คุณไม่มีสิทธิ์เข้าถึงหน้านี้</p></div>}
+    >
+      <ImportPageContent />
+    </PermissionGuard>
+  );
 }

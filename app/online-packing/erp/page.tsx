@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase/client'
 import { FileOutput, Search, Loader2, Printer } from 'lucide-react'
+import { PermissionGuard } from '@/components/auth/PermissionGuard'
 import type { Order, Product } from '@/types/online-packing'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
@@ -97,7 +98,7 @@ type ERPOrder = Order & {
   backup_record_id?: string | null
 }
 
-export default function ERPPage() {
+function ERPPageContent() {
   const router = useRouter()
   const [orders, setOrders] = useState<Order[]>([])
   const [products, setProducts] = useState<Product[]>([])
@@ -1995,5 +1996,23 @@ export default function ERPPage() {
         </div>
       )}
     </PageContainer>
+  )
+}
+
+export default function ERPPage() {
+  return (
+    <PermissionGuard
+      permission="online-packing.erp"
+      fallback={
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <p className="text-red-500 font-thai text-lg">คุณไม่มีสิทธิ์เข้าถึงหน้านี้</p>
+            <p className="text-gray-500 text-sm mt-2">กรุณาติดต่อผู้ดูแลระบบ</p>
+          </div>
+        </div>
+      }
+    >
+      <ERPPageContent />
+    </PermissionGuard>
   )
 }

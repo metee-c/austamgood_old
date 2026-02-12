@@ -14,6 +14,8 @@ interface Sku {
   qty_per_pack?: number;
   qty_per_pallet?: number;
   weight_per_piece_kg?: number;
+  expiry_date_required?: boolean;
+  shelf_life_days?: number;
 }
 
 interface Warehouse {

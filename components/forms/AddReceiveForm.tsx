@@ -21,7 +21,7 @@ const itemSchema = z.object({
   product_name: z.string().optional(),
   barcode: z.string().optional(),
   production_date: z.string().optional(), // เปลี่ยนจาก lot_no เป็น production_date
-  expiry_date: z.string().min(1, 'กรุณาระบุวันหมดอายุ'),
+  expiry_date: z.string().optional(),
   pack_quantity: z.number().min(0, 'จำนวนแพ็คต้องไม่น้อยกว่า 0'),
   piece_quantity: z.number().min(0, 'จำนวนชิ้นต้องไม่น้อยกว่า 0'),
   weight_kg: z.number().optional(),
@@ -640,15 +640,24 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
       }
     }
     
+    // Validate expiry_date for SKUs that require it
+    for (const item of data.items) {
+      const sku = skus.find(s => s.sku_id === item.sku_id);
+      if (sku?.expiry_date_required && (!item.expiry_date || item.expiry_date.trim() === '')) {
+        alert(`❌ กรุณาระบุวันหมดอายุสำหรับสินค้า ${item.sku_id}`);
+        return;
+      }
+    }
+
     for (const [index, item] of data.items.entries()) {
       const selectedSku = skus.find(s => s.sku_id === item.sku_id);
       if (!selectedSku) continue;
 
-      const calculatedPackQuantity = selectedSku.qty_per_pack 
+      const calculatedPackQuantity = selectedSku.qty_per_pack
         ? Math.ceil(item.piece_quantity / selectedSku.qty_per_pack)
         : 0;
 
-      const calculatedWeight = selectedSku.weight_per_piece_kg 
+      const calculatedWeight = selectedSku.weight_per_piece_kg
         ? parseFloat((item.piece_quantity * selectedSku.weight_per_piece_kg).toFixed(3))
         : undefined;
 
@@ -1308,8 +1317,8 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
                               <input
                                 type="date"
                                 {...register(`items.${index}.expiry_date`)}
-                                className={`w-32 p-1 border rounded text-sm ${isReturning ? 'border-orange-300' : 'border-gray-200 bg-gray-100'}`}
-                                required={isReturning}
+                                className={`w-32 p-1 border rounded text-sm ${isReturning && selectedSku?.expiry_date_required ? 'border-orange-300' : 'border-gray-200 bg-gray-100'}`}
+                                required={isReturning && selectedSku?.expiry_date_required === true}
                                 disabled={!isReturning}
                               />
                             )}
@@ -1336,6 +1345,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
               const selectedSku = skus.find((s) => s.sku_id === selectedSkuId);
               const originalQty = (watchedItems?.[index] as any)?.original_quantity;
               const isCustomerReturn = watchedType === 'รับสินค้าตีกลับ' && selectedReturnOrder;
+              const needsExpiry = selectedSku?.expiry_date_required !== false;
 
               return (
                 <div key={field.id} className={`p-3 border rounded-lg space-y-3 relative ${isCustomerReturn ? 'bg-orange-50 border-orange-200' : 'bg-white'}`}>
@@ -1463,18 +1473,20 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
                     </div>
                   )}
                   
-                  {/* ช่องพื้นฐานที่แสดงในทุกกรณี */}
-                  <div className="mt-2 grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-xs font-medium text-thai-gray-700 mb-1">วันที่ผลิต</label>
-                      <input type="date" {...register(`items.${index}.production_date`)} className="w-full p-2 border border-gray-300 rounded-md text-sm" />
+                  {/* ช่องวันผลิต/หมดอายุ - ซ่อนทั้งหมดถ้า SKU ไม่ต้องติดตามวันหมดอายุ */}
+                  {needsExpiry && (
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="block text-xs font-medium text-thai-gray-700 mb-1">วันที่ผลิต</label>
+                        <input type="date" {...register(`items.${index}.production_date`)} className="w-full p-2 border border-gray-300 rounded-md text-sm" />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-thai-gray-700 mb-1">วันหมดอายุ *</label>
+                        <input type="date" {...register(`items.${index}.expiry_date`)} className="w-full p-2 border border-gray-300 rounded-md text-sm" />
+                        {errors.items?.[index]?.expiry_date && <p className="text-red-500 text-xs mt-1">{errors.items[index]?.expiry_date?.message}</p>}
+                      </div>
                     </div>
-                    <div>
-                      <label className="block text-xs font-medium text-thai-gray-700 mb-1">วันหมดอายุ *</label>
-                      <input type="date" {...register(`items.${index}.expiry_date`)} className="w-full p-2 border border-gray-300 rounded-md text-sm" required />
-                      {errors.items?.[index]?.expiry_date && <p className="text-red-500 text-xs mt-1">{errors.items[index]?.expiry_date?.message}</p>}
-                    </div>
-                  </div>
+                  )}
                   
                   {/* สี Pallet - แสดงเมื่อเลือกสร้าง Pallet */}
                   {watchedPalletBoxOption !== 'ไม่สร้าง_Pallet_ID' && (

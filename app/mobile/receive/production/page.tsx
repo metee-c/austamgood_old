@@ -37,7 +37,7 @@ const itemSchema = z.object({
   product_name: z.string().optional(),
   barcode: z.string().optional(),
   production_date: z.string().min(1, 'กรุณาระบุวันที่ผลิต'),
-  expiry_date: z.string().min(1, 'กรุณาระบุวันหมดอายุ'),
+  expiry_date: z.string().optional(),
   pack_quantity: z.number().min(0, 'จำนวนแพ็คต้องไม่น้อยกว่า 0'),
   piece_quantity: z.number().min(1, 'จำนวนชิ้นต้องมากกว่า 0'),
   weight_kg: z.number().optional(),
@@ -367,6 +367,15 @@ function MobileReceiveProductionContent() {
 
   // Form submission
   const onSubmit = async (data: ReceiveFormData) => {
+    // Validate expiry_date for SKUs that require it
+    for (const item of data.items) {
+      const sku = skus.find(s => s.sku_id === item.sku_id);
+      if (sku?.expiry_date_required && (!item.expiry_date || item.expiry_date.trim() === '')) {
+        alert(`❌ กรุณาระบุวันหมดอายุสำหรับสินค้า ${item.sku_id}`);
+        return;
+      }
+    }
+
     setSaving(true);
     try {
       const processedItems = [];
@@ -721,19 +730,21 @@ function MobileReceiveProductionContent() {
                       </div>
                     </div>
 
-                    {/* Dates - Required for production */}
-                    <div className="grid grid-cols-2 gap-2 mb-2">
-                      <div>
-                        <label className="block text-xs text-gray-600 font-thai mb-1">วันที่ผลิต *</label>
-                        <input type="date" {...register(`items.${index}.production_date`)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-                        {errors.items?.[index]?.production_date && <p className="text-red-500 text-xs mt-1">{errors.items[index]?.production_date?.message}</p>}
+                    {/* Dates - ซ่อนทั้งหมดถ้า SKU ไม่ต้องติดตามวันหมดอายุ */}
+                    {(selectedSku?.expiry_date_required !== false) && (
+                      <div className="grid grid-cols-2 gap-2 mb-2">
+                        <div>
+                          <label className="block text-xs text-gray-600 font-thai mb-1">วันที่ผลิต *</label>
+                          <input type="date" {...register(`items.${index}.production_date`)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                          {errors.items?.[index]?.production_date && <p className="text-red-500 text-xs mt-1">{errors.items[index]?.production_date?.message}</p>}
+                        </div>
+                        <div>
+                          <label className="block text-xs text-gray-600 font-thai mb-1">วันหมดอายุ *</label>
+                          <input type="date" {...register(`items.${index}.expiry_date`)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
+                          {errors.items?.[index]?.expiry_date && <p className="text-red-500 text-xs mt-1">{errors.items[index]?.expiry_date?.message}</p>}
+                        </div>
                       </div>
-                      <div>
-                        <label className="block text-xs text-gray-600 font-thai mb-1">วันหมดอายุ *</label>
-                        <input type="date" {...register(`items.${index}.expiry_date`)} className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm" />
-                        {errors.items?.[index]?.expiry_date && <p className="text-red-500 text-xs mt-1">{errors.items[index]?.expiry_date?.message}</p>}
-                      </div>
-                    </div>
+                    )}
 
                     {/* Location */}
                     <div className="mb-2">

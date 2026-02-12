@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { ClipboardList, Printer, RefreshCw, Search } from 'lucide-react';
+import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
 import { PageContainer, PageHeaderWithFilters, FilterSelect } from '@/components/ui/page-components';
 
@@ -19,7 +20,7 @@ interface OnlinePicklist {
   completed_at?: string;
 }
 
-export default function OnlinePicklistsPage() {
+function OnlinePicklistsPageContent() {
   const [picklists, setPicklists] = useState<OnlinePicklist[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState('');
@@ -250,5 +251,23 @@ export default function OnlinePicklistsPage() {
         </div>
       </div>
     </PageContainer>
+  );
+}
+
+export default function OnlinePicklistsPage() {
+  return (
+    <PermissionGuard
+      permission="online-packing.picklists"
+      fallback={
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <p className="text-red-500 font-thai text-lg">คุณไม่มีสิทธิ์เข้าถึงหน้านี้</p>
+            <p className="text-gray-500 text-sm mt-2">กรุณาติดต่อผู้ดูแลระบบ</p>
+          </div>
+        </div>
+      }
+    >
+      <OnlinePicklistsPageContent />
+    </PermissionGuard>
   );
 }

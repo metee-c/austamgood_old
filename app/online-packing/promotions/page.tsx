@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { Gift, Plus, X, Trash2, Pencil, FileText } from 'lucide-react'
+import { PermissionGuard } from '@/components/auth/PermissionGuard'
 import { PageContainer, PageHeaderWithFilters, SearchInput } from '@/components/ui/page-components'
 import Button from '@/components/ui/Button'
 import type { Product } from '@/types/online-packing'
@@ -111,7 +112,7 @@ const DocumentTextIcon = (props: React.SVGProps<SVGSVGElement>) => (
   </svg>
 )
 
-export default function PromotionsPage() {
+function PromotionsPageContent() {
   const [freebies, setFreebies] = useState<PromotionFreebie[]>([])
   const [products, setProducts] = useState<Product[]>([])
   const [isLoading, setIsLoading] = useState(true)
@@ -2051,5 +2052,23 @@ export default function PromotionsPage() {
       )}
 
     </PageContainer>
+  )
+}
+
+export default function PromotionsPage() {
+  return (
+    <PermissionGuard
+      permission="online-packing.promotions"
+      fallback={
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="text-center">
+            <p className="text-red-500 font-thai text-lg">คุณไม่มีสิทธิ์เข้าถึงหน้านี้</p>
+            <p className="text-gray-500 text-sm mt-2">กรุณาติดต่อผู้ดูแลระบบ</p>
+          </div>
+        </div>
+      }
+    >
+      <PromotionsPageContent />
+    </PermissionGuard>
   )
 }
