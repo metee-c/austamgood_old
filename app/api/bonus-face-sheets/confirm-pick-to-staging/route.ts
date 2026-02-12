@@ -377,6 +377,7 @@ try {
     const warehouseId = bonusFaceSheets[0].warehouse_id || 'WH001';
     const now = new Date().toISOString();
     let totalMoved = 0;
+    const stockWarnings: { location: string; sku_id: string; required: number; available: number; moved: number }[] = [];
 
     // ✅ ATOMIC APPROACH: ใช้ executeStockMovements RPC แทน manual balance updates
     const { executeStockMovements } = await import('@/lib/database/inventory-transaction');
@@ -437,26 +438,23 @@ try {
 
         if (!sourceBalances || sourceBalances.length === 0) {
           console.warn(`⚠️ No balance at ${storageLocation} for SKU ${skuId}, skipping`);
+          stockWarnings.push({ location: storageLocation, sku_id: skuId, required: quantity, available: 0, moved: 0 });
           continue;
         }
 
-        // PRE-VALIDATION - ตรวจสอบสต็อกรวมทุก balance rows
+        // ตรวจสอบสต็อกรวมทุก balance rows - ย้ายเท่าที่มี (ไม่ block ทั้งหมด)
         const totalAvailable = sourceBalances.reduce((sum, b) => sum + Number(b.total_piece_qty || 0), 0);
+        const actualMoveQty = Math.min(quantity, totalAvailable);
+
         if (totalAvailable < quantity) {
-          console.error(`🔴 CRITICAL: Insufficient stock at ${storageLocation} for SKU ${skuId}: need ${quantity}, have ${totalAvailable}`);
-          return NextResponse.json({
-            success: false,
-            error: `สต็อกไม่พอที่ ${storageLocation}: ต้องการ ${quantity} ชิ้น มีเพียง ${totalAvailable} ชิ้น`,
-            error_code: 'INSUFFICIENT_STOCK',
-            location: storageLocation,
-            sku_id: skuId,
-            required: quantity,
-            available: totalAvailable
-          }, { status: 400 });
+          console.warn(`⚠️ Partial stock at ${storageLocation} for SKU ${skuId}: need ${quantity}, have ${totalAvailable}, moving ${actualMoveQty}`);
+          stockWarnings.push({ location: storageLocation, sku_id: skuId, required: quantity, available: totalAvailable, moved: actualMoveQty });
         }
 
+        if (actualMoveQty <= 0) continue;
+
         // FIFO deduction across multiple balance rows
-        let remainingQty = quantity;
+        let remainingQty = actualMoveQty;
         for (const bal of sourceBalances) {
           if (remainingQty <= 0) break;
           const available = Number(bal.total_piece_qty || 0);
@@ -506,7 +504,7 @@ try {
           remainingQty -= deductQty;
         }
 
-        totalMoved += quantity;
+        totalMoved += actualMoveQty;
       }
     }
 
@@ -585,11 +583,14 @@ try {
 
     return NextResponse.json({
       success: true,
-      message: `ย้ายสินค้าไปจุดพักรอโหลดสำเร็จ ${totalMoved} ชิ้น จาก ${bonusFaceSheets.length} ใบปะหน้า`,
+      message: stockWarnings.length > 0
+        ? `ย้ายสินค้าไปจุดพักรอโหลดสำเร็จ ${totalMoved} ชิ้น (สต็อกไม่พอบางรายการ ${stockWarnings.length} รายการ - ย้ายเท่าที่มี)`
+        : `ย้ายสินค้าไปจุดพักรอโหลดสำเร็จ ${totalMoved} ชิ้น จาก ${bonusFaceSheets.length} ใบปะหน้า`,
       total_moved: totalMoved,
       packages_processed: packages.length,
       movements_executed: movements.length,
-      bonus_face_sheets_processed: bonusFaceSheets.length
+      bonus_face_sheets_processed: bonusFaceSheets.length,
+      ...(stockWarnings.length > 0 && { stock_warnings: stockWarnings })
     });
 
   } catch (error: any) {
