@@ -17,7 +17,7 @@ export type ReceiveType =
 
 export type PalletScanStatus = 'ไม่จำเป็น' | 'สแกนแล้ว' | 'รอดำเนินการ';
 
-export type ReceiveStatus = 'รอรับเข้า' | 'รับเข้าแล้ว' | 'กำลังตรวจสอบ' | 'สำเร็จ';
+export type ReceiveStatus = 'รอรับเข้า' | 'รับเข้าแล้ว' | 'สำเร็จ';
 
 // --- Interface for Receive Header (wms_receives) ---
 export interface ReceiveHeader {

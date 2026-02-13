@@ -634,7 +634,6 @@ function MobileReceiveProductionContent() {
           <label className="block text-sm font-semibold text-gray-700 font-thai mb-2">สถานะ</label>
           <select {...register('status')} className="w-full px-4 py-3 border border-gray-300 rounded-lg font-thai">
             <option value="รับเข้าแล้ว">รับเข้าแล้ว</option>
-            <option value="กำลังตรวจสอบ">กำลังตรวจสอบ</option>
             <option value="สำเร็จ">สำเร็จ</option>
           </select>
         </div>

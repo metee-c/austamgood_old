@@ -1,6 +1,8 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import html2canvas from 'html2canvas';
+import { Camera } from 'lucide-react';
 
 // Additional Inventory Table Component
 function AdditionalInventoryTable() {
@@ -28,27 +30,34 @@ function AdditionalInventoryTable() {
     return <div className="text-center py-8 text-gray-400 text-xs">ไม่มีข้อมูล</div>;
   }
 
-  // Group locations by type
-  const pk001Data = data.find(row => row.location === 'PK001');
-  const a10Data = data.filter(row => row.location.startsWith('A10-01-'));
-  const a09Data = data.filter(row => row.location.startsWith('A09-01-'));
+  // Aggregate to 3 rows only: PK001, A10-01 (sum), A09-01 (sum)
+  const sumDaily = (rows: any[]) => {
+    const obj: Record<string, number> = {};
+    dates.forEach(d => { obj[d] = 0; });
+    rows.forEach(r => {
+      dates.forEach(d => {
+        obj[d] += r.dailyPallets?.[d] || 0;
+      });
+    });
+    return obj;
+  };
+
+  const pk001Row = data.find(r => r.location === 'PK001');
+  const a10Rows = data.filter(r => r.location.startsWith('A10-01-'));
+  const a09Rows = data.filter(r => r.location.startsWith('A09-01-'));
+
+  const rows = [
+    { label: 'PK001', daily: sumDaily(pk001Row ? [pk001Row] : []) },
+    { label: 'A10-01 (รวม)', daily: sumDaily(a10Rows) },
+    { label: 'A09-01 (รวม)', daily: sumDaily(a09Rows) },
+  ];
 
   return (
     <div className="overflow-auto">
       <table className="w-full text-[10px]">
         <thead>
           <tr className="bg-blue-100 border-b border-blue-200 text-blue-900">
-            <th className="px-2 py-1.5 text-center font-semibold" colSpan={3}>Location</th>
-            {dates.map(date => (
-              <th key={date} className="px-2 py-1.5 text-center font-semibold min-w-[80px]">
-                {new Date(date).getDate()}/{new Date(date).getMonth() + 1}
-              </th>
-            ))}
-          </tr>
-          <tr className="bg-blue-50 border-b border-blue-200 text-blue-900">
-            <th className="px-2 py-1.5 text-center font-semibold">PK001</th>
-            <th className="px-2 py-1.5 text-center font-semibold">A10-01</th>
-            <th className="px-2 py-1.5 text-center font-semibold">A09-01</th>
+            <th className="px-2 py-1.5 text-center font-semibold">Location</th>
             {dates.map(date => (
               <th key={date} className="px-2 py-1.5 text-center font-semibold min-w-[80px]">
                 {new Date(date).getDate()}/{new Date(date).getMonth() + 1}
@@ -57,39 +66,12 @@ function AdditionalInventoryTable() {
           </tr>
         </thead>
         <tbody>
-          {/* PK001 row */}
-          <tr className="bg-white">
-            <td className="px-2 py-1.5 font-medium text-gray-800">PK001</td>
-            <td className="px-2 py-1.5 text-center text-gray-400">-</td>
-            <td className="px-2 py-1.5 text-center text-gray-400">-</td>
-            {dates.map(date => (
-              <td key={date} className="px-2 py-1.5 text-center font-mono">
-                {pk001Data?.dailyPallets[date] || 0}
-              </td>
-            ))}
-          </tr>
-          {/* A10 rows */}
-          {a10Data.map((row, idx) => (
-            <tr key={row.location} className={idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-              <td className="px-2 py-1.5 text-center text-gray-400">-</td>
-              <td className="px-2 py-1.5 font-medium text-gray-800">{row.location}</td>
-              <td className="px-2 py-1.5 text-center text-gray-400">-</td>
+          {rows.map((row, idx) => (
+            <tr key={row.label} className={idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+              <td className="px-2 py-1.5 font-medium text-gray-800">{row.label}</td>
               {dates.map(date => (
                 <td key={date} className="px-2 py-1.5 text-center font-mono">
-                  {row.dailyPallets[date] || 0}
-                </td>
-              ))}
-            </tr>
-          ))}
-          {/* A09 rows */}
-          {a09Data.map((row, idx) => (
-            <tr key={row.location} className={idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
-              <td className="px-2 py-1.5 text-center text-gray-400">-</td>
-              <td className="px-2 py-1.5 text-center text-gray-400">-</td>
-              <td className="px-2 py-1.5 font-medium text-gray-800">{row.location}</td>
-              {dates.map(date => (
-                <td key={date} className="px-2 py-1.5 text-center font-mono">
-                  {row.dailyPallets[date] || 0}
+                  {row.daily[date] || 0}
                 </td>
               ))}
             </tr>
@@ -166,6 +148,7 @@ interface SelectedCell {
 }
 
 export default function WarehousePhysicalLayout() {
+  const layoutRef = useRef<HTMLDivElement>(null);
   const [selectedCell, setSelectedCell] = useState<SelectedCell | null>(null);
   const [showRack3D, setShowRack3D] = useState(false);
   const [slotData, setSlotData] = useState<SlotInventory | null>(null);
@@ -199,9 +182,30 @@ export default function WarehousePhysicalLayout() {
   const [prepAreaData, setPrepAreaData] = useState<any[]>([]);
   const [loadingPrepArea, setLoadingPrepArea] = useState(false);
   const [prepAreaSummary, setPrepAreaSummary] = useState<{ total_locations: number; occupied_locations: number; total_packages: number; staging_packages?: number } | null>(null);
+  const [capturing, setCapturing] = useState(false);
   // State สำหรับ Package tooltip ใน PrepAreaModal
   const [selectedPackage, setSelectedPackage] = useState<any | null>(null);
   const [packageMousePos, setPackageMousePos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+
+  const handleExportImage = async () => {
+    if (!layoutRef.current) return;
+    setCapturing(true);
+    await new Promise(r => setTimeout(r, 50)); // allow UI to hide controls
+    try {
+      const canvas = await html2canvas(layoutRef.current, { scale: 2, useCORS: true });
+      const dataUrl = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      const ts = new Date();
+      const tsStr = `${ts.getFullYear()}${String(ts.getMonth() + 1).padStart(2, '0')}${String(ts.getDate()).padStart(2, '0')}-${String(ts.getHours()).padStart(2, '0')}${String(ts.getMinutes()).padStart(2, '0')}`;
+      link.href = dataUrl;
+      link.download = `capacity-layout-${tsStr}.png`;
+      link.click();
+    } catch (e) {
+      console.error('export image error', e);
+    } finally {
+      setCapturing(false);
+    }
+  };
 
   // Fetch occupancy summary
   const fetchOccupancy = useCallback(async () => {
@@ -1578,7 +1582,21 @@ export default function WarehousePhysicalLayout() {
   };
 
   return (
-    <div className="bg-white p-4 min-h-screen">
+    <div ref={layoutRef} className="bg-white p-4 min-h-screen">
+      {/* Export-only header at very top when capturing */}
+      {capturing && (
+        <div className="mb-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-bold text-gray-800">Warehouse Capacity Analytics</h2>
+              {lastUpdated && (
+                <p className="text-xs text-gray-500">อัปเดตล่าสุด: {lastUpdated.toLocaleTimeString('th-TH')}</p>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Header with title and refresh button */}
       <div className="flex justify-between items-center mb-2">
         <h1 className="text-xl font-bold text-gray-800">Physical Layout - WH001</h1>
@@ -1591,23 +1609,15 @@ export default function WarehousePhysicalLayout() {
           <button
             onClick={fetchOccupancy}
             disabled={loadingOccupancy}
-            className="flex items-center gap-1 px-3 py-1.5 text-sm bg-blue-500 text-white rounded-lg hover:bg-blue-600 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+            className={`px-3 py-1.5 text-xs bg-blue-600 text-white rounded shadow hover:bg-blue-700 disabled:opacity-50 ${capturing ? 'hidden' : ''}`}
           >
-            <svg
-              className={`w-4 h-4 ${loadingOccupancy ? 'animate-spin' : ''}`}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
             {loadingOccupancy ? 'กำลังโหลด...' : 'รีเฟรช'}
           </button>
         </div>
       </div>
 
-      {/* Legend - Compact Modern Style */}
-      <div className="mb-3">
+      {/* Legend - hidden when capturing */}
+      <div className={`mb-3 ${capturing ? 'hidden' : ''}`}>
         {loadingOccupancy ? (
           <div className="flex items-center gap-2 text-gray-500 text-xs">
             <div className="w-3 h-3 bg-gray-100 border border-gray-400 rounded animate-pulse"></div>
@@ -1777,6 +1787,18 @@ export default function WarehousePhysicalLayout() {
       </div>
 
       {/* ═══ CAPACITY ANALYTICS DASHBOARD ═══ */}
+      {/* Export-only header (shown when capturing) */}
+      <div className={`${capturing ? 'block' : 'hidden'} mb-3`}>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-gray-800">Warehouse Capacity Analytics</h2>
+            {lastUpdated && (
+              <p className="text-xs text-gray-500">อัปเดตล่าสุด: {lastUpdated.toLocaleTimeString('th-TH')}</p>
+            )}
+          </div>
+        </div>
+      </div>
+
       <div className="mt-4 space-y-4">
         {/* ── Header ── */}
         <div className="bg-blue-50 border border-blue-200 rounded-lg px-5 py-3 flex items-center justify-between">
@@ -1784,7 +1806,17 @@ export default function WarehousePhysicalLayout() {
             <h2 className="text-blue-900 text-base font-bold tracking-wide">Warehouse Capacity Analytics</h2>
             <p className="text-blue-700 text-xs mt-0.5">แนวโน้มการใช้พื้นที่คลังสินค้า — Rack (พาเลท) vs BLK (พาเลท)</p>
           </div>
-          {loadingCapacity && <span className="text-blue-600 text-xs animate-pulse">กำลังโหลด...</span>}
+          <div className="flex items-center gap-2">
+            {loadingCapacity && <span className="text-blue-600 text-xs animate-pulse">กำลังโหลด...</span>}
+            <button
+              onClick={handleExportImage}
+              disabled={capturing}
+              className="p-1.5 rounded hover:bg-blue-100 disabled:opacity-50"
+              title="บันทึกเป็นภาพ"
+            >
+              <Camera className="w-4 h-4" color="#1B2A4A" />
+            </button>
+          </div>
         </div>
 
         {/* ── Chart + Zone Summary side by side ── */}
@@ -1801,7 +1833,7 @@ export default function WarehousePhysicalLayout() {
               </div>
             </div>
             {trendData.length > 0 ? (() => {
-              const w = 620, h = 260;
+              const w = 620, h = 280;
               const pad = { top: 20, bottom: 30, left: 36, right: 14 };
               const cw = w - pad.left - pad.right;
               const ch = h - pad.top - pad.bottom;
@@ -2016,6 +2048,14 @@ export default function WarehousePhysicalLayout() {
                   </table>
                 ) : null;
               })()}
+            </div>
+
+            {/* Additional Inventory Table */}
+            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden -mt-3">
+              <div className="px-4 py-2.5 border-b border-gray-100 bg-gray-50">
+                <h3 className="text-xs font-bold text-gray-700">สินค้าเติม — PK001 + A09/A10 ชั้น 1 (3 วันล่าสุด)</h3>
+              </div>
+              <AdditionalInventoryTable />
             </div>
           </div>
         </div>

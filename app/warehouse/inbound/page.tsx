@@ -453,7 +453,6 @@ const InboundPage = () => {
     { value: 'all', label: 'ทั้งหมด' },
     { value: 'รอรับเข้า', label: 'รอรับเข้า' },
     { value: 'รับเข้าแล้ว', label: 'รับเข้าแล้ว' },
-    { value: 'กำลังตรวจสอบ', label: 'กำลังตรวจสอบ' },
     { value: 'สำเร็จ', label: 'สำเร็จ' }
   ];
   const formatThaiDate = (dateString?: string | null) => {
@@ -468,8 +467,6 @@ const InboundPage = () => {
         return <Badge variant="default" size="sm" className="whitespace-nowrap"><span className="text-[10px]">รอรับเข้า</span></Badge>;
       case 'รับเข้าแล้ว':
         return <Badge variant="info" size="sm" className="whitespace-nowrap"><span className="text-[10px]">รับเข้าแล้ว</span></Badge>;
-      case 'กำลังตรวจสอบ':
-        return <Badge variant="warning" size="sm" className="whitespace-nowrap"><span className="text-[10px]">กำลังตรวจสอบ</span></Badge>;
       case 'สำเร็จ':
         return <Badge variant="success" size="sm" className="whitespace-nowrap"><span className="text-[10px]">สำเร็จ</span></Badge>;
       default:
@@ -821,13 +818,11 @@ const InboundPage = () => {
                               ${changingStatus[receive.receive_id] ? 'opacity-50 cursor-wait' : ''}
                               ${receive.status === 'รอรับเข้า' ? 'bg-gray-100 text-gray-700' : ''}
                               ${receive.status === 'รับเข้าแล้ว' ? 'bg-blue-100 text-blue-700' : ''}
-                              ${receive.status === 'กำลังตรวจสอบ' ? 'bg-yellow-100 text-yellow-700' : ''}
                               ${receive.status === 'สำเร็จ' ? 'bg-green-100 text-green-700' : ''}
                             `}
                           >
                             <option value="รอรับเข้า">รอรับเข้า</option>
                             <option value="รับเข้าแล้ว">รับเข้าแล้ว</option>
-                            <option value="กำลังตรวจสอบ">กำลังตรวจสอบ</option>
                             <option value="สำเร็จ">สำเร็จ</option>
                           </select>
                         </td>

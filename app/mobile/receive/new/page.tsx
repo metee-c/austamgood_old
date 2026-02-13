@@ -623,7 +623,6 @@ export default function MobileReceiveNewPage() {
             <label className="block text-xs font-semibold text-gray-700 font-thai mb-1">สถานะ</label>
             <select {...register('status')} className="w-full px-2 py-2 border border-gray-300 rounded font-thai text-xs">
               <option value="รับเข้าแล้ว">รับเข้าแล้ว</option>
-              <option value="กำลังตรวจสอบ">กำลังตรวจสอบ</option>
               <option value="สำเร็จ">สำเร็จ</option>
             </select>
           </div>

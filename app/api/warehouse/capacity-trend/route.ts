@@ -141,8 +141,8 @@ export async function GET() {
     const startStr = startDate.toISOString().split('T')[0];
 
     const ledgerAll = await fetchPaginated<{
-      movement_at: string; location_id: string; direction: string; pack_qty: number;
-    }>('wms_inventory_ledger', 'movement_at, location_id, direction, pack_qty', q =>
+      movement_at: string; location_id: string; direction: string; pack_qty: number; pallet_id: string | null;
+    }>('wms_inventory_ledger', 'movement_at, location_id, direction, pack_qty, pallet_id', q =>
       q.gte('movement_at', startStr).order('movement_at', { ascending: false })
     );
 
@@ -154,13 +154,13 @@ export async function GET() {
     });
 
     // Group ledger by date (only Rack/BLK locations)
-    const ledgerByDate: Record<string, { location_id: string; direction: string; pack_qty: number }[]> = {};
+    const ledgerByDate: Record<string, { location_id: string; direction: string; pack_qty: number; pallet_id: string | null }[]> = {};
     ledgerAll.forEach(row => {
       const grp = getGroup(row.location_id);
       if (!grp) return;
       const day = new Date(row.movement_at).toISOString().split('T')[0];
       if (!ledgerByDate[day]) ledgerByDate[day] = [];
-      ledgerByDate[day].push({ location_id: row.location_id, direction: row.direction, pack_qty: Number(row.pack_qty) || 0 });
+      ledgerByDate[day].push({ location_id: row.location_id, direction: row.direction, pack_qty: Number(row.pack_qty) || 0, pallet_id: row.pallet_id });
     });
 
     // Build dates newest → oldest
@@ -180,7 +180,12 @@ export async function GET() {
     balAll.forEach(r => {
       const grp = getGroup(r.location_id);
       if (!grp) return;
-      runPackBal[r.location_id] = (runPackBal[r.location_id] || 0) + (Number(r.total_pack_qty) || 0);
+      if (grp === 'BLK') {
+        const pallets = palletCountMap.get(r.location_id) || 0;
+        runPackBal[r.location_id] = Math.min(BLK_PALLETS_PER_LOC, Math.max(0, pallets));
+      } else if (grp === 'Rack') {
+        runPackBal[r.location_id] = Number(r.total_pack_qty) > 0 ? 1 : 0; // binary occupancy
+      }
     });
 
     const resultReverse: { date: string; rack_occ: number; blk_occ: number }[] = [];
@@ -191,17 +196,26 @@ export async function GET() {
         if (qty <= 0) continue;
         const grp = getGroup(lid);
         if (grp === 'Rack') {
-          rOcc++;
+          rOcc += runPackBal[lid] > 0 ? 1 : 0;
         } else if (grp === 'BLK' && blkLocSet.has(lid)) {
-          bOcc += palletCountMap.get(lid) || 1;
+          bOcc += Math.min(BLK_PALLETS_PER_LOC, Math.max(0, runPackBal[lid]));
         }
       }
       resultReverse.push({ date: day, rack_occ: rOcc, blk_occ: bOcc });
 
       if (ledgerByDate[day]) {
         for (const mv of ledgerByDate[day]) {
-          const delta = mv.direction === 'in' ? -mv.pack_qty : mv.pack_qty;
-          runPackBal[mv.location_id] = (runPackBal[mv.location_id] || 0) + delta;
+          const grp = getGroup(mv.location_id);
+          // For BLK, use pack_qty as pallets (rounded) with clamp per location; for Rack, binary moves
+          let delta = mv.pack_qty;
+          if (grp === 'BLK') {
+            delta = Math.max(0, Math.round(mv.pack_qty || 0));
+          } else if (grp === 'Rack') {
+            delta = mv.pack_qty > 0 ? 1 : 0;
+          }
+          const adj = mv.direction === 'in' ? -delta : delta;
+          const next = (runPackBal[mv.location_id] || 0) + adj;
+          runPackBal[mv.location_id] = Math.max(0, Math.min(BLK_PALLETS_PER_LOC, next));
         }
       }
     }

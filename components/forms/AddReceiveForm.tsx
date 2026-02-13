@@ -73,7 +73,7 @@ const receiveFormSchema = z.object({
   warehouse_id: z.string().min(1, 'กรุณาเลือกคลังสินค้า'),
   receive_date: z.string().min(1, 'กรุณาเลือกวันที่รับสินค้า'),
   received_by: z.number().optional(),
-  status: z.enum(['รับเข้าแล้ว', 'กำลังตรวจสอบ', 'สำเร็จ'] as const).default('รับเข้าแล้ว'),
+  status: z.enum(['รับเข้าแล้ว', 'สำเร็จ'] as const).default('รับเข้าแล้ว'),
   notes: z.string().optional(),
   custom_pieces_per_pallet: z.number().optional(),
   pieces_per_box: z.number().optional(),
@@ -1227,7 +1227,6 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
             <label className="block text-xs font-medium text-thai-gray-700 font-thai mb-1">สถานะ</label>
             <select {...register('status')} className="w-full p-2 border border-thai-gray-200 rounded-md text-sm">
               <option value="รับเข้าแล้ว">รับเข้าแล้ว</option>
-              <option value="กำลังตรวจสอบ">กำลังตรวจสอบ</option>
               <option value="สำเร็จ">สำเร็จ</option>
             </select>
           </div>
