@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { RefreshCw, ChevronDown, ArrowUpRight, ArrowDownRight, Minus, Camera } from 'lucide-react';
+import { RefreshCw, ArrowUpRight, ArrowDownRight, Minus, Camera, Search } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import dynamic from 'next/dynamic';
 
@@ -30,18 +30,23 @@ const T = {
 // ═══════════════════════════════════════════════════════════════
 // TYPES
 // ═══════════════════════════════════════════════════════════════
-interface KPI { actual: number; goal: number; prev: number; label: string }
+interface KPI { actual: number; goal: number; prev: number; label: string; prevLabel?: string; subtitle?: string; remainingDays?: number }
 interface MonthlyRow { month: string; year: number; inbound: number; outbound: number }
 interface DailyRow { date: string; inbound: number; outbound: number; inbound_types?: Record<string, number>; outbound_types?: Record<string, number> }
 interface ProvinceRow { name: string; orders: number; weight: number; delivered: number }
 interface CustomerRow { id: string; name: string; orders: number; qty: number; weight: number; fulfillment: number; trucks: number; shipping_cost: number }
 interface StatusRow { status: string; count: number }
+interface InboundTodayRow { sku_id: string; product_name: string; packs: number; weight_kg: number }
+interface OutboundTodayRow { sku_id: string; product_name: string; packs: number; weight_kg: number }
 interface DashData {
   kpis: Record<string, KPI>;
   monthly: MonthlyRow[];
   daily: DailyRow[];
   provinces: ProvinceRow[];
   top_customers: CustomerRow[];
+  top_inbound_today: InboundTodayRow[];
+  top_outbound_today: OutboundTodayRow[];
+  top5_label: string;
   status_breakdown: StatusRow[];
   filters: { customers: { id: string; name: string }[]; provinces: string[]; years: number[] };
   meta: { updated: string; year: number; month: number };
@@ -72,7 +77,6 @@ const GaugeRing = ({ pct, color, size = 48 }: { pct: number; color: string; size
   const val = Math.min(Math.max(pct, 0), 100);
   return (
     <svg width={size} height={size} className="block">
-      {/* Drop shadow for 3D effect */}
       <defs>
         <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
           <feDropShadow dx="1" dy="2" stdDeviation="2" floodOpacity="0.25" />
@@ -82,11 +86,9 @@ const GaugeRing = ({ pct, color, size = 48 }: { pct: number; color: string; size
           <stop offset="100%" stopColor={color} stopOpacity="0.7" />
         </linearGradient>
       </defs>
-      {/* Background track */}
       <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={T.grey2} strokeWidth="7" filter="url(#shadow)" />
-      {/* Progress arc with gradient and glow */}
       <circle
-        cx={size / 2} cy={size / 2} r={r} fill="none" 
+        cx={size / 2} cy={size / 2} r={r} fill="none"
         stroke="url(#progressGradient)" strokeWidth="7"
         strokeDasharray={`${(val / 100) * c} ${c}`}
         strokeLinecap="round"
@@ -94,7 +96,6 @@ const GaugeRing = ({ pct, color, size = 48 }: { pct: number; color: string; size
         filter="url(#shadow)"
         style={{ transition: 'stroke-dasharray 0.8s ease' }}
       />
-      {/* Center text */}
       <text x={size / 2} y={size / 2 + 4} textAnchor="middle" fontSize="11" fontWeight="700" fill={T.grey6}>
         {val.toFixed(0)}%
       </text>
@@ -227,7 +228,7 @@ const DailyBarChart = ({ data, h = 220 }: { data: DailyRow[]; h?: number }) => {
   const gap = 2;
   const groupW = bw * 2 + gap;
   const colW = groupW + 6;
-  const labelW = 72;
+  const labelW = 8;
   const totalW = labelW + data.length * colW + 10;
   const pad = { top: 28, bottom: 36, left: labelW, right: 10 };
   const ch = h - pad.top - pad.bottom;
@@ -237,7 +238,6 @@ const DailyBarChart = ({ data, h = 220 }: { data: DailyRow[]; h?: number }) => {
     return Object.entries(types).filter(([, v]) => v > 0).sort((a, b) => b[1] - a[1]);
   };
 
-  // Collect active inbound/outbound types
   const activeIb = Object.keys(IB_COLORS).filter(t => data.some(d => d.inbound_types && d.inbound_types[t]));
   const activeOb = Object.keys(OB_COLORS).filter(t => t !== 'unknown' && data.some(d => d.outbound_types && d.outbound_types[t]));
   const allTypes = [
@@ -245,18 +245,16 @@ const DailyBarChart = ({ data, h = 220 }: { data: DailyRow[]; h?: number }) => {
     ...activeOb.map(t => ({ key: t, label: OB_LABELS[t], color: OB_COLORS[t], group: 'ob' as const })),
   ];
   const rowH = 11;
-  const tableRows = data.length + 2; // +2 for group header + type header
+  const tableRows = data.length + 2;
   const tableH = tableRows * rowH + 6;
   const totalH = h + tableH;
 
   return (
     <svg viewBox={`0 0 ${totalW} ${totalH}`} className="w-full" preserveAspectRatio="xMidYMid meet">
-      {/* Grid lines */}
       {[0.25, 0.5, 0.75, 1].map((p, i) => (
         <line key={i} x1={pad.left} y1={pad.top + ch * (1 - p)} x2={totalW - pad.right} y2={pad.top + ch * (1 - p)}
           stroke={T.grey2} strokeWidth="1" strokeDasharray="3" />
       ))}
-      {/* Stacked bars */}
       {data.map((d, i) => {
         const x = pad.left + i * colW + 2;
         const ibTon = d.inbound / 1000;
@@ -290,7 +288,6 @@ const DailyBarChart = ({ data, h = 220 }: { data: DailyRow[]; h?: number }) => {
           </g>
         );
       })}
-      {/* X-axis labels */}
       {data.map((d, i) => {
         const x = pad.left + i * colW + 2 + groupW / 2;
         const date = new Date(d.date);
@@ -300,13 +297,10 @@ const DailyBarChart = ({ data, h = 220 }: { data: DailyRow[]; h?: number }) => {
           </text>
         );
       })}
-
-      {/* Column divider lines (chart area only) */}
       {data.map((_, i) => {
         const x = pad.left + i * colW - 1;
         return <line key={`div-${i}`} x1={x} y1={pad.top} x2={x} y2={h - 10} stroke={T.grey2} strokeWidth="0.5" />;
       })}
-      {/* ── % Breakdown Table (transposed: types as columns, dates as rows) ── */}
       {(() => {
         const baseY = h + 2;
         const dateColW = 28;
@@ -314,22 +308,18 @@ const DailyBarChart = ({ data, h = 220 }: { data: DailyRow[]; h?: number }) => {
         const typeColW = typeCols > 0 ? (totalW - dateColW) / typeCols : 50;
         const nodes: React.ReactNode[] = [];
 
-        // Top border
         nodes.push(<line key="tbl-top" x1={0} y1={baseY} x2={totalW} y2={baseY} stroke={T.grey3} strokeWidth="0.8" />);
 
-        // Row 0: Group headers (สินค้าเข้า / สินค้าออก)
         const ibMid = dateColW + (activeIb.length * typeColW) / 2;
         nodes.push(<text key="ib-ghdr" x={ibMid} y={baseY + 8} textAnchor="middle" fontSize="6.5" fontWeight="700" fill={T.navy}>สินค้าเข้า</text>);
         if (activeOb.length > 0) {
           const obMid = dateColW + activeIb.length * typeColW + (activeOb.length * typeColW) / 2;
           nodes.push(<text key="ob-ghdr" x={obMid} y={baseY + 8} textAnchor="middle" fontSize="6.5" fontWeight="700" fill={T.navy}>สินค้าออก</text>);
-          // Vertical divider between groups
           const divX = dateColW + activeIb.length * typeColW;
           nodes.push(<line key="grp-vdiv" x1={divX} y1={baseY} x2={divX} y2={baseY + tableH} stroke={T.grey3} strokeWidth="0.5" />);
         }
         nodes.push(<line key="ghdr-line" x1={0} y1={baseY + rowH} x2={totalW} y2={baseY + rowH} stroke={T.grey3} strokeWidth="0.5" />);
 
-        // Row 1: Type name headers with color dots
         const typeHdrY = baseY + rowH;
         allTypes.forEach((t, ti) => {
           const cx = dateColW + ti * typeColW + typeColW / 2;
@@ -342,25 +332,18 @@ const DailyBarChart = ({ data, h = 220 }: { data: DailyRow[]; h?: number }) => {
         });
         nodes.push(<line key="thdr-line" x1={0} y1={typeHdrY + rowH} x2={totalW} y2={typeHdrY + rowH} stroke={T.grey3} strokeWidth="0.8" />);
 
-        // Date column header
         nodes.push(<text key="date-hdr" x={dateColW / 2} y={typeHdrY + 7} textAnchor="middle" fontSize="5.5" fontWeight="600" fill={T.grey5}>วันที่</text>);
-
-        // Vertical divider after date column
         nodes.push(<line key="date-vdiv" x1={dateColW} y1={baseY} x2={dateColW} y2={baseY + tableH} stroke={T.grey3} strokeWidth="0.5" />);
 
-        // Data rows (one per date)
         data.forEach((d, di) => {
           const y = baseY + rowH * 2 + di * rowH;
           const date = new Date(d.date);
           const dateStr = `${date.getDate()}/${date.getMonth() + 1}`;
 
-          // Row divider
           if (di > 0) nodes.push(<line key={`rdiv-${di}`} x1={0} y1={y} x2={totalW} y2={y} stroke={T.grey2} strokeWidth="0.3" />);
 
-          // Date label
           nodes.push(<text key={`dt-${di}`} x={dateColW / 2} y={y + 7} textAnchor="middle" fontSize="6" fontWeight="500" fill={T.grey5}>{dateStr}</text>);
 
-          // Type values
           allTypes.forEach((t, ti) => {
             const cx = dateColW + ti * typeColW + typeColW / 2;
             let val = 0, total = 0;
@@ -376,11 +359,9 @@ const DailyBarChart = ({ data, h = 220 }: { data: DailyRow[]; h?: number }) => {
           });
         });
 
-        // Bottom border
         const bottomY = baseY + rowH * 2 + data.length * rowH;
         nodes.push(<line key="tbl-bot" x1={0} y1={bottomY} x2={totalW} y2={bottomY} stroke={T.grey3} strokeWidth="0.8" />);
 
-        // Vertical column dividers for type columns
         allTypes.forEach((_, ti) => {
           if (ti === 0) return;
           const x = dateColW + ti * typeColW;
@@ -474,6 +455,43 @@ const SL: Record<string, string> = {
 };
 
 // ═══════════════════════════════════════════════════════════════
+// INLINE DATE FILTER COMPONENT
+// ═══════════════════════════════════════════════════════════════
+const InlineDateFilter = ({
+  dateFrom, dateTo, onFromChange, onToChange, onApply, loading,
+}: {
+  dateFrom: string; dateTo: string;
+  onFromChange: (v: string) => void; onToChange: (v: string) => void;
+  onApply: () => void; loading?: boolean;
+}) => (
+  <div className="flex items-center gap-1.5">
+    <input
+      type="date"
+      value={dateFrom}
+      onChange={e => onFromChange(e.target.value)}
+      className="text-[11px] px-1.5 py-0.5 rounded focus:outline-none"
+      style={{ border: `1px solid ${T.grey3}`, color: T.grey6, backgroundColor: T.white }}
+    />
+    <span className="text-[10px]" style={{ color: T.grey4 }}>ถึง</span>
+    <input
+      type="date"
+      value={dateTo}
+      onChange={e => onToChange(e.target.value)}
+      className="text-[11px] px-1.5 py-0.5 rounded focus:outline-none"
+      style={{ border: `1px solid ${T.grey3}`, color: T.grey6, backgroundColor: T.white }}
+    />
+    <button
+      onClick={onApply}
+      disabled={loading}
+      className="p-0.5 rounded hover:bg-gray-100 disabled:opacity-50"
+      title="ค้นหา"
+    >
+      <Search className="w-3.5 h-3.5" style={{ color: loading ? T.grey4 : T.accent }} />
+    </button>
+  </div>
+);
+
+// ═══════════════════════════════════════════════════════════════
 // MAIN COMPONENT
 // ═══════════════════════════════════════════════════════════════
 export default function WarehouseExecutiveDashboard() {
@@ -481,48 +499,126 @@ export default function WarehouseExecutiveDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [tab, setTab] = useState<'overview' | 'inbound' | 'outbound'>('overview');
-  const [sideOpen, setSideOpen] = useState(true);
-  const [filters, setFilters] = useState({ customer: '', province: '', year: '', dateFrom: '', dateTo: '' });
   const [capturing, setCapturing] = useState(false);
   const overviewRef = useRef<HTMLDivElement>(null);
+
+  // Inline filter states
+  const todayStr = new Date().toISOString().split('T')[0];
+  const monthStart = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, '0')}-01`;
+
+  const [top5From, setTop5From] = useState(todayStr);
+  const [top5To, setTop5To] = useState(todayStr);
+  const [top5Loading, setTop5Loading] = useState(false);
+  const [top5Label, setTop5Label] = useState('วันนี้');
+  const [topInbound, setTopInbound] = useState<InboundTodayRow[]>([]);
+  const [topOutbound, setTopOutbound] = useState<OutboundTodayRow[]>([]);
+
+  const [heatmapFrom, setHeatmapFrom] = useState(monthStart);
+  const [heatmapTo, setHeatmapTo] = useState(todayStr);
+  const [heatmapLoading, setHeatmapLoading] = useState(false);
+  const [heatmapData, setHeatmapData] = useState<ProvinceRow[]>([]);
 
   const fetchData = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const params = new URLSearchParams();
-      if (filters.customer) params.set('customer', filters.customer);
-      if (filters.dateFrom) params.set('dateFrom', filters.dateFrom);
-      if (filters.dateTo) params.set('dateTo', filters.dateTo);
-      const res = await fetch(`/api/dashboard/executive?${params}`);
+      const res = await fetch('/api/dashboard/executive');
       const json = await res.json();
       if (json.error) throw new Error(json.error);
       setData(json.data);
+      // Initialize inline data from main fetch
+      setTopInbound(json.data.top_inbound_today);
+      setTopOutbound(json.data.top_outbound_today);
+      setTop5Label(json.data.top5_label);
+      setHeatmapData(json.data.provinces);
     } catch (e: any) {
       setError(e.message);
     } finally {
       setLoading(false);
     }
-  }, [filters]);
+  }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  // Fetch top5 with inline date filter
+  const fetchTop5 = useCallback(async () => {
+    setTop5Loading(true);
+    try {
+      const params = new URLSearchParams({ section: 'top5', dateFrom: top5From, dateTo: top5To });
+      const res = await fetch(`/api/dashboard/executive?${params}`);
+      const json = await res.json();
+      if (json.error) throw new Error(json.error);
+      setTopInbound(json.top_inbound_today || []);
+      setTopOutbound(json.top_outbound_today || []);
+      setTop5Label(json.top5_label || '');
+    } catch (e) {
+      console.error('Top5 fetch error:', e);
+    } finally {
+      setTop5Loading(false);
+    }
+  }, [top5From, top5To]);
+
+  // Fetch heatmap with inline date filter
+  const fetchHeatmap = useCallback(async () => {
+    setHeatmapLoading(true);
+    try {
+      const params = new URLSearchParams({ section: 'provinces', dateFrom: heatmapFrom, dateTo: heatmapTo });
+      const res = await fetch(`/api/dashboard/executive?${params}`);
+      const json = await res.json();
+      if (json.error) throw new Error(json.error);
+      setHeatmapData(json.provinces || []);
+    } catch (e) {
+      console.error('Heatmap fetch error:', e);
+    } finally {
+      setHeatmapLoading(false);
+    }
+  }, [heatmapFrom, heatmapTo]);
 
   const handleExportImage = useCallback(async () => {
     if (!overviewRef.current || capturing) return;
     setCapturing(true);
+    // Wait a tick so React hides elements with `capturing` flag
+    await new Promise(r => setTimeout(r, 100));
     try {
-      const canvas = await html2canvas(overviewRef.current, {
-        scale: 2,
+      const scale = 2;
+      const pad = 32 * scale;
+      const headerH = 80 * scale;
+      const src = await html2canvas(overviewRef.current, {
+        scale,
         useCORS: true,
         backgroundColor: T.grey1,
         logging: false,
       });
-      canvas.toBlob((blob) => {
+      const out = document.createElement('canvas');
+      out.width = src.width + pad * 2;
+      out.height = src.height + pad * 2 + headerH;
+      const ctx = out.getContext('2d')!;
+      ctx.fillStyle = T.grey1;
+      ctx.fillRect(0, 0, out.width, out.height);
+
+      // Draw header title
+      const now = new Date();
+      const thaiM = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+      const beYear = now.getFullYear() + 543;
+      const monthName = thaiM[now.getMonth()];
+      const timeStr = now.toLocaleString('th-TH');
+
+      ctx.fillStyle = T.navy;
+      ctx.font = `bold ${28 * scale}px "Noto Sans Thai", "Sarabun", sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText('รายงานผลการดำเนินงานคลังสินค้า', out.width / 2, pad + 36 * scale);
+
+      ctx.fillStyle = T.grey5;
+      ctx.font = `${14 * scale}px "Noto Sans Thai", "Sarabun", sans-serif`;
+      ctx.fillText(`${monthName} ${beYear} • อัปเดตล่าสุด ${timeStr}`, out.width / 2, pad + 60 * scale);
+
+      ctx.drawImage(src, pad, pad + headerH);
+      out.toBlob((blob) => {
         if (!blob) return;
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        const today = new Date().toISOString().slice(0, 10);
+        const today = now.toISOString().slice(0, 10);
         a.download = `dashboard-overview-${today}.png`;
         a.click();
         URL.revokeObjectURL(url);
@@ -541,23 +637,31 @@ export default function WarehouseExecutiveDashboard() {
     return pct >= 100 ? T.green : pct >= 70 ? T.yellow : T.red;
   };
 
-  // ── KPI Card (clean, no gauge, no sparkline) ──
+  // ── KPI Card ──
   const KPICard = ({ kpi, color, unit = '', hideCompare = false }: { kpi: KPI; color: string; unit?: string; hideCompare?: boolean }) => {
     const diff = kpi.actual - kpi.prev;
     const diffPct = kpi.prev ? (diff / kpi.prev) * 100 : 0;
 
     return (
-      <div className="rounded-lg p-4 flex flex-col justify-between" style={{ backgroundColor: T.white, border: `1px solid ${T.grey2}` }}>
-        <span className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: T.grey4 }}>{kpi.label}</span>
+      <div className="rounded-lg p-4 flex flex-col justify-between relative overflow-hidden" style={{ backgroundColor: T.white, border: `1px solid ${T.grey2}`, borderLeft: `4px solid ${color}` }}>
+        {kpi.remainingDays != null && (
+          <div className="absolute top-2 right-2 rounded-full px-2 py-0.5 text-[10px] font-semibold" style={{ backgroundColor: color + '18', color }}>
+            เหลือ {kpi.remainingDays} วัน
+          </div>
+        )}
+        <span className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color }}>{kpi.label}</span>
         <div>
           <div className="text-2xl font-bold" style={{ color: T.navy }}>{kpi.actual.toLocaleString()}{unit}</div>
+          {kpi.subtitle && (
+            <div className="text-[10px] mt-0.5" style={{ color: T.grey4 }}>{kpi.subtitle}</div>
+          )}
           {!hideCompare && (
             <div className="flex items-center gap-1 mt-1">
               {diff > 0 ? <ArrowUpRight className="w-3 h-3" style={{ color: T.green }} /> :
                diff < 0 ? <ArrowDownRight className="w-3 h-3" style={{ color: T.red }} /> :
                <Minus className="w-3 h-3" style={{ color: T.grey4 }} />}
               <span className="text-xs font-semibold" style={{ color: diff >= 0 ? T.green : T.red }}>
-                {diff >= 0 ? '+' : ''}{diffPct.toFixed(1)}% จากก่อนหน้า
+                {diff >= 0 ? '+' : ''}{diffPct.toFixed(1)}% {kpi.prevLabel || 'จากก่อนหน้า'}
               </span>
             </div>
           )}
@@ -589,12 +693,12 @@ export default function WarehouseExecutiveDashboard() {
     );
   }
 
-  const { kpis, monthly, daily, provinces, top_customers, status_breakdown } = data;
+  const { kpis, monthly, daily, status_breakdown } = data;
   const inboundSpark = daily.map(d => d.inbound);
   const outboundSpark = daily.map(d => d.outbound);
-  
+
   // Thai month names for display
-  const thaiMonthNames = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน', 
+  const thaiMonthNames = ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
                           'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'];
   const currentThaiMonth = thaiMonthNames[data.meta.month - 1];
   const currentThaiYearBE = data.meta.year + 543;
@@ -606,128 +710,20 @@ export default function WarehouseExecutiveDashboard() {
   ];
 
   return (
-    <div className="flex h-full overflow-hidden" style={{ backgroundColor: T.grey1, fontFamily: "'Segoe UI', system-ui, sans-serif" }}>
-
-      {/* ═══ LEFT SIDEBAR FILTER ═══ */}
-      <div
-        className="flex-shrink-0 overflow-y-auto transition-all duration-300"
-        style={{
-          width: sideOpen ? 240 : 0,
-          backgroundColor: '#EBF5FF',
-          borderRight: `1px solid ${T.grey3}`,
-        }}
-      >
-        {sideOpen && (
-          <div className="p-4">
-            {/* Sidebar Header */}
-            <div className="flex items-center justify-between mb-6">
-              <span className="text-sm font-bold tracking-wide" style={{ color: T.navy }}>ตัวกรอง</span>
-              <button onClick={() => setSideOpen(false)} style={{ color: T.grey5 }} className="hover:text-navy-800">
-                <ChevronDown className="w-4 h-4 rotate-90" />
-              </button>
-            </div>
-
-            {/* Date Range */}
-            <div className="mb-5">
-              <label className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: T.grey5 }}>ช่วงวันที่</label>
-              <div className="space-y-2">
-                <input
-                  type="date"
-                  value={filters.dateFrom || ''}
-                  onChange={e => setFilters(f => ({ ...f, dateFrom: e.target.value }))}
-                  className="w-full text-sm rounded px-3 py-2 border-0 focus:outline-none focus:ring-2"
-                  style={{ backgroundColor: T.white, color: T.grey6, border: `1px solid ${T.grey3}` }}
-                  placeholder="จากวันที่"
-                />
-                <input
-                  type="date"
-                  value={filters.dateTo || ''}
-                  onChange={e => setFilters(f => ({ ...f, dateTo: e.target.value }))}
-                  className="w-full text-sm rounded px-3 py-2 border-0 focus:outline-none focus:ring-2"
-                  style={{ backgroundColor: T.white, color: T.grey6, border: `1px solid ${T.grey3}` }}
-                  placeholder="ถึงวันที่"
-                />
-              </div>
-            </div>
-
-            {/* Province */}
-            <div className="mb-5">
-              <label className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: T.grey5 }}>จังหวัด</label>
-              <select
-                value={filters.province}
-                onChange={e => setFilters(f => ({ ...f, province: e.target.value }))}
-                className="w-full text-sm rounded px-3 py-2 border-0 focus:outline-none"
-                style={{ backgroundColor: T.white, color: T.grey6, border: `1px solid ${T.grey3}` }}
-              >
-                <option value="" style={{ color: T.grey6 }}>ทุกจังหวัด</option>
-                {data.filters.provinces.map(p => <option key={p} value={p} style={{ color: T.grey6 }}>{p}</option>)}
-              </select>
-            </div>
-
-            {/* Customer */}
-            <div className="mb-5">
-              <label className="block text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: T.grey5 }}>ลูกค้า</label>
-              <select
-                value={filters.customer}
-                onChange={e => setFilters(f => ({ ...f, customer: e.target.value }))}
-                className="w-full text-sm rounded px-3 py-2 border-0 focus:outline-none"
-                style={{ backgroundColor: T.white, color: T.grey6, border: `1px solid ${T.grey3}` }}
-              >
-                <option value="" style={{ color: T.grey6 }}>ลูกค้าทั้งหมด</option>
-                {data.filters.customers.slice(0, 50).map(c => (
-                  <option key={c.id} value={c.id} style={{ color: T.grey6 }}>{c.name || c.id}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Status Legend - 2 colors only */}
-            <div className="mt-8">
-              <label className="block text-xs font-semibold mb-3 uppercase tracking-wider" style={{ color: T.grey5 }}>สัญลักษณ์</label>
-              <div className="space-y-2">
-                {[
-                  { color: T.green, label: 'ดี (≥80%)' },
-                  { color: T.red, label: 'ต่ำ (<80%)' },
-                ].map((l, i) => (
-                  <div key={i} className="flex items-center gap-2">
-                    <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: l.color }} />
-                    <span className="text-xs" style={{ color: T.grey5 }}>{l.label}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Reset */}
-            <button
-              onClick={() => setFilters({ customer: '', province: '', year: '', dateFrom: '', dateTo: '' })}
-              className="w-full mt-6 py-2 rounded text-xs font-semibold tracking-wide"
-              style={{ backgroundColor: T.blue, color: T.white }}
-            >
-              ล้างตัวกรอง
-            </button>
-          </div>
-        )}
-      </div>
+    <div className="h-full overflow-hidden" style={{ backgroundColor: T.grey1, fontFamily: "'Segoe UI', system-ui, sans-serif" }}>
 
       {/* ═══ MAIN CONTENT ═══ */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="h-full overflow-y-auto">
         {/* ── REPORT HEADER BAR ── */}
         <div className="sticky top-0 z-10 px-5 py-3 flex items-center justify-between"
           style={{ backgroundColor: T.white, borderBottom: `1px solid ${T.grey2}` }}>
-          <div className="flex items-center gap-3">
-            {!sideOpen && (
-              <button onClick={() => setSideOpen(true)} className="p-1 rounded hover:bg-gray-100" title="แสดงตัวกรอง">
-                <ChevronDown className="w-4 h-4 -rotate-90" style={{ color: T.grey5 }} />
-              </button>
-            )}
-            <div>
-              <h1 className="text-lg font-bold" style={{ color: T.navy }}>รายงานผลการดำเนินงานคลังสินค้า</h1>
-              <span className="text-xs" style={{ color: T.grey4 }}>
-                {currentThaiMonth} {currentThaiYearBE} • อัปเดตล่าสุด {new Date(data.meta.updated).toLocaleString('th-TH')}
-              </span>
-            </div>
+          <div>
+            <h1 className="text-lg font-bold" style={{ color: T.navy }}>รายงานผลการดำเนินงานคลังสินค้า</h1>
+            <span className="text-xs" style={{ color: T.grey4 }}>
+              {currentThaiMonth} {currentThaiYearBE} • อัปเดตล่าสุด {new Date(data.meta.updated).toLocaleString('th-TH')}
+            </span>
           </div>
           <div className="flex items-center gap-2">
-            {/* Tab Navigation */}
             {tabs.map(t => (
               <button
                 key={t.id}
@@ -765,7 +761,7 @@ export default function WarehouseExecutiveDashboard() {
           {tab === 'overview' && (
             <div ref={overviewRef} className="space-y-5">
 
-              {/* KPI CARDS ROW */}
+              {/* KPI CARDS ROW — always default context, no filter */}
               <div className="grid grid-cols-4 gap-4">
                 <KPICard kpi={kpis.inbound} color={T.blue} />
                 <KPICard kpi={kpis.ytd_inbound} color={T.blue} hideCompare />
@@ -775,9 +771,8 @@ export default function WarehouseExecutiveDashboard() {
 
               {/* ROW 2: Monthly Chart + Heatmap side by side */}
               <div className="grid grid-cols-12 gap-4 items-stretch">
-                {/* Monthly + Daily Comparison */}
+                {/* Monthly + Daily Comparison — no filter */}
                 <div className="col-span-7 rounded-lg p-4 flex flex-col" style={{ backgroundColor: T.white, border: `1px solid ${T.grey2}` }}>
-                  {/* Monthly */}
                   <div className="flex items-center justify-between mb-3">
                     <span className="text-sm font-bold" style={{ color: T.navy }}>สินค้าเข้า vs สินค้าออก รายเดือน (ตัน)</span>
                     <div className="flex items-center gap-3 text-xs">
@@ -787,10 +782,8 @@ export default function WarehouseExecutiveDashboard() {
                   </div>
                   <ColumnChart data={monthly} h={200} />
 
-                  {/* Divider */}
                   <div className="my-8" style={{ borderTop: `1px solid ${T.grey2}` }} />
 
-                  {/* Daily Trend */}
                   <div className="flex items-center justify-between mb-2">
                     <span className="text-sm font-bold" style={{ color: T.navy }}>แนวโน้ม 10 วัน (ตัน)</span>
                   </div>
@@ -807,73 +800,124 @@ export default function WarehouseExecutiveDashboard() {
                   <DailyBarChart data={daily} h={220} />
                 </div>
 
-                {/* Heatmap */}
+                {/* Heatmap — with inline date filter */}
                 <div className="col-span-5 rounded-lg p-3 overflow-hidden flex flex-col" style={{ backgroundColor: T.white, border: `1px solid ${T.grey2}` }}>
-                  <span className="text-xs font-bold block mb-1" style={{ color: T.navy }}>การกระจายน้ำหนักตามจังหวัด</span>
-                  <div className="flex-1 overflow-hidden">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-xs font-bold" style={{ color: T.navy }}>การกระจายน้ำหนักตามจังหวัด</span>
+                    {capturing
+                      ? <span className="text-[10px]" style={{ color: T.grey4 }}>{heatmapFrom} ถึง {heatmapTo}</span>
+                      : <InlineDateFilter
+                          dateFrom={heatmapFrom}
+                          dateTo={heatmapTo}
+                          onFromChange={setHeatmapFrom}
+                          onToChange={setHeatmapTo}
+                          onApply={fetchHeatmap}
+                          loading={heatmapLoading}
+                        />
+                    }
+                  </div>
+                  <div className="flex-1 overflow-hidden relative">
+                    {heatmapLoading && (
+                      <div className="absolute inset-0 flex items-center justify-center bg-white/60 z-10">
+                        <div className="w-6 h-6 border-2 rounded-full border-t-transparent animate-spin" style={{ borderColor: T.grey3, borderTopColor: T.accent }} />
+                      </div>
+                    )}
                     <ThailandHeatmap
-                      data={provinces.map(p => ({ name: p.name, orders: p.orders, weight: p.weight }))}
+                      data={heatmapData.map(p => ({ name: p.name, orders: p.orders, weight: p.weight }))}
                     />
                   </div>
                 </div>
               </div>
 
+              {/* ROW 3: Top 5 — with inline date filter */}
+              <div className="space-y-3">
+                {/* Shared date filter row for both Top 5 tables */}
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold" style={{ color: T.navy }}>Top 5 รับเข้า / ส่งออก</span>
+                  {capturing
+                    ? <span className="text-xs" style={{ color: T.grey4 }}>{top5From === top5To ? top5From : `${top5From} ถึง ${top5To}`}</span>
+                    : <InlineDateFilter
+                        dateFrom={top5From}
+                        dateTo={top5To}
+                        onFromChange={setTop5From}
+                        onToChange={setTop5To}
+                        onApply={fetchTop5}
+                        loading={top5Loading}
+                      />
+                  }
+                </div>
 
-              {/* ROW 4: Top 10 Customers Table */}
-              <div className="rounded-lg p-4" style={{ backgroundColor: T.white, border: `1px solid ${T.grey2}` }}>
-                <span className="text-sm font-bold block mb-3" style={{ color: T.navy }}>ลูกค้า 10 อันดับแรกตามปริมาณออเดอร์</span>
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm table-fixed">
-                    <colgroup>
-                      <col style={{ width: '3%' }} />
-                      <col style={{ width: '10%' }} />
-                      <col style={{ width: '25%' }} />
-                      <col style={{ width: '8%' }} />
-                      <col style={{ width: '12%' }} />
-                      <col style={{ width: '8%' }} />
-                      <col style={{ width: '14%' }} />
-                      <col style={{ width: '20%' }} />
-                    </colgroup>
-                    <thead>
-                      <tr style={{ borderBottom: `2px solid ${T.grey2}` }}>
-                        {['#', 'รหัส', 'ชื่อร้าน', 'ออเดอร์', 'น้ำหนัก (ตัน)', 'รถ (คัน)', 'ค่าขนส่ง (฿)', 'จัดส่ง %'].map((h, i) => (
-                          <th key={i} className={`py-2 px-2 text-xs font-bold uppercase tracking-wider ${i >= 3 ? 'text-right' : 'text-left'}`}
-                            style={{ color: T.grey4 }}>{h}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {top_customers.map((c, i) => (
-                        <tr key={c.id} style={{ borderBottom: `1px solid ${T.grey2}` }} className="hover:bg-slate-50">
-                          <td className="py-2 px-2 font-bold" style={{ color: T.grey4 }}>{i + 1}</td>
-                          <td className="py-2 px-2 font-semibold" style={{ color: T.navy }}>{c.id}</td>
-                          <td className="py-2 px-2 text-xs overflow-hidden whitespace-nowrap text-ellipsis" style={{ color: T.grey6 }}>
-                            {c.name || '-'}
-                          </td>
-                          <td className="py-2 px-2 text-right font-semibold" style={{ color: T.grey6 }}>{c.orders.toLocaleString()}</td>
-                          <td className="py-2 px-2 text-right font-semibold" style={{ color: T.blue }}>{(c.weight / 1000).toFixed(1)}</td>
-                          <td className="py-2 px-2 text-right font-semibold" style={{ color: T.accent }}>{c.trucks || '-'}</td>
-                          <td className="py-2 px-2 text-right" style={{ color: T.grey6 }}>{c.shipping_cost ? c.shipping_cost.toLocaleString() : '-'}</td>
-                          <td className="py-2 px-2 text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <div className="w-14 h-1.5 rounded-full" style={{ backgroundColor: T.grey2 }}>
-                                <div className="h-full rounded-full" style={{
-                                  width: `${Math.min(c.fulfillment, 100)}%`,
-                                  backgroundColor: c.fulfillment >= 85 ? T.green : c.fulfillment >= 60 ? T.yellow : T.red,
-                                }} />
-                              </div>
-                              <span className="font-semibold text-xs" style={{ color: c.fulfillment >= 85 ? T.green : c.fulfillment >= 60 ? T.yellow : T.red }}>
-                                {c.fulfillment.toFixed(0)}%
-                              </span>
-                            </div>
-                          </td>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 relative">
+                  {top5Loading && (
+                    <div className="absolute inset-0 flex items-center justify-center bg-white/60 z-10 rounded-lg">
+                      <div className="w-6 h-6 border-2 rounded-full border-t-transparent animate-spin" style={{ borderColor: T.grey3, borderTopColor: T.accent }} />
+                    </div>
+                  )}
+                  {/* Inbound Top 5 */}
+                  <div className="rounded-lg p-4 overflow-hidden" style={{ backgroundColor: T.white, border: `1px solid ${T.grey2}`, borderLeft: `4px solid ${T.blue}` }}>
+                    <span className="text-sm font-bold block mb-3" style={{ color: T.blue }}>รับเข้า Top 5 ({top5Label})</span>
+                    <table className="w-full text-sm table-fixed">
+                      <colgroup>
+                        <col style={{ width: '6%' }} />
+                        <col style={{ width: '54%' }} />
+                        <col style={{ width: '18%' }} />
+                        <col style={{ width: '22%' }} />
+                      </colgroup>
+                      <thead>
+                        <tr style={{ borderBottom: `2px solid ${T.grey2}` }}>
+                          {['#', 'สินค้า', 'ชิ้น', 'น้ำหนัก (กก.)'].map((h, i) => (
+                            <th key={i} className={`py-2 px-1 text-xs font-bold tracking-wider ${i >= 2 ? 'text-right' : 'text-left'}`} style={{ color: T.grey4 }}>{h}</th>
+                          ))}
                         </tr>
-                      ))}
-                      {top_customers.length === 0 && (
-                        <tr><td colSpan={8} className="py-8 text-center text-xs" style={{ color: T.grey4 }}>ไม่มีข้อมูลลูกค้าสำหรับช่วงเวลานี้</td></tr>
-                      )}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {topInbound.map((r, i) => (
+                          <tr key={r.sku_id} style={{ borderBottom: `1px solid ${T.grey2}` }} className="hover:bg-slate-50">
+                            <td className="py-2 px-1 font-bold" style={{ color: T.grey4 }}>{i + 1}</td>
+                            <td className="py-2 px-1 text-xs overflow-hidden whitespace-nowrap text-ellipsis" style={{ color: T.grey6 }} title={r.product_name}>{r.product_name}</td>
+                            <td className="py-2 px-1 text-right font-semibold" style={{ color: T.grey6 }}>{r.packs.toLocaleString()}</td>
+                            <td className="py-2 px-1 text-right font-semibold" style={{ color: T.blue }}>{r.weight_kg.toLocaleString()}</td>
+                          </tr>
+                        ))}
+                        {topInbound.length === 0 && (
+                          <tr><td colSpan={4} className="py-6 text-center text-xs" style={{ color: T.grey4 }}>ไม่มีข้อมูลรับเข้า</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Outbound Top 5 */}
+                  <div className="rounded-lg p-4 overflow-hidden" style={{ backgroundColor: T.white, border: `1px solid ${T.grey2}`, borderLeft: `4px solid ${T.teal}` }}>
+                    <span className="text-sm font-bold block mb-3" style={{ color: T.teal }}>ส่งออก Top 5 ({top5Label})</span>
+                    <table className="w-full text-sm table-fixed">
+                      <colgroup>
+                        <col style={{ width: '6%' }} />
+                        <col style={{ width: '54%' }} />
+                        <col style={{ width: '18%' }} />
+                        <col style={{ width: '22%' }} />
+                      </colgroup>
+                      <thead>
+                        <tr style={{ borderBottom: `2px solid ${T.grey2}` }}>
+                          {['#', 'สินค้า', 'ชิ้น', 'น้ำหนัก (กก.)'].map((h, i) => (
+                            <th key={i} className={`py-2 px-1 text-xs font-bold tracking-wider ${i >= 2 ? 'text-right' : 'text-left'}`} style={{ color: T.grey4 }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {topOutbound.map((r, i) => (
+                          <tr key={r.sku_id} style={{ borderBottom: `1px solid ${T.grey2}` }} className="hover:bg-slate-50">
+                            <td className="py-2 px-1 font-bold" style={{ color: T.grey4 }}>{i + 1}</td>
+                            <td className="py-2 px-1 text-xs overflow-hidden whitespace-nowrap text-ellipsis" style={{ color: T.grey6 }} title={r.product_name}>{r.product_name}</td>
+                            <td className="py-2 px-1 text-right font-semibold" style={{ color: T.grey6 }}>{r.packs.toLocaleString()}</td>
+                            <td className="py-2 px-1 text-right font-semibold" style={{ color: T.teal }}>{r.weight_kg.toLocaleString()}</td>
+                          </tr>
+                        ))}
+                        {topOutbound.length === 0 && (
+                          <tr><td colSpan={4} className="py-6 text-center text-xs" style={{ color: T.grey4 }}>ไม่มีข้อมูลส่งออก</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               </div>
             </div>

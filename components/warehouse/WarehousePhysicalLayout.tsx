@@ -2,6 +2,104 @@
 
 import { useState, useEffect, useCallback } from 'react';
 
+// Additional Inventory Table Component
+function AdditionalInventoryTable() {
+  const [data, setData] = useState<any[]>([]);
+  const [dates, setDates] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setLoading(true);
+    fetch('/api/warehouse/additional-inventory')
+      .then(res => res.json())
+      .then(result => {
+        setData(result.data || []);
+        setDates(result.dates || []);
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return <div className="text-center py-8 text-gray-400 text-xs">กำลังโหลด...</div>;
+  }
+
+  if (!data.length) {
+    return <div className="text-center py-8 text-gray-400 text-xs">ไม่มีข้อมูล</div>;
+  }
+
+  // Group locations by type
+  const pk001Data = data.find(row => row.location === 'PK001');
+  const a10Data = data.filter(row => row.location.startsWith('A10-01-'));
+  const a09Data = data.filter(row => row.location.startsWith('A09-01-'));
+
+  return (
+    <div className="overflow-auto">
+      <table className="w-full text-[10px]">
+        <thead>
+          <tr className="bg-blue-100 border-b border-blue-200 text-blue-900">
+            <th className="px-2 py-1.5 text-center font-semibold" colSpan={3}>Location</th>
+            {dates.map(date => (
+              <th key={date} className="px-2 py-1.5 text-center font-semibold min-w-[80px]">
+                {new Date(date).getDate()}/{new Date(date).getMonth() + 1}
+              </th>
+            ))}
+          </tr>
+          <tr className="bg-blue-50 border-b border-blue-200 text-blue-900">
+            <th className="px-2 py-1.5 text-center font-semibold">PK001</th>
+            <th className="px-2 py-1.5 text-center font-semibold">A10-01</th>
+            <th className="px-2 py-1.5 text-center font-semibold">A09-01</th>
+            {dates.map(date => (
+              <th key={date} className="px-2 py-1.5 text-center font-semibold min-w-[80px]">
+                {new Date(date).getDate()}/{new Date(date).getMonth() + 1}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {/* PK001 row */}
+          <tr className="bg-white">
+            <td className="px-2 py-1.5 font-medium text-gray-800">PK001</td>
+            <td className="px-2 py-1.5 text-center text-gray-400">-</td>
+            <td className="px-2 py-1.5 text-center text-gray-400">-</td>
+            {dates.map(date => (
+              <td key={date} className="px-2 py-1.5 text-center font-mono">
+                {pk001Data?.dailyPallets[date] || 0}
+              </td>
+            ))}
+          </tr>
+          {/* A10 rows */}
+          {a10Data.map((row, idx) => (
+            <tr key={row.location} className={idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+              <td className="px-2 py-1.5 text-center text-gray-400">-</td>
+              <td className="px-2 py-1.5 font-medium text-gray-800">{row.location}</td>
+              <td className="px-2 py-1.5 text-center text-gray-400">-</td>
+              {dates.map(date => (
+                <td key={date} className="px-2 py-1.5 text-center font-mono">
+                  {row.dailyPallets[date] || 0}
+                </td>
+              ))}
+            </tr>
+          ))}
+          {/* A09 rows */}
+          {a09Data.map((row, idx) => (
+            <tr key={row.location} className={idx % 2 === 0 ? 'bg-gray-50' : 'bg-white'}>
+              <td className="px-2 py-1.5 text-center text-gray-400">-</td>
+              <td className="px-2 py-1.5 text-center text-gray-400">-</td>
+              <td className="px-2 py-1.5 font-medium text-gray-800">{row.location}</td>
+              {dates.map(date => (
+                <td key={date} className="px-2 py-1.5 text-center font-mono">
+                  {row.dailyPallets[date] || 0}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 interface LocationInventory {
   location_id: string;
   location_code: string;
@@ -85,6 +183,16 @@ export default function WarehousePhysicalLayout() {
   const [showRepackModal, setShowRepackModal] = useState(false);
   const [repackData, setRepackData] = useState<any[]>([]);
   const [loadingRepack, setLoadingRepack] = useState(false);
+  // State สำหรับ Capacity Trend Dashboard
+  interface TrendPoint { date: string; rack_pct: number; blk_pct: number; rack_occupied: number; rack_empty: number; blk_occupied: number; blk_empty: number }
+  interface CapacityInfo { rack_total: number; rack_occupied: number; rack_empty: number; rack_pct: number; blk_total: number; blk_occupied: number; blk_empty: number; blk_pct: number }
+  interface ZoneSummary { zone: string; section: string; storageType: string; productType: string; totalLocs: number; occupiedLocs: number; emptyLocs: number; pct: number; status: string; unit?: string; order?: number }
+  const [trendData, setTrendData] = useState<TrendPoint[]>([]);
+  const [capacityInfo, setCapacityInfo] = useState<CapacityInfo | null>(null);
+  const [zoneSummaries, setZoneSummaries] = useState<ZoneSummary[]>([]);
+  const [loadingCapacity, setLoadingCapacity] = useState(false);
+  const [hoveredTrend, setHoveredTrend] = useState<{ idx: number; x: number; y: number } | null>(null);
+
   // State สำหรับ PQ/MR Modal
   const [showPrepAreaModal, setShowPrepAreaModal] = useState(false);
   const [prepAreaZone, setPrepAreaZone] = useState<'PQ' | 'MR'>('PQ');
@@ -137,10 +245,29 @@ export default function WarehousePhysicalLayout() {
     }
   }, []);
 
+  // Fetch capacity trend
+  const fetchCapacityTrend = useCallback(async () => {
+    setLoadingCapacity(true);
+    try {
+      const res = await fetch('/api/warehouse/capacity-trend');
+      const json = await res.json();
+      if (json.trend) {
+        setTrendData(json.trend);
+        setCapacityInfo(json.capacity);
+        setZoneSummaries(json.zones || []);
+      }
+    } catch (e) {
+      console.error('Capacity trend error:', e);
+    } finally {
+      setLoadingCapacity(false);
+    }
+  }, []);
+
   // Fetch on mount
   useEffect(() => {
     fetchOccupancy();
-  }, [fetchOccupancy]);
+    fetchCapacityTrend();
+  }, [fetchOccupancy, fetchCapacityTrend]);
 
   // Fetch slot details when cell is selected
   const fetchSlotDetails = useCallback(async (aisle: string, slot: number) => {
@@ -1647,6 +1774,251 @@ export default function WarehousePhysicalLayout() {
 
       <div className="mt-2 text-sm text-gray-500">
         Warehouse Width: 80m × Depth: 60m | Scale: 1:12m
+      </div>
+
+      {/* ═══ CAPACITY ANALYTICS DASHBOARD ═══ */}
+      <div className="mt-4 space-y-4">
+        {/* ── Header ── */}
+        <div className="bg-blue-50 border border-blue-200 rounded-lg px-5 py-3 flex items-center justify-between">
+          <div>
+            <h2 className="text-blue-900 text-base font-bold tracking-wide">Warehouse Capacity Analytics</h2>
+            <p className="text-blue-700 text-xs mt-0.5">แนวโน้มการใช้พื้นที่คลังสินค้า — Rack (พาเลท) vs BLK (พาเลท)</p>
+          </div>
+          {loadingCapacity && <span className="text-blue-600 text-xs animate-pulse">กำลังโหลด...</span>}
+        </div>
+
+        {/* ── Chart + Zone Summary side by side ── */}
+        <div className="grid grid-cols-12 gap-4">
+          {/* Main Chart (7 cols) */}
+          <div className="col-span-7 bg-white rounded-lg border border-gray-200 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="text-sm font-bold text-gray-700">% Utilization — ชั้นวาง (Rack) vs วางพื้น (BLK)</h3>
+              <div className="flex items-center gap-3 text-[10px]">
+                <span className="flex items-center gap-1"><span className="w-3 h-0.5 rounded inline-block" style={{ backgroundColor: '#2563eb' }} />Rack</span>
+                <span className="flex items-center gap-1"><span className="w-3 h-0.5 rounded inline-block" style={{ backgroundColor: '#0d9488' }} />BLK</span>
+                <span className="flex items-center gap-1"><span className="w-4 h-0 border-t border-dashed inline-block" style={{ borderColor: '#f59e0b' }} />80%</span>
+                <span className="flex items-center gap-1"><span className="w-4 h-0 border-t border-dashed inline-block" style={{ borderColor: '#ef4444' }} />90%</span>
+              </div>
+            </div>
+            {trendData.length > 0 ? (() => {
+              const w = 620, h = 260;
+              const pad = { top: 20, bottom: 30, left: 36, right: 14 };
+              const cw = w - pad.left - pad.right;
+              const ch = h - pad.top - pad.bottom;
+              const yMax = 100;
+              const step = cw / (trendData.length - 1 || 1);
+              const labelInterval = Math.max(1, Math.floor(trendData.length / 8));
+              const dotInterval = Math.max(1, Math.floor(trendData.length / 8));
+              const toY = (pct: number) => pad.top + ch - (Math.min(Math.max(pct, 0), yMax) / yMax) * ch;
+              const rackPts = trendData.map((d, i) => `${pad.left + i * step},${toY(d.rack_pct)}`).join(' ');
+              const blkPts = trendData.map((d, i) => `${pad.left + i * step},${toY(d.blk_pct)}`).join(' ');
+
+              return (
+                <div className="relative">
+                  <svg viewBox={`0 0 ${w} ${h}`} className="w-full" preserveAspectRatio="xMidYMid meet"
+                    onMouseLeave={() => setHoveredTrend(null)}>
+                    {[0, 20, 40, 60, 80, 100].map(v => (
+                      <g key={`yg-${v}`}>
+                        <line x1={pad.left} y1={toY(v)} x2={w - pad.right} y2={toY(v)} stroke="#f3f4f6" strokeWidth="1" />
+                        <text x={pad.left - 4} y={toY(v) + 3} textAnchor="end" fontSize="8" fill="#9ca3af">{v}%</text>
+                      </g>
+                    ))}
+                    <line x1={pad.left} y1={toY(80)} x2={w - pad.right} y2={toY(80)} stroke="#f59e0b" strokeWidth="1" strokeDasharray="5,3" opacity="0.7" />
+                    <line x1={pad.left} y1={toY(90)} x2={w - pad.right} y2={toY(90)} stroke="#ef4444" strokeWidth="1" strokeDasharray="5,3" opacity="0.7" />
+                    <polygon points={`${pad.left},${toY(0)} ${rackPts} ${pad.left + (trendData.length - 1) * step},${toY(0)}`} fill="#2563eb" opacity="0.06" />
+                    <polygon points={`${pad.left},${toY(0)} ${blkPts} ${pad.left + (trendData.length - 1) * step},${toY(0)}`} fill="#0d9488" opacity="0.06" />
+                    <polyline fill="none" stroke="#2563eb" strokeWidth="2" points={rackPts} strokeLinecap="round" strokeLinejoin="round" />
+                    <polyline fill="none" stroke="#0d9488" strokeWidth="2" points={blkPts} strokeLinecap="round" strokeLinejoin="round" />
+                    {/* Dots + % labels at intervals (anti-overlap) */}
+                    {trendData.map((d, i) => {
+                      if (i % dotInterval !== 0 && i !== trendData.length - 1) return null;
+                      const x = pad.left + i * step;
+                      const rackY = toY(d.rack_pct);
+                      const blkY = toY(d.blk_pct);
+                      const gap = Math.abs(rackY - blkY);
+                      const tooClose = gap < 14;
+                      // If too close, push labels apart more to clear the lines
+                      let rackLabelY = rackY - 6;
+                      let blkLabelY = blkY - 6;
+                      if (tooClose) {
+                        const mid = (rackY + blkY) / 2;
+                        if (d.rack_pct >= d.blk_pct) { rackLabelY = mid - 16; blkLabelY = mid + 12; }
+                        else { blkLabelY = mid - 16; rackLabelY = mid + 12; }
+                      }
+                      return (
+                        <g key={`dot-${i}`}>
+                          <circle cx={x} cy={rackY} r="3" fill="#2563eb" stroke="white" strokeWidth="1" />
+                          <text x={x} y={rackLabelY} textAnchor="middle" fontSize="8.5" fill="#2563eb" fontWeight="bold">{d.rack_pct}%</text>
+                          <circle cx={x} cy={blkY} r="3" fill="#0d9488" stroke="white" strokeWidth="1" />
+                          <text x={x} y={blkLabelY} textAnchor="middle" fontSize="8.5" fill="#0d9488" fontWeight="bold">{d.blk_pct}%</text>
+                        </g>
+                      );
+                    })}
+                    {/* X axis date labels */}
+                    {trendData.map((d, i) => {
+                      if (i % labelInterval !== 0 && i !== trendData.length - 1) return null;
+                      const x = pad.left + i * step;
+                      const dt = new Date(d.date);
+                      return <text key={`xl-${i}`} x={x} y={h - 6} textAnchor="middle" fontSize="7" fill="#9ca3af">{dt.getDate()}/{dt.getMonth() + 1}</text>;
+                    })}
+                    {/* Hover zones */}
+                    {trendData.map((_, i) => {
+                      const x = pad.left + i * step;
+                      return (
+                        <rect key={`hov-${i}`} x={x - step / 2} y={pad.top} width={step} height={ch}
+                          fill="transparent" onMouseEnter={(e) => setHoveredTrend({ idx: i, x: e.clientX, y: e.clientY })} />
+                      );
+                    })}
+                    {hoveredTrend && (() => {
+                      const d = trendData[hoveredTrend.idx];
+                      if (!d) return null;
+                      const x = pad.left + hoveredTrend.idx * step;
+                      return (
+                        <g>
+                          <line x1={x} y1={pad.top} x2={x} y2={pad.top + ch} stroke="#6b7280" strokeWidth="0.5" strokeDasharray="3,2" />
+                          <circle cx={x} cy={toY(d.rack_pct)} r="3.5" fill="#2563eb" stroke="white" strokeWidth="1.5" />
+                          <circle cx={x} cy={toY(d.blk_pct)} r="3.5" fill="#0d9488" stroke="white" strokeWidth="1.5" />
+                        </g>
+                      );
+                    })()}
+                    <text x={12} y={pad.top + ch / 2} textAnchor="middle" fontSize="8" fill="#6b7280" transform={`rotate(-90, 12, ${pad.top + ch / 2})`}>% Utilization</text>
+                  </svg>
+                  {hoveredTrend && trendData[hoveredTrend.idx] && (() => {
+                    const d = trendData[hoveredTrend.idx];
+                    const dt = new Date(d.date);
+                    const dateStr = `${dt.getDate()}/${dt.getMonth() + 1}/${dt.getFullYear()}`;
+                    return (
+                      <div className="absolute z-50 bg-[#1B2A4A] text-white rounded-lg shadow-xl px-3 py-2 text-xs pointer-events-none"
+                        style={{ left: Math.min(hoveredTrend.idx / trendData.length * 100, 70) + '%', top: 0 }}>
+                        <div className="font-bold mb-1 text-blue-200">{dateStr}</div>
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: '#2563eb' }} />
+                          <span>Rack: <b>{d.rack_pct}%</b> (มีของ {d.rack_occupied.toLocaleString()} / ว่าง {d.rack_empty.toLocaleString()} พาเลท)</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: '#0d9488' }} />
+                          <span>BLK: <b>{d.blk_pct}%</b> (มีของ {d.blk_occupied.toLocaleString()} / ว่าง {d.blk_empty.toLocaleString()} พาเลท)</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              );
+            })() : !loadingCapacity && <div className="text-center py-12 text-gray-400 text-sm">ไม่มีข้อมูล</div>}
+          </div>
+
+          {/* Zone Summary (5 cols) — split into 2 sections */}
+          <div className="col-span-5 space-y-3">
+            {/* Section 1: Main Storage (Rack + BLK) */}
+            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+              <div className="px-3 py-2 border-b border-gray-100 bg-blue-50">
+                <h3 className="text-[11px] font-bold text-blue-800">พื้นที่จัดเก็บหลัก — Selective Rack + Block Stack</h3>
+              </div>
+              {(() => {
+                const mainZones = zoneSummaries.filter(z => z.section === 'main');
+                const mainTotal = mainZones.reduce((s, z) => s + z.totalLocs, 0);
+                const mainOcc = mainZones.reduce((s, z) => s + z.occupiedLocs, 0);
+                const mainEmpty = mainTotal - mainOcc;
+                const mainPct = mainTotal > 0 ? Math.round((mainOcc / mainTotal) * 1000) / 10 : 0;
+                return (
+                  <table className="w-full text-[11px]">
+                    <thead>
+                      <tr className="bg-blue-100 border-b border-blue-200 text-blue-900">
+                        <th className="px-2 py-1.5 text-left font-semibold">โซน</th>
+                        <th className="px-2 py-1.5 text-left font-semibold">ประเภท</th>
+                        <th className="px-2 py-1.5 text-center font-semibold">หน่วย</th>
+                        <th className="px-2 py-1.5 text-right font-semibold">ทั้งหมด</th>
+                        <th className="px-2 py-1.5 text-right font-semibold">มีของ</th>
+                        <th className="px-2 py-1.5 text-right font-semibold">ว่าง</th>
+                        <th className="px-2 py-1.5 text-right font-semibold">%</th>
+                        <th className="px-2 py-1.5 text-center font-semibold">สถานะ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {mainZones.map((z, i) => (
+                        <tr key={z.zone} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                          <td className="px-2 py-1.5 font-semibold text-gray-800">{z.zone}</td>
+                          <td className="px-2 py-1.5">
+                            <span className={`px-1 py-0.5 rounded text-[9px] font-medium ${
+                              z.section === 'main' && z.zone === 'Selective Rack' ? 'bg-blue-50 text-blue-700' : 'bg-teal-50 text-teal-700'
+                            }`}>{z.storageType}</span>
+                          </td>
+                          <td className="px-2 py-1.5 text-center text-gray-500">{z.unit || 'พาเลท'}</td>
+                          <td className="px-2 py-1.5 text-right font-mono text-gray-700">{z.totalLocs.toLocaleString()}</td>
+                          <td className="px-2 py-1.5 text-right font-mono text-gray-800 font-semibold">{z.occupiedLocs.toLocaleString()}</td>
+                          <td className="px-2 py-1.5 text-right font-mono text-green-600 font-semibold">{z.emptyLocs.toLocaleString()}</td>
+                          <td className="px-2 py-1.5 text-right">
+                            <div className="flex items-center justify-end gap-1">
+                              <div className="w-10 bg-gray-100 rounded-full h-1.5">
+                                <div className="h-1.5 rounded-full" style={{ width: `${Math.min(z.pct, 100)}%`, backgroundColor: z.pct >= 90 ? '#ef4444' : z.pct >= 80 ? '#f59e0b' : '#2563eb' }} />
+                              </div>
+                              <span className="font-mono font-semibold w-10 text-right" style={{ color: z.pct >= 90 ? '#ef4444' : z.pct >= 80 ? '#f59e0b' : '#374151' }}>{z.pct}%</span>
+                            </div>
+                          </td>
+                          <td className="px-2 py-1.5 text-center">
+                            <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${z.status === 'วิกฤต' ? 'bg-red-100 text-red-700' : z.status === 'ใกล้เต็ม' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>{z.status}</span>
+                          </td>
+                        </tr>
+                      ))}
+                      <tr className="bg-blue-50 border-t border-blue-200">
+                        <td className="px-2 py-1.5 font-bold text-blue-800" colSpan={3}>รวมพื้นที่หลัก</td>
+                        <td className="px-2 py-1.5 text-right font-mono font-bold text-blue-800">{mainTotal.toLocaleString()}</td>
+                        <td className="px-2 py-1.5 text-right font-mono font-bold text-blue-800">{mainOcc.toLocaleString()}</td>
+                        <td className="px-2 py-1.5 text-right font-mono font-bold text-green-600">{mainEmpty.toLocaleString()}</td>
+                        <td className="px-2 py-1.5 text-right font-mono font-bold text-blue-800">{mainPct}%</td>
+                        <td className="px-2 py-1.5"></td>
+                      </tr>
+                    </tbody>
+                  </table>
+                );
+              })()}
+            </div>
+
+            {/* Section 2: Other Zones (MCF, PQ, MR) */}
+            <div className="bg-white rounded-lg border border-gray-200 overflow-hidden">
+              <div className="px-3 py-2 border-b border-gray-100 bg-gray-50">
+                <h3 className="text-[11px] font-bold text-gray-700">พื้นที่เสริม — MCF / PQ (เบิกรอส่ง) / MR (แถมรอส่ง)</h3>
+              </div>
+              {(() => {
+                const otherZones = zoneSummaries.filter(z => z.section === 'other');
+                return otherZones.length > 0 ? (
+                  <table className="w-full text-[11px]">
+                    <thead>
+                      <tr className="bg-blue-100 border-b border-blue-200 text-blue-900">
+                        <th className="px-2 py-1.5 text-left font-semibold">โซน</th>
+                        <th className="px-2 py-1.5 text-left font-semibold">สินค้า</th>
+                        <th className="px-2 py-1.5 text-center font-semibold">หน่วย</th>
+                        <th className="px-2 py-1.5 text-right font-semibold">ทั้งหมด</th>
+                        <th className="px-2 py-1.5 text-right font-semibold">มีของ</th>
+                        <th className="px-2 py-1.5 text-right font-semibold">ว่าง</th>
+                        <th className="px-2 py-1.5 text-right font-semibold">%</th>
+                        <th className="px-2 py-1.5 text-center font-semibold">สถานะ</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {otherZones.map((z, i) => (
+                        <tr key={z.zone} className={i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}>
+                          <td className="px-2 py-1.5 font-semibold text-gray-800">{z.zone}</td>
+                          <td className="px-2 py-1.5 text-gray-600 text-[10px]">{z.productType}</td>
+                          <td className="px-2 py-1.5 text-center text-gray-500">{z.unit}</td>
+                          <td className="px-2 py-1.5 text-right font-mono text-gray-700">{z.totalLocs.toLocaleString()}</td>
+                          <td className="px-2 py-1.5 text-right font-mono text-gray-800 font-semibold">{z.occupiedLocs.toLocaleString()}</td>
+                          <td className="px-2 py-1.5 text-right font-mono text-green-600 font-semibold">{z.emptyLocs.toLocaleString()}</td>
+                          <td className="px-2 py-1.5 text-right">
+                            <span className="font-mono font-semibold" style={{ color: z.pct >= 90 ? '#ef4444' : z.pct >= 80 ? '#f59e0b' : '#374151' }}>{z.pct}%</span>
+                          </td>
+                          <td className="px-2 py-1.5 text-center">
+                            <span className={`px-1.5 py-0.5 rounded-full text-[9px] font-bold ${z.status === 'วิกฤต' ? 'bg-red-100 text-red-700' : z.status === 'ใกล้เต็ม' ? 'bg-amber-100 text-amber-700' : 'bg-green-100 text-green-700'}`}>{z.status}</span>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : null;
+              })()}
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* 3D Rack Popup */}

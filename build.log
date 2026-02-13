@@ -5,7 +5,7 @@
    Creating an optimized production build ...
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
- ✓ Compiled successfully in 13.0s
+ ✓ Compiled successfully in 14.6s
    Running TypeScript ...
    Collecting page data using 13 workers ...
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
@@ -21,7 +21,7 @@
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
-   Generating static pages using 13 workers (0/253) ...
+   Generating static pages using 13 workers (0/255) ...
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
@@ -33,10 +33,10 @@
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
-   Generating static pages using 13 workers (63/253) 
-   Generating static pages using 13 workers (126/253) 
-   Generating static pages using 13 workers (189/253) 
- ✓ Generating static pages using 13 workers (253/253) in 1579.0ms
+   Generating static pages using 13 workers (63/255) 
+   Generating static pages using 13 workers (127/255) 
+   Generating static pages using 13 workers (191/255) 
+ ✓ Generating static pages using 13 workers (255/255) in 3.4s
    Finalizing page optimization ...
 
 Route (app)
@@ -334,7 +334,9 @@ Route (app)
 ├ ƒ /api/users
 ├ ƒ /api/users/[id]
 ├ ƒ /api/users/list
+├ ƒ /api/warehouse/additional-inventory
 ├ ƒ /api/warehouse/bfs-staging-inventory
+├ ƒ /api/warehouse/capacity-trend
 ├ ƒ /api/warehouse/delivery-inventory
 ├ ƒ /api/warehouse/dispatch-inventory
 ├ ƒ /api/warehouse/layout-inventory
