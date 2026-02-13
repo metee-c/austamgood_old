@@ -1905,10 +1905,6 @@ const TransferPage: React.FC = () => {
                     const newId = e.target.value ? Number(e.target.value) : null;
                     if (newId) {
                       const selected = receiveOptions?.find(r => r.receive_id === newId);
-                      if (selected?.status === 'กำลังตรวจสอบ') {
-                        alert('ไม่สามารถสร้างใบย้ายได้: สินค้านี้อยู่ในสถานะ "กำลังตรวจสอบ" กรุณารอให้การตรวจสอบเสร็จสิ้นก่อน');
-                        return;
-                      }
                     }
                     setSelectedReceiveId(newId);
                   }}
