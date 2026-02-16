@@ -5,25 +5,7 @@
    Creating an optimized production build ...
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
-
-
-Source path: ./app/globals.css
-Setting up new context...
-Finding changed files: 35.261ms
-Source path: ./node_modules/mapbox-gl/dist/mapbox-gl.css
-JIT TOTAL: 101.38ms
-
-
-Reading changed files: 1.072s
-Sorting candidates: 44.545ms
-Generate rules: 385.559ms
-Build stylesheet: 5.656ms
-Potential classes:  49650
-Active contexts:  1
-JIT TOTAL: 1.681s
-
-
- ✓ Compiled successfully in 13.3s
+ ✓ Compiled successfully in 13.9s
    Running TypeScript ...
    Collecting page data using 13 workers ...
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
@@ -54,7 +36,7 @@ JIT TOTAL: 1.681s
    Generating static pages using 13 workers (63/255) 
    Generating static pages using 13 workers (127/255) 
    Generating static pages using 13 workers (191/255) 
- ✓ Generating static pages using 13 workers (255/255) in 1591.4ms
+ ✓ Generating static pages using 13 workers (255/255) in 4.0s
    Finalizing page optimization ...
 
 Route (app)

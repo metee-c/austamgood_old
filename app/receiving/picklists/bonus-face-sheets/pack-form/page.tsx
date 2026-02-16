@@ -45,6 +45,90 @@ interface ItemPackData {
   };
 }
 
+// Master data: SKU to max quantity per pack mapping
+const SKU_MAX_QTY_PER_PACK: { [sku: string]: number } = {
+  'PRE-BIB-PURPLE-M': 100,
+  'PRE-BAG|SPB|MARKET': 50,
+  'PRE-BRUSH': 30,
+  'PRE-SPO': 100,
+  'PRE-BOW|D|NEW': 25,
+  'MKT-APRON-|CARTOON': 50,
+  'PRE-BAG|CAV-PROTEINX': 50,
+  'PRE-PWD|S': 25,
+  'PRE-UMBRELLA|BEYOND': 30,
+  'PRE-BOTTLE|CREAM|CAR': 25,
+  'PRE-BAG|CAV-9BOX': 50,
+  'PRE-BOTTLE|BLUE': 25,
+  'PRE-BKT|BEYOND': 20,
+  'PRE-PWD|L': 25,
+  'PRE-BKT|PROTEINX': 20,
+  'PRE-mug-dog&cat': 20,
+  'PRE-BOW|CATFACE': 25,
+  'PRE-tumbler-proteinx': 15,
+  'PRE-tumbler-Blue': 15,
+  'PRE-BAG|CAV-NOODMI': 50,
+  'PRE-tumbler-green': 15,
+  'PRE-CTS': 100,
+  'PRE-BEANS': 100,
+  'PRE-CHO|GRE': 8,
+  'PRE-CHO|PROTEINX': 8,
+  'PRE-POOPCASE': 100,
+  'PRE-PET-CUSHION': 20,
+  'PRE-POL|25|XXL': 20,
+  'PRE-POL|25|3XL': 20,
+  'PRE-POL|25|L': 20,
+  'PRE-POL|25|M': 20,
+  'PRE-POL|25|S': 20,
+  'PRE-POL|25|XL': 20,
+  'PRE-POL|GRE-M|L': 20,
+  'PRE-POL|GRE-W|L': 20,
+  'PRE-POL|GRE-M|M': 20,
+  'PRE-POL|GRE-W|M': 20,
+  'PRE-POL|GRE-W|S': 20,
+  'PRE-POL|GRE-M|XL': 20,
+  'PRE-POL|GRE-W|XL': 20,
+  'PRE-POL|GRE-M|XXL': 20,
+  'PRE-POL|BLU-M|L': 20,
+  'PRE-POL|BLU-M|M': 20,
+  'PRE-POL|BLU-W|XL': 20,
+  'PRE-POL|BLU-W|XXL': 20,
+  'PRE-BAG|CAV|CM|R': 50,
+  'PRE-BAG|CAV|CM|W': 50,
+  'PRE-BAG|CAV-G': 50,
+  'PRE-BAG|CAV-B': 50,
+  'PRE-BOTTLE|CREAM': 25,
+  'PRE-BOW|C': 25,
+  'PRE-BOW|D': 30,
+  'PRE-CHO|BLU': 8,
+  'PRE-BIB-BLUE-L': 10,
+  'PRE-BIB-BLUE-M': 10,
+  'PRE-BIB-PURPLE-L': 10,
+  'PRE-BKT|NOODMI': 20,
+  'PRE-BKT|B': 20,
+  'PRE-PLW|PX': 8,
+  'PRE-PLW|G': 8,
+  'PRE-PLW|B': 8,
+  'PRE-BOTTLE|BUZZ|BLUE': 25,
+  'MKT-WRAP-SHELF-65*65': 1,
+  'MKT-WRAP-SHELF-90*90': 1,
+  'PRE-BOW|TILT|CAT': 30,
+  'PRE-TSH|PX|NB-3XL|B': 20,
+  'PRE-TSH|PX|NB-2XL|B': 20,
+  'PRE-TSH|PX|NB-XL|B': 20,
+  'PRE-TSH|PX|NB-L|B': 20,
+  'PRE-TSH|PX|NB-M|B': 20,
+  'PRE-TSH|PX|NB-S|B': 20,
+  'PRE-TSH|PX|NB-3XL': 20,
+  'PRE-TSH|PX|NB-2XL': 20,
+  'MKT-VIN|ALL': 10,
+  'MKT-PTR': 30,
+};
+
+// Helper function to get max qty per pack for a SKU
+const getMaxQtyPerPack = (sku: string): number | null => {
+  return SKU_MAX_QTY_PER_PACK[sku] || null;
+};
+
 const BonusFaceSheetPackFormPage = () => {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -60,6 +144,64 @@ const BonusFaceSheetPackFormPage = () => {
   const [deliveryTypes, setDeliveryTypes] = useState<{ [key: string]: string }>({});
   const [saving, setSaving] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
+  // State for cumulative sum tooltip
+  const [cumulativeTooltip, setCumulativeTooltip] = useState<{
+    visible: boolean;
+    x: number;
+    y: number;
+    packNo: string;
+    sum: number;
+  }>({ visible: false, x: 0, y: 0, packNo: '', sum: 0 });
+
+  // Calculate cumulative sum for a pack number across all items
+  const calculateCumulativeSum = (targetPackNo: string): number => {
+    let sum = 0;
+    orders.forEach(order => {
+      order.items.forEach(item => {
+        const itemData = packData[order.order_id]?.[item.order_item_id];
+        if (itemData) {
+          itemData.packs.forEach(pack => {
+            if (pack.pack_no === targetPackNo) {
+              sum += pack.quantity;
+            }
+          });
+        }
+      });
+    });
+    return sum;
+  };
+
+  // Handle pack input click to show cumulative sum
+  const handlePackInputClick = (e: React.MouseEvent, packNos: string) => {
+    const packList = packNos.split(',').map(p => p.trim()).filter(p => p);
+    if (packList.length === 0) return;
+
+    // Get the last pack number (most recently entered)
+    const lastPackNo = packList[packList.length - 1];
+    const sum = calculateCumulativeSum(lastPackNo);
+
+    setCumulativeTooltip({
+      visible: true,
+      x: e.clientX + 15,
+      y: e.clientY - 30,
+      packNo: lastPackNo,
+      sum
+    });
+
+    // Hide tooltip after 3 seconds
+    setTimeout(() => {
+      setCumulativeTooltip(prev => ({ ...prev, visible: false }));
+    }, 3000);
+  };
+
+  // Hide tooltip when clicking elsewhere
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setCumulativeTooltip(prev => ({ ...prev, visible: false }));
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
 
   useEffect(() => {
     if (editId) {
@@ -619,6 +761,24 @@ const BonusFaceSheetPackFormPage = () => {
           </div>
         </div>
 
+        {/* Cumulative Sum Tooltip */}
+        {cumulativeTooltip.visible && (
+          <div
+            className="fixed z-50 pointer-events-none"
+            style={{
+              left: cumulativeTooltip.x,
+              top: cumulativeTooltip.y,
+            }}
+          >
+            <div className="bg-blue-600 text-white px-3 py-2 rounded-full shadow-lg text-xs font-semibold flex items-center gap-2 animate-pulse">
+              <span className="bg-white text-blue-600 rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold">
+                {cumulativeTooltip.packNo}
+              </span>
+              <span>รวม: {cumulativeTooltip.sum} ชิ้น</span>
+            </div>
+          </div>
+        )}
+
         {/* Table */}
         <div className="mx-6 bg-white rounded-lg shadow border border-gray-200 overflow-hidden" style={{ height: '74vh' }}>
           <div className="overflow-x-auto overflow-y-auto h-full">
@@ -633,6 +793,9 @@ const BonusFaceSheetPackFormPage = () => {
                   <th className="px-2 py-1.5 text-left text-[11px] font-semibold text-gray-700 whitespace-nowrap" style={{ width: '130px' }}>เลขที่ใบสั่งส่ง</th>
                   <th className="px-2 py-1.5 text-center text-[11px] font-semibold text-gray-700 whitespace-nowrap" style={{ width: '60px' }}>คันที่</th>
                   <th className="px-2 py-1.5 text-left text-[11px] font-semibold text-gray-700 whitespace-nowrap" style={{ width: '200px' }}>หมายเหตุ</th>
+                  <th className="px-2 py-1.5 text-center text-[11px] font-semibold text-gray-700 whitespace-nowrap" style={{ width: '80px' }}>
+                    จำนวนมากสุด<br/>ต่อแพ็ค
+                  </th>
                   <th className="px-2 py-1.5 text-left text-[11px] font-semibold text-gray-700 whitespace-nowrap" style={{ width: '160px' }}>
                     แพ็คที่ <span className="text-red-500">*</span>
                   </th>
@@ -668,12 +831,28 @@ const BonusFaceSheetPackFormPage = () => {
                           <span className="text-gray-400">-</span>
                         )}
                       </td>
+                      <td className="px-2 py-1.5 text-center">
+                        {(() => {
+                          const maxQty = getMaxQtyPerPack(item.product_code);
+                          return maxQty ? (
+                            <span className="inline-flex items-center justify-center px-2 py-0.5 bg-blue-100 text-blue-700 text-xs font-semibold rounded">
+                              {maxQty}
+                            </span>
+                          ) : (
+                            <span className="text-gray-400 text-xs">-</span>
+                          );
+                        })()}
+                      </td>
                       <td className="px-2 py-1.5">
                         <div className="flex gap-1">
                           <input
                             type="text"
                             value={inputValue}
                             onChange={(e) => handlePackNoChange(order.order_id, item.order_item_id, e.target.value)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handlePackInputClick(e, inputValue);
+                            }}
                             placeholder="เช่น 1,2,3"
                             className="flex-1 px-1.5 py-1 bg-white border border-gray-300 rounded text-xs font-thai focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
                           />
