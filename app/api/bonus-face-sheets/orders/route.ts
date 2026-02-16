@@ -59,17 +59,36 @@ async function _GET(request: NextRequest) {
         { status: 500 }
       );
     }
-    
-    if (!orders || orders.length === 0) {
+
+    // 🔒 กรองออเดอร์ที่ถูกสร้างใบปะหน้าของแถมแล้ว (bonus_face_sheet_packages)
+    // โดยอิงตาม delivery_date เดียวกัน
+    const { data: usedPackageRows, error: usedPkError } = await supabase
+      .from('bonus_face_sheet_packages')
+      .select('order_id, bonus_face_sheets!inner(delivery_date)')
+      .eq('bonus_face_sheets.delivery_date', delivery_date);
+
+    if (usedPkError) {
+      console.error('Error fetching used bonus face sheet packages:', usedPkError);
+    }
+
+    const usedOrderIds = new Set<number>(
+      (usedPackageRows || [])
+        .map((row: any) => row.order_id)
+        .filter((id: number | null) => typeof id === 'number')
+    );
+
+    const filteredOrders = orders?.filter(o => !usedOrderIds.has(o.order_id)) || [];
+
+    if (filteredOrders.length === 0) {
       return NextResponse.json({
         success: true,
         data: [],
         message: 'ไม่พบออเดอร์สินค้าของแถมสำหรับวันที่เลือก'
       });
     }
-    
+
     // ดึงข้อมูล customer ทั้งหมดที่เกี่ยวข้อง
-    const customerIds = [...new Set(orders.map(o => o.customer_id).filter(Boolean))];
+    const customerIds = [...new Set(filteredOrders.map(o => o.customer_id).filter(Boolean))];
     const { data: customers } = await supabase
       .from('master_customer')
       .select('customer_id, customer_code, customer_name, hub, shipping_address')
@@ -164,7 +183,7 @@ async function _GET(request: NextRequest) {
     
     // ดึงรายการสินค้าของแต่ละออเดอร์
     const ordersWithItems = await Promise.all(
-      orders.map(async (order) => {
+      filteredOrders.map(async (order) => {
         const { data: items } = await supabase
           .from('wms_order_items')
           .select(`
