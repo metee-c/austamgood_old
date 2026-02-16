@@ -294,9 +294,40 @@ try {
 
     console.log(`📦 Packages with storage_location: ${packages.length}, without: ${packagesWithoutLocation.length}`);
 
-    // ✅ FIX: ถ้าไม่มี packages ที่มี storage_location แต่มี packages ที่ไม่มี
-    // → ถือว่า stock ถูกย้ายไป staging แล้ว (หรือยังไม่ได้จัดสรร location)
-    if (packages.length === 0 && packagesWithoutLocation.length > 0) {
+    const stagingLocations = ['PQTD', 'MRTD', 'Delivery-In-Progress'];
+    const packagesAtStaging = packages.filter(p => stagingLocations.includes((p.storage_location || '').trim()))
+      .concat(packagesWithoutLocation); // treat blank as already staged
+    const packagesToMove = packages.filter(p => !stagingLocations.includes((p.storage_location || '').trim()));
+
+    // ✅ If all packages already at staging (PQTD/MRTD/Delivery-In-Progress or empty), treat as done
+    const isAlreadyAtStaging = allPackages.length > 0 && packagesToMove.length === 0;
+
+    if (isAlreadyAtStaging) {
+      console.log('⚠️ All matched packages are already at staging/blank location. Marking as confirmed.');
+
+      const { error: updateLoadlistError } = await supabase
+        .from('loadlists')
+        .update({ 
+          bfs_confirmed_to_staging: 'yes',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', loadlist_id);
+
+      if (updateLoadlistError) {
+        console.error('❌ Error updating loadlist bfs_confirmed_to_staging (already staged):', updateLoadlistError);
+      }
+
+      return NextResponse.json({
+        success: true,
+        message: 'แพ็คทั้งหมดอยู่ที่จุดพักแล้ว (PQTD/MRTD หรือไม่มีโลเคชั่น) จึงถือว่ายืนยันแล้ว',
+        total_moved: 0,
+        packages_processed: allPackages.length,
+        packages_without_location: packagesWithoutLocation.length,
+      });
+    }
+
+    // ✅ FIX: ถ้าไม่มี packages ที่ต้องย้าย (เหลือแต่ staged/ไม่มีโลเคชั่น)
+    if (packagesToMove.length === 0) {
       console.log('⚠️ All packages have no storage_location - assuming already moved to staging or not assigned');
       
       // อัปเดต loadlist bfs_confirmed_to_staging = 'yes' เพราะไม่มีอะไรต้องย้าย
@@ -325,8 +356,18 @@ try {
     console.log(`📦 Package IDs: ${packages.map(p => p.id).join(', ')}`);
     console.log(`📦 Package storage locations: ${packages.map(p => `${p.id}:${p.storage_location}`).join(', ')}`);
 
-    // 4. ดึง items ของแต่ละ package เพื่อย้ายสต็อก
-    const packageIds = packages.map(p => p.id);
+    // 4. ดึง items ของแต่ละ package เพื่อย้ายสต็อก (เฉพาะที่ยังไม่ไป staging)
+    const packageIds = packagesToMove.map(p => p.id);
+
+    if (packageIds.length === 0) {
+      return NextResponse.json({
+        success: true,
+        message: 'แพ็คอยู่ที่จุดพักแล้ว จึงถือว่ายืนยันสำเร็จ',
+        total_moved: 0,
+        packages_processed: packages.length,
+      });
+    }
+
     const { data: items, error: itemsError } = await supabase
       .from('bonus_face_sheet_items')
       .select(`
@@ -339,8 +380,8 @@ try {
         face_sheet_id
       `)
       .in('face_sheet_id', bfsIds)
-      .eq('status', 'picked') // เฉพาะ items ที่หยิบแล้ว
-      .in('package_id', packageIds); // เฉพาะ items ใน packages ที่มี trip_number
+      // ไม่บล็อกด้วยสถานะ เพื่อลด false negative
+      .in('package_id', packageIds);
 
     if (itemsError) {
       console.error('Error fetching items:', itemsError);
@@ -351,6 +392,34 @@ try {
     }
 
     if (!items || items.length === 0) {
+      // ถ้าไม่มี items แต่แพ็คอยู่ที่ staging แล้ว ให้ถือว่ายืนยันสำเร็จ
+      const allAtStaging = packagesToMove.every(p => {
+        const loc = p.storage_location?.trim();
+        return loc === 'PQTD' || loc === 'MRTD' || loc === 'Delivery-In-Progress';
+      });
+
+      if (allAtStaging) {
+        console.log('⚠️ No items found but packages already at staging. Marking as confirmed.');
+        const { error: updateLoadlistError } = await supabase
+          .from('loadlists')
+          .update({ 
+            bfs_confirmed_to_staging: 'yes',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', loadlist_id);
+
+        if (updateLoadlistError) {
+          console.error('❌ Error updating loadlist bfs_confirmed_to_staging (no items but staged):', updateLoadlistError);
+        }
+
+        return NextResponse.json({
+          success: true,
+          message: 'แพ็คอยู่ที่จุดพักแล้ว จึงถือว่ายืนยันสำเร็จ (ไม่พบรายการสินค้าในแพ็ค)',
+          total_moved: 0,
+          packages_processed: packages.length,
+        });
+      }
+
       return NextResponse.json(
         { success: false, error: 'ไม่พบรายการสินค้าที่หยิบแล้ว กรุณาหยิบสินค้าก่อน' },
         { status: 400 }
@@ -412,7 +481,9 @@ try {
       const skuGroups = new Map<string, number>();
       for (const item of locationItems) {
         const currentQty = skuGroups.get(item.sku_id) || 0;
-        skuGroups.set(item.sku_id, currentQty + (item.quantity_picked || item.quantity));
+        // ใช้ quantity_picked ถ้ามี ไม่งั้น fallback quantity
+        const pickedQty = item.quantity_picked || item.quantity;
+        skuGroups.set(item.sku_id, currentQty + pickedQty);
       }
 
       // Build movements for each SKU (FIFO across multiple balance rows)
