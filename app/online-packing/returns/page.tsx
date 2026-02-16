@@ -1133,7 +1133,15 @@ export default function ReturnsPage() {
                                 <button onClick={() => handleViewReturnDetails(groupedReturn)} className="primary-button text-white px-2 py-1 text-xs rounded-lg">ดูรายละเอียด</button>
                               )}
                               {groupedReturn.return_status === 'rejected' && (
-                                <span className="px-2 py-1 bg-gray-100 text-gray-600 text-[10px] rounded-lg border">ถูกปฏิเสธ</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="px-2 py-1 bg-gray-100 text-gray-600 text-[10px] rounded-lg border">ถูกปฏิเสธ</span>
+                                  <button
+                                    onClick={(e) => { e.stopPropagation(); handleReceiveReturn(groupedReturn); }}
+                                    className="px-2 py-1 bg-blue-500 text-white text-xs rounded-lg"
+                                  >
+                                    แก้ไขและบันทึกใหม่
+                                  </button>
+                                </div>
                               )}
                             </div>
                           </Table.Cell>
