@@ -167,7 +167,7 @@ export default function WarehousePhysicalLayout() {
   const [repackData, setRepackData] = useState<any[]>([]);
   const [loadingRepack, setLoadingRepack] = useState(false);
   // State สำหรับ Capacity Trend Dashboard
-  interface TrendPoint { date: string; rack_pct: number; blk_pct: number; rack_occupied: number; rack_empty: number; blk_occupied: number; blk_empty: number }
+  interface TrendPoint { date: string; rack_pct: number; blk_pct: number; rack_occupied: number; rack_empty: number; blk_occupied: number; blk_empty: number; inbound_kg?: number; outbound_kg?: number }
   interface CapacityInfo { rack_total: number; rack_occupied: number; rack_empty: number; rack_pct: number; blk_total: number; blk_occupied: number; blk_empty: number; blk_pct: number }
   interface ZoneSummary { zone: string; section: string; storageType: string; productType: string; totalLocs: number; occupiedLocs: number; emptyLocs: number; pct: number; status: string; unit?: string; order?: number }
   const [trendData, setTrendData] = useState<TrendPoint[]>([]);
@@ -1937,6 +1937,50 @@ export default function WarehousePhysicalLayout() {
                 </div>
               );
             })() : !loadingCapacity && <div className="text-center py-12 text-gray-400 text-sm">ไม่มีข้อมูล</div>}
+
+            {/* Daily Inbound/Outbound Weight Table */}
+            {trendData.length > 0 && trendData.some(d => d.inbound_kg || d.outbound_kg) && (
+              <div className="mt-2 overflow-x-auto">
+                <table className="w-full text-[10px] border-collapse">
+                  <thead>
+                    <tr className="border-b border-gray-200">
+                      <th className="px-1.5 py-1 text-left font-semibold text-gray-500 w-16">วันที่</th>
+                      {trendData.map(d => {
+                        const date = new Date(d.date);
+                        return (
+                          <th key={d.date} className="px-1 py-1 text-center font-medium text-gray-500 whitespace-nowrap">
+                            {date.getDate()}/{date.getMonth() + 1}
+                          </th>
+                        );
+                      })}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="border-b border-gray-100">
+                      <td className="px-1.5 py-1 font-semibold text-blue-700 whitespace-nowrap">รับเข้า</td>
+                      {trendData.map(d => (
+                        <td key={d.date} className="px-1 py-1 text-center font-mono text-blue-700 font-semibold">
+                          {((d.inbound_kg || 0) / 1000).toFixed(1)}
+                        </td>
+                      ))}
+                    </tr>
+                    <tr className="border-b border-gray-100">
+                      <td className="px-1.5 py-1 font-semibold text-teal-700 whitespace-nowrap">จ่ายออก</td>
+                      {trendData.map(d => (
+                        <td key={d.date} className="px-1 py-1 text-center font-mono text-teal-700 font-semibold">
+                          {((d.outbound_kg || 0) / 1000).toFixed(1)}
+                        </td>
+                      ))}
+                    </tr>
+                  </tbody>
+                  <tfoot>
+                    <tr className="text-[9px] text-gray-400">
+                      <td className="px-1.5 py-0.5" colSpan={trendData.length + 1}>หน่วย: ตัน</td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            )}
           </div>
 
           {/* Zone Summary (5 cols) — split into 2 sections */}

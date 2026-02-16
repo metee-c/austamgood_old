@@ -9,12 +9,12 @@ const supabase = createClient(
 // Same counting as layout-inventory API
 const BLK_PALLETS_PER_LOC = 20;
 
-async function fetchPaginated<T>(table: string, select: string, filters?: (q: any) => any): Promise<T[]> {
+async function fetchPaginated<T>(table: string, select: string, filters?: (q: any) => any, orderBy: string = 'id'): Promise<T[]> {
   const result: T[] = [];
   let page = 0;
   const size = 1000;
   while (true) {
-    let q = supabase.from(table).select(select).range(page * size, (page + 1) * size - 1);
+    let q = supabase.from(table).select(select).order(orderBy, { ascending: true }).range(page * size, (page + 1) * size - 1);
     if (filters) q = filters(q);
     const { data, error } = await q;
     if (error) throw error;
@@ -34,7 +34,8 @@ export async function GET() {
     const allLocations = await fetchPaginated<{
       location_id: string; location_type: string; shelf: string | null; aisle: string | null; zone: string | null; max_capacity_qty: number | null;
     }>('master_location', 'location_id, location_type, shelf, aisle, zone, max_capacity_qty', q =>
-      q.in('location_type', ['rack', 'floor', 'dispatch']).eq('active_status', 'active')
+      q.in('location_type', ['rack', 'floor', 'dispatch']).eq('active_status', 'active'),
+      'location_id'
     );
 
     // Build lookup sets from master_location (authoritative source)
@@ -59,7 +60,8 @@ export async function GET() {
 
     // ── 2. All inventory (same as layout-inventory: total_pack_qty > 0) ──
     const allInventory = await fetchPaginated<{ location_id: string; pallet_id: string | null }>(
-      'wms_inventory_balances', 'location_id, pallet_id', q => q.gt('total_pack_qty', 0)
+      'wms_inventory_balances', 'location_id, pallet_id', q => q.gt('total_pack_qty', 0),
+      'balance_id'
     );
 
     const occupiedSet = new Set(allInventory.map(i => i.location_id));
@@ -143,7 +145,8 @@ export async function GET() {
     const ledgerAll = await fetchPaginated<{
       movement_at: string; location_id: string; direction: string; pack_qty: number; pallet_id: string | null;
     }>('wms_inventory_ledger', 'movement_at, location_id, direction, pack_qty, pallet_id', q =>
-      q.gte('movement_at', startStr).order('movement_at', { ascending: false })
+      q.gte('movement_at', startStr),
+      'ledger_id'
     );
 
     // Find first date with actual ledger data
@@ -175,14 +178,16 @@ export async function GET() {
     // Current pack_qty sums per location
     const runPackBal: Record<string, number> = {};
     const balAll = await fetchPaginated<{ location_id: string; total_pack_qty: number }>(
-      'wms_inventory_balances', 'location_id, total_pack_qty'
+      'wms_inventory_balances', 'location_id, total_pack_qty',
+      undefined,
+      'balance_id'
     );
     balAll.forEach(r => {
       const grp = getGroup(r.location_id);
       if (!grp) return;
       if (grp === 'BLK') {
         const pallets = palletCountMap.get(r.location_id) || 0;
-        runPackBal[r.location_id] = Math.min(BLK_PALLETS_PER_LOC, Math.max(0, pallets));
+        runPackBal[r.location_id] = Math.max(0, pallets);
       } else if (grp === 'Rack') {
         runPackBal[r.location_id] = Number(r.total_pack_qty) > 0 ? 1 : 0; // binary occupancy
       }
@@ -198,24 +203,42 @@ export async function GET() {
         if (grp === 'Rack') {
           rOcc += runPackBal[lid] > 0 ? 1 : 0;
         } else if (grp === 'BLK' && blkLocSet.has(lid)) {
-          bOcc += Math.min(BLK_PALLETS_PER_LOC, Math.max(0, runPackBal[lid]));
+          bOcc += Math.max(0, runPackBal[lid]);
         }
       }
       resultReverse.push({ date: day, rack_occ: rOcc, blk_occ: bOcc });
 
       if (ledgerByDate[day]) {
+        // Group ledger movements by location+pallet to count distinct pallets (not pack_qty)
+        const blkPalletMoves = new Map<string, { direction: string; location_id: string }>();
+        const rackMoves: { location_id: string; direction: string; pack_qty: number }[] = [];
+
         for (const mv of ledgerByDate[day]) {
           const grp = getGroup(mv.location_id);
-          // For BLK, use pack_qty as pallets (rounded) with clamp per location; for Rack, binary moves
-          let delta = mv.pack_qty;
           if (grp === 'BLK') {
-            delta = Math.max(0, Math.round(mv.pack_qty || 0));
+            // Each unique pallet_id per location = 1 pallet move (not pack_qty which is product quantity)
+            const key = `${mv.location_id}:${mv.pallet_id || ''}:${mv.direction}`;
+            if (!blkPalletMoves.has(key)) {
+              blkPalletMoves.set(key, { direction: mv.direction, location_id: mv.location_id });
+            }
           } else if (grp === 'Rack') {
-            delta = mv.pack_qty > 0 ? 1 : 0;
+            rackMoves.push(mv);
           }
+        }
+
+        // Apply BLK moves: 1 pallet per distinct move
+        for (const [, mv] of blkPalletMoves) {
+          const adj = mv.direction === 'in' ? -1 : 1;
+          const next = (runPackBal[mv.location_id] || 0) + adj;
+          runPackBal[mv.location_id] = Math.max(0, next);
+        }
+
+        // Apply Rack moves: binary occupancy
+        for (const mv of rackMoves) {
+          const delta = mv.pack_qty > 0 ? 1 : 0;
           const adj = mv.direction === 'in' ? -delta : delta;
           const next = (runPackBal[mv.location_id] || 0) + adj;
-          runPackBal[mv.location_id] = Math.max(0, Math.min(BLK_PALLETS_PER_LOC, next));
+          runPackBal[mv.location_id] = Math.max(0, next);
         }
       }
     }
@@ -227,15 +250,33 @@ export async function GET() {
       ? resultReverse.filter(r => r.date >= earliestLedgerDate)
       : resultReverse;
 
-    const trend = filtered.map(r => ({
-      date: r.date,
-      rack_pct: Math.round((r.rack_occ / rackTotal) * 1000) / 10,
-      blk_pct: Math.round((r.blk_occ / blkTotal) * 1000) / 10,
-      rack_occupied: r.rack_occ,
-      rack_empty: rackTotal - r.rack_occ,
-      blk_occupied: r.blk_occ,
-      blk_empty: blkTotal - r.blk_occ,
+    // ── 6. Daily inbound/outbound weight (kg) using RPCs ──
+    const dailyWeightMap = new Map<string, { inbound_kg: number; outbound_kg: number }>();
+    await Promise.all(filtered.map(async (r) => {
+      const [{ data: ibKg }, { data: obKg }] = await Promise.all([
+        supabase.rpc('sum_inbound_weight', { date_from: r.date, date_to: r.date }),
+        supabase.rpc('sum_outbound_weight', { date_from: r.date, date_to: r.date }),
+      ]);
+      dailyWeightMap.set(r.date, {
+        inbound_kg: Math.round(Number(ibKg) || 0),
+        outbound_kg: Math.round(Number(obKg) || 0),
+      });
     }));
+
+    const trend = filtered.map(r => {
+      const w = dailyWeightMap.get(r.date) || { inbound_kg: 0, outbound_kg: 0 };
+      return {
+        date: r.date,
+        rack_pct: Math.round((r.rack_occ / rackTotal) * 1000) / 10,
+        blk_pct: Math.round((r.blk_occ / blkTotal) * 1000) / 10,
+        rack_occupied: r.rack_occ,
+        rack_empty: rackTotal - r.rack_occ,
+        blk_occupied: r.blk_occ,
+        blk_empty: blkTotal - r.blk_occ,
+        inbound_kg: w.inbound_kg,
+        outbound_kg: w.outbound_kg,
+      };
+    });
 
     return NextResponse.json({
       trend,

@@ -123,6 +123,8 @@ const InventoryBalancesPage = () => {
   const [showLowStock, setShowLowStock] = useState(false);
   const [showExpiringSoon, setShowExpiringSoon] = useState(false);
   const [showEmptyLocations, setShowEmptyLocations] = useState(true);
+  const [showPreparationAreas, setShowPreparationAreas] = useState(false); // NEW: แสดง preparation areas
+  const [showZeroStock, setShowZeroStock] = useState(false); // NEW: แสดงสต็อกที่ถูกย้ายหมดแล้ว
 
   // Advanced filters
   const [showFilters, setShowFilters] = useState(false);
@@ -212,7 +214,7 @@ const InventoryBalancesPage = () => {
       console.log('[Inventory Balances] Current advancedFilters:', advancedFilters);
       fetchBalanceData();
     }
-  }, [debouncedSearchTerm, selectedWarehouse, selectedZone, JSON.stringify(advancedFilters)]);
+  }, [debouncedSearchTerm, selectedWarehouse, selectedZone, showPreparationAreas, showZeroStock, JSON.stringify(advancedFilters)]);
 
   const fetchPreparationAreas = async () => {
     try {
@@ -284,7 +286,7 @@ const InventoryBalancesPage = () => {
 
       // Locations to exclude (removed Dispatch from exclusion list)
       const excludeLocations = [
-        ...preparationAreaCodes,
+        ...(showPreparationAreas ? [] : preparationAreaCodes), // NEW: แสดง preparation areas ถ้าเปิด checkbox
         'Delivery-In-Progress',
         'RCV',
         'SHIP',
@@ -328,8 +330,14 @@ const InventoryBalancesPage = () => {
               sku_name,
               weight_per_piece_kg
             )
-          `)
-          .gt('total_piece_qty', 0) // ไม่แสดงแถวที่เป็น 0 ชิ้น
+          `);
+
+        // กรองสต็อก 0 ออก ถ้าไม่ได้เปิด checkbox
+        if (!showZeroStock) {
+          dataQuery = dataQuery.gt('total_piece_qty', 0);
+        }
+
+        dataQuery = dataQuery
           .order('balance_id')
           .range(from, from + batchSize - 1);
 
@@ -674,7 +682,7 @@ const InventoryBalancesPage = () => {
   const groupedByZone = useMemo(() => {
     // Locations to exclude (รวม preparation areas เพราะข้อมูลอยู่ในตาราง preparation_area_inventory)
     const excludeLocations = new Set([
-      ...preparationAreaCodes,
+      ...(showPreparationAreas ? [] : preparationAreaCodes), // NEW: แสดง preparation areas ถ้าเปิด checkbox
       'Delivery-In-Progress',
       'RCV',
       'SHIP',
@@ -797,7 +805,7 @@ const InventoryBalancesPage = () => {
     });
 
     return { zones: sortedZones, groups: zoneGroups };
-  }, [masterLocations, balanceData, preparationAreaCodes, selectedWarehouse, selectedZone, showEmptyLocations, showLowStock, showExpiringSoon, advancedFilters, debouncedSearchTerm]);
+  }, [masterLocations, balanceData, preparationAreaCodes, selectedWarehouse, selectedZone, showEmptyLocations, showLowStock, showExpiringSoon, showPreparationAreas, showZeroStock, advancedFilters, debouncedSearchTerm]);
 
   // Auto-expand zones when filters are applied or when coming from URL params
   useEffect(() => {
@@ -973,6 +981,14 @@ const InventoryBalancesPage = () => {
             <label className="flex items-center cursor-pointer text-xs font-thai px-2 py-1 bg-thai-gray-50/50 border border-thai-gray-200/50 rounded hover:bg-white/80">
               <input type="checkbox" className="mr-1 w-3 h-3" checked={showEmptyLocations} onChange={(e) => setShowEmptyLocations(e.target.checked)} />
               โลเคชั่นว่าง
+            </label>
+            <label className="flex items-center cursor-pointer text-xs font-thai px-2 py-1 bg-green-50 border border-green-300 rounded hover:bg-green-100">
+              <input type="checkbox" className="mr-1 w-3 h-3" checked={showPreparationAreas} onChange={(e) => setShowPreparationAreas(e.target.checked)} />
+              พื้นที่หยิบของ
+            </label>
+            <label className="flex items-center cursor-pointer text-xs font-thai px-2 py-1 bg-amber-50 border border-amber-300 rounded hover:bg-amber-100">
+              <input type="checkbox" className="mr-1 w-3 h-3" checked={showZeroStock} onChange={(e) => setShowZeroStock(e.target.checked)} />
+              แสดงสต็อก 0
             </label>
             <Button 
               variant="outline" 
@@ -1232,7 +1248,7 @@ const InventoryBalancesPage = () => {
                                 <tr key={location.location_id} className="bg-gray-50/50 hover:bg-gray-100/50">
                                   <td className="px-2 py-0.5 border-r border-gray-100"></td>
                                   <td className="px-2 py-0.5 border-r border-gray-100">
-                                    <span className="font-mono text-gray-600 ml-4">{location.location_name}</span>
+                                    <span className="font-mono text-gray-600 ml-4">{location.location_id}</span>
                                   </td>
                                   <td className="px-2 py-0.5 border-r border-gray-100">
                                     <Badge variant="secondary" size="sm">ว่าง</Badge>
@@ -1269,7 +1285,7 @@ const InventoryBalancesPage = () => {
                                 <td className="px-2 py-0.5 border-r border-gray-100"></td>
                                 <td className="px-2 py-0.5 border-r border-gray-100">
                                   {idx === 0 && (
-                                    <span className="font-mono text-gray-700 ml-4">{location.location_name}</span>
+                                    <span className="font-mono text-gray-700 ml-4">{location.location_id}</span>
                                   )}
                                 </td>
                                 <td className="px-2 py-0.5 border-r border-gray-100">

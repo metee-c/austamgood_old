@@ -99,7 +99,10 @@
       "mcp__supabase__list_migrations",
       "Bash(python3:*)",
       "mcp__supabase__list_extensions",
-      "Bash(cmd /c \"type c:\\\\Users\\\\User\\\\Desktop\\\\austamgood_wms\\\\build.log\")"
+      "Bash(cmd /c \"type c:\\\\Users\\\\User\\\\Desktop\\\\austamgood_wms\\\\build.log\")",
+      "Bash(taskkill:*)",
+      "Bash(npm run db:types:*)",
+      "Bash(timeout 120 npm run build)"
     ],
     "deny": [],
     "ask": []

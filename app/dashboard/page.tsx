@@ -1,12 +1,13 @@
 'use client';
 
 import React, { useState } from 'react';
-import { AlertTriangle, LayoutGrid, TrendingUp, Package } from 'lucide-react';
+import { AlertTriangle, LayoutGrid, TrendingUp, Package, FileText } from 'lucide-react';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import WarehousePhysicalLayout from '@/components/warehouse/WarehousePhysicalLayout';
 import WarehouseExecutiveDashboard from '@/components/warehouse/WarehouseExecutiveDashboard';
+import WarehouseInventoryDashboard from '@/components/warehouse/WarehouseInventoryDashboard';
 
-type TabType = 'layout' | 'performance' | 'inventory';
+type TabType = 'layout' | 'performance' | 'inventory' | 'document';
 
 const Dashboard = () => {
   const [activeTab, setActiveTab] = useState<TabType>('layout');
@@ -15,6 +16,7 @@ const Dashboard = () => {
     { id: 'layout' as TabType, label: 'Layout', icon: LayoutGrid },
     { id: 'performance' as TabType, label: 'Performance', icon: TrendingUp },
     { id: 'inventory' as TabType, label: 'Inventory', icon: Package },
+    { id: 'document' as TabType, label: 'Document', icon: FileText },
   ];
 
   const renderContent = () => {
@@ -24,11 +26,13 @@ const Dashboard = () => {
       case 'performance':
         return <WarehouseExecutiveDashboard />;
       case 'inventory':
+        return <WarehouseInventoryDashboard />;
+      case 'document':
         return (
           <div className="flex items-center justify-center min-h-[400px]">
             <div className="text-center text-gray-500">
-              <Package className="h-16 w-16 mx-auto mb-4 text-gray-300" />
-              <h3 className="text-xl font-semibold mb-2">Inventory</h3>
+              <FileText className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+              <h3 className="text-xl font-semibold mb-2">Document</h3>
               <p>กำลังพัฒนา...</p>
             </div>
           </div>
@@ -65,7 +69,7 @@ const Dashboard = () => {
       </div>
 
       {/* Content Area */}
-      <div className={`flex-1 ${activeTab === 'performance' ? 'overflow-hidden' : 'overflow-auto'}`}>
+      <div className={`flex-1 ${activeTab === 'performance' || activeTab === 'inventory' ? 'overflow-hidden' : 'overflow-auto'}`}>
         {renderContent()}
       </div>
     </div>
