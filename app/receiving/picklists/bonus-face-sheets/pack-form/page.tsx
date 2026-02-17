@@ -126,7 +126,9 @@ const SKU_MAX_QTY_PER_PACK: { [sku: string]: number } = {
 
 // Helper function to get max qty per pack for a SKU
 const getMaxQtyPerPack = (sku: string): number | null => {
-  return SKU_MAX_QTY_PER_PACK[sku] || null;
+  if (SKU_MAX_QTY_PER_PACK[sku]) return SKU_MAX_QTY_PER_PACK[sku];
+  if (sku.startsWith('TT-')) return 350;
+  return null;
 };
 
 const BonusFaceSheetPackFormPage = () => {
@@ -144,7 +146,13 @@ const BonusFaceSheetPackFormPage = () => {
   const [deliveryTypes, setDeliveryTypes] = useState<{ [key: string]: string }>({});
   const [saving, setSaving] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
-  // State for cumulative sum tooltip
+  const [draftReady, setDraftReady] = useState(false); // flag to start auto-saving
+
+  // localStorage draft key based on URL params
+  const draftKey = editId
+    ? `bfs-pack-draft-edit-${editId}`
+    : `bfs-pack-draft-${deliveryDate}-${orderIds.sort().join(',')}`;
+  // State for cumulative sum floating circle (follows cursor)
   const [cumulativeTooltip, setCumulativeTooltip] = useState<{
     visible: boolean;
     x: number;
@@ -152,6 +160,7 @@ const BonusFaceSheetPackFormPage = () => {
     packNo: string;
     sum: number;
   }>({ visible: false, x: 0, y: 0, packNo: '', sum: 0 });
+  const activePackRef = React.useRef<string | null>(null);
 
   // Calculate cumulative sum for a pack number across all items
   const calculateCumulativeSum = (targetPackNo: string): number => {
@@ -171,37 +180,102 @@ const BonusFaceSheetPackFormPage = () => {
     return sum;
   };
 
-  // Handle pack input click to show cumulative sum
+  // Handle pack input click to show cumulative sum circle
   const handlePackInputClick = (e: React.MouseEvent, packNos: string) => {
+    e.stopPropagation();
     const packList = packNos.split(',').map(p => p.trim()).filter(p => p);
-    if (packList.length === 0) return;
+    if (packList.length === 0) {
+      activePackRef.current = null;
+      setCumulativeTooltip(prev => ({ ...prev, visible: false }));
+      return;
+    }
 
-    // Get the last pack number (most recently entered)
     const lastPackNo = packList[packList.length - 1];
+    activePackRef.current = lastPackNo;
     const sum = calculateCumulativeSum(lastPackNo);
 
     setCumulativeTooltip({
       visible: true,
-      x: e.clientX + 15,
-      y: e.clientY - 30,
+      x: e.clientX,
+      y: e.clientY,
       packNo: lastPackNo,
       sum
     });
-
-    // Hide tooltip after 3 seconds
-    setTimeout(() => {
-      setCumulativeTooltip(prev => ({ ...prev, visible: false }));
-    }, 3000);
   };
 
-  // Hide tooltip when clicking elsewhere
+  // Follow cursor only within pack-column cells, hide when leaving
   useEffect(() => {
-    const handleClickOutside = () => {
-      setCumulativeTooltip(prev => ({ ...prev, visible: false }));
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!activePackRef.current) return;
+      const target = e.target as HTMLElement;
+      const inPackColumn = target.closest('[data-pack-column]');
+      if (inPackColumn) {
+        setCumulativeTooltip(prev => ({
+          ...prev,
+          visible: true,
+          x: e.clientX,
+          y: e.clientY,
+        }));
+      } else {
+        setCumulativeTooltip(prev => ({ ...prev, visible: false }));
+      }
     };
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest('[data-pack-input]')) {
+        activePackRef.current = null;
+        setCumulativeTooltip(prev => ({ ...prev, visible: false }));
+      }
+    };
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
   }, []);
+
+  // Recalculate sum when packData changes while tooltip is visible
+  useEffect(() => {
+    if (activePackRef.current) {
+      const sum = calculateCumulativeSum(activePackRef.current);
+      setCumulativeTooltip(prev => ({ ...prev, sum }));
+    }
+  }, [packData]);
+
+  // Auto-save draft to localStorage when user edits
+  useEffect(() => {
+    if (!draftReady) return;
+    try {
+      const draft = { inputValues, packData, deliveryTypes, savedAt: Date.now() };
+      localStorage.setItem(draftKey, JSON.stringify(draft));
+    } catch { /* ignore quota errors */ }
+  }, [inputValues, packData, deliveryTypes, draftReady, draftKey]);
+
+  // Helper: restore draft from localStorage onto initialized data
+  const restoreDraft = (initialPackData: { [orderId: number]: ItemPackData }, ordersData: Order[]) => {
+    try {
+      const saved = localStorage.getItem(draftKey);
+      if (!saved) { setDraftReady(true); return; }
+      const draft = JSON.parse(saved);
+      // Skip drafts older than 24 hours
+      if (draft.savedAt && Date.now() - draft.savedAt > 24 * 60 * 60 * 1000) {
+        localStorage.removeItem(draftKey);
+        setDraftReady(true);
+        return;
+      }
+      if (draft.inputValues) setInputValues(draft.inputValues);
+      if (draft.deliveryTypes) setDeliveryTypes(draft.deliveryTypes);
+      if (draft.packData) {
+        setPackData(draft.packData);
+      }
+    } catch { /* ignore parse errors */ }
+    setDraftReady(true);
+  };
+
+  const clearDraft = () => {
+    try { localStorage.removeItem(draftKey); } catch { /* ignore */ }
+  };
 
   useEffect(() => {
     if (editId) {
@@ -338,11 +412,16 @@ const BonusFaceSheetPackFormPage = () => {
         setPackData(initialPackData);
         setInputValues(initialInputValues);
         setDeliveryTypes(initialDeliveryTypes);
+
+        // Restore draft for edit mode too
+        restoreDraft(initialPackData, reconstructedOrders);
       } else {
         setError(result.error || 'ไม่สามารถโหลดข้อมูลได้');
+        setDraftReady(true);
       }
     } catch (err: any) {
       setError('เกิดข้อผิดพลาดในการโหลดข้อมูล');
+      setDraftReady(true);
     } finally {
       setLoading(false);
     }
@@ -377,11 +456,16 @@ const BonusFaceSheetPackFormPage = () => {
         setPackData(initialPackData);
         setInputValues(initialInputValues);
         setDeliveryTypes(initialDeliveryTypes);
+
+        // Restore draft from localStorage if exists
+        restoreDraft(initialPackData, filteredOrders);
       } else {
         setError(result.error || 'ไม่สามารถโหลดข้อมูลได้');
+        setDraftReady(true);
       }
     } catch (err: any) {
       setError('เกิดข้อผิดพลาดในการโหลดข้อมูล');
+      setDraftReady(true);
     } finally {
       setLoading(false);
     }
@@ -389,9 +473,21 @@ const BonusFaceSheetPackFormPage = () => {
 
   const handlePackNoChange = (orderId: number, itemId: number, value: string) => {
     const key = `${orderId}-${itemId}`;
-    
+
     // Update input value
     setInputValues(prev => ({ ...prev, [key]: value }));
+
+    // Show/update floating circle immediately on typing
+    const packList = value.split(',').map(p => p.trim()).filter(p => p);
+    if (packList.length > 0) {
+      const lastPackNo = packList[packList.length - 1];
+      activePackRef.current = lastPackNo;
+      // sum will be recalculated by the packData useEffect after setPackData below
+      setCumulativeTooltip(prev => ({ ...prev, visible: true, packNo: lastPackNo }));
+    } else {
+      activePackRef.current = null;
+      setCumulativeTooltip(prev => ({ ...prev, visible: false }));
+    }
     
     // Parse and update pack data
     const packNos = value.split(',').map(p => p.trim()).filter(p => p);
@@ -664,6 +760,7 @@ const BonusFaceSheetPackFormPage = () => {
         const result = await response.json();
 
         if (result.success) {
+          clearDraft();
           router.push('/receiving/picklists/bonus-face-sheets?success=updated');
         } else {
           setError(result.error || 'ไม่สามารถอัพเดทใบปะหน้าได้');
@@ -684,6 +781,7 @@ const BonusFaceSheetPackFormPage = () => {
         const result = await response.json();
 
         if (result.success) {
+          clearDraft();
           router.push('/receiving/picklists/bonus-face-sheets?success=created');
         } else {
           setError(result.error || 'ไม่สามารถสร้างใบปะหน้าได้');
@@ -761,20 +859,22 @@ const BonusFaceSheetPackFormPage = () => {
           </div>
         </div>
 
-        {/* Cumulative Sum Tooltip */}
+        {/* Cumulative Sum Floating Circle (follows cursor) */}
         {cumulativeTooltip.visible && (
           <div
-            className="fixed z-50 pointer-events-none"
+            className="fixed z-50 pointer-events-none transition-all duration-75 ease-out"
             style={{
-              left: cumulativeTooltip.x,
-              top: cumulativeTooltip.y,
+              left: cumulativeTooltip.x + 18,
+              top: cumulativeTooltip.y - 18,
             }}
           >
-            <div className="bg-blue-600 text-white px-3 py-2 rounded-full shadow-lg text-xs font-semibold flex items-center gap-2 animate-pulse">
-              <span className="bg-white text-blue-600 rounded-full w-5 h-5 flex items-center justify-center text-[10px] font-bold">
-                {cumulativeTooltip.packNo}
-              </span>
-              <span>รวม: {cumulativeTooltip.sum} ชิ้น</span>
+            <div className="bg-blue-600 text-white rounded-full shadow-lg flex items-center justify-center font-bold"
+              style={{ width: 44, height: 44 }}
+            >
+              <div className="text-center leading-none">
+                <div className="text-[9px] font-normal opacity-80">P{cumulativeTooltip.packNo}</div>
+                <div className="text-sm">{cumulativeTooltip.sum}</div>
+              </div>
             </div>
           </div>
         )}
@@ -796,7 +896,7 @@ const BonusFaceSheetPackFormPage = () => {
                   <th className="px-2 py-1.5 text-center text-[11px] font-semibold text-gray-700 whitespace-nowrap" style={{ width: '80px' }}>
                     จำนวนมากสุด<br/>ต่อแพ็ค
                   </th>
-                  <th className="px-2 py-1.5 text-left text-[11px] font-semibold text-gray-700 whitespace-nowrap" style={{ width: '160px' }}>
+                  <th data-pack-column className="px-2 py-1.5 text-left text-[11px] font-semibold text-gray-700 whitespace-nowrap" style={{ width: '160px' }}>
                     แพ็คที่ <span className="text-red-500">*</span>
                   </th>
                   <th className="px-2 py-1.5 text-left text-[11px] font-semibold text-gray-700 whitespace-nowrap" style={{ width: '150px' }}>ประเภทจัดส่ง</th>
@@ -843,10 +943,11 @@ const BonusFaceSheetPackFormPage = () => {
                           );
                         })()}
                       </td>
-                      <td className="px-2 py-1.5">
+                      <td data-pack-column className="px-2 py-1.5">
                         <div className="flex gap-1">
                           <input
                             type="text"
+                            data-pack-input
                             value={inputValue}
                             onChange={(e) => handlePackNoChange(order.order_id, item.order_item_id, e.target.value)}
                             onClick={(e) => {

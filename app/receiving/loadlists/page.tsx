@@ -786,7 +786,7 @@ const LoadlistsPage = () => {
           );
 
           const ordersInBfs = result.data
-            .filter((order: any) => orderIdsInBfs.has(order.order_id))
+            .filter((order: any) => orderIdsInBfs.has(order.order_id) && (packageCountByOrder.get(order.order_id) || 0) > 0)
             .map((order: any) => ({
               ...order,
               bfs_package_count: packageCountByOrder.get(order.order_id) || 0
