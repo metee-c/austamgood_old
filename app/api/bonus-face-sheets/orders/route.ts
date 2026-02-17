@@ -17,7 +17,8 @@ async function _GET(request: NextRequest) {
     const searchParams = request.nextUrl.searchParams;
     
     const delivery_date = searchParams.get('delivery_date');
-    
+    const exclude_bfs_id = searchParams.get('exclude_bfs_id');
+
     if (!delivery_date) {
       return NextResponse.json(
         { success: false, error: 'กรุณาระบุวันส่งของ (delivery_date)' },
@@ -62,10 +63,17 @@ async function _GET(request: NextRequest) {
 
     // 🔒 กรองออเดอร์ที่ถูกสร้างใบปะหน้าของแถมแล้ว (bonus_face_sheet_packages)
     // โดยอิงตาม delivery_date เดียวกัน
-    const { data: usedPackageRows, error: usedPkError } = await supabase
+    // ถ้ามี exclude_bfs_id → ไม่กรองออเดอร์ของ BFS นั้นออก (สำหรับ partial order selection)
+    let usedPackageQuery = supabase
       .from('bonus_face_sheet_packages')
-      .select('order_id, bonus_face_sheets!inner(delivery_date)')
+      .select('order_id, face_sheet_id, bonus_face_sheets!inner(delivery_date)')
       .eq('bonus_face_sheets.delivery_date', delivery_date);
+
+    if (exclude_bfs_id) {
+      usedPackageQuery = usedPackageQuery.neq('face_sheet_id', parseInt(exclude_bfs_id));
+    }
+
+    const { data: usedPackageRows, error: usedPkError } = await usedPackageQuery;
 
     if (usedPkError) {
       console.error('Error fetching used bonus face sheet packages:', usedPkError);

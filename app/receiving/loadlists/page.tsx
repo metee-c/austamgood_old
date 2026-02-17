@@ -762,7 +762,7 @@ const LoadlistsPage = () => {
         return;
       }
 
-      const response = await fetch(`/api/bonus-face-sheets/orders?delivery_date=${bfs.delivery_date}`);
+      const response = await fetch(`/api/bonus-face-sheets/orders?delivery_date=${bfs.delivery_date}&exclude_bfs_id=${bfsId}`);
       const result = await response.json();
 
       if (result.success && result.data) {
@@ -771,13 +771,26 @@ const LoadlistsPage = () => {
         const bfsPackagesResult = await bfsPackagesResponse.json();
 
         if (bfsPackagesResult.success && bfsPackagesResult.data?.packages) {
+          // นับจำนวน packages ที่ยังเหลือ (available) ต่อ order
+          const availableIds = new Set(bfs?.available_package_ids || []);
+          const packageCountByOrder = new Map<number, number>();
+          for (const pkg of bfsPackagesResult.data.packages) {
+            // ถ้ามี available_package_ids → นับเฉพาะที่ยังเหลือ, ถ้าไม่มี → นับทั้งหมด
+            if (availableIds.size === 0 || availableIds.has(pkg.id)) {
+              packageCountByOrder.set(pkg.order_id, (packageCountByOrder.get(pkg.order_id) || 0) + 1);
+            }
+          }
+
           const orderIdsInBfs = new Set(
             bfsPackagesResult.data.packages.map((pkg: any) => pkg.order_id)
           );
 
-          const ordersInBfs = result.data.filter((order: any) =>
-            orderIdsInBfs.has(order.order_id)
-          );
+          const ordersInBfs = result.data
+            .filter((order: any) => orderIdsInBfs.has(order.order_id))
+            .map((order: any) => ({
+              ...order,
+              bfs_package_count: packageCountByOrder.get(order.order_id) || 0
+            }));
 
           setBfsOrdersData(prev => ({
             ...prev,
@@ -2811,7 +2824,7 @@ const LoadlistsPage = () => {
                                                   <th className="px-2 py-1 text-left border-b">เลขออเดอร์</th>
                                                   <th className="px-2 py-1 text-left border-b">ชื่อร้าน</th>
                                                   <th className="px-2 py-1 text-left border-b">จังหวัด</th>
-                                                  <th className="px-2 py-1 text-center border-b">จำนวนรายการ</th>
+                                                  <th className="px-2 py-1 text-center border-b">แพ็ค</th>
                                                 </tr>
                                               </thead>
                                               <tbody className="bg-white">
@@ -2843,7 +2856,7 @@ const LoadlistsPage = () => {
                                                         {order.province || '-'}
                                                       </td>
                                                       <td className="px-2 py-1 border-b text-center text-gray-700">
-                                                        {order.total_items || 0}
+                                                        {order.bfs_package_count || 0}
                                                       </td>
                                                     </tr>
                                                   );
