@@ -2209,14 +2209,6 @@ const RoutesPage = () => {
                 >
                     สร้างแผนใหม่
                 </Button>
-                <Button
-                    variant="outline"
-                    icon={FileSpreadsheet}
-                    onClick={() => setShowMultiPlanContractModal(true)}
-                    className="text-xs py-1 px-2"
-                >
-                    รวมใบว่าจ้างข้ามแผน
-                </Button>
             </PageHeaderWithFilters>
 
             <div className="flex flex-1 gap-4 overflow-hidden">

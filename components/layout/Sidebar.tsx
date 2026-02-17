@@ -164,6 +164,12 @@ const menuItems = [
         englishLabel: 'Route Planning'
       },
       {
+        path: '/receiving/routes/transport-contracts',
+        icon: FileCheck,
+        label: 'ใบว่าจ้างขนส่ง',
+        englishLabel: 'Transport Contracts'
+      },
+      {
         path: '/receiving/picklists',
         icon: FileCheck,
         label: 'สร้างใบหยิบสินค้า',
