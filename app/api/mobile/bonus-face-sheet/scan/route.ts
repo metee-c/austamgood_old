@@ -194,9 +194,11 @@ try {
 
     // ✅ ATOMIC APPROACH: ใช้ executeStockMovements RPC แทน manual balance updates
     const { executeStockMovements } = await import('@/lib/database/inventory-transaction');
+    type Unreservation = { balance_id: number; piece_qty: number; pack_qty: number };
 
     let remainingQty = quantity_picked;
     const movements: any[] = [];
+    const unreservations: Unreservation[] = [];
     const processedReservations: number[] = [];
     let sourceProductionDate: string | null = null;
     let sourceExpiryDate: string | null = null;
@@ -248,19 +250,12 @@ try {
           console.log(`⚠️ ${isVirtualPallet ? 'Virtual Pallet' : 'Prep Area'} (${balance.location_id}): อนุญาตหักติดลบ`);
         }
 
-        // ลดยอดจอง (reserved_qty เท่านั้น - RPC จะจัดการ total_qty)
-        const { error: unreserveError } = await supabase
-          .from('wms_inventory_balances')
-          .update({
-            reserved_piece_qty: Math.max(0, balance.reserved_piece_qty - qtyToDeduct),
-            reserved_pack_qty: Math.max(0, balance.reserved_pack_qty - packToDeduct),
-            updated_at: now
-          })
-          .eq('balance_id', balance.balance_id);
-
-        if (unreserveError) {
-          console.error('Error unreserving balance:', unreserveError);
-        }
+        // สะสม unreservation เพื่อทำ atomic ใน RPC เดียวกับ movements
+        unreservations.push({
+          balance_id: balance.balance_id,
+          piece_qty: qtyToDeduct,
+          pack_qty: packToDeduct,
+        });
 
         // สร้าง OUT movement
         movements.push({
@@ -494,8 +489,8 @@ try {
       created_by: userId,
     });
 
-    // ✅ ATOMIC: Execute ทุก movements ใน single transaction (ledger + balance)
-    const movementResult = await executeStockMovements(movements);
+    // ✅ ATOMIC: Execute ทุก movements + unreservations ใน single transaction
+    const movementResult = await executeStockMovements(movements, unreservations);
 
     if (!movementResult.success) {
       console.error('🔴 CRITICAL: executeStockMovements failed:', movementResult.error);

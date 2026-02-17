@@ -51,6 +51,12 @@ export interface MovementResult {
   error?: string
 }
 
+export interface Unreservation {
+  balance_id: number
+  piece_qty: number
+  pack_qty: number
+}
+
 // ============================================================
 // Core Function: executeStockMovements
 // ============================================================
@@ -61,12 +67,14 @@ export interface MovementResult {
  * in a single database transaction.
  *
  * @param movements - Array of stock movements (IN/OUT)
+ * @param unreservations - Optional array of balance unreservations (atomic with movements)
  * @returns MovementResult with ledger_ids and balance_ids
  */
 export async function executeStockMovements(
-  movements: StockMovement[]
+  movements: StockMovement[],
+  unreservations?: Unreservation[]
 ): Promise<MovementResult> {
-  if (movements.length === 0) {
+  if (movements.length === 0 && (!unreservations || unreservations.length === 0)) {
     return { success: true, entries: [] }
   }
 
@@ -98,9 +106,19 @@ export async function executeStockMovements(
     movement_at: m.movement_at || null,
   }))
 
-  const { data, error } = await supabase.rpc('execute_inventory_movements', {
+  const rpcParams: { p_movements: any; p_unreservations?: any } = {
     p_movements: cleanMovements
-  })
+  }
+
+  if (unreservations && unreservations.length > 0) {
+    rpcParams.p_unreservations = unreservations.map(u => ({
+      balance_id: Number(u.balance_id),
+      piece_qty: Number(u.piece_qty) || 0,
+      pack_qty: Number(u.pack_qty) || 0,
+    }))
+  }
+
+  const { data, error } = await supabase.rpc('execute_inventory_movements', rpcParams)
 
   if (error) {
     console.error('[InventoryTransaction] RPC error:', error)
