@@ -10,9 +10,16 @@ import {
   Trash2,
   Loader2,
   AlertCircle,
+  Key,
+  Eye,
+  EyeOff,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 import Button from '@/components/ui/Button';
 import { useAIChat } from '@/contexts/AIChatContext';
+
+const API_KEY_STORAGE_KEY = 'wms_ai_api_key';
 
 interface Message {
   id: string;
@@ -23,13 +30,12 @@ interface Message {
 }
 
 interface GlobalAIChatProps {
-  // Future: API endpoint configuration
   apiEndpoint?: string;
 }
 
 export const GlobalAIChat: React.FC<GlobalAIChatProps> = ({ apiEndpoint }) => {
   const { isOpen, closeChat } = useAIChat();
-  
+
   // UI State
   const [isMinimized, setIsMinimized] = React.useState(false);
   const [messages, setMessages] = React.useState<Message[]>([
@@ -43,8 +49,37 @@ export const GlobalAIChat: React.FC<GlobalAIChatProps> = ({ apiEndpoint }) => {
   const [inputValue, setInputValue] = React.useState('');
   const [isLoading, setIsLoading] = React.useState(false);
 
+  // API Key State
+  const [apiKey, setApiKey] = React.useState('');
+  const [showApiKeySection, setShowApiKeySection] = React.useState(false);
+  const [showApiKeyText, setShowApiKeyText] = React.useState(false);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Load API key from localStorage on mount
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(API_KEY_STORAGE_KEY);
+      if (stored) setApiKey(stored);
+    } catch {
+      // ignore localStorage errors
+    }
+  }, []);
+
+  // Save API key to localStorage when it changes
+  const handleApiKeyChange = (value: string) => {
+    setApiKey(value);
+    try {
+      if (value) {
+        localStorage.setItem(API_KEY_STORAGE_KEY, value);
+      } else {
+        localStorage.removeItem(API_KEY_STORAGE_KEY);
+      }
+    } catch {
+      // ignore localStorage errors
+    }
+  };
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -97,7 +132,6 @@ export const GlobalAIChat: React.FC<GlobalAIChatProps> = ({ apiEndpoint }) => {
     setIsLoading(true);
 
     try {
-      // Call AI Chat API
       const response = await fetch('/api/ai/chat', {
         method: 'POST',
         headers: {
@@ -109,6 +143,7 @@ export const GlobalAIChat: React.FC<GlobalAIChatProps> = ({ apiEndpoint }) => {
             role: m.role,
             content: m.content,
           })),
+          api_key: apiKey || undefined,
         }),
       });
 
@@ -131,8 +166,8 @@ export const GlobalAIChat: React.FC<GlobalAIChatProps> = ({ apiEndpoint }) => {
       const errorMessage: Message = {
         id: 'error-' + Date.now(),
         role: 'assistant',
-        content: error instanceof Error 
-          ? `เกิดข้อผิดพลาด: ${error.message}` 
+        content: error instanceof Error
+          ? `เกิดข้อผิดพลาด: ${error.message}`
           : 'เกิดข้อผิดพลาดในการส่งข้อความ กรุณาลองใหม่อีกครั้ง',
         timestamp: new Date(),
         error: true,
@@ -157,13 +192,15 @@ export const GlobalAIChat: React.FC<GlobalAIChatProps> = ({ apiEndpoint }) => {
     });
   };
 
+  const hasApiKey = apiKey.trim().length > 0;
+
   return (
     <>
       {/* Chat Window */}
       {isOpen && (
         <div
           className={`fixed bottom-6 right-6 z-50 bg-white rounded-2xl shadow-2xl border border-thai-gray-200 transition-all duration-300 ${
-            isMinimized ? 'w-80 h-16' : 'w-96 h-[600px]'
+            isMinimized ? 'w-80 h-16' : 'w-96 h-[640px] max-h-[calc(100vh-2rem)]'
           } flex flex-col overflow-hidden`}
         >
           {/* Header */}
@@ -173,7 +210,14 @@ export const GlobalAIChat: React.FC<GlobalAIChatProps> = ({ apiEndpoint }) => {
                 <MessageCircle className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-semibold text-sm font-thai">AI ผู้ช่วยคลังสินค้า</h3>
+                <div className="flex items-center gap-1.5">
+                  <h3 className="font-semibold text-sm font-thai">AI ผู้ช่วยคลังสินค้า</h3>
+                  {hasApiKey && (
+                    <span className="bg-green-400/30 text-green-100 text-xs px-1.5 py-0.5 rounded-full font-thai">
+                      Claude
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs opacity-90">AustamGood WMS Assistant</p>
               </div>
             </div>
@@ -260,8 +304,9 @@ export const GlobalAIChat: React.FC<GlobalAIChatProps> = ({ apiEndpoint }) => {
               </div>
 
               {/* Input Area */}
-              <div className="border-t border-thai-gray-200 bg-white p-4">
-                <div className="flex items-center gap-2 mb-2">
+              <div className="border-t border-thai-gray-200 bg-white p-4 space-y-2">
+                {/* Toolbar row: clear + API key toggle */}
+                <div className="flex items-center justify-between">
                   <button
                     onClick={handleClearChat}
                     className="text-xs text-thai-gray-500 hover:text-red-600 transition-colors flex items-center gap-1 font-thai"
@@ -270,8 +315,72 @@ export const GlobalAIChat: React.FC<GlobalAIChatProps> = ({ apiEndpoint }) => {
                     <Trash2 className="w-3.5 h-3.5" />
                     ล้างประวัติ
                   </button>
+
+                  <button
+                    onClick={() => setShowApiKeySection(!showApiKeySection)}
+                    className={`text-xs flex items-center gap-1 font-thai transition-colors ${
+                      hasApiKey
+                        ? 'text-green-600 hover:text-green-700'
+                        : 'text-thai-gray-500 hover:text-primary-600'
+                    }`}
+                    title="ตั้งค่า API Key"
+                  >
+                    <Key className="w-3.5 h-3.5" />
+                    {hasApiKey ? 'Claude API' : 'API Key'}
+                    {showApiKeySection ? (
+                      <ChevronUp className="w-3 h-3" />
+                    ) : (
+                      <ChevronDown className="w-3 h-3" />
+                    )}
+                  </button>
                 </div>
 
+                {/* API Key Input (collapsible) */}
+                {showApiKeySection && (
+                  <div className="bg-thai-gray-50 rounded-xl p-3 space-y-2 border border-thai-gray-200">
+                    <p className="text-xs text-thai-gray-600 font-thai">
+                      ใส่ Anthropic API Key เพื่อให้ AI วิเคราะห์ข้อมูลได้แม่นยำยิ่งขึ้น
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 relative">
+                        <input
+                          type={showApiKeyText ? 'text' : 'password'}
+                          value={apiKey}
+                          onChange={(e) => handleApiKeyChange(e.target.value)}
+                          placeholder="sk-ant-api03-..."
+                          className="w-full px-3 py-2 pr-9 border border-thai-gray-200 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent bg-white"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowApiKeyText(!showApiKeyText)}
+                          className="absolute right-2 top-1/2 -translate-y-1/2 text-thai-gray-400 hover:text-thai-gray-600"
+                        >
+                          {showApiKeyText ? (
+                            <EyeOff className="w-3.5 h-3.5" />
+                          ) : (
+                            <Eye className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
+                      {hasApiKey && (
+                        <button
+                          onClick={() => handleApiKeyChange('')}
+                          className="text-xs text-red-500 hover:text-red-700 font-thai whitespace-nowrap"
+                        >
+                          ลบ
+                        </button>
+                      )}
+                    </div>
+                    {hasApiKey && (
+                      <p className="text-xs text-green-600 font-thai flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 bg-green-500 rounded-full inline-block"></span>
+                        เปิดใช้งาน Claude AI แล้ว
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Message input row */}
                 <div className="flex items-end gap-2">
                   <input
                     ref={inputRef}
@@ -296,7 +405,7 @@ export const GlobalAIChat: React.FC<GlobalAIChatProps> = ({ apiEndpoint }) => {
                   </Button>
                 </div>
 
-                <p className="text-xs text-thai-gray-400 mt-2 text-center font-thai">
+                <p className="text-xs text-thai-gray-400 text-center font-thai">
                   AI อาจให้ข้อมูลที่ไม่ถูกต้อง กรุณาตรวจสอบข้อมูลก่อนใช้งาน
                 </p>
               </div>

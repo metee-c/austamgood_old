@@ -103,7 +103,8 @@
       "Bash(taskkill:*)",
       "Bash(npm run db:types:*)",
       "Bash(timeout 120 npm run build)",
-      "Bash(xargs:*)"
+      "Bash(xargs:*)",
+      "Bash(cmd /c \"dir /AD /B C:\\\\Users\\\\User\\\\Desktop\\\\austamgood_wms\\\\node_modules 2>&1\")"
     ],
     "deny": [],
     "ask": []

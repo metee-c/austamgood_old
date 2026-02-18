@@ -1,16 +1,16 @@
 /**
  * AI Chat Backend Controller
  * POST /api/ai/chat
- * 
+ *
  * รับข้อความจากผู้ใช้ ประมวลผล และตอบกลับด้วยข้อมูลจริงจากระบบ
- * 
- * Enhanced with:
- * - Reasoning Engine (Phase 8)
- * - Safety Guardrails (Phase 9)
- * - Audit Logging
+ *
+ * Modes:
+ * - With api_key: calls Claude claude-sonnet-4-6 with real DB data as context → intelligent answer
+ * - Without api_key: rule-based intent detection + formatResponse (legacy)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import Anthropic from '@anthropic-ai/sdk';
 import {
   ChatRequest,
   ChatResponse,
@@ -26,8 +26,8 @@ import {
   logInteraction,
   calculateTokenUsage,
   SAFE_RESPONSES,
-  getLogStats,
 } from '@/lib/ai/guardrails';
+import { WMS_AI_SYSTEM_PROMPT } from '@/lib/ai/system-prompt';
 import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
 export interface AIChatRequest {
@@ -40,16 +40,25 @@ export interface AIChatRequest {
   user_id?: string;
   user_role?: string;
   enable_analysis?: boolean;
+  /** Anthropic API key — when provided, Claude synthesizes the final answer */
+  api_key?: string;
 }
 
 async function _POST(request: NextRequest): Promise<NextResponse<ChatResponse>> {
   const startTime = Date.now();
   let userRole = 'viewer';
   let detectedTools: string[] = [];
-  
+
   try {
     const body: AIChatRequest = await request.json();
-    const { message, conversation_history, session_id, user_id, enable_analysis = true } = body;
+    const {
+      message,
+      conversation_history,
+      session_id,
+      user_id,
+      enable_analysis = true,
+      api_key,
+    } = body;
     userRole = body.user_role || 'viewer';
 
     // Validate input
@@ -63,9 +72,8 @@ async function _POST(request: NextRequest): Promise<NextResponse<ChatResponse>> 
     }
 
     const userMessage = message.trim();
-    
-    // Log interaction start
-    console.log(`[AI Chat] User message: "${userMessage.substring(0, 100)}..." | Role: ${userRole}`);
+
+    console.log(`[AI Chat] User message: "${userMessage.substring(0, 100)}..." | Role: ${userRole} | Claude: ${api_key ? 'yes' : 'no'}`);
 
     // Check for greeting/help messages
     const lowerMessage = userMessage.toLowerCase();
@@ -79,8 +87,7 @@ async function _POST(request: NextRequest): Promise<NextResponse<ChatResponse>> 
       lowerMessage === 'ทำอะไรได้บ้าง'
     ) {
       const processingTime = Date.now() - startTime;
-      
-      // Log greeting interaction
+
       logInteraction({
         timestamp: new Date().toISOString(),
         session_id,
@@ -105,14 +112,14 @@ async function _POST(request: NextRequest): Promise<NextResponse<ChatResponse>> 
     // Detect intent and determine which tools to call
     const { tools, params } = detectIntent(userMessage);
     detectedTools = tools;
-    
+
     console.log(`[AI Chat] Detected tools: ${tools.join(', ') || 'none'}`);
 
-    // === CHECK FOR UNANSWERABLE QUESTIONS (Phase 11) ===
+    // === CHECK FOR UNANSWERABLE QUESTIONS ===
     const unanswerableCheck = detectUnanswerableIntent(userMessage);
     if (unanswerableCheck.isUnanswerable && unanswerableCheck.guidance) {
       const processingTime = Date.now() - startTime;
-      
+
       logInteraction({
         timestamp: new Date().toISOString(),
         session_id,
@@ -127,8 +134,6 @@ async function _POST(request: NextRequest): Promise<NextResponse<ChatResponse>> 
         success: true,
       });
 
-      console.log(`[AI Chat] Unanswerable question detected: ${unanswerableCheck.intent}`);
-
       return NextResponse.json({
         success: true,
         message: unanswerableCheck.guidance,
@@ -138,10 +143,10 @@ async function _POST(request: NextRequest): Promise<NextResponse<ChatResponse>> 
 
     // === GUARDRAIL CHECK ===
     const guardrailResult = performGuardrailCheck(userMessage, userRole, tools);
-    
+
     if (!guardrailResult.passed) {
       const processingTime = Date.now() - startTime;
-      
+
       logInteraction({
         timestamp: new Date().toISOString(),
         session_id,
@@ -165,13 +170,44 @@ async function _POST(request: NextRequest): Promise<NextResponse<ChatResponse>> 
       }, { status: 403 });
     }
 
-    // Use only allowed tools
     const allowedTools = guardrailResult.allowedTools;
 
-    // If no tools detected, provide a helpful response
+    // If no tools detected, ask Claude for a general WMS answer (or fallback)
     if (allowedTools.length === 0) {
+      if (api_key) {
+        // Let Claude answer open-ended questions with the system prompt
+        try {
+          const finalResponse = await callClaudeWithContext(
+            api_key,
+            userMessage,
+            [],
+            conversation_history,
+          );
+          const processingTime = Date.now() - startTime;
+          logInteraction({
+            timestamp: new Date().toISOString(),
+            session_id,
+            user_id,
+            user_role: userRole,
+            message: userMessage,
+            intent_detected: tools,
+            tools_called: [],
+            response_length: finalResponse.length,
+            data_points_used: 0,
+            processing_time_ms: processingTime,
+            success: true,
+          });
+          return NextResponse.json({
+            success: true,
+            message: finalResponse,
+            timestamp: new Date().toISOString(),
+          });
+        } catch (claudeErr) {
+          console.error('[AI Chat] Claude error (no tools):', claudeErr);
+        }
+      }
+
       const processingTime = Date.now() - startTime;
-      
       logInteraction({
         timestamp: new Date().toISOString(),
         session_id,
@@ -195,7 +231,7 @@ async function _POST(request: NextRequest): Promise<NextResponse<ChatResponse>> 
 
     // Get base URL for API calls
     const baseUrl = getBaseUrl(request);
-    
+
     // Execute tools and collect results
     const toolResults: ToolResult[] = [];
     let combinedResponse = '';
@@ -203,16 +239,15 @@ async function _POST(request: NextRequest): Promise<NextResponse<ChatResponse>> 
 
     for (const toolName of allowedTools) {
       const toolParams = { ...params };
-      
-      // Add default limit if not specified
+
       if (!toolParams.limit) {
         toolParams.limit = 50;
       }
 
       console.log(`[AI Chat] Executing tool: ${toolName}`);
-      
+
       const { data, error } = await executeTool(toolName, toolParams, baseUrl);
-      
+
       toolResults.push({
         tool_call_id: `${toolName}_${Date.now()}`,
         name: toolName,
@@ -224,12 +259,11 @@ async function _POST(request: NextRequest): Promise<NextResponse<ChatResponse>> 
         console.error(`[AI Chat] Tool error for ${toolName}:`, error);
         combinedResponse += `\n\n⚠️ ไม่สามารถดึงข้อมูลจาก ${toolName} ได้: ${error}`;
       } else {
-        // Count data points
         if (data?.data && Array.isArray(data.data)) {
           totalDataPoints += data.data.length;
         }
-        
-        // Format the response with reasoning if enabled
+
+        // Rule-based formatted response (used as fallback or without api_key)
         const formattedResponse = formatResponse(toolName, data, userMessage, enable_analysis);
         combinedResponse += (combinedResponse ? '\n\n---\n\n' : '') + formattedResponse;
       }
@@ -243,7 +277,7 @@ async function _POST(request: NextRequest): Promise<NextResponse<ChatResponse>> 
     // If all tools failed, return error
     if (toolResults.every(r => r.error)) {
       const processingTime = Date.now() - startTime;
-      
+
       logInteraction({
         timestamp: new Date().toISOString(),
         session_id,
@@ -268,13 +302,30 @@ async function _POST(request: NextRequest): Promise<NextResponse<ChatResponse>> 
       }, { status: 500 });
     }
 
+    // === CLAUDE SYNTHESIS (when api_key provided) ===
+    // Replace rule-based combinedResponse with Claude's intelligent synthesis
+    if (api_key) {
+      try {
+        const successfulResults = toolResults.filter(r => !r.error);
+        const claudeResponse = await callClaudeWithContext(
+          api_key,
+          userMessage,
+          successfulResults,
+          conversation_history,
+        );
+        combinedResponse = claudeResponse;
+        console.log('[AI Chat] Claude synthesis successful');
+      } catch (claudeErr) {
+        // If Claude fails, fall through to rule-based combinedResponse
+        console.error('[AI Chat] Claude synthesis failed, using rule-based response:', claudeErr);
+      }
+    }
+
     const processingTime = Date.now() - startTime;
     const finalResponse = combinedResponse.trim();
-    
-    // Calculate token usage
+
     const tokenUsage = calculateTokenUsage(userMessage, finalResponse);
-    
-    // Log successful interaction
+
     logInteraction({
       timestamp: new Date().toISOString(),
       session_id,
@@ -289,7 +340,7 @@ async function _POST(request: NextRequest): Promise<NextResponse<ChatResponse>> 
       success: true,
     });
 
-    console.log(`[AI Chat] Response generated in ${processingTime}ms | Tokens: ~${tokenUsage.totalTokens} | Data points: ${totalDataPoints}`);
+    console.log(`[AI Chat] Response in ${processingTime}ms | Tokens: ~${tokenUsage.totalTokens} | Data: ${totalDataPoints}`);
 
     return NextResponse.json({
       success: true,
@@ -305,9 +356,9 @@ async function _POST(request: NextRequest): Promise<NextResponse<ChatResponse>> 
 
   } catch (error) {
     console.error('[AI Chat] Unexpected error:', error);
-    
+
     const processingTime = Date.now() - startTime;
-    
+
     logInteraction({
       timestamp: new Date().toISOString(),
       user_role: userRole,
@@ -320,7 +371,7 @@ async function _POST(request: NextRequest): Promise<NextResponse<ChatResponse>> 
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
     });
-    
+
     return NextResponse.json({
       success: false,
       message: SAFE_RESPONSES.error,
@@ -331,24 +382,81 @@ async function _POST(request: NextRequest): Promise<NextResponse<ChatResponse>> 
 }
 
 /**
- * Get base URL from request
- * Handles various deployment scenarios including localhost, Vercel, and custom domains
+ * Call Claude claude-sonnet-4-6 with WMS system prompt + real tool data as context.
+ * Produces an intelligent, natural-language answer in Thai.
+ */
+async function callClaudeWithContext(
+  apiKey: string,
+  userMessage: string,
+  toolResults: ToolResult[],
+  conversationHistory?: Array<{ role: 'user' | 'assistant' | 'system'; content: string }>,
+): Promise<string> {
+  const client = new Anthropic({ apiKey });
+
+  // Build the user turn: include tool data as context
+  let contextBlock = '';
+  if (toolResults.length > 0) {
+    const sections = toolResults.map(r => {
+      const dataStr = typeof r.result === 'object'
+        ? JSON.stringify(r.result, null, 2)
+        : String(r.result ?? '');
+      // Truncate very large payloads to avoid exceeding token limits
+      const truncated = dataStr.length > 8000
+        ? dataStr.substring(0, 8000) + '\n... (ข้อมูลถูกตัดทอน)'
+        : dataStr;
+      return `### ข้อมูลจาก ${r.name}:\n${truncated}`;
+    });
+    contextBlock = `\n\nข้อมูลจากระบบ WMS ที่ดึงมาเพื่อตอบคำถามนี้:\n\n${sections.join('\n\n')}`;
+  }
+
+  const userTurn = toolResults.length > 0
+    ? `คำถาม: ${userMessage}${contextBlock}\n\nกรุณาตอบเป็นภาษาไทย กระชับ ตรงประเด็น ไม่เกิน 200 คำ ใช้ตารางหรือรายการเมื่อมีหลายรายการ ห้ามอธิบายข้อจำกัดยาวๆ`
+    : userMessage;
+
+  // Build conversation messages for Claude
+  const messages: Anthropic.MessageParam[] = [];
+
+  // Include recent conversation history (last 6 turns max)
+  if (conversationHistory && conversationHistory.length > 0) {
+    const recentHistory = conversationHistory
+      .filter(m => m.role !== 'system')
+      .slice(-6);
+    for (const m of recentHistory) {
+      messages.push({
+        role: m.role as 'user' | 'assistant',
+        content: m.content,
+      });
+    }
+  }
+
+  messages.push({ role: 'user', content: userTurn });
+
+  const response = await client.messages.create({
+    model: 'claude-sonnet-4-6',
+    max_tokens: 2048,
+    system: WMS_AI_SYSTEM_PROMPT,
+    messages,
+  });
+
+  const textBlock = response.content.find(b => b.type === 'text');
+  return textBlock ? (textBlock as Anthropic.TextBlock).text : '';
+}
+
+/**
+ * Get base URL from request headers
  */
 function getBaseUrl(request: NextRequest): string {
-  // Try to get from environment first
   if (process.env.NEXT_PUBLIC_APP_URL) {
     return process.env.NEXT_PUBLIC_APP_URL;
   }
-  
-  // Try to construct from request headers
+
   const host = request.headers.get('host');
   const forwardedProto = request.headers.get('x-forwarded-proto');
   const forwardedHost = request.headers.get('x-forwarded-host');
-  
-  // Use forwarded host if available (for proxied requests)
+
   const effectiveHost = forwardedHost || host || 'localhost:3000';
   const protocol = forwardedProto || (effectiveHost.includes('localhost') ? 'http' : 'https');
-  
+
   return `${protocol}://${effectiveHost}`;
 }
 
@@ -359,7 +467,7 @@ async function _GET(): Promise<NextResponse> {
   return NextResponse.json({
     status: 'ok',
     service: 'AI Chat',
-    version: '1.0',
+    version: '2.0',
     timestamp: new Date().toISOString(),
   });
 }

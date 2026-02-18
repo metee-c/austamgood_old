@@ -671,9 +671,31 @@ export function detectIntent(message: string): { tools: string[]; params: Record
     lowerMessage.includes('ใบโหลด') ||
     lowerMessage.includes('loadlist') ||
     lowerMessage.includes('โหลดสินค้า') ||
-    lowerMessage.includes('load list')
+    lowerMessage.includes('load list') ||
+    lowerMessage.includes('ยังไม่ได้โหลด') ||
+    lowerMessage.includes('ยังไม่โหลด') ||
+    lowerMessage.includes('รอโหลด') ||
+    lowerMessage.includes('ดหลด') ||  // typo variant of โหลด
+    (lowerMessage.includes('โหลด') && (
+      lowerMessage.includes('ยัง') ||
+      lowerMessage.includes('รอ') ||
+      lowerMessage.includes('ใบ') ||
+      lowerMessage.includes('สถานะ') ||
+      lowerMessage.includes('อะไรบ้าง')
+    ))
   ) {
     tools.push('query_loadlists');
+    // Extract status filter
+    if (
+      lowerMessage.includes('ยังไม่') ||
+      lowerMessage.includes('รอ') ||
+      lowerMessage.includes('pending') ||
+      lowerMessage.includes('ยังไม่ได้')
+    ) {
+      params.status = 'pending';
+    } else if (lowerMessage.includes('โหลดแล้ว') || lowerMessage.includes('เสร็จ')) {
+      params.status = 'loaded';
+    }
   }
 
   // Replenishment queries
@@ -744,21 +766,10 @@ export function detectIntent(message: string): { tools: string[]; params: Record
 
   // === END NEW INTENT DETECTION ===
 
-  // Default to KPI if no specific intent detected
+  // No tools detected — let Claude handle it (with api_key) or return out-of-scope
+  // Do NOT default to stock balance — that causes misleading answers
   if (tools.length === 0) {
-    // Check if it's a greeting or general question
-    if (
-      lowerMessage.includes('สวัสดี') ||
-      lowerMessage.includes('hello') ||
-      lowerMessage.includes('ช่วย') ||
-      lowerMessage.includes('help')
-    ) {
-      // No tools needed for greetings
-      return { tools: [], params: {} };
-    }
-    
-    // Default to stock balance for unknown queries
-    tools.push('query_stock_balance');
+    return { tools: [], params: {} };
   }
 
   return { tools, params };
@@ -2543,11 +2554,10 @@ async function executeLoadlistsQuery(
   }
 
   const statusThai: Record<string, string> = {
-    draft: 'ร่าง',
-    ready: 'พร้อมโหลด',
-    loading: 'กำลังโหลด',
-    loaded: 'โหลดเสร็จ',
-    departed: 'ออกเดินทางแล้ว',
+    pending: 'รอโหลด (ยังไม่ได้โหลด)',
+    loaded: 'โหลดเสร็จแล้ว',
+    completed: 'เสร็จสมบูรณ์',
+    voided: 'ยกเลิก',
   };
 
   const transformedData = (loadlists || []).map((l: any) => ({
