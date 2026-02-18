@@ -196,40 +196,47 @@ export default function MobilePickDetailPage() {
 
         const result = await response.json();
 
-        if (!response.ok) {
-          // Check if already processed (skip, not error)
-          if (result.already_processed) {
-            progressItem.status = 'skipped';
-            progressItem.message = 'รายการนี้หยิบไปแล้ว';
-            successCount++;
-          } else {
-            // Real error - stop processing
-            progressItem.status = 'error';
-            progressItem.message = result.error || 'เกิดข้อผิดพลาด';
-            progressItem.error_details = result.details || {
-              message: result.error,
-              order_no: item.order_no,
-              shop_name: itemShopName,
-              sku_id: item.sku_id,
-              sku_name: skuName,
-              quantity: item.quantity_to_pick
-            };
-
-            processedItems.push({ ...progressItem });
-            setProgressItems([...processedItems]);
-            setCompletedProgressItems(successCount);
-            setHasProgressError(true);
-            setErrorProgressItem(progressItem);
-            setCurrentProgressItem(undefined);
-            return; // Stop processing on error
-          }
-        } else {
-          // Success
-          progressItem.status = 'success';
-          progressItem.reservation_found = item.quantity_to_pick;
-          progressItem.message = `ย้ายสำเร็จ: ลดสต็อก ${item.source_location_id || 'บ้านหยิบ'} → เพิ่ม Dispatch`;
+        // Check if already processed (can happen with 200 or non-200 status)
+        if (result.already_processed) {
+          progressItem.status = 'skipped';
+          progressItem.message = 'รายการนี้หยิบไปแล้ว';
           successCount++;
+          
+          // Add to processed items and continue to next item
+          processedItems.push({ ...progressItem });
+          setProgressItems([...processedItems]);
+          setCompletedProgressItems(successCount);
+          setCurrentProgressItem(undefined);
+          continue; // Continue to next item
         }
+        
+        if (!response.ok) {
+          // Real error - stop processing
+          progressItem.status = 'error';
+          progressItem.message = result.error || 'เกิดข้อผิดพลาด';
+          progressItem.error_details = result.details || {
+            message: result.error,
+            order_no: item.order_no,
+            shop_name: itemShopName,
+            sku_id: item.sku_id,
+            sku_name: skuName,
+            quantity: item.quantity_to_pick
+          };
+
+          processedItems.push({ ...progressItem });
+          setProgressItems([...processedItems]);
+          setCompletedProgressItems(successCount);
+          setHasProgressError(true);
+          setErrorProgressItem(progressItem);
+          setCurrentProgressItem(undefined);
+          return; // Stop processing on error
+        }
+        
+        // Success
+        progressItem.status = 'success';
+        progressItem.reservation_found = item.quantity_to_pick;
+        progressItem.message = `ย้ายสำเร็จ: ลดสต็อก ${item.source_location_id || 'บ้านหยิบ'} → เพิ่ม Dispatch`;
+        successCount++;
 
         processedItems.push({ ...progressItem });
         setProgressItems([...processedItems]);
@@ -251,8 +258,15 @@ export default function MobilePickDetailPage() {
       }
     }
 
-    // All done successfully
+    // All done successfully - close modal and refresh
     setCurrentProgressItem(undefined);
+    
+    // Wait a moment to show final state, then close and refresh
+    setTimeout(() => {
+      setShowProgressModal(false);
+      setProgressItems([]);
+      fetchPicklist(); // Refresh to show updated status
+    }, 1000);
   }, [picklist]);
 
   const handleProgressClose = () => {
