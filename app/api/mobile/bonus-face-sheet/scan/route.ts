@@ -105,7 +105,7 @@ try {
     // ✅ ATOMIC LOCK: ป้องกัน race condition - claim item ด้วย conditional UPDATE
     const { data: claimed, error: claimError } = await supabase
       .from('bonus_face_sheet_items')
-      .update({ status: 'processing', updated_at: new Date().toISOString() })
+      .update({ status: 'processing' })
       .eq('id', item_id)
       .eq('status', 'pending')
       .select('id')
