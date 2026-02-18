@@ -20,11 +20,11 @@ async function _PATCH(
     }
 
     const updates = await request.json();
-    
+
     // Validate that only allowed fields are being updated
     const allowedFields = [
-      'status', 
-      'notes', 
+      'status',
+      'notes',
       'received_by',
       'receive_type',
       'reference_doc',
@@ -38,7 +38,7 @@ async function _PATCH(
       'pallet_calculation_method'
     ];
     const updateData: any = {};
-    
+
     for (const [key, value] of Object.entries(updates)) {
       if (allowedFields.includes(key)) {
         updateData[key] = value;
@@ -52,6 +52,16 @@ async function _PATCH(
       );
     }
 
+    // Get current receive data to check if status is changing
+    const { data: currentReceive, error: fetchError } = await receiveService.getReceiveById(id);
+    if (fetchError || !currentReceive) {
+      apiLog.failure(txId, 'STOCK_RECEIVE_UPDATE', new Error('Failed to fetch current receive data'));
+      return NextResponse.json(
+        { data: null, error: 'Failed to fetch current receive data' },
+        { status: 500 }
+      );
+    }
+
     const { data, error } = await receiveService.updateReceive(id, updateData);
 
     if (error) {
@@ -62,8 +72,10 @@ async function _PATCH(
       );
     }
 
-    // When status changes TO 'รับเข้าแล้ว', create inventory entries for all items
-    if (updateData.status === 'รับเข้าแล้ว' && data) {
+    // CRITICAL FIX: Only create inventory entries when status CHANGES FROM another status TO 'รับเข้าแล้ว'
+    // This prevents duplicate inventory entries when editing other fields while status is already 'รับเข้าแล้ว'
+    const statusChanged = currentReceive.status !== updateData.status;
+    if (statusChanged && updateData.status === 'รับเข้าแล้ว' && data) {
       const invResult = await receiveService.createInventoryFromReceiveItems(
         id,
         data.warehouse_id,
