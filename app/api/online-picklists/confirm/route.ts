@@ -182,56 +182,93 @@ try {
           remainingQty -= qtyToMove;
         }
 
-        // If not enough stock, create virtual pallet (negative balance) AND OUT ledger entry
+        // ✅ สต็อคไม่พอ → หักติดลบที่บ้านหยิบ (sourceLocation) โดยตรง
+        // เมื่อเติมสต็อคเข้ามาที่บ้านหยิบ trigger จะหักยอดอัตโนมัติ
         if (remainingQty > 0) {
-          const virtualPalletId = `VIRTUAL-${sourceLocation}-${actualSkuId}`;
-          const { data: virtualResult, error: virtualError } = await supabase
-            .rpc('create_or_update_virtual_balance', {
-              p_location_id: sourceLocation,
-              p_sku_id: actualSkuId,
-              p_warehouse_id: DEFAULT_WAREHOUSE,
-              p_piece_qty: -remainingQty,
-              p_pack_qty: -(remainingQty / qtyPerPack),
-              p_reserved_piece_qty: 0,
-              p_reserved_pack_qty: 0
-            });
+          console.log(`⚠️ สต็อคไม่พอ ขาดอีก ${remainingQty} ชิ้น → หักติดลบที่บ้านหยิบ ${sourceLocation}`);
+          const shortfallPack = remainingQty / qtyPerPack;
 
-          if (!virtualError && virtualResult) {
+          // หักจาก balance ที่ sourceLocation โดยตรง (อาจมี balance อยู่แล้วหรือต้องสร้างใหม่)
+          const { data: existingSourceBalance } = await supabase
+            .from('wms_inventory_balances')
+            .select('balance_id, total_piece_qty, total_pack_qty')
+            .eq('warehouse_id', DEFAULT_WAREHOUSE)
+            .eq('location_id', sourceLocation)
+            .eq('sku_id', actualSkuId)
+            .not('pallet_id', 'like', 'VIRTUAL-%')
+            .limit(1)
+            .maybeSingle();
+
+          if (existingSourceBalance) {
+            // หักจาก balance ที่มีอยู่ (อาจติดลบ)
+            await supabase
+              .from('wms_inventory_balances')
+              .update({
+                total_piece_qty: (existingSourceBalance.total_piece_qty || 0) - remainingQty,
+                total_pack_qty: (existingSourceBalance.total_pack_qty || 0) - shortfallPack,
+                updated_at: now
+              })
+              .eq('balance_id', existingSourceBalance.balance_id);
+
             movedFromBalances.push({
-              balance_id: virtualResult,
-              pallet_id: virtualPalletId,
+              balance_id: existingSourceBalance.balance_id,
               location_id: sourceLocation,
               qty_moved: remainingQty,
-              is_virtual: true
+              is_negative: true
             });
-            console.log(`✅ Created virtual balance for shortage: SKU=${actualSkuId}, Qty=${remainingQty}`);
-
-            // Create OUT ledger entry for virtual balance (shortage)
-            const { error: virtualOutLedgerError } = await supabase
-              .from('wms_inventory_ledger')
+          } else {
+            // สร้าง balance ติดลบใหม่ที่บ้านหยิบ
+            const { data: newBalance } = await supabase
+              .from('wms_inventory_balances')
               .insert({
                 warehouse_id: DEFAULT_WAREHOUSE,
                 location_id: sourceLocation,
                 sku_id: actualSkuId,
-                pallet_id: virtualPalletId,
-                transaction_type: 'online_pick',
-                direction: 'out',
-                piece_qty: remainingQty,
-                pack_qty: remainingQty / qtyPerPack,
-                reference_no: picklist.picklist_code,
-                reference_doc_type: 'online_picklist',
-                reference_doc_id: picklist_id,
-                remarks: `หยิบสินค้าออนไลน์ ${picklist.picklist_code} - ออกจาก ${sourceLocation} (สต็อกไม่พอ - ติดลบ)`,
-                created_by: user?.id ? parseInt(user.id) : null,
-                movement_at: now,
-                skip_balance_sync: true
-              });
+                pallet_id: null,
+                total_piece_qty: -remainingQty,
+                total_pack_qty: -shortfallPack,
+                reserved_piece_qty: 0,
+                reserved_pack_qty: 0,
+                created_at: now,
+                updated_at: now
+              })
+              .select('balance_id')
+              .single();
 
-            if (virtualOutLedgerError) {
-              console.error(`Error creating OUT ledger for virtual balance:`, virtualOutLedgerError);
+            if (newBalance) {
+              movedFromBalances.push({
+                balance_id: newBalance.balance_id,
+                location_id: sourceLocation,
+                qty_moved: remainingQty,
+                is_negative: true
+              });
             }
-          } else {
-            console.warn(`⚠️ Could not create virtual balance for SKU ${actualSkuId}: ${virtualError?.message}`);
+          }
+
+          console.log(`✅ หักติดลบที่บ้านหยิบ ${sourceLocation}: SKU=${actualSkuId}, Qty=${remainingQty}`);
+
+          // Create OUT ledger entry
+          const { error: shortfallOutLedgerError } = await supabase
+            .from('wms_inventory_ledger')
+            .insert({
+              warehouse_id: DEFAULT_WAREHOUSE,
+              location_id: sourceLocation,
+              sku_id: actualSkuId,
+              transaction_type: 'online_pick',
+              direction: 'out',
+              piece_qty: remainingQty,
+              pack_qty: shortfallPack,
+              reference_no: picklist.picklist_code,
+              reference_doc_type: 'online_picklist',
+              reference_doc_id: picklist_id,
+              remarks: `หยิบสินค้าออนไลน์ ${picklist.picklist_code} - ออกจาก ${sourceLocation} (สต็อกไม่พอ - หักติดลบ)`,
+              created_by: user?.id ? parseInt(user.id) : null,
+              movement_at: now,
+              skip_balance_sync: true
+            });
+
+          if (shortfallOutLedgerError) {
+            console.error(`Error creating OUT ledger for negative balance:`, shortfallOutLedgerError);
           }
         }
 

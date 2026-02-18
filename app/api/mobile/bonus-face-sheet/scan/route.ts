@@ -89,6 +89,40 @@ try {
       hub: packageData?.hub
     });
 
+    // ✅ CHECK: ถ้า item ถูก picked ไปแล้ว ให้ return already_processed
+    if (item.status === 'picked' || item.status === 'processing') {
+      console.log(`⚠️ [Bonus] Item ${item_id} already picked/processing, skipping`);
+      return NextResponse.json({
+        success: true,
+        message: 'รายการนี้ถูกหยิบไปแล้ว',
+        already_processed: true,
+        bonus_face_sheet_status: (item.bonus_face_sheets as any).status,
+        bonus_face_sheet_completed: (item.bonus_face_sheets as any).status === 'completed',
+        quantity_picked: item.quantity_picked
+      });
+    }
+
+    // ✅ ATOMIC LOCK: ป้องกัน race condition - claim item ด้วย conditional UPDATE
+    const { data: claimed, error: claimError } = await supabase
+      .from('bonus_face_sheet_items')
+      .update({ status: 'processing', updated_at: new Date().toISOString() })
+      .eq('id', item_id)
+      .eq('status', 'pending')
+      .select('id')
+      .maybeSingle();
+
+    if (!claimed || claimError) {
+      console.log(`⚠️ [Bonus] Item ${item_id} already claimed by another request`);
+      return NextResponse.json({
+        success: true,
+        message: 'รายการนี้กำลังถูกดำเนินการอยู่',
+        already_processed: true,
+        bonus_face_sheet_status: (item.bonus_face_sheets as any).status,
+        bonus_face_sheet_completed: false,
+        quantity_picked: quantity_picked
+      });
+    }
+
     // ✅ FIX: บังคับให้ต้อง "จัดสรรโลเคชั่น" ก่อนหยิบของ
     // ถ้า storage_location เป็น null = ยังไม่ได้จัดสรรโลเคชั่น
     if (!storageLocation) {
@@ -235,19 +269,9 @@ try {
         const isVirtualPallet = (balance.pallet_id && (balance.pallet_id.startsWith('VIRTUAL-') || balance.pallet_id.startsWith('VIRT-'))) ||
                                 (balance.location_id && balance.location_id === 'VIRTUAL-PALLET');
 
-        // ตรวจสอบสต็อค (Block negative outside Virtual Pallet / Prep Area)
+        // ✅ อนุญาตหักติดลบที่บ้านหยิบเสมอ (เมื่อเติมสต็อคเข้ามา trigger จะหักยอดอัตโนมัติ)
         if (balance.total_piece_qty < qtyToDeduct) {
-          const isPrepAreaLocation = await isPreparationArea(supabase, balance.location_id);
-          if (!isVirtualPallet && !isPrepAreaLocation) {
-            console.error(`🔴 Block negative: ${balance.location_id}`);
-            return NextResponse.json({
-              success: false,
-              error: `สต็อคไม่พอ: ต้องการ ${qtyToDeduct} แต่มีเพียง ${balance.total_piece_qty} ชิ้น`,
-              error_code: 'INSUFFICIENT_STOCK',
-              location_id: balance.location_id
-            }, { status: 400 });
-          }
-          console.log(`⚠️ ${isVirtualPallet ? 'Virtual Pallet' : 'Prep Area'} (${balance.location_id}): อนุญาตหักติดลบ`);
+          console.log(`⚠️ สต็อคไม่พอที่ ${balance.location_id}: ต้องการ ${qtyToDeduct} มี ${balance.total_piece_qty} → อนุญาตหักติดลบ`);
         }
 
         // สะสม unreservation เพื่อทำ atomic ใน RPC เดียวกับ movements
@@ -281,20 +305,21 @@ try {
         remainingQty -= qtyToDeduct;
       }
 
-      // ถ้าจองไว้ไม่พอ → ใช้ Virtual Pallet (RPC จะสร้าง negative balance ให้)
+      // ถ้าจองไว้ไม่พอ → หักติดลบที่บ้านหยิบเดิม
       if (remainingQty > 0) {
-        console.log(`⚠️ สต็อคที่จองไว้ไม่พอ ขาดอีก ${remainingQty} ชิ้น → ใช้ Virtual Pallet`);
+        // หา source location จาก reservation แรก หรือ item
+        const sourceLocId = movements.length > 0 ? movements[0].location_id : item.source_location_id || 'PK001';
+        console.log(`⚠️ สต็อคที่จองไว้ไม่พอ ขาดอีก ${remainingQty} ชิ้น → หักติดลบที่บ้านหยิบ ${sourceLocId}`);
         const faceSheetNo = (item.bonus_face_sheets as any).face_sheet_no;
-        const virtualPalletId = `VIRT-BFS-${faceSheetNo}-${item.sku_id}`;
         const shortfall = remainingQty;
         const shortfallPack = shortfall / qtyPerPack;
 
         movements.push({
           direction: 'out',
           warehouse_id: warehouseId,
-          location_id: 'VIRTUAL-PALLET',
+          location_id: sourceLocId,
           sku_id: item.sku_id,
-          pallet_id: virtualPalletId,
+          pallet_id: null,
           production_date: sourceProductionDate,
           expiry_date: sourceExpiryDate,
           pack_qty: shortfallPack,
@@ -304,7 +329,7 @@ try {
           reference_doc_type: 'bonus_face_sheet',
           reference_doc_id: bonus_face_sheet_id,
           order_item_id: item.order_item_id,
-          remarks: `หยิบของแถมจาก Virtual Pallet (ขาด ${shortfall} ชิ้น)`,
+          remarks: `หยิบของแถมจากบ้านหยิบ ${sourceLocId} (สต็อคไม่พอ ขาด ${shortfall} ชิ้น)`,
           created_by: userId,
         });
 
@@ -399,72 +424,27 @@ try {
       const isPrepAreaLocation = await isPreparationArea(supabase, sourceLocationId);
       const shortfall = quantity_picked - Math.min(currentPieceQty, quantity_picked);
 
-      // ตรวจสอบสต็อค
-      if (shortfall > 0 && !isPrepAreaLocation) {
-        // ใช้ Virtual Pallet สำหรับส่วนที่ขาด
-        const faceSheetNo = (item.bonus_face_sheets as any).face_sheet_no;
-        const virtualPalletId = `VIRT-BFS-${faceSheetNo}-${item.sku_id}`;
-        const qtyFromSource = Math.min(currentPieceQty, quantity_picked);
-        const shortfallPack = shortfall / qtyPerPack;
-
-        // OUT จาก source (เท่าที่มี)
-        if (qtyFromSource > 0) {
-          movements.push({
-            direction: 'out',
-            warehouse_id: warehouseId,
-            location_id: sourceLocationId,
-            sku_id: item.sku_id,
-            production_date: sourceProductionDate || null,
-            expiry_date: sourceExpiryDate || null,
-            pack_qty: qtyFromSource / qtyPerPack,
-            piece_qty: qtyFromSource,
-            transaction_type: 'pick',
-            reference_no: faceSheetNo,
-            reference_doc_type: 'bonus_face_sheet',
-            reference_doc_id: bonus_face_sheet_id,
-            order_item_id: item.order_item_id,
-            remarks: `หยิบของแถมจาก ${sourceLocationCode} (ไม่มี reservation)`,
-            created_by: userId,
-          });
-        }
-
-        // OUT จาก Virtual Pallet (ส่วนที่ขาด)
-        movements.push({
-          direction: 'out',
-          warehouse_id: warehouseId,
-          location_id: 'VIRTUAL-PALLET',
-          sku_id: item.sku_id,
-          pallet_id: virtualPalletId,
-          pack_qty: shortfallPack,
-          piece_qty: shortfall,
-          transaction_type: 'pick',
-          reference_no: faceSheetNo,
-          reference_doc_type: 'bonus_face_sheet',
-          reference_doc_id: bonus_face_sheet_id,
-          order_item_id: item.order_item_id,
-          remarks: `หยิบของแถมจาก Virtual Pallet (ขาด ${shortfall} ชิ้น)`,
-          created_by: userId,
-        });
-      } else {
-        // Prep Area (อนุญาตติดลบ) หรือมีสต็อคเพียงพอ → OUT ทั้งหมดจาก source
-        movements.push({
-          direction: 'out',
-          warehouse_id: warehouseId,
-          location_id: sourceLocationId,
-          sku_id: item.sku_id,
-          production_date: sourceProductionDate || null,
-          expiry_date: sourceExpiryDate || null,
-          pack_qty: packQty,
-          piece_qty: quantity_picked,
-          transaction_type: 'pick',
-          reference_no: (item.bonus_face_sheets as any).face_sheet_no,
-          reference_doc_type: 'bonus_face_sheet',
-          reference_doc_id: bonus_face_sheet_id,
-          order_item_id: item.order_item_id,
-          remarks: `หยิบของแถมจาก ${sourceLocationCode} (ไม่มี reservation)`,
-          created_by: userId,
-        });
+      // ✅ หักจากบ้านหยิบโดยตรง (อนุญาตติดลบ เมื่อเติมสต็อคเข้ามา trigger จะหักยอดอัตโนมัติ)
+      if (shortfall > 0) {
+        console.log(`⚠️ สต็อคไม่พอที่ ${sourceLocationCode}: ต้องการ ${quantity_picked} มี ${currentPieceQty} → หักติดลบ ${shortfall} ชิ้น`);
       }
+      movements.push({
+        direction: 'out',
+        warehouse_id: warehouseId,
+        location_id: sourceLocationId,
+        sku_id: item.sku_id,
+        production_date: sourceProductionDate || null,
+        expiry_date: sourceExpiryDate || null,
+        pack_qty: packQty,
+        piece_qty: quantity_picked,
+        transaction_type: 'pick',
+        reference_no: (item.bonus_face_sheets as any).face_sheet_no,
+        reference_doc_type: 'bonus_face_sheet',
+        reference_doc_id: bonus_face_sheet_id,
+        order_item_id: item.order_item_id,
+        remarks: `หยิบของแถมจาก ${sourceLocationCode} (ไม่มี reservation)${shortfall > 0 ? ` - สต็อคไม่พอ ขาด ${shortfall} ชิ้น` : ''}`,
+        created_by: userId,
+      });
 
       remainingQty = 0;
     }
