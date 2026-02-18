@@ -555,7 +555,8 @@ try {
 
     }
 
-    // Step 2: รวมจำนวนตาม SKU
+    // Step 2: รวมจำนวนตาม SKU ทุกประเภท (PL, FS, Online) เพื่อเช็คสต็อคที่ Dispatch
+    // โฟลว์ Online: บ้านหยิบ → E-Commerce (confirm) → Dispatch (packing scan) → Delivery-In-Progress (loading)
     const skuTotalQtyMap = new Map<string, number>();
     for (const item of allDispatchItems) {
       const current = skuTotalQtyMap.get(item.sku_id) || 0;

@@ -88,24 +88,25 @@ try {
 
     // ✅ ATOMIC LOCK: ป้องกัน race condition - claim item ด้วย conditional UPDATE
     // ถ้า 2 requests มาพร้อมกัน เฉพาะ request แรกที่ UPDATE สำเร็จเท่านั้นที่จะดำเนินการต่อ
+    console.log(`🔒 Attempting to claim item ${item_id}, current status: ${item.status}`);
     const { data: claimed, error: claimError } = await supabase
       .from('face_sheet_items')
-      .update({ status: 'processing', updated_at: new Date().toISOString() })
+      .update({ status: 'processing' })
       .eq('id', item_id)
       .eq('status', 'pending')
       .select('id')
       .maybeSingle();
 
     if (!claimed || claimError) {
-      console.log(`⚠️ Item ${item_id} already claimed by another request`);
+      console.log(`⚠️ Item ${item_id} already claimed by another request or claim failed:`, { claimed, claimError });
       return NextResponse.json({
-        success: true,
-        message: 'รายการนี้กำลังถูกดำเนินการอยู่',
-        already_processed: true,
+        success: false,
+        message: 'รายการนี้กำลังถูกดำเนินการอยู่ กรุณารอสักครู่แล้วลองใหม่',
+        already_claimed: true,
         face_sheet_status: (item.face_sheets as any).status,
         face_sheet_completed: false,
         quantity_picked: quantity_picked
-      });
+      }, { status: 423 }); // 423 Locked - resource is temporarily locked
     }
 
     // 2. ตรวจสอบ QR Code (ถ้ามี)
