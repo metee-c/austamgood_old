@@ -146,9 +146,38 @@ HAVING COUNT(*) > (
 );
 ```
 
+## 🐛 ปัญหาเพิ่มเติม: วันที่ไม่แสดงในฟอร์มแก้ไข
+
+**อาการ:**
+- เมื่อเข้าหน้าแก้ไขการรับสินค้า (เช่น GR-202602-0163)
+- ช่อง "วันที่รับ" แสดงเป็น placeholder "วว/ดด/ปปปป" แทนที่จะแสดงวันที่จริง
+- แม้ฐานข้อมูลมีค่า `receive_date: "2026-02-18 00:00:00+00"`
+
+**สาเหตุ:**
+- Database เก็บ timestamp แบบ `"2026-02-18 00:00:00+00"` (ISO 8601 with timezone)
+- HTML `<input type="date">` ต้องการรูปแบบ `"2026-02-18"` (YYYY-MM-DD เท่านั้น)
+- โค้ดเดิมใช้ `||` operator ที่ไม่ได้แปลงรูปแบบ:
+  ```typescript
+  receive_date: editData.receive_date || new Date().toISOString().split('T')[0]
+  ```
+
+**วิธีแก้ไข:**
+```typescript
+// BEFORE (line 131):
+receive_date: editData.receive_date || new Date().toISOString().split('T')[0],
+
+// AFTER (line 131):
+receive_date: editData.receive_date ? new Date(editData.receive_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
+```
+
+**การเปลี่ยนแปลง:**
+1. ใช้ ternary operator (`? :`) แทน `||` เพื่อแปลงค่าอย่างชัดเจน
+2. แปลง timestamp string → Date object → ISO string → แยกเอาแค่ส่วน date
+3. ผลลัพธ์: `"2026-02-18 00:00:00+00"` → `"2026-02-18"` ✅
+
 ## 📚 Related Files
-- `app/api/receives/[id]/route.ts` - API endpoint (แก้ไขแล้ว)
-- `components/forms/AddReceiveForm.tsx` - Form component
+- `app/api/receives/[id]/route.ts` - API endpoint (แก้ไข duplicate stock)
+- `components/forms/AddReceiveForm.tsx` - Form component (แก้ไข date format)
 - `lib/database/receive.ts` - Database service
 
 ## ⚠️ Important Notes
@@ -156,8 +185,9 @@ HAVING COUNT(*) > (
 1. **ไม่ควร** ลบ ledger entries ที่ซ้ำออกโดยตรง เพราะอาจกระทบกับ balance
 2. ถ้ามี ledger ซ้ำอยู่แล้ว ให้ใช้ stock adjustment เพื่อปรับยอดให้ถูกต้อง
 3. Fix นี้ป้องกันปัญหาใหม่ แต่ไม่ได้แก้ไขข้อมูลเก่าที่ซ้ำอยู่แล้ว
+4. **Date format fix** จำเป็นสำหรับ HTML date inputs ที่ต้องการ YYYY-MM-DD format
 
 ## ✅ Build Status
-- TypeScript: ✅ Pass
-- Production Build: ✅ Compiled successfully in 12.1s
-- Date: 2025-02-18 14:01
+- TypeScript: ✅ Pass (latest: 2026-02-18 15:30)
+- Production Build: ✅ Compiled successfully
+- All Fixes Applied: ✅ Duplicate stock + Date format

@@ -196,38 +196,56 @@ export default function DashboardPage() {
       const startDateTime = `${searchFilters.startDate}T${searchFilters.startTime}:00.000Z`
       const endDateTime = `${searchFilters.endDate}T${searchFilters.endTime}:59.999Z`
 
-      const [ordersRes, backupRes] = await Promise.all([
+      // Query both tables with proper date filtering
+      const [ordersRes, backupByCreatedRes, backupByPackedRes] = await Promise.all([
+        // Query packing_orders by created_at
         supabase
           .from('packing_orders')
           .select('*')
           .gte('created_at', startDateTime)
           .lte('created_at', endDateTime)
           .order('created_at', { ascending: false }),
-        // Fetch all backup orders and filter in JS (more reliable)
+        // Query backup orders by created_at
         supabase
           .from('packing_backup_orders')
           .select('*')
+          .gte('created_at', startDateTime)
+          .lte('created_at', endDateTime)
+          .order('created_at', { ascending: false }),
+        // Query backup orders by packed_at (for orders packed in this range)
+        supabase
+          .from('packing_backup_orders')
+          .select('*')
+          .gte('packed_at', startDateTime)
+          .lte('packed_at', endDateTime)
+          .not('packed_at', 'is', null)
           .order('packed_at', { ascending: false })
       ])
 
       if (ordersRes.error) throw ordersRes.error
-      if (backupRes.error) throw backupRes.error
+      if (backupByCreatedRes.error) throw backupByCreatedRes.error
+      if (backupByPackedRes.error) throw backupByPackedRes.error
 
       const ordersData = ordersRes.data || []
-      const backupData = backupRes.data || []
+      const backupByCreated = backupByCreatedRes.data || []
+      const backupByPacked = backupByPackedRes.data || []
       
-      // Filter backup orders to include if either created_at or packed_at is within date range
-      const filteredBackupData = backupData.filter(order => {
-        const createdAt = order.created_at ? new Date(order.created_at) : null
-        const packedAt = order.packed_at ? new Date(order.packed_at) : null
-        const startDate = new Date(startDateTime)
-        const endDate = new Date(endDateTime)
-        
-        const createdInRange = createdAt && createdAt >= startDate && createdAt <= endDate
-        const packedInRange = packedAt && packedAt >= startDate && packedAt <= endDate
-        
-        return createdInRange || packedInRange
+      // Merge backup orders and deduplicate by tracking_number or id
+      const backupMap = new Map()
+      
+      // Add orders from created_at query
+      backupByCreated.forEach(order => {
+        const key = order.tracking_number || order.id
+        if (key) backupMap.set(key, order)
       })
+      
+      // Add orders from packed_at query (will override if same key)
+      backupByPacked.forEach(order => {
+        const key = order.tracking_number || order.id
+        if (key) backupMap.set(key, order)
+      })
+      
+      const filteredBackupData = Array.from(backupMap.values())
       
       let allOrders = [...ordersData, ...filteredBackupData]
 

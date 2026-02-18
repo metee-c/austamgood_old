@@ -128,7 +128,7 @@ const AddReceiveForm: React.FC<AddReceiveFormProps> = ({ isOpen, onClose, onSucc
       pallet_box_option: editData.pallet_box_option || 'ไม่สร้าง_Pallet_ID',
       pallet_calculation_method: editData.pallet_calculation_method || 'ใช้จำนวนจากมาสเตอร์สินค้า',
       status: editData.status || 'รับเข้าแล้ว',
-      receive_date: editData.receive_date || new Date().toISOString().split('T')[0],
+      receive_date: editData.receive_date ? new Date(editData.receive_date).toISOString().split('T')[0] : new Date().toISOString().split('T')[0],
       warehouse_id: editData.warehouse_id || '',
       supplier_id: editData.supplier_id || '',
       customer_id: editData.customer_id || '',
