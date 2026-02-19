@@ -187,6 +187,10 @@ try {
     console.log(`✅ Stock reserved: ${result.items_reserved} items`);
     console.log(`✅ Total: ${result.total_packages} packages, ${result.total_items} items, ${result.total_orders} orders`);
 
+    // ตรวจสอบว่ามี SKU ที่สต็อกไม่พอหรือไม่
+    const insufficientItems = result.insufficient_stock_items || [];
+    const hasInsufficientStock = Array.isArray(insufficientItems) && insufficientItems.length > 0;
+
     return NextResponse.json({
       success: true,
       face_sheet_no: result.face_sheet_no,
@@ -195,7 +199,9 @@ try {
       total_items: result.total_items,
       total_orders: result.total_orders,
       items_reserved: result.items_reserved,
-      message: result.message
+      message: result.message,
+      has_insufficient_stock: hasInsufficientStock,
+      insufficient_stock_items: insufficientItems
     });
   } catch (error: any) {
     console.error('Error in POST /api/bonus-face-sheets:', error);

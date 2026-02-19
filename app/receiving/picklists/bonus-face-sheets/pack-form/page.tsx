@@ -782,7 +782,26 @@ const BonusFaceSheetPackFormPage = () => {
 
         if (result.success) {
           clearDraft();
-          router.push('/receiving/picklists/bonus-face-sheets?success=created');
+          
+          // ตรวจสอบว่ามี SKU ที่สต็อกไม่พอหรือไม่
+          if (result.has_insufficient_stock && result.insufficient_stock_items?.length > 0) {
+            const insufficientList = result.insufficient_stock_items
+              .map((item: any) => 
+                `• ${item.product_name} (${item.sku_id}): ต้องการ ${item.required_qty} ชิ้น, มีอยู่ ${item.available_qty} ชิ้น, ขาด ${item.shortage_qty} ชิ้น`
+              )
+              .join('\n');
+            
+            setError(
+              `⚠️ สร้างใบปะหน้าสำเร็จ แต่มีสินค้าที่สต็อกไม่พอ:\n\n${insufficientList}\n\nระบบได้สร้าง Virtual Pallet ไว้แล้ว กรุณาเติมสต็อกให้ครบก่อนยืนยันโหลด`
+            );
+            
+            // รอ 5 วินาทีแล้วค่อยไปหน้ารายการ
+            setTimeout(() => {
+              router.push('/receiving/picklists/bonus-face-sheets?success=created&warning=insufficient_stock');
+            }, 5000);
+          } else {
+            router.push('/receiving/picklists/bonus-face-sheets?success=created');
+          }
         } else {
           setError(result.error || 'ไม่สามารถสร้างใบปะหน้าได้');
         }
@@ -837,13 +856,13 @@ const BonusFaceSheetPackFormPage = () => {
 
           {/* Error Alert */}
           {error && (
-            <div className="bg-red-50 border border-red-200 rounded-lg p-2 flex items-start gap-2 mb-2">
-              <AlertCircle className="w-4 h-4 text-red-600 mt-0.5 flex-shrink-0" />
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 flex items-start gap-2 mb-2">
+              <AlertCircle className="w-5 h-5 text-red-600 mt-0.5 flex-shrink-0" />
               <div className="flex-1">
-                <span className="text-xs text-red-700 font-thai">{error}</span>
+                <p className="text-sm text-red-800 font-thai whitespace-pre-line leading-relaxed">{error}</p>
               </div>
               <button onClick={() => setError(null)} className="text-red-600 hover:text-red-800">
-                <XCircle className="w-3.5 h-3.5" />
+                <XCircle className="w-4 h-4" />
               </button>
             </div>
           )}
