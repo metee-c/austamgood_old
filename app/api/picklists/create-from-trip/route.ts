@@ -692,7 +692,6 @@ let picklist: any = null;
             p_source_balance_id: balance.balance_id,
             p_piece_qty_to_reserve: qtyToReserve,
             p_pack_qty_to_reserve: packToReserve,
-            p_reserved_by_user_id: user?.id,
             p_document_type: 'picklist',
             p_document_id: picklist.id,
             p_document_code: picklistCode,
