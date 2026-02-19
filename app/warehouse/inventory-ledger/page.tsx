@@ -294,8 +294,10 @@ const InventoryLedgerPage = () => {
 
   const fetchLedgerData = async (page: number = 1) => {
     try {
+      console.log('🔍 [Inventory Ledger] Fetching data for page:', page);
       setLoading(true);
       const supabase = createClient();
+      console.log('📊 [Inventory Ledger] Supabase client created');
 
       // If searching, first find matching SKU IDs from master_sku by name or sku_id
       let matchingSkuIds: string[] = [];
@@ -317,8 +319,10 @@ const InventoryLedgerPage = () => {
 
       const { count, error: countError } = await countQuery;
 
+      console.log('📈 [Inventory Ledger] Count result:', count, 'Error:', countError);
+
       if (countError) {
-        console.error('Error fetching count:', countError);
+        console.error('❌ [Inventory Ledger] Error fetching count:', countError);
       } else {
         setTotalCount(count || 0);
       }
@@ -358,17 +362,25 @@ const InventoryLedgerPage = () => {
 
       const { data, error } = await dataQuery;
 
+      console.log('📦 [Inventory Ledger] Data received:', data?.length, 'records');
+      if (error) {
+        console.error('❌ [Inventory Ledger] Query error:', error);
+      }
+
       if (error) {
         setError(error.message);
         console.error('Error fetching ledger data:', error);
       } else {
+        console.log('✅ [Inventory Ledger] Setting ledger data with', data?.length, 'records');
         setLedgerData(data || []);
         setCurrentPage(page);
       }
     } catch (err: any) {
+      console.error('💥 [Inventory Ledger] Catch block error:', err);
       setError('เกิดข้อผิดพลาดในการโหลดข้อมูล');
       console.error('Error:', err);
     } finally {
+      console.log('🏁 [Inventory Ledger] Fetch complete, loading:', false);
       setLoading(false);
     }
   };
@@ -648,6 +660,18 @@ const InventoryLedgerPage = () => {
 
   // ใช้ consolidatedData ที่รวม in/out entries ไว้แล้ว
   const groupedData = consolidatedData;
+
+  // Debug logging
+  useEffect(() => {
+    console.log('📊 [Inventory Ledger] State update:');
+    console.log('  - ledgerData:', ledgerData.length, 'records');
+    console.log('  - filteredData:', filteredData.length, 'records');
+    console.log('  - consolidatedData:', consolidatedData.length, 'records');
+    console.log('  - groupedData:', groupedData.length, 'records');
+    console.log('  - loading:', loading);
+    console.log('  - error:', error);
+    console.log('  - totalCount:', totalCount);
+  }, [ledgerData, loading, error, totalCount]);
 
   return (
     <div className="h-[calc(100vh-3.25rem)] bg-gradient-to-br from-thai-gray-25 to-white overflow-hidden">
