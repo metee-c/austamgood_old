@@ -76,6 +76,76 @@ try {
       );
     }
 
+    // ✅ อัพเดต reservation_status เป็น 'picked' และย้ายไป Dispatch
+    const { data: reservedBalances } = await supabase
+      .from('wms_inventory_balances')
+      .select('balance_id, sku_id, location_id, pallet_id, total_piece_qty, total_pack_qty, production_date, expiry_date, warehouse_id')
+      .eq('is_reserved_split', true)
+      .eq('reserved_for_document_type', 'picklist')
+      .eq('reserved_for_document_id', id);
+
+    if (reservedBalances && reservedBalances.length > 0) {
+      const balanceIds = reservedBalances.map(b => b.balance_id);
+      
+      // อัพเดต status เป็น 'picked' และเปลี่ยนโลเคชั่นเป็น Dispatch
+      const { error: updateError } = await supabase
+        .from('wms_inventory_balances')
+        .update({ 
+          reservation_status: 'picked',
+          location_id: STAGING_LOCATION // 'Dispatch'
+        })
+        .in('balance_id', balanceIds);
+
+      if (updateError) {
+        console.error('❌ Error updating reservation status:', updateError);
+      } else {
+        console.log(`✅ Updated ${balanceIds.length} balances to 'picked' status and moved to ${STAGING_LOCATION}`);
+        
+        // บันทึกการเคลื่อนไหวใน ledger สำหรับแต่ละ balance
+        for (const balance of reservedBalances) {
+          // บันทึก OUT จากโลเคชั่นเดิม
+          await supabase
+            .from('wms_inventory_ledger')
+            .insert({
+              movement_at: new Date().toISOString(),
+              transaction_type: 'pick',
+              direction: 'out',
+              warehouse_id: balance.warehouse_id,
+              location_id: balance.location_id,
+              sku_id: balance.sku_id,
+              pallet_id: balance.pallet_id,
+              production_date: balance.production_date,
+              expiry_date: balance.expiry_date,
+              pack_qty: balance.total_pack_qty,
+              piece_qty: balance.total_piece_qty,
+              reference_no: `PL-${id}`,
+              remarks: `หยิบสินค้าจาก ${balance.location_id} ไป ${STAGING_LOCATION}`
+            });
+
+          // บันทึก IN ไปยัง Dispatch
+          await supabase
+            .from('wms_inventory_ledger')
+            .insert({
+              movement_at: new Date().toISOString(),
+              transaction_type: 'pick',
+              direction: 'in',
+              warehouse_id: balance.warehouse_id,
+              location_id: STAGING_LOCATION,
+              sku_id: balance.sku_id,
+              pallet_id: balance.pallet_id,
+              production_date: balance.production_date,
+              expiry_date: balance.expiry_date,
+              pack_qty: balance.total_pack_qty,
+              piece_qty: balance.total_piece_qty,
+              reference_no: `PL-${id}`,
+              remarks: `รับสินค้าที่หยิบเข้า ${STAGING_LOCATION}`
+            });
+        }
+        
+        console.log(`✅ Recorded ${reservedBalances.length * 2} ledger entries for pick movement`);
+      }
+    }
+
     // สร้าง staging reservations สำหรับแต่ละ item
     const reservationResults = [];
     for (const item of items) {

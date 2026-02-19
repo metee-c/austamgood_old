@@ -686,25 +686,25 @@ let picklist: any = null;
         
         const packToReserve = qtyToReserve / qtyPerPack;
 
-        // Update inventory balance
-        await supabase
-          .from('wms_inventory_balances')
-          .update({
-            reserved_pack_qty: (balance.reserved_pack_qty || 0) + packToReserve,
-            reserved_piece_qty: (balance.reserved_piece_qty || 0) + qtyToReserve,
-            updated_at: new Date().toISOString()
-          })
-          .eq('balance_id', balance.balance_id);
+        // ✅ NEW: เรียกใช้ split_balance_on_reservation() แทนการ UPDATE โดยตรง
+        const { data: splitResult, error: splitError } = await supabase
+          .rpc('split_balance_on_reservation', {
+            p_source_balance_id: balance.balance_id,
+            p_piece_qty_to_reserve: qtyToReserve,
+            p_pack_qty_to_reserve: packToReserve,
+            p_reserved_by_user_id: user?.id,
+            p_document_type: 'picklist',
+            p_document_id: picklist.id,
+            p_document_code: picklistCode,
+            p_picklist_item_id: picklistItem.id
+          });
 
-        // Record reservation
-        reservationsToInsert.push({
-          picklist_item_id: picklistItem.id,
-          balance_id: balance.balance_id,
-          reserved_piece_qty: qtyToReserve,
-          reserved_pack_qty: packToReserve,
-          reserved_by: user?.id,
-          status: 'reserved'
-        });
+        if (splitError) {
+          console.error('❌ Error splitting balance:', splitError);
+          throw new Error(`Failed to reserve stock: ${splitError.message}`);
+        }
+
+        console.log(`✅ Split balance ${balance.balance_id} → ${splitResult[0].new_balance_id} (${qtyToReserve} pieces)`);
 
         remainingQty -= qtyToReserve;
       }

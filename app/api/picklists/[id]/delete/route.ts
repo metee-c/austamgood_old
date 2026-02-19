@@ -27,82 +27,39 @@ async function handleDelete(
 
     console.log(`🗑️ Deleting picklist ${id} by ${userEmail}`);
 
-    // 1. ดึง picklist_item_reservations
-    const { data: reservations, error: reservationsError } = await supabase
-      .from('picklist_item_reservations')
-      .select(`
-        reservation_id,
-        balance_id,
-        reserved_piece_qty,
-        reserved_pack_qty,
-        picklist_item_id,
-        picklist_items!inner (
-          picklist_id
-        )
-      `)
-      .eq('picklist_items.picklist_id', id);
+    // ✅ NEW: เรียกใช้ release_reservation_split_balance() แทนการลด reserved_piece_qty โดยตรง
+    const { data: reservedBalances } = await supabase
+      .from('wms_inventory_balances')
+      .select('balance_id')
+      .eq('is_reserved_split', true)
+      .eq('reserved_for_document_type', 'picklist')
+      .eq('reserved_for_document_id', id);
 
-    if (reservationsError) {
-      console.error('Error fetching reservations:', reservationsError);
-      return NextResponse.json(
-        { error: 'Failed to fetch reservations: ' + reservationsError.message },
-        { status: 500 }
-      );
-    }
+    console.log(`📋 Found ${reservedBalances?.length || 0} reserved balances to release`);
 
-    console.log(`📋 Found ${reservations?.length || 0} reservations to release`);
+    // Release each reserved balance
+    if (reservedBalances && reservedBalances.length > 0) {
+      for (const balance of reservedBalances) {
+        const { data: releaseResult, error: releaseError } = await supabase
+          .rpc('release_reservation_split_balance', {
+            p_reserved_balance_id: balance.balance_id,
+            p_released_by_user_id: context.user?.user_id || null,
+            p_reason: 'ลบ Picklist'
+          });
 
-    // 2. ลดยอดจองใน wms_inventory_balances
-    if (reservations && reservations.length > 0) {
-      for (const reservation of reservations) {
-        // ดึงยอดปัจจุบันก่อน
-        const { data: currentBalance } = await supabase
-          .from('wms_inventory_balances')
-          .select('reserved_piece_qty, reserved_pack_qty')
-          .eq('balance_id', reservation.balance_id)
-          .single();
-
-        if (currentBalance) {
-          const newReservedPiece = Math.max(0, (currentBalance.reserved_piece_qty || 0) - (reservation.reserved_piece_qty || 0));
-          const newReservedPack = Math.max(0, (currentBalance.reserved_pack_qty || 0) - (reservation.reserved_pack_qty || 0));
-
-          const { error: updateError } = await supabase
-            .from('wms_inventory_balances')
-            .update({
-              reserved_piece_qty: newReservedPiece,
-              reserved_pack_qty: newReservedPack,
-              updated_at: new Date().toISOString()
-            })
-            .eq('balance_id', reservation.balance_id);
-
-          if (updateError) {
-            console.error(`Error updating balance ${reservation.balance_id}:`, updateError);
-          } else {
-            console.log(`✅ Released reservation from balance ${reservation.balance_id}`);
-          }
+        if (releaseError) {
+          console.error(`❌ Error releasing balance ${balance.balance_id}:`, releaseError);
+          return NextResponse.json(
+            { error: `Failed to release balance: ${releaseError.message}` },
+            { status: 500 }
+          );
+        } else {
+          console.log(`✅ Released balance ${balance.balance_id} → ${releaseResult[0].merged_to_balance_id}`);
         }
       }
     }
 
-    // 3. ลบ picklist_item_reservations
-    if (reservations && reservations.length > 0) {
-      const reservationIds = reservations.map(r => r.reservation_id);
-      const { error: deleteReservationsError } = await supabase
-        .from('picklist_item_reservations')
-        .delete()
-        .in('reservation_id', reservationIds);
-
-      if (deleteReservationsError) {
-        console.error('Error deleting reservations:', deleteReservationsError);
-        return NextResponse.json(
-          { error: 'Failed to delete reservations: ' + deleteReservationsError.message },
-          { status: 500 }
-        );
-      }
-      console.log(`✅ Deleted ${reservationIds.length} reservation records`);
-    }
-
-    // 4. ลบ picklist_items
+    // ลบ picklist_items
     const { error: deleteItemsError } = await supabase
       .from('picklist_items')
       .delete()
@@ -117,7 +74,7 @@ async function handleDelete(
     }
     console.log(`✅ Deleted picklist items`);
 
-    // 5. ลบ picklist
+    // ลบ picklist
     const { error: deletePicklistError } = await supabase
       .from('picklists')
       .delete()
@@ -136,7 +93,7 @@ async function handleDelete(
     return NextResponse.json({
       success: true,
       message: 'Picklist deleted successfully',
-      released_reservations: reservations?.length || 0
+      released_reservations: reservedBalances?.length || 0
     });
 
   } catch (error) {

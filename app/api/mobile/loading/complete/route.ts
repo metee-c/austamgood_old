@@ -988,6 +988,80 @@ try {
     }
     console.log(`✅ Loadlist status updated to loaded`);
 
+    // ✅ อัพเดต reservation_status เป็น 'loaded' และย้ายโลเคชั่นไป Delivery-In-Progress
+    if (picklistIds.length > 0) {
+      const { data: reservedBalances } = await supabase
+        .from('wms_inventory_balances')
+        .select('balance_id, sku_id, location_id, pallet_id, total_piece_qty, total_pack_qty, production_date, expiry_date, warehouse_id')
+        .eq('is_reserved_split', true)
+        .in('reserved_for_document_id', picklistIds)
+        .eq('reserved_for_document_type', 'picklist');
+
+      if (reservedBalances && reservedBalances.length > 0) {
+        const balanceIds = reservedBalances.map(b => b.balance_id);
+        
+        // อัพเดต status เป็น 'loaded' และเปลี่ยนโลเคชั่นเป็น Delivery-In-Progress
+        const { error: updateError } = await supabase
+          .from('wms_inventory_balances')
+          .update({ 
+            reservation_status: 'loaded',
+            location_id: deliveryLocation.location_id
+          })
+          .in('balance_id', balanceIds);
+
+        if (updateError) {
+          console.error('❌ Error updating reservation status to loaded:', updateError);
+        } else {
+          console.log(`✅ Updated ${balanceIds.length} balances to 'loaded' status and moved to Delivery-In-Progress`);
+          
+          // บันทึกการเคลื่อนไหวใน ledger สำหรับแต่ละ balance
+          for (const balance of reservedBalances) {
+            // บันทึก OUT จาก Dispatch
+            await supabase
+              .from('wms_inventory_ledger')
+              .insert({
+                movement_at: now,
+                transaction_type: 'loading',
+                direction: 'out',
+                warehouse_id: balance.warehouse_id,
+                location_id: balance.location_id, // Dispatch
+                sku_id: balance.sku_id,
+                pallet_id: balance.pallet_id,
+                production_date: balance.production_date,
+                expiry_date: balance.expiry_date,
+                pack_qty: balance.total_pack_qty,
+                piece_qty: balance.total_piece_qty,
+                reference_no: loadlist.loadlist_code,
+                remarks: `โหลดสินค้าจาก ${balance.location_id} ไป Delivery-In-Progress`,
+                created_by: userId
+              });
+
+            // บันทึก IN ไปยัง Delivery-In-Progress
+            await supabase
+              .from('wms_inventory_ledger')
+              .insert({
+                movement_at: now,
+                transaction_type: 'loading',
+                direction: 'in',
+                warehouse_id: balance.warehouse_id,
+                location_id: deliveryLocation.location_id,
+                sku_id: balance.sku_id,
+                pallet_id: balance.pallet_id,
+                production_date: balance.production_date,
+                expiry_date: balance.expiry_date,
+                pack_qty: balance.total_pack_qty,
+                piece_qty: balance.total_piece_qty,
+                reference_no: loadlist.loadlist_code,
+                remarks: `รับสินค้าที่โหลดเข้า Delivery-In-Progress`,
+                created_by: userId
+              });
+          }
+          
+          console.log(`✅ Recorded ${reservedBalances.length * 2} ledger entries for loading movement`);
+        }
+      }
+    }
+
     // Update all picklists loaded_at
     if (picklistIds.length > 0) {
       console.log(`🔄 Updating ${picklistIds.length} picklists loaded_at...`);
