@@ -564,7 +564,22 @@ try {
     }
 
     // Step 3: เช็คสต็อกแบบรวม (ต่อ SKU)
-    const skuBalanceCache = new Map<string, { availableQty: number; balance: any }>();
+    const skuBalanceCache = new Map<string, { availableQty: number; balance: any; sourceLocationId?: number; sourceLocationName?: string }>();
+
+    // ✅ FIX: ตรวจสอบว่าเป็น legacy loadlist หรือไม่ (ไม่มี reserved balances)
+    const { data: reservedBalancesCheck } = await supabase
+      .from('wms_inventory_balances')
+      .select('balance_id')
+      .eq('is_reserved_split', true)
+      .in('reserved_for_document_id', picklistIds)
+      .eq('reserved_for_document_type', 'picklist')
+      .limit(1);
+    
+    const isLegacyLoadlist = picklistIds.length > 0 && (!reservedBalancesCheck || reservedBalancesCheck.length === 0);
+    
+    if (isLegacyLoadlist) {
+      console.log(`⚠️ Legacy loadlist detected: ${loadlist.loadlist_code} - will search stock from all locations`);
+    }
 
     for (const [skuId, totalQtyNeeded] of skuTotalQtyMap) {
       // Get SKU info (use maybeSingle to avoid error when SKU not found)
@@ -581,28 +596,77 @@ try {
         console.warn(`⚠️ SKU ${skuId} not found in master_sku - will use defaults`);
       }
 
-      // Check Dispatch balance - SUM all rows
-      const { data: dispatchBalances, error: balanceError } = await supabase
-        .from('wms_inventory_balances')
-        .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
-        .eq('warehouse_id', 'WH001')
-        .eq('location_id', dispatchLocation.location_id)
-        .eq('sku_id', skuId)
-        .gt('total_piece_qty', 0);
+      // ✅ FIX: สำหรับ legacy loadlist ค้นหาสต็อกจากทุกตำแหน่ง ไม่ใช่แค่ Dispatch
+      let availableQty = 0;
+      let sourceBalance: any = null;
+      let sourceLocationId: number | null = null;
+      let sourceLocationName: string = 'Dispatch';
 
-      if (balanceError) {
-        console.error('Error checking dispatch balance:', balanceError);
-        return NextResponse.json(
-          { error: 'ไม่สามารถตรวจสอบสต็อคได้', details: balanceError.message },
-          { status: 500 }
-        );
+      if (isLegacyLoadlist) {
+        // ค้นหาสต็อกจากทุกตำแหน่ง (ยกเว้น Delivery-In-Progress)
+        const { data: allBalances } = await supabase
+          .from('wms_inventory_balances')
+          .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no, location_id, location:master_location!inner(location_code)')
+          .eq('warehouse_id', 'WH001')
+          .eq('sku_id', skuId)
+          .gt('total_piece_qty', 0)
+          .neq('location_id', deliveryLocation.location_id); // ยกเว้น Delivery-In-Progress
+
+        // เรียงลำดับตามจำนวนสต็อก (มากไปน้อย) และเลือกอันที่มีสต็อกพอ
+        const sortedBalances = (allBalances || [])
+          .filter((b: any) => Number(b.total_piece_qty) > 0)
+          .sort((a: any, b: any) => Number(b.total_piece_qty) - Number(a.total_piece_qty));
+
+        let remainingQty = totalQtyNeeded;
+        let totalAvailable = 0;
+        let selectedBalance: any = null;
+
+        for (const bal of sortedBalances) {
+          const balQty = Number(bal.total_piece_qty);
+          totalAvailable += balQty;
+          
+          if (!selectedBalance && balQty >= remainingQty) {
+            selectedBalance = bal;
+            sourceLocationId = bal.location_id;
+            sourceLocationName = (bal.location as any)?.location_code || 'Unknown';
+          }
+        }
+
+        availableQty = totalAvailable;
+        sourceBalance = selectedBalance || sortedBalances[0] || null;
+        
+        if (sourceBalance && !sourceLocationId) {
+          sourceLocationId = sourceBalance.location_id;
+          sourceLocationName = (sourceBalance.location as any)?.location_code || 'Unknown';
+        }
+
+        console.log(`🔍 Legacy stock check for ${skuId}: needed=${totalQtyNeeded}, available=${availableQty}, location=${sourceLocationName}`);
+      } else {
+        // ระบบใหม่: ตรวจสอบสต็อกที่ Dispatch เท่านั้น
+        const { data: dispatchBalances, error: balanceError } = await supabase
+          .from('wms_inventory_balances')
+          .select('balance_id, total_piece_qty, total_pack_qty, production_date, expiry_date, lot_no')
+          .eq('warehouse_id', 'WH001')
+          .eq('location_id', dispatchLocation.location_id)
+          .eq('sku_id', skuId)
+          .gt('total_piece_qty', 0);
+
+        if (balanceError) {
+          console.error('Error checking dispatch balance:', balanceError);
+          return NextResponse.json(
+            { error: 'ไม่สามารถตรวจสอบสต็อคได้', details: balanceError.message },
+            { status: 500 }
+          );
+        }
+
+        availableQty = (dispatchBalances || []).reduce((sum, b) => sum + Number(b.total_piece_qty || 0), 0);
+        sourceBalance = dispatchBalances?.[0] || null;
+        sourceLocationId = dispatchLocation.location_id;
+        sourceLocationName = 'Dispatch';
       }
 
-      const availableQty = (dispatchBalances || []).reduce((sum, b) => sum + Number(b.total_piece_qty || 0), 0);
-      const dispatchBalance = dispatchBalances?.[0] || null;
-
       // Cache balance info for later use
-      skuBalanceCache.set(skuId, { availableQty, balance: dispatchBalance });
+      skuBalanceCache.set(skuId, { availableQty, balance: sourceBalance, sourceLocationId, sourceLocationName });
 
       // ✅ เช็คสต็อกแบบรวม
       if (availableQty < totalQtyNeeded) {
@@ -612,7 +676,8 @@ try {
           required: totalQtyNeeded,
           available: availableQty,
           shortage: totalQtyNeeded - availableQty,
-          location: 'Dispatch'
+          location: sourceLocationName,
+          is_legacy: isLegacyLoadlist
         });
       }
     }
@@ -630,6 +695,10 @@ try {
         const qtyPack = item.qty / qtyPerPack;
         const cached = skuBalanceCache.get(item.sku_id);
 
+        // ✅ FIX: สำหรับ legacy loadlist ใช้ source location จาก cache
+        const effectiveSourceLocation = cached?.sourceLocationId || dispatchLocation.location_id;
+        const effectiveSourceName = cached?.sourceLocationName || 'Dispatch';
+
         itemsToProcess.push({
           sku_id: item.sku_id,
           qty: item.qty,
@@ -639,9 +708,11 @@ try {
           face_sheet_no: item.source === 'face_sheet' ? item.docCode : undefined,
           tracking_number: item.source === 'online_order' ? item.docCode : undefined,
           sourceBalance: cached?.balance,
-          sourceLocation: dispatchLocation.location_id,
+          sourceLocation: effectiveSourceLocation,
+          sourceLocationName: effectiveSourceName,
           isFromFaceSheet: item.source === 'face_sheet',
-          isFromOnlineOrder: item.source === 'online_order'
+          isFromOnlineOrder: item.source === 'online_order',
+          isLegacy: isLegacyLoadlist
         });
       }
     }
@@ -882,80 +953,212 @@ try {
     let itemsProcessed = 0;
 
     try {
-      // ✅ V3: Use ATOMIC function with Rollback, Idempotency, and Concurrent Lock
-      // Generate idempotency key from loadlist_id + timestamp (rounded to minute)
-      const idempotencyKey = `loading_${loadlist.id}_${Math.floor(Date.now() / 60000)}`;
-      const lockedBy = `api_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-      
-      console.log(`🔓 Processing loading complete for loadlist ${loadlist.id}...`);
-      console.log(`🔑 Idempotency key: ${idempotencyKey}`);
-      console.log(`🔒 Lock ID: ${lockedBy}`);
-      
-      const { data: processResult, error: processError } = await supabase
-        .rpc('process_loadlist_loading_complete_atomic', {
-          p_loadlist_id: loadlist.id,
-          p_delivery_location_id: deliveryLocation.location_id,
-          p_idempotency_key: idempotencyKey,
-          p_locked_by: lockedBy
-        });
+      // ✅ FIX: สำหรับ legacy loadlists ให้ย้ายสต็อกเองโดยตรง ไม่ใช้ database function
+      if (isLegacyLoadlist) {
+        console.log(`🔄 Processing legacy loadlist manually...`);
+        
+        // Group items by source location
+        const itemsByLocation = new Map<number, any[]>();
+        for (const item of itemsToProcess) {
+          const locId = item.sourceLocation || dispatchLocation.location_id;
+          if (!itemsByLocation.has(locId)) {
+            itemsByLocation.set(locId, []);
+          }
+          itemsByLocation.get(locId)!.push(item);
+        }
 
-      if (processError) {
-        console.error(`❌ Error processing loading complete:`, processError);
-        return NextResponse.json(
-          { error: 'ไม่สามารถดำเนินการโหลดสินค้าได้', details: processError.message },
-          { status: 500 }
-        );
-      }
+        // Process each location
+        for (const [sourceLocId, items] of itemsByLocation) {
+          const sourceLocName = items[0]?.sourceLocationName || 'Unknown';
+          console.log(`📦 Processing ${items.length} items from ${sourceLocName} (ID: ${sourceLocId})`);
 
-      // ✅ V3: Handle atomic function result
-      const functionSuccess = processResult?.[0]?.success ?? false;
-      const processedCount = processResult?.[0]?.processed_count || 0;
-      const totalQtyMoved = processResult?.[0]?.total_qty_moved || 0;
-      const errorMessage = processResult?.[0]?.error_message;
-      const isDuplicate = processResult?.[0]?.is_duplicate ?? false;
+          for (const item of items) {
+            if (!item.sourceBalance) {
+              console.warn(`⚠️ No source balance for SKU ${item.sku_id}, skipping`);
+              continue;
+            }
 
-      // ✅ Check if this is a duplicate request (idempotency)
-      if (isDuplicate) {
-        console.log(`⚠️ Duplicate request detected - returning cached result`);
-        return NextResponse.json({
-          success: true,
-          message: 'ยืนยันการโหลดสินค้าเสร็จสิ้น (จาก cache)',
-          loadlist_code: loadlist.loadlist_code,
-          items_moved: processedCount,
-          total_qty_moved: totalQtyMoved,
-          is_duplicate: true
-        });
-      }
+            const balance = item.sourceBalance;
+            const qtyToMove = Math.min(Number(balance.total_piece_qty), item.qty);
+            
+            if (qtyToMove <= 0) continue;
 
-      // ✅ Check if function failed (with automatic rollback)
-      if (!functionSuccess) {
-        console.error(`❌ Atomic function failed: ${errorMessage}`);
-        return NextResponse.json(
-          { 
-            error: 'ไม่สามารถดำเนินการโหลดสินค้าได้', 
-            details: errorMessage,
-            rollback: true  // ระบุว่า transaction ถูก rollback แล้ว
-          },
-          { status: 500 }
-        );
-      }
+            // Deduct from source
+            const { error: deductError } = await supabase
+              .from('wms_inventory_balances')
+              .update({
+                total_piece_qty: Number(balance.total_piece_qty) - qtyToMove,
+                total_pack_qty: Number(balance.total_pack_qty) - (item.qtyPack || qtyToMove / (item.qtyPerPack || 1)),
+                updated_at: now
+              })
+              .eq('balance_id', balance.balance_id);
 
-      if (errorMessage) {
-        console.error(`⚠️ Function completed with warnings: ${errorMessage}`);
-      }
+            if (deductError) {
+              console.error(`❌ Error deducting stock for ${item.sku_id}:`, deductError);
+              throw new Error(`Failed to deduct stock: ${deductError.message}`);
+            }
 
-      console.log(`✅ Processed ${processedCount} items (${totalQtyMoved} pieces total)`);
+            // Find or create balance at Delivery-In-Progress
+            const { data: existingDipBalance } = await supabase
+              .from('wms_inventory_balances')
+              .select('balance_id, total_piece_qty, total_pack_qty')
+              .eq('warehouse_id', 'WH001')
+              .eq('location_id', deliveryLocation.location_id)
+              .eq('sku_id', item.sku_id)
+              .eq('pallet_id', balance.pallet_id || 'LEGACY')
+              .maybeSingle();
 
-      // ✅ V3 Atomic Function features:
-      // 1. Idempotency - ป้องกัน process ซ้ำ
-      // 2. Distributed Lock - ป้องกัน concurrent access
-      // 3. Row-level Lock (FOR UPDATE) - ป้องกัน race condition
-      // 4. Automatic Rollback - ถ้า error กลางทาง transaction จะ rollback ทั้งหมด
+            if (existingDipBalance) {
+              // Update existing
+              await supabase
+                .from('wms_inventory_balances')
+                .update({
+                  total_piece_qty: Number(existingDipBalance.total_piece_qty) + qtyToMove,
+                  total_pack_qty: Number(existingDipBalance.total_pack_qty) + (item.qtyPack || qtyToMove / (item.qtyPerPack || 1)),
+                  updated_at: now
+                })
+                .eq('balance_id', existingDipBalance.balance_id);
+            } else {
+              // Create new
+              await supabase
+                .from('wms_inventory_balances')
+                .insert({
+                  warehouse_id: 'WH001',
+                  location_id: deliveryLocation.location_id,
+                  sku_id: item.sku_id,
+                  pallet_id: balance.pallet_id || 'LEGACY',
+                  total_piece_qty: qtyToMove,
+                  total_pack_qty: item.qtyPack || qtyToMove / (item.qtyPerPack || 1),
+                  production_date: balance.production_date,
+                  expiry_date: balance.expiry_date,
+                  lot_no: balance.lot_no,
+                  created_at: now,
+                  updated_at: now
+                });
+            }
 
-      // ✅ VALIDATION: ตรวจสอบว่า function ทำงานสำเร็จจริง
-      if (processedCount === 0 && itemsToProcess.length > 0) {
-        console.warn(`⚠️ Warning: No items were processed by database function, but ${itemsToProcess.length} items were expected`);
-        console.warn(`⚠️ This may indicate stock is not at Staging locations (Dispatch/MRTD/PQTD)`);
+            // Record ledger - OUT from source
+            await supabase
+              .from('wms_inventory_ledger')
+              .insert({
+                movement_at: now,
+                transaction_type: 'loading',
+                direction: 'out',
+                warehouse_id: 'WH001',
+                location_id: sourceLocId,
+                sku_id: item.sku_id,
+                pallet_id: balance.pallet_id,
+                production_date: balance.production_date,
+                expiry_date: balance.expiry_date,
+                pack_qty: item.qtyPack || qtyToMove / (item.qtyPerPack || 1),
+                piece_qty: qtyToMove,
+                reference_no: loadlist.loadlist_code,
+                remarks: `โหลดสินค้า (legacy) จาก ${sourceLocName} ไป Delivery-In-Progress`,
+                created_by: userId
+              });
+
+            // Record ledger - IN to Delivery-In-Progress
+            await supabase
+              .from('wms_inventory_ledger')
+              .insert({
+                movement_at: now,
+                transaction_type: 'loading',
+                direction: 'in',
+                warehouse_id: 'WH001',
+                location_id: deliveryLocation.location_id,
+                sku_id: item.sku_id,
+                pallet_id: balance.pallet_id,
+                production_date: balance.production_date,
+                expiry_date: balance.expiry_date,
+                pack_qty: item.qtyPack || qtyToMove / (item.qtyPerPack || 1),
+                piece_qty: qtyToMove,
+                reference_no: loadlist.loadlist_code,
+                remarks: `รับสินค้า (legacy) ที่โหลดเข้า Delivery-In-Progress`,
+                created_by: userId
+              });
+
+            itemsProcessed++;
+          }
+        }
+
+        console.log(`✅ Legacy loadlist processed: ${itemsProcessed} items moved`);
+      } else {
+        // ✅ V3: Use ATOMIC function with Rollback, Idempotency, and Concurrent Lock for non-legacy
+        // Generate idempotency key from loadlist_id + timestamp (rounded to minute)
+        const idempotencyKey = `loading_${loadlist.id}_${Math.floor(Date.now() / 60000)}`;
+        const lockedBy = `api_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+        
+        console.log(`🔓 Processing loading complete for loadlist ${loadlist.id}...`);
+        console.log(`🔑 Idempotency key: ${idempotencyKey}`);
+        console.log(`🔒 Lock ID: ${lockedBy}`);
+        
+        const { data: processResult, error: processError } = await supabase
+          .rpc('process_loadlist_loading_complete_atomic', {
+            p_loadlist_id: loadlist.id,
+            p_delivery_location_id: deliveryLocation.location_id,
+            p_idempotency_key: idempotencyKey,
+            p_locked_by: lockedBy
+          });
+
+        if (processError) {
+          console.error(`❌ Error processing loading complete:`, processError);
+          return NextResponse.json(
+            { error: 'ไม่สามารถดำเนินการโหลดสินค้าได้', details: processError.message },
+            { status: 500 }
+          );
+        }
+
+        // ✅ V3: Handle atomic function result
+        const functionSuccess = processResult?.[0]?.success ?? false;
+        const processedCount = processResult?.[0]?.processed_count || 0;
+        const totalQtyMoved = processResult?.[0]?.total_qty_moved || 0;
+        const errorMessage = processResult?.[0]?.error_message;
+        const isDuplicate = processResult?.[0]?.is_duplicate ?? false;
+
+        // ✅ Check if this is a duplicate request (idempotency)
+        if (isDuplicate) {
+          console.log(`⚠️ Duplicate request detected - returning cached result`);
+          return NextResponse.json({
+            success: true,
+            message: 'ยืนยันการโหลดสินค้าเสร็จสิ้น (จาก cache)',
+            loadlist_code: loadlist.loadlist_code,
+            items_moved: processedCount,
+            total_qty_moved: totalQtyMoved,
+            is_duplicate: true
+          });
+        }
+
+        // ✅ Check if function failed (with automatic rollback)
+        if (!functionSuccess) {
+          console.error(`❌ Atomic function failed: ${errorMessage}`);
+          return NextResponse.json(
+            { 
+              error: 'ไม่สามารถดำเนินการโหลดสินค้าได้', 
+              details: errorMessage,
+              rollback: true  // ระบุว่า transaction ถูก rollback แล้ว
+            },
+            { status: 500 }
+          );
+        }
+
+        if (errorMessage) {
+          console.error(`⚠️ Function completed with warnings: ${errorMessage}`);
+        }
+
+        itemsProcessed = processedCount;
+        console.log(`✅ Processed ${processedCount} items (${totalQtyMoved} pieces total)`);
+
+        // ✅ V3 Atomic Function features:
+        // 1. Idempotency - ป้องกัน process ซ้ำ
+        // 2. Distributed Lock - ป้องกัน concurrent access
+        // 3. Row-level Lock (FOR UPDATE) - ป้องกัน race condition
+        // 4. Automatic Rollback - ถ้า error กลางทาง transaction จะ rollback ทั้งหมด
+
+        // ✅ VALIDATION: ตรวจสอบว่า function ทำงานสำเร็จจริง
+        if (processedCount === 0 && itemsToProcess.length > 0) {
+          console.warn(`⚠️ Warning: No items were processed by database function, but ${itemsToProcess.length} items were expected`);
+          console.warn(`⚠️ This may indicate stock is not at Staging locations (Dispatch/MRTD/PQTD)`);
+        }
       }
     } catch (processError: any) {
       console.error(`❌ Error during loading complete:`, processError);
