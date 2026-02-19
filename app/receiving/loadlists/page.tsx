@@ -8,6 +8,7 @@ import {
   AlertCircle,
   Package,
   CheckCircle,
+  CheckCircle2,
   Clock,
   ChevronUp,
   ChevronDown,
@@ -218,6 +219,7 @@ interface PicklistFormData {
 const statusMap: Record<string, { label: string; variant: 'default' | 'info' | 'warning' | 'success' | 'danger' }> = {
   pending: { label: 'รอโหลด', variant: 'warning' },
   loaded: { label: 'โหลดเสร็จ', variant: 'success' },
+  completed: { label: 'เสร็จสิ้น', variant: 'info' },
   cancelled: { label: 'ยกเลิก', variant: 'danger' }
 };
 
@@ -1559,6 +1561,39 @@ const LoadlistsPage = () => {
     }
   };
 
+  // ฟังก์ชันอัปเดตสถานะเป็นเสร็จสิ้น
+  const handleCompleteLoadlist = async (loadlist: Loadlist) => {
+    const confirmed = window.confirm(
+      `คุณต้องการอัปเดตสถานะใบโหลด ${loadlist.loadlist_code} เป็น "เสร็จสิ้น" ใช่หรือไม่?`
+    );
+
+    if (!confirmed) return;
+
+    try {
+      setLoading(true);
+      const response = await fetch(`/api/loadlists/${loadlist.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'completed' })
+      });
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || 'อัปเดตสถานะไม่สำเร็จ');
+      }
+
+      // Refresh list
+      await fetchLoadlists();
+
+    } catch (err: any) {
+      console.error('Failed to complete loadlist:', err);
+      alert(`อัปเดตสถานะไม่สำเร็จ: ${err.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // ฟังก์ชันปริ้นใบหยิบสินค้า (Pick List) สำหรับ bonus face sheet
   const handlePrintPickList = async (loadlist: Loadlist) => {
     const hasBonusFaceSheets = (loadlist as any).bonus_face_sheets && (loadlist as any).bonus_face_sheets.length > 0;
@@ -2131,8 +2166,19 @@ const LoadlistsPage = () => {
                               );
                             })()}
 
+                            {/* ปุ่มอัปเดตสถานะเป็นเสร็จสิ้น - แสดงเฉพาะ loaded */}
+                            {loadlist.status === 'loaded' && (
+                              <button
+                                onClick={() => handleCompleteLoadlist(loadlist)}
+                                className="p-1 rounded hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                                title="อัปเดตเป็นเสร็จสิ้น"
+                              >
+                                <CheckCircle2 className="w-3 h-3" />
+                              </button>
+                            )}
+
                             {/* ปุ่มลบใบโหลด - แสดงเฉพาะ pending/cancelled */}
-                            {loadlist.status !== 'loaded' && (
+                            {loadlist.status !== 'loaded' && loadlist.status !== 'completed' && (
                               <button
                                 onClick={() => handleDeleteLoadlist(loadlist)}
                                 className="p-1 rounded hover:bg-red-50 hover:text-red-600 transition-colors"

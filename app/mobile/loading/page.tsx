@@ -359,9 +359,42 @@ function MobileLoadingPage() {
                       </p>
                     </td>
 
-                    {/* Arrow */}
+                    {/* Action Button */}
                     <td className="px-1 py-2 text-center">
-                      <ChevronRight className="w-3.5 h-3.5 text-gray-400 mx-auto" />
+                      {loadlist.status === 'loaded' ? (
+                        <button
+                          onClick={async (e) => {
+                            e.stopPropagation();
+                            const confirmed = window.confirm(
+                              `อัปเดตสถานะ ${loadlist.loadlist_code} เป็น "เสร็จสิ้น"?`
+                            );
+                            if (!confirmed) return;
+
+                            try {
+                              const response = await fetch(`/api/loadlists/${loadlist.loadlist_id}`, {
+                                method: 'PUT',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({ status: 'completed' })
+                              });
+
+                              if (response.ok) {
+                                await fetchLoadlists();
+                              } else {
+                                alert('อัปเดตสถานะไม่สำเร็จ');
+                              }
+                            } catch (err) {
+                              console.error('Failed to update status:', err);
+                              alert('เกิดข้อผิดพลาด');
+                            }
+                          }}
+                          className="p-1 rounded hover:bg-blue-50 active:bg-blue-100 transition-colors"
+                          title="อัปเดตเป็นเสร็จสิ้น"
+                        >
+                          <CheckCircle className="w-4 h-4 text-blue-600 mx-auto" />
+                        </button>
+                      ) : (
+                        <ChevronRight className="w-3.5 h-3.5 text-gray-400 mx-auto" />
+                      )}
                     </td>
                   </tr>
                 ))}
