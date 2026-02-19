@@ -173,6 +173,7 @@ export default function PackingPage() {
   const trackingInputRef = useRef<HTMLInputElement>(null);
   const skuInputRef = useRef<HTMLInputElement>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const isCompletingRef = useRef(false);
   const [audioInitialized, setAudioInitialized] = useState(false);
 
   // ✅ Load locked orders และ subscribe to real-time updates
@@ -804,6 +805,8 @@ export default function PackingPage() {
 
   const handleConfirmCompletion = async () => {
     if (!currentOrder) return;
+    if (isCompletingRef.current) return;
+    isCompletingRef.current = true;
     setIsProcessingCompletion(true);
     try {
       await completeOrder(currentOrder);
@@ -812,6 +815,7 @@ export default function PackingPage() {
       console.error("Failed to confirm and complete order:", error);
     } finally {
       setIsProcessingCompletion(false);
+      isCompletingRef.current = false;
     }
   };
 

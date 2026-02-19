@@ -5,25 +5,7 @@
    Creating an optimized production build ...
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
-
-
-Source path: ./app/globals.css
-Setting up new context...
-Finding changed files: 53.549ms
-Source path: ./node_modules/mapbox-gl/dist/mapbox-gl.css
-JIT TOTAL: 85.181ms
-
-
-Reading changed files: 943.197ms
-Sorting candidates: 43.656ms
-Generate rules: 329.367ms
-Build stylesheet: 4.627ms
-Potential classes:  50257
-Active contexts:  1
-JIT TOTAL: 1.470s
-
-
- ✓ Compiled successfully in 12.1s
+ ✓ Compiled successfully in 17.7s
    Running TypeScript ...
    Collecting page data using 13 workers ...
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
@@ -54,7 +36,7 @@ JIT TOTAL: 1.470s
    Generating static pages using 13 workers (64/257) 
    Generating static pages using 13 workers (128/257) 
    Generating static pages using 13 workers (192/257) 
- ✓ Generating static pages using 13 workers (257/257) in 3.8s
+ ✓ Generating static pages using 13 workers (257/257) in 5.2s
    Finalizing page optimization ...
 
 Route (app)
@@ -121,11 +103,7 @@ Route (app)
 ├ ƒ /api/dashboard/location-detail
 ├ ƒ /api/dashboard/performance
 ├ ƒ /api/dashboard/warehouse-map
-├ ƒ /api/debug/check-import-locations
-├ ƒ /api/debug/check-missing-stock
-├ ƒ /api/debug/check-specific-skus
 ├ ƒ /api/debug-receives
-├ ƒ /api/debug/stock-import-check
 ├ ƒ /api/employees
 ├ ƒ /api/export-jobs
 ├ ƒ /api/face-sheets/checklist
