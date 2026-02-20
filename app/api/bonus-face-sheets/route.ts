@@ -133,29 +133,32 @@ async function handlePost(request: NextRequest, context: any) {
 try {
     const supabase = await createClient();
     const body = await request.json();
-    
+
     const {
       warehouse_id = 'WH001',
       created_by = 'System',
       delivery_date,
-      packages = []
+      packages = [],
+      skip_preparation_check = false  // ✅ NEW: รับ parameter ใหม่
     } = body;
-    
+
     if (!packages || packages.length === 0) {
       return NextResponse.json(
         { success: false, error: 'ไม่มีข้อมูลแพ็คสินค้า' },
         { status: 400 }
       );
     }
-    
+
     // ✅ FIX (BUG-002): Use atomic function - single transaction for all operations
     console.log('📦 Creating bonus face sheet with atomic transaction...');
-    
+    console.log('🔍 Skip preparation check:', skip_preparation_check);
+
     const { data, error } = await supabase.rpc('create_bonus_face_sheet_with_reservation', {
       p_delivery_date: delivery_date,
       p_packages: packages,
       p_warehouse_id: warehouse_id,
-      p_created_by: created_by
+      p_created_by: created_by,
+      p_skip_preparation_check: skip_preparation_check  // ✅ NEW: ส่ง parameter ใหม่
     });
 
     if (error) {
@@ -171,13 +174,25 @@ try {
 
     console.log('✅ Bonus face sheet creation result:', JSON.stringify(result, null, 2));
 
+    // ✅ NEW: ตรวจสอบว่ามี unmapped SKU หรือไม่
+    if (!result.success && result.has_unmapped_skus && result.unmapped_skus?.length > 0) {
+      console.log('⚠️ Found unmapped SKUs:', result.unmapped_skus);
+      return NextResponse.json({
+        success: false,
+        needs_confirmation: true,  // ✅ บอก frontend ว่าต้องถามผู้ใช้
+        message: result.message,
+        unmapped_skus: result.unmapped_skus,
+        warning_type: 'unmapped_preparation_area'
+      });
+    }
+
     if (!result || !result.success) {
       console.error('❌ Bonus face sheet creation failed:', result);
       return NextResponse.json(
-        { 
-          success: false, 
-          error: result?.message || 'Failed to create bonus face sheet', 
-          details: result?.error_details || result 
+        {
+          success: false,
+          error: result?.message || 'Failed to create bonus face sheet',
+          details: result?.error_details || result
         },
         { status: 400 }
       );
@@ -201,7 +216,10 @@ try {
       items_reserved: result.items_reserved,
       message: result.message,
       has_insufficient_stock: hasInsufficientStock,
-      insufficient_stock_items: insufficientItems
+      insufficient_stock_items: insufficientItems,
+      // ✅ NEW: ส่งข้อมูล unmapped SKU กลับไปด้วย (อาจเป็น empty array)
+      unmapped_skus: result.unmapped_skus || [],
+      has_unmapped_skus: result.has_unmapped_skus || false
     });
   } catch (error: any) {
     console.error('Error in POST /api/bonus-face-sheets:', error);

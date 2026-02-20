@@ -2,8 +2,9 @@
 
 import React, { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeft, Save, Package, AlertCircle, XCircle } from 'lucide-react';
+import { ArrowLeft, Save, Package, AlertCircle, XCircle, AlertTriangle } from 'lucide-react';
 import Button from '@/components/ui/Button';
+import Modal from '@/components/ui/Modal';
 
 interface OrderItem {
   order_item_id: number;
@@ -148,6 +149,11 @@ const BonusFaceSheetPackFormPage = () => {
   const [isEditMode, setIsEditMode] = useState(false);
   const [draftReady, setDraftReady] = useState(false); // flag to start auto-saving
 
+  // ✅ NEW: State สำหรับ confirmation modal
+  const [showUnmappedWarning, setShowUnmappedWarning] = useState(false);
+  const [unmappedSkus, setUnmappedSkus] = useState<string[]>([]);
+  const [pendingPackages, setPendingPackages] = useState<any[]>([]);
+
   // localStorage draft key based on URL params
   const draftKey = editId
     ? `bfs-pack-draft-edit-${editId}`
@@ -275,6 +281,46 @@ const BonusFaceSheetPackFormPage = () => {
 
   const clearDraft = () => {
     try { localStorage.removeItem(draftKey); } catch { /* ignore */ }
+  };
+
+  // ✅ NEW: Function สำหรับยืนยันสร้างแม้ไม่มีบ้านหยิบ
+  const handleConfirmCreateWithoutPreparation = async () => {
+    try {
+      setSaving(true);
+      setShowUnmappedWarning(false);
+
+      const response = await fetch('/api/bonus-face-sheets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          warehouse_id: 'WH001',
+          created_by: 'System',
+          delivery_date: deliveryDate,
+          packages: pendingPackages,
+          skip_preparation_check: true  // ✅ ส่ง parameter ให้ skip check
+        })
+      });
+
+      const result = await response.json();
+
+      if (result.success) {
+        clearDraft();
+        router.push('/receiving/picklists/bonus-face-sheets?success=created');
+      } else {
+        setError(result.error || 'ไม่สามารถสร้างใบปะหน้าได้');
+      }
+    } catch (err: any) {
+      setError('เกิดข้อผิดพลาดในการบันทึกข้อมูล');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // ✅ NEW: Function สำหรับยกเลิก
+  const handleCancelCreateWithoutPreparation = () => {
+    setShowUnmappedWarning(false);
+    setPendingPackages([]);
+    setUnmappedSkus([]);
   };
 
   useEffect(() => {
@@ -780,21 +826,31 @@ const BonusFaceSheetPackFormPage = () => {
 
         const result = await response.json();
 
+        // ✅ NEW: ตรวจสอบว่ามี SKU ที่ไม่มีบ้านหยิบหรือไม่
+        if (!result.success && result.needs_confirmation && result.unmapped_skus?.length > 0) {
+          // แสดง warning modal แทน error
+          setUnmappedSkus(result.unmapped_skus);
+          setPendingPackages(validPackages);
+          setShowUnmappedWarning(true);
+          setSaving(false);
+          return;
+        }
+
         if (result.success) {
           clearDraft();
-          
+
           // ตรวจสอบว่ามี SKU ที่สต็อกไม่พอหรือไม่
           if (result.has_insufficient_stock && result.insufficient_stock_items?.length > 0) {
             const insufficientList = result.insufficient_stock_items
-              .map((item: any) => 
+              .map((item: any) =>
                 `• ${item.product_name} (${item.sku_id}): ต้องการ ${item.required_qty} ชิ้น, มีอยู่ ${item.available_qty} ชิ้น, ขาด ${item.shortage_qty} ชิ้น`
               )
               .join('\n');
-            
+
             setError(
               `⚠️ สร้างใบปะหน้าสำเร็จ แต่มีสินค้าที่สต็อกไม่พอ:\n\n${insufficientList}\n\nระบบได้สร้าง Virtual Pallet ไว้แล้ว กรุณาเติมสต็อกให้ครบก่อนยืนยันโหลด`
             );
-            
+
             // รอ 5 วินาทีแล้วค่อยไปหน้ารายการ
             setTimeout(() => {
               router.push('/receiving/picklists/bonus-face-sheets?success=created&warning=insufficient_stock');
@@ -1074,6 +1130,84 @@ const BonusFaceSheetPackFormPage = () => {
           </Button>
         </div>
       </div>
+
+      {/* ✅ NEW: Confirmation Modal สำหรับ SKU ที่ไม่มีบ้านหยิบ */}
+      <Modal
+        isOpen={showUnmappedWarning}
+        onClose={handleCancelCreateWithoutPreparation}
+        title="⚠️ แจ้งเตือน: สินค้าที่ยังไม่ได้กำหนดบ้านหยิบ"
+        maxWidth="max-w-2xl"
+      >
+        <div className="space-y-4 font-thai">
+          <div className="flex items-start gap-3 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <AlertTriangle className="w-6 h-6 text-yellow-600 flex-shrink-0 mt-0.5" />
+            <div className="flex-1">
+              <p className="text-sm text-gray-800 mb-2">
+                SKU ต่อไปนี้ยังไม่ได้กำหนดบ้านหยิบ (Preparation Area):
+              </p>
+              <div className="bg-white border border-yellow-300 rounded p-3 mb-3">
+                <ul className="list-disc list-inside space-y-1 text-sm text-gray-700">
+                  {unmappedSkus.map((sku, idx) => (
+                    <li key={idx} className="font-mono">{sku}</li>
+                  ))}
+                </ul>
+              </div>
+              <p className="text-sm text-gray-700 mb-2">
+                <strong>ผลกระทบ:</strong>
+              </p>
+              <ul className="list-disc list-inside space-y-1 text-sm text-gray-600 ml-2">
+                <li>ระบบจะไม่สามารถจองสต็อกสำหรับ SKU เหล่านี้ได้</li>
+                <li>จะต้องหยิบสินค้าด้วยตนเอง (ไม่มีการแนะนำโลเคชั่น)</li>
+                <li>ไม่มีการตรวจสอบสต็อกอัตโนมัติ</li>
+              </ul>
+            </div>
+          </div>
+
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+            <p className="text-sm text-gray-700 mb-2">
+              <strong>คำแนะนำ:</strong>
+            </p>
+            <p className="text-sm text-gray-600">
+              หากต้องการให้ระบบจองสต็อกอัตโนมัติ กรุณาไปที่{' '}
+              <strong className="text-blue-600">Master Data → Preparation Area</strong>{' '}
+              เพื่อกำหนดบ้านหยิบสำหรับ SKU เหล่านี้ก่อน
+            </p>
+          </div>
+
+          <div className="flex items-center justify-between pt-4 border-t border-gray-200">
+            <p className="text-sm text-gray-600">
+              ต้องการดำเนินการสร้างใบปะหน้าต่อหรือไม่?
+            </p>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                onClick={handleCancelCreateWithoutPreparation}
+                disabled={saving}
+              >
+                <XCircle className="w-4 h-4 mr-1" />
+                ยกเลิก
+              </Button>
+              <Button
+                onClick={handleConfirmCreateWithoutPreparation}
+                disabled={saving}
+                className="bg-yellow-600 hover:bg-yellow-700 text-white"
+              >
+                {saving ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    กำลังสร้าง...
+                  </>
+                ) : (
+                  <>
+                    <AlertTriangle className="w-4 h-4 mr-1" />
+                    ยืนยันสร้างต่อ
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };
