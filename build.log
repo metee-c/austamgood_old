@@ -1,1 +1,27 @@
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+   ▲ Next.js 16.0.10 (Turbopack)
+   - Environments: .env.local
+
+   Creating an optimized production build ...
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+[baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
+
+
+Source path: ./app/globals.css
+Setting up new context...
+Finding changed files: 82.174ms
+Source path: ./node_modules/mapbox-gl/dist/mapbox-gl.css
+JIT TOTAL: 281.113ms
+
+
+Reading changed files: 2.660s
+Sorting candidates: 90.915ms
+Generate rules: 837.489ms
+Build stylesheet: 12.779ms
+Potential classes:  50299
+Active contexts:  1
+JIT TOTAL: 4.000s
+
+
+ ✓ Compiled successfully in 32.2s
+   Running TypeScript ...

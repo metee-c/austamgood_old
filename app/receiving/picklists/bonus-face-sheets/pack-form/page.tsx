@@ -1136,7 +1136,7 @@ const BonusFaceSheetPackFormPage = () => {
         isOpen={showUnmappedWarning}
         onClose={handleCancelCreateWithoutPreparation}
         title="⚠️ แจ้งเตือน: สินค้าที่ยังไม่ได้กำหนดบ้านหยิบ"
-        maxWidth="max-w-2xl"
+        size="lg"
       >
         <div className="space-y-4 font-thai">
           <div className="flex items-start gap-3 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
