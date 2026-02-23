@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import {
   Plus,
   Upload,
+  Download,
   Edit,
   Trash2,
   ChevronsUpDown,
@@ -13,6 +14,7 @@ import {
   Users,
   AlertTriangle
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Table from '@/components/ui/Table';
 import Button from '@/components/ui/Button';
@@ -161,6 +163,45 @@ const CustomersPage = () => {
     }
   };
 
+  const handleExportExcel = () => {
+    const excelData = sortedCustomers.map((c) => ({
+      'รหัสลูกค้า': c.customer_code || '',
+      'โค้ดลูกค้า': c.customer_id || '',
+      'ชื่อลูกค้า': c.customer_name || '',
+      'ประเภท': c.customer_type === 'retail' ? 'ปลีก' : c.customer_type === 'wholesale' ? 'ส่ง' : c.customer_type === 'distributor' ? 'ตัวแทน' : c.customer_type || '',
+      'เลขที่ผู้เสียภาษี': c.tax_id || '',
+      'เลขทะเบียนธุรกิจ': c.business_reg_no || '',
+      'ผู้ติดต่อ': c.contact_person || '',
+      'เบอร์โทรศัพท์': c.phone || '',
+      'อีเมล': c.email || '',
+      'Line ID': c.line_id || '',
+      'เว็บไซต์': c.website || '',
+      'ที่อยู่เรียกเก็บเงิน': c.billing_address || '',
+      'ที่อยู่จัดส่ง': c.shipping_address || '',
+      'ตำบล': c.subdistrict || '',
+      'อำเภอ': c.district || '',
+      'จังหวัด': c.province || '',
+      'รหัสไปรษณีย์': c.postal_code || '',
+      'Latitude': c.latitude ?? '',
+      'Longitude': c.longitude ?? '',
+      'คำแนะนำการส่ง': c.delivery_instructions || '',
+      'เวลาส่งที่ต้องการ': c.preferred_delivery_time || '',
+      'ช่องทาง': c.channel_source || '',
+      'กลุ่มลูกค้า': c.customer_segment || '',
+      'หน่วย Hub': c.hub || '',
+      'หมายเหตุ': c.remarks || '',
+      'สร้างโดย': c.created_by || '',
+      'สถานะ': c.status === 'active' ? 'ใช้งาน' : 'ไม่ใช้งาน',
+      'วันที่สร้าง': c.created_at ? new Date(c.created_at).toLocaleString('th-TH') : '',
+      'วันที่แก้ไขล่าสุด': c.updated_at ? new Date(c.updated_at).toLocaleString('th-TH') : '',
+    }));
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(excelData);
+    XLSX.utils.book_append_sheet(wb, ws, 'ข้อมูลลูกค้า');
+    XLSX.writeFile(wb, `ข้อมูลลูกค้า_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
   const columns = [
     { header: 'รหัสลูกค้า', accessor: 'customer_code', className: 'w-24' },
     { header: 'โค้ดลูกค้า', accessor: 'customer_id', className: 'w-20' },
@@ -185,7 +226,7 @@ const CustomersPage = () => {
     { header: 'เวลาส่งที่ต้องการ', accessor: 'preferred_delivery_time', className: 'w-32' },
     { header: 'ช่องทาง', accessor: 'channel_source', className: 'w-24' },
     { header: 'กลุ่มลูกค้า', accessor: 'customer_segment', className: 'w-24' },
-    { header: 'หน่วย Hub', accessor: 'hub_name', className: 'w-24' },
+    { header: 'หน่วย Hub', accessor: 'hub', className: 'w-24' },
     { header: 'หมายเหตุ', accessor: 'remarks', className: 'w-36' },
     { header: 'สร้างโดย', accessor: 'created_by', className: 'w-24' },
     { header: 'สถานะ', accessor: 'status', className: 'w-20' },
@@ -223,6 +264,14 @@ const CustomersPage = () => {
           onChange={setSelectedStatus}
           options={statusOptions}
         />
+        <Button
+          variant="outline"
+          icon={Download}
+          onClick={handleExportExcel}
+          disabled={sortedCustomers.length === 0}
+        >
+          ส่งออก Excel
+        </Button>
         <Button
           variant="outline"
           icon={Upload}
@@ -370,7 +419,7 @@ const CustomersPage = () => {
                       <span className="font-thai text-xs">{customer.customer_segment || '-'}</span>
                     </Table.Cell>
                     <Table.Cell>
-                      <span className="font-thai text-xs">{customer.hub_name || '-'}</span>
+                      <span className="font-thai text-xs">{customer.hub || '-'}</span>
                     </Table.Cell>
                     <Table.Cell>
                       <span className="font-thai text-xs truncate block max-w-[144px]" title={customer.remarks || '-'}>

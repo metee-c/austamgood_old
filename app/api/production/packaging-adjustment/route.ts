@@ -14,7 +14,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentSession } from '@/lib/auth';
+import { withAuth } from '@/lib/api/with-auth';
 import { createClient } from '@/lib/supabase/server';
 import { stockAdjustmentService } from '@/lib/database/stock-adjustment';
 import { withShadowLog } from '@/lib/logging/with-shadow-log';
@@ -32,18 +32,13 @@ interface PackagingAdjustmentItem {
   uom: string;
 }
 
-async function _POST(request: NextRequest) {
+async function handlePost(request: NextRequest, context: any) {
 try {
-    const sessionResult = await getCurrentSession();
-    if (!sessionResult.session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const supabase = await createClient();
     const body = await request.json();
-    
+
     // ใช้ user_id สำหรับ stock adjustment
-    const systemUserId = sessionResult.session.user_id;
+    const systemUserId = context.user?.user_id;
     
     // Validate systemUserId
     if (!systemUserId || typeof systemUserId !== 'number') {
@@ -233,4 +228,4 @@ try {
   }
 }
 
-export const POST = withShadowLog(_POST);
+export const POST = withShadowLog(withAuth(handlePost));

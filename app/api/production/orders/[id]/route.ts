@@ -4,7 +4,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentSession } from '@/lib/auth';
 import {
   getProductionOrderById,
   updateProductionOrder,
@@ -15,16 +14,17 @@ import {
   holdProductionOrder,
   cancelProductionOrder,
 } from '@/lib/database/production-orders';
+import { withAuth } from '@/lib/api/with-auth';
 import { withShadowLog } from '@/lib/logging/with-shadow-log';
 
-async function _GET(
+async function handleGet(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: any
 ) {
   try {
-    const { id } = await params;
+    const { id } = await context.params;
     const order = await getProductionOrderById(id);
-    
+
     if (!order) {
       return NextResponse.json({ error: 'Production order not found' }, { status: 404 });
     }
@@ -38,17 +38,12 @@ async function _GET(
   }
 }
 
-async function _PUT(
+async function handlePut(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: any
 ) {
   try {
-    const sessionResult = await getCurrentSession();
-    if (!sessionResult.session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { id } = await params;
+    const { id } = await context.params;
     const body = await request.json();
 
     // Handle status actions
@@ -91,17 +86,12 @@ async function _PUT(
   }
 }
 
-async function _DELETE(
+async function handleDelete(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: any
 ) {
-try {
-    const sessionResult = await getCurrentSession();
-    if (!sessionResult.session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { id } = await params;
+  try {
+    const { id } = await context.params;
     const success = await deleteProductionOrder(id);
 
     if (!success) {
@@ -117,6 +107,6 @@ try {
   }
 }
 
-export const GET = withShadowLog(_GET);
-export const PUT = withShadowLog(_PUT);
-export const DELETE = withShadowLog(_DELETE);
+export const GET = withShadowLog(withAuth(handleGet));
+export const PUT = withShadowLog(withAuth(handlePut));
+export const DELETE = withShadowLog(withAuth(handleDelete));

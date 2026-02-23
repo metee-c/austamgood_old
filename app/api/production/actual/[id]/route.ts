@@ -4,8 +4,8 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentSession } from '@/lib/auth';
 import { createClient } from '@/lib/supabase/server';
+import { withAuth } from '@/lib/api/with-auth';
 import { withShadowLog } from '@/lib/logging/with-shadow-log';
 interface BomMaterialInput {
   material_sku_id: string;
@@ -15,12 +15,12 @@ interface BomMaterialInput {
   is_food?: boolean;
 }
 
-async function _GET(
+async function handleGet(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: any
 ) {
   try {
-    const { id } = await params;
+    const { id } = await context.params;
     const supabase = await createClient();
 
     const { data, error } = await supabase
@@ -78,17 +78,12 @@ async function _GET(
   }
 }
 
-async function _PUT(
+async function handlePut(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: any
 ) {
   try {
-    const sessionResult = await getCurrentSession();
-    if (!sessionResult.session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { id } = await params;
+    const { id } = await context.params;
     const supabase = await createClient();
     const body = await request.json();
 
@@ -219,17 +214,12 @@ async function _PUT(
   }
 }
 
-async function _DELETE(
+async function handleDelete(
   request: NextRequest,
-  { params }: { params: Promise<{ id: string }> }
+  context: any
 ) {
 try {
-    const sessionResult = await getCurrentSession();
-    if (!sessionResult.session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const { id } = await params;
+    const { id } = await context.params;
     const supabase = await createClient();
 
     // Get current receipt to update production order
@@ -294,6 +284,6 @@ try {
   }
 }
 
-export const GET = withShadowLog(_GET);
-export const PUT = withShadowLog(_PUT);
-export const DELETE = withShadowLog(_DELETE);
+export const GET = withShadowLog(withAuth(handleGet));
+export const PUT = withShadowLog(withAuth(handlePut));
+export const DELETE = withShadowLog(withAuth(handleDelete));

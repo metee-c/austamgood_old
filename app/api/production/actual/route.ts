@@ -6,7 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentSession } from '@/lib/auth';
+import { withAuth } from '@/lib/api/with-auth';
 import { createClient } from '@/lib/supabase/server';
 import { stockAdjustmentService } from '@/lib/database/stock-adjustment';
 import { withShadowLog } from '@/lib/logging/with-shadow-log';
@@ -16,7 +16,7 @@ const PRODUCTION_VARIANCE_REASON_ID = 40; // reason_code = 'PRODUCTION_VARIANCE'
 const DEFAULT_WAREHOUSE_ID = 'WH001';
 const REPACK_LOCATION = 'Repack';
 
-async function _GET(request: NextRequest) {
+async function handleGet(request: NextRequest, context: any) {
   try {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
@@ -349,27 +349,22 @@ interface BomMaterialInput {
   production_order_item_id?: string; // ID ของ production_order_items (สำหรับ packaging)
 }
 
-async function _POST(request: NextRequest) {
+async function handlePost(request: NextRequest, context: any) {
 try {
-    const sessionResult = await getCurrentSession();
-    if (!sessionResult.session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const supabase = await createClient();
     const body = await request.json();
-    
-    // Debug: Log session data
-    console.log('=== Session Data ===', {
-      user_id: sessionResult.session.user_id,
-      employee_id: sessionResult.session.employee_id,
-      username: sessionResult.session.username
+
+    // Debug: Log user data from withAuth context
+    console.log('=== User Data ===', {
+      user_id: context.user?.user_id,
+      employee_id: context.user?.employee_id,
+      username: context.user?.username
     });
-    
+
     // ใช้ user_id สำหรับ stock adjustment (ไม่ใช่ employee_id)
     // user_id คือ ID ใน master_system_user, employee_id คือ ID ใน master_employee
-    const systemUserId = sessionResult.session.user_id;
-    const employeeId = sessionResult.session.employee_id;
+    const systemUserId = context.user?.user_id;
+    const employeeId = context.user?.employee_id;
     
     // Validate systemUserId
     if (!systemUserId || typeof systemUserId !== 'number') {
@@ -1005,5 +1000,5 @@ async function createPackagingReplenishment(
   return createdTasks;
 }
 
-export const GET = withShadowLog(_GET);
-export const POST = withShadowLog(_POST);
+export const GET = withShadowLog(withAuth(handleGet));
+export const POST = withShadowLog(withAuth(handlePost));

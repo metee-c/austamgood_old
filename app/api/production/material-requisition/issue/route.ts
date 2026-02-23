@@ -9,7 +9,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@/lib/supabase/server';
-import { getCurrentSession } from '@/lib/auth';
+import { withAuth } from '@/lib/api/with-auth';
 import { stockAdjustmentService } from '@/lib/database/stock-adjustment';
 import { withShadowLog } from '@/lib/logging/with-shadow-log';
 // Constants
@@ -81,7 +81,7 @@ async function checkAndUpdateProductionOrderStatus(supabase: any, productionOrde
  * - item_id: สำหรับ production_order_items
  * - queue_id: สำหรับ replenishment_queue (variance items)
  */
-async function _POST(request: NextRequest) {
+async function handlePost(request: NextRequest, context: any) {
 console.log('📦 [Material Requisition Issue] POST request received');
   try {
     const supabase = await createClient();
@@ -94,16 +94,15 @@ console.log('📦 [Material Requisition Issue] POST request received');
       console.log('❌ [Material Requisition Issue] item_id or queue_id is missing');
       return NextResponse.json({ error: 'item_id or queue_id is required' }, { status: 400 });
     }
-    
+
     console.log('📦 [Material Requisition Issue] Looking for item_id:', item_id, 'queue_id:', queue_id, 'from_location:', from_location);
 
     if (!issue_qty || issue_qty <= 0) {
       return NextResponse.json({ error: 'issue_qty must be greater than 0' }, { status: 400 });
     }
 
-    // Get current user
-    const sessionResult = await getCurrentSession();
-    const currentUserId = sessionResult.session?.user_id;
+    // Get current user from auth context
+    const currentUserId = context.user?.user_id;
 
     // Determine source: production_order_items or replenishment_queue
     let item: any = null;
@@ -459,4 +458,4 @@ console.log('📦 [Material Requisition Issue] POST request received');
   }
 }
 
-export const POST = withShadowLog(_POST);
+export const POST = withShadowLog(withAuth(handlePost));

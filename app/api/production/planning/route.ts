@@ -10,9 +10,10 @@ import {
   createProductionPlan,
 } from '@/lib/database/production-planning';
 import { ProductionPlanFilters, CreateProductionPlanInput } from '@/types/production-planning-schema';
-import { getCurrentSession } from '@/lib/auth';
+import { withAuth } from '@/lib/api/with-auth';
 import { withShadowLog } from '@/lib/logging/with-shadow-log';
-async function _GET(request: NextRequest) {
+
+async function handleGet(request: NextRequest, context: any) {
   try {
     const { searchParams } = new URL(request.url);
 
@@ -38,8 +39,8 @@ async function _GET(request: NextRequest) {
   }
 }
 
-async function _POST(request: NextRequest) {
-try {
+async function handlePost(request: NextRequest, context: any) {
+  try {
     const body: CreateProductionPlanInput = await request.json();
 
     // Validate required fields
@@ -67,9 +68,8 @@ try {
       }
     }
 
-    // Get user ID from session - use employee_id for created_by
-    const sessionResult = await getCurrentSession();
-    const userId = sessionResult.session?.employee_id;
+    // Get user ID from withAuth context
+    const userId = context.user?.employee_id;
 
     const result = await createProductionPlan(body, userId);
 
@@ -89,5 +89,5 @@ try {
   }
 }
 
-export const GET = withShadowLog(_GET);
-export const POST = withShadowLog(_POST);
+export const GET = withShadowLog(withAuth(handleGet));
+export const POST = withShadowLog(withAuth(handlePost));

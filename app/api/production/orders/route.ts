@@ -4,7 +4,6 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { getCurrentSession } from '@/lib/auth';
 import {
   getProductionOrders,
   createProductionOrder,
@@ -12,11 +11,13 @@ import {
   createOrdersFromPlan,
 } from '@/lib/database/production-orders';
 import { ProductionOrderFilters, CreateProductionOrderInput } from '@/types/production-order-schema';
+import { withAuth } from '@/lib/api/with-auth';
 import { withShadowLog } from '@/lib/logging/with-shadow-log';
-async function _GET(request: NextRequest) {
+
+async function handleGet(request: NextRequest, context: any) {
   try {
     const { searchParams } = new URL(request.url);
-    
+
     const filters: ProductionOrderFilters = {
       search: searchParams.get('search') || undefined,
       status: (searchParams.get('status') as any) || undefined,
@@ -38,15 +39,10 @@ async function _GET(request: NextRequest) {
   }
 }
 
-async function _POST(request: NextRequest) {
-try {
-    const sessionResult = await getCurrentSession();
-    if (!sessionResult.session) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
+async function handlePost(request: NextRequest, context: any) {
+  try {
     const body = await request.json();
-    const userId = sessionResult.session.employee_id;
+    const userId = context.user?.employee_id;
 
     console.log('📦 [POST /api/production/orders] Request body:', JSON.stringify(body, null, 2));
 
@@ -90,5 +86,5 @@ try {
   }
 }
 
-export const GET = withShadowLog(_GET);
-export const POST = withShadowLog(_POST);
+export const GET = withShadowLog(withAuth(handleGet));
+export const POST = withShadowLog(withAuth(handlePost));
