@@ -1065,15 +1065,21 @@ try {
           // Calculate source stop weight from actual remaining items in receiving_route_stop_items
           const { data: remainingItems } = await supabase
             .from('receiving_route_stop_items')
-            .select('allocated_weight_kg')
+            .select('allocated_weight_kg, allocated_quantity')
             .eq('stop_id', sourceStopId);
 
+          const remainingItemCount = remainingItems?.length || 0;
           const calculatedSourceWeight = remainingItems?.reduce(
             (sum, item) => sum + Number(item.allocated_weight_kg || 0), 0
           ) || 0;
+          const remainingQtyTotal = remainingItems?.reduce(
+            (sum, item) => sum + Number(item.allocated_quantity || 0), 0
+          ) || 0;
 
-          if (calculatedSourceWeight <= 0) {
-            // Delete source stop if no weight remaining
+          // Only delete source stop if NO remaining items at all
+          // Don't delete if items exist but weight is 0 (order_weight might be NULL)
+          if (remainingItemCount === 0 && calculatedSourceWeight <= 0) {
+            // Delete source stop if truly no items remaining
             await supabase
               .from('receiving_route_stop_items')
               .delete()
@@ -1084,10 +1090,15 @@ try {
               .delete()
               .eq('stop_id', sourceStopId);
           } else {
+            // Use calculated weight, or fallback to original weight minus split weight
+            const newWeight = calculatedSourceWeight > 0
+              ? calculatedSourceWeight
+              : Math.max(0, (sourceStop.load_weight_kg || 0) - split.splitWeightKg);
+
             await supabase
               .from('receiving_route_stops')
-              .update({ 
-                load_weight_kg: calculatedSourceWeight,
+              .update({
+                load_weight_kg: newWeight,
                 updated_at: new Date().toISOString()
               })
               .eq('stop_id', sourceStopId);

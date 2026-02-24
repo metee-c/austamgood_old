@@ -392,9 +392,16 @@ try {
     const existingSplitItemIds = sourceStop.tags?.split_out_item_ids || [];
     const newSplitOutItemIds = [...existingSplitItemIds, ...items.map(i => i.orderItemId)];
 
-    if (newSourceWeight <= 0) {
-      // Delete source stop if no weight remaining
-      // First delete any remaining stop_items
+    // Check if source stop still has remaining items
+    const { data: checkRemainingItems } = await supabase
+      .from('receiving_route_stop_items')
+      .select('stop_item_id')
+      .eq('stop_id', sourceStopId);
+
+    const hasRemainingItems = (checkRemainingItems?.length || 0) > 0;
+
+    if (newSourceWeight <= 0 && !hasRemainingItems) {
+      // Delete source stop only if truly no items remaining
       await supabase
         .from('receiving_route_stop_items')
         .delete()
@@ -406,10 +413,12 @@ try {
         .eq('stop_id', sourceStopId);
     } else {
       // Update source stop weight and tags
+      // Use calculated weight, or keep a minimum if items exist but weight is 0
+      const finalWeight = newSourceWeight > 0 ? newSourceWeight : (hasRemainingItems ? Math.max(0.01, newSourceWeight) : 0);
       await supabase
         .from('receiving_route_stops')
         .update({
-          load_weight_kg: newSourceWeight,
+          load_weight_kg: finalWeight,
           tags: {
             ...sourceStop.tags,
             split_out_item_ids: newSplitOutItemIds,

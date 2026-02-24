@@ -460,10 +460,23 @@ export default function ExcelStyleRouteEditor({
     });
     
     setRows(prev => {
-      // Update original row weight
+      // Update original row: reduce weight AND update items to show only remaining
       const updated = prev.map(r => {
         if (r.rowId === row.rowId) {
-          return { ...r, weightKg: r.weightKg - splitWeightNum };
+          // Filter out split items and adjust quantities for partially split items
+          const remainingItems = r.items
+            .map(item => {
+              const splitItem = splitItemsArray.find(si => si.orderItemId === item.order_item_id);
+              if (!splitItem) return item; // Not split - keep as is
+              const remainingQty = (item.order_qty || 0) - splitItem.quantity;
+              if (remainingQty <= 0) return null; // Fully moved
+              // Partially moved - reduce quantity and weight
+              const unitWeight = item.order_qty > 0 ? (item.order_weight || 0) / item.order_qty : 0;
+              return { ...item, order_qty: remainingQty, order_weight: remainingQty * unitWeight };
+            })
+            .filter(Boolean);
+          const remainingTotalQty = remainingItems.reduce((sum, item: any) => sum + (item.order_qty || 0), 0);
+          return { ...r, weightKg: r.weightKg - splitWeightNum, items: remainingItems, totalQty: remainingTotalQty };
         }
         return r;
       });
@@ -495,7 +508,18 @@ export default function ExcelStyleRouteEditor({
         tripNumber: actualTargetTrip as number,
         stopSequence: maxSeq + 1,
         note: `แบ่งจาก ${row.orderNo}`,
-        items: [], // Split row doesn't have items detail
+        items: splitItemsArray.map(si => {
+          const originalItem = row.items.find(i => i.order_item_id === si.orderItemId);
+          const unitWeight = originalItem && originalItem.order_qty > 0
+            ? (originalItem.order_weight || 0) / originalItem.order_qty : 0;
+          return {
+            order_item_id: si.orderItemId,
+            sku_id: originalItem?.sku_id || null,
+            sku_name: originalItem?.sku_name || '',
+            order_qty: si.quantity,
+            order_weight: si.weightKg || si.quantity * unitWeight
+          };
+        }), // Split row shows moved items
         isSplit: true,
         splitFromOrderNo: row.orderNo,
         originalWeightKg: row.weightKg + splitWeightNum,

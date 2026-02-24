@@ -90,8 +90,8 @@ try {
     });
 
     // ✅ CHECK: ถ้า item ถูก picked ไปแล้ว ให้ return already_processed
-    if (item.status === 'picked' || item.status === 'processing') {
-      console.log(`⚠️ [Bonus] Item ${item_id} already picked/processing, skipping`);
+    if (item.status === 'picked') {
+      console.log(`⚠️ [Bonus] Item ${item_id} already picked, skipping`);
       return NextResponse.json({
         success: true,
         message: 'รายการนี้ถูกหยิบไปแล้ว',
@@ -102,29 +102,11 @@ try {
       });
     }
 
-    // ✅ ATOMIC LOCK: ป้องกัน race condition - claim item ด้วย conditional UPDATE
-    const { data: claimed, error: claimError } = await supabase
-      .from('bonus_face_sheet_items')
-      .update({ status: 'processing' })
-      .eq('id', item_id)
-      .eq('status', 'pending')
-      .select('id')
-      .maybeSingle();
+    // ═══════════════════════════════════════════════════
+    // ✅ PRE-LOCK VALIDATIONS (ตรวจสอบก่อน lock เพื่อป้องกัน item ค้างในสถานะ 'processing')
+    // ═══════════════════════════════════════════════════
 
-    if (!claimed || claimError) {
-      console.log(`⚠️ [Bonus] Item ${item_id} already claimed by another request`);
-      return NextResponse.json({
-        success: true,
-        message: 'รายการนี้กำลังถูกดำเนินการอยู่',
-        already_processed: true,
-        bonus_face_sheet_status: (item.bonus_face_sheets as any).status,
-        bonus_face_sheet_completed: false,
-        quantity_picked: quantity_picked
-      });
-    }
-
-    // ✅ FIX: บังคับให้ต้อง "จัดสรรโลเคชั่น" ก่อนหยิบของ
-    // ถ้า storage_location เป็น null = ยังไม่ได้จัดสรรโลเคชั่น
+    // บังคับให้ต้อง "จัดสรรโลเคชั่น" ก่อนหยิบของ
     if (!storageLocation) {
       console.error('❌ Package has no storage_location assigned. User must run "จัดสรรโลเคชั่น" first.');
       return NextResponse.json(
@@ -137,7 +119,7 @@ try {
       );
     }
 
-    // 2. ตรวจสอบ QR Code (ถ้ามี)
+    // ตรวจสอบ QR Code (ถ้ามี)
     if (scanned_code && scanned_code !== (item.bonus_face_sheets as any).face_sheet_no) {
       console.error('❌ QR Code mismatch:', { scanned: scanned_code, expected: (item.bonus_face_sheets as any).face_sheet_no });
       return NextResponse.json(
@@ -146,7 +128,7 @@ try {
       );
     }
 
-    // 3. ตรวจสอบสถานะ bonus_face_sheet
+    // ตรวจสอบสถานะ bonus_face_sheet
     const bonusFaceSheetStatus = (item.bonus_face_sheets as any).status;
     console.log('📋 Bonus face sheet status:', bonusFaceSheetStatus);
     if (!['generated', 'picking'].includes(bonusFaceSheetStatus)) {
@@ -157,7 +139,7 @@ try {
       );
     }
 
-    // 4. ตรวจสอบจำนวนที่หยิบ
+    // ตรวจสอบจำนวนที่หยิบ
     if (quantity_picked > (item.quantity_to_pick || item.quantity)) {
       return NextResponse.json(
         { error: `จำนวนที่หยิบ (${quantity_picked}) มากกว่าที่ต้องการ (${item.quantity_to_pick || item.quantity})` },
@@ -165,7 +147,7 @@ try {
       );
     }
 
-    // 5. ดึง warehouse_id
+    // ดึง warehouse_id
     const warehouseId = (item.bonus_face_sheets as any).warehouse_id;
 
     if (!warehouseId) {
@@ -175,8 +157,7 @@ try {
       );
     }
 
-    // 6. ดึง Storage location (PQ01-PQ10, MR01-MR10) จาก package
-    // ✅ FIX: ไม่มี fallback ไป Dispatch แล้ว - ต้องมี storage_location เสมอ (บังคับไว้ข้างบน)
+    // ดึง Storage location (PQ01-PQ10, MR01-MR10) จาก package
     const { data: storageLocationData, error: storageError } = await supabase
       .from('master_location')
       .select('location_id, location_code')
@@ -196,6 +177,41 @@ try {
     const destinationLocationId = storageLocationData.location_id;
     const destinationLocationCode = storageLocationData.location_code;
     console.log(`✅ Using storage location: ${destinationLocationCode}`);
+
+    // ═══════════════════════════════════════════════════
+    // ✅ ATOMIC LOCK (หลังจาก validation ผ่านทั้งหมดแล้ว)
+    // ═══════════════════════════════════════════════════
+
+    // RECOVERY: ถ้า item ติดค้างในสถานะ 'processing' (จากการ scan ที่ล้มเหลวก่อนหน้า)
+    // → reset กลับเป็น 'pending' เพื่อให้สามารถ scan ใหม่ได้
+    if (item.status === 'processing') {
+      console.log(`⚠️ [Bonus] Item ${item_id} stuck in 'processing' state, resetting to 'pending' for retry`);
+      await supabase
+        .from('bonus_face_sheet_items')
+        .update({ status: 'pending' })
+        .eq('id', item_id);
+    }
+
+    // ATOMIC LOCK: ป้องกัน race condition - claim item ด้วย conditional UPDATE
+    const { data: claimed, error: claimError } = await supabase
+      .from('bonus_face_sheet_items')
+      .update({ status: 'processing' })
+      .eq('id', item_id)
+      .eq('status', 'pending')
+      .select('id')
+      .maybeSingle();
+
+    if (!claimed || claimError) {
+      console.log(`⚠️ [Bonus] Item ${item_id} already claimed by another request`);
+      return NextResponse.json({
+        success: true,
+        message: 'รายการนี้กำลังถูกดำเนินการอยู่',
+        already_processed: true,
+        bonus_face_sheet_status: (item.bonus_face_sheets as any).status,
+        bonus_face_sheet_completed: false,
+        quantity_picked: quantity_picked
+      });
+    }
 
     // Get SKU info
     const { data: skuInfo } = await supabase
@@ -474,6 +490,14 @@ try {
 
     if (!movementResult.success) {
       console.error('🔴 CRITICAL: executeStockMovements failed:', movementResult.error);
+
+      // ✅ ROLLBACK: คืนสถานะ item จาก 'processing' กลับเป็น 'pending' เพื่อให้ scan ใหม่ได้
+      await supabase
+        .from('bonus_face_sheet_items')
+        .update({ status: 'pending' })
+        .eq('id', item_id);
+      console.log(`🔄 Rolled back item ${item_id} status to 'pending'`);
+
       return NextResponse.json({
         success: false,
         error: 'ไม่สามารถบันทึกการเคลื่อนย้ายสต็อกได้ กรุณาติดต่อผู้ดูแลระบบ',

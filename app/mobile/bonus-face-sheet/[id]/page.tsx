@@ -194,8 +194,6 @@ const BonusFaceSheetPickPage = () => {
     );
   }
 
-  console.log('Render - showEmployeeModal:', showEmployeeModal);
-
   return (
     <div className="min-h-screen bg-gray-50 pb-20">
       {/* Header */}
@@ -356,13 +354,15 @@ const BonusFaceSheetPickPage = () => {
         }}
         onConfirm={async (checkers, pickers) => {
           setShowEmployeeModal(false);
-          
+
           // ยืนยันการหยิบทั้งหมด
           if (confirm(`ยืนยันการหยิบสินค้าทั้งหมด ${totalItems - completedItems} รายการ?`)) {
             setConfirmingAll(true);
             try {
               const unpickedItems = bonusFaceSheet.items.filter(i => i.status !== 'picked');
-              
+              let successCount = 0;
+              let errorMessages: string[] = [];
+
               for (const item of unpickedItems) {
                 const response = await fetch('/api/mobile/bonus-face-sheet/scan', {
                   method: 'POST',
@@ -380,15 +380,23 @@ const BonusFaceSheetPickPage = () => {
                 const result = await response.json();
 
                 if (!response.ok || result.error) {
-                  alert(`เกิดข้อผิดพลาด: ${result.error}`);
-                  break;
+                  errorMessages.push(`${item.sku_id}: ${result.error}`);
+                  continue; // ไม่ break - ดำเนินการต่อกับ item อื่น
                 }
+
+                successCount++;
               }
 
               // Refresh data
               await fetchBonusFaceSheetData();
-              alert('ยืนยันการหยิบสินค้าเรียบร้อย!');
+
+              if (errorMessages.length > 0) {
+                alert(`หยิบสำเร็จ ${successCount}/${unpickedItems.length} รายการ\n\nข้อผิดพลาด:\n${errorMessages.join('\n')}`);
+              } else {
+                alert('ยืนยันการหยิบสินค้าเรียบร้อย!');
+              }
             } catch (err: any) {
+              await fetchBonusFaceSheetData();
               alert(`เกิดข้อผิดพลาด: ${err.message}`);
             } finally {
               setConfirmingAll(false);
