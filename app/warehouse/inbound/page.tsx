@@ -734,28 +734,35 @@ const InboundPage = () => {
                           </div>
                         </td>
                         <td className="px-2 py-0.5 border-r border-gray-100 whitespace-nowrap" onClick={(e) => e.stopPropagation()}>
-                          {receive.receive_type === 'การผลิต' && !receive.reference_doc ? (
-                            <div className="flex items-center gap-1">
-                              <input
-                                type="text"
-                                placeholder="PO-..."
-                                className="w-20 px-1 py-0.5 text-[10px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
-                                value={editingProductionRef[receive.receive_id] || ''}
-                                onChange={(e) => handleProductionRefChange(receive.receive_id, e.target.value)}
-                                disabled={savingProductionRef[receive.receive_id]}
-                              />
-                              <button
-                                onClick={() => saveProductionRef(receive.receive_id)}
-                                disabled={!editingProductionRef[receive.receive_id]?.trim() || savingProductionRef[receive.receive_id]}
-                                className="w-5 h-5 flex items-center justify-center bg-blue-500 text-white rounded-full hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
-                                title="บันทึก"
-                              >
-                                {savingProductionRef[receive.receive_id] ? (
-                                  <span className="animate-spin text-[8px]">⏳</span>
-                                ) : (
-                                  <Save className="w-3 h-3" />
-                                )}
-                              </button>
+                          {receive.receive_type === 'การผลิต' ? (
+                            <div className="flex flex-col gap-0.5">
+                              {receive.reference_doc && (
+                                <div className="font-mono text-thai-gray-600 text-[10px]">
+                                  {receive.reference_doc}
+                                </div>
+                              )}
+                              <div className="flex items-center gap-1">
+                                <input
+                                  type="text"
+                                  placeholder="PO-..."
+                                  className="w-20 px-1 py-0.5 text-[10px] border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-blue-500 font-mono"
+                                  value={editingProductionRef[receive.receive_id] || ''}
+                                  onChange={(e) => handleProductionRefChange(receive.receive_id, e.target.value)}
+                                  disabled={savingProductionRef[receive.receive_id]}
+                                />
+                                <button
+                                  onClick={() => saveProductionRef(receive.receive_id)}
+                                  disabled={!editingProductionRef[receive.receive_id]?.trim() || savingProductionRef[receive.receive_id]}
+                                  className="w-5 h-5 flex items-center justify-center bg-blue-500 text-white rounded-full hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                                  title={receive.reference_doc ? 'เพิ่ม PO' : 'บันทึก'}
+                                >
+                                  {savingProductionRef[receive.receive_id] ? (
+                                    <span className="animate-spin text-[8px]">⏳</span>
+                                  ) : (
+                                    <Save className="w-3 h-3" />
+                                  )}
+                                </button>
+                              </div>
                             </div>
                           ) : (
                             <div className="font-mono text-thai-gray-600">

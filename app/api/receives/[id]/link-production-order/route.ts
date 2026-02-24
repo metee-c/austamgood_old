@@ -64,7 +64,19 @@ const supabase = createServiceRoleClient();
       );
     }
 
-    // 3. Get receive items that don't have production_order_id yet
+    // 3. Check if this PO is already linked to this GR
+    const existingRefs = receive.reference_doc
+      ? receive.reference_doc.split(',').map((r: string) => r.trim())
+      : [];
+
+    if (existingRefs.includes(production_no.trim())) {
+      return NextResponse.json(
+        { error: `ใบสั่งผลิต ${production_no} ถูกเชื่อมโยงกับใบรับนี้แล้ว` },
+        { status: 400 }
+      );
+    }
+
+    // 4. Get receive items
     const { data: receiveItems, error: itemsError } = await supabase
       .from('wms_receive_items')
       .select('item_id, sku_id, piece_quantity, production_order_id')
@@ -77,16 +89,7 @@ const supabase = createServiceRoleClient();
       );
     }
 
-    // Check if already linked
-    const alreadyLinked = receiveItems.some(item => item.production_order_id);
-    if (alreadyLinked) {
-      return NextResponse.json(
-        { error: 'ใบรับนี้เชื่อมโยงกับใบสั่งผลิตแล้ว' },
-        { status: 400 }
-      );
-    }
-
-    // 4. Get the production receipt for this production order (to get materials info)
+    // 5. Get the production receipt for this production order (to get materials info)
     const { data: productionReceipt, error: receiptError } = await supabase
       .from('production_receipts')
       .select('id')
@@ -114,31 +117,35 @@ const supabase = createServiceRoleClient();
       }
     }
 
-    // 5. Update receive items with production_order_id
-    const { error: updateItemsError } = await supabase
-      .from('wms_receive_items')
-      .update({ production_order_id: productionOrder.id })
-      .eq('receive_id', receiveId);
+    // 6. Update receive items with production_order_id (only items without production_order_id)
+    const unlinkedItems = receiveItems.filter(item => !item.production_order_id);
+    if (unlinkedItems.length > 0) {
+      const { error: updateItemsError } = await supabase
+        .from('wms_receive_items')
+        .update({ production_order_id: productionOrder.id })
+        .eq('receive_id', receiveId)
+        .is('production_order_id', null);
 
-    if (updateItemsError) {
-      console.error('Error updating receive items:', updateItemsError);
-      return NextResponse.json(
-        { error: 'ไม่สามารถอัพเดทรายการสินค้าได้' },
-        { status: 500 }
-      );
+      if (updateItemsError) {
+        console.error('Error updating receive items:', updateItemsError);
+      }
     }
 
-    // 6. Update receive header with reference_doc
+    // 7. Update receive header - append PO to reference_doc (comma-separated)
+    const newReferenceDoc = existingRefs.length > 0
+      ? [...existingRefs, production_no.trim()].join(', ')
+      : production_no.trim();
+
     const { error: updateReceiveError } = await supabase
       .from('wms_receives')
-      .update({ reference_doc: production_no.trim() })
+      .update({ reference_doc: newReferenceDoc })
       .eq('receive_id', receiveId);
 
     if (updateReceiveError) {
       console.error('Error updating receive:', updateReceiveError);
     }
 
-    // 7. Consume materials from Repack (create OUT ledger entries)
+    // 8. Consume materials from Repack (create OUT ledger entries)
     const repackLocation = 'Repack';
     const consumedMaterials: any[] = [];
 
