@@ -206,20 +206,24 @@ async function handleGet(request: NextRequest, context: any) {
       // ดึงจำนวน FG ที่รับเข้าจาก wms_receive_items
       const fgReceivedQty = productionOrderId ? fgReceivedMap[productionOrderId] || 0 : 0;
       
-      // แยกวัตถุดิบอาหาร vs packaging
+      // แยกวัตถุดิบอาหาร vs packaging vs สินค้าสำเร็จรูปที่ใช้ผลิต
       // วัตถุดิบอาหาร: SKU ขึ้นต้นด้วย 00- หรือ category = 'วัตถุดิบ'
       // Packaging: SKU ขึ้นต้นด้วย 01- หรือ 02- หรือ OTHERS หรือ category = 'ถุงบรรจุภัณฑ์' หรือ 'สติ๊กเกอร์ติดบรรจุภัณฑ์'
-      const foodMaterials = materials.filter((m: any) => 
-        m.material_sku_id?.startsWith('00-') || 
-        m.material_sku?.category === 'วัตถุดิบ'
-      );
-      const packagingMaterials = materials.filter((m: any) => 
-        m.material_sku_id?.startsWith('01-') || 
+      // สินค้าสำเร็จรูปที่ใช้ผลิต: category = 'สินค้าสำเร็จรูป' หรือ SKU ที่ไม่ตรงกับ food/packaging
+      const isFood = (m: any) =>
+        m.material_sku_id?.startsWith('00-') ||
+        m.material_sku?.category === 'วัตถุดิบ';
+      const isPackaging = (m: any) =>
+        m.material_sku_id?.startsWith('01-') ||
         m.material_sku_id?.startsWith('02-') ||
         m.material_sku_id?.startsWith('OTHERS') ||
         m.material_sku?.category === 'ถุงบรรจุภัณฑ์' ||
-        m.material_sku?.category === 'สติ๊กเกอร์ติดบรรจุภัณฑ์'
-      );
+        m.material_sku?.category === 'สติ๊กเกอร์ติดบรรจุภัณฑ์';
+
+      const foodMaterials = materials.filter((m: any) => isFood(m));
+      const packagingMaterials = materials.filter((m: any) => isPackaging(m));
+      // สินค้าสำเร็จรูปที่ใช้เป็นวัตถุดิบ (FG ที่นำมาผลิตเป็นสินค้าขนาดใหม่)
+      const fgMaterials = materials.filter((m: any) => !isFood(m) && !isPackaging(m));
 
       // คำนวณอาหารที่ใช้จริง (กก.)
       // สมมติว่าวัตถุดิบอาหาร 1 ถุง = 20 กก. (ตาม BOM ratio)
@@ -319,7 +323,40 @@ async function handleGet(request: NextRequest, context: any) {
             variance_qty: parseFloat(m.variance_qty) || 0,
             variance_type: m.variance_type,
             uom: m.uom
-          }))
+          })),
+          // สินค้าสำเร็จรูปที่ใช้เป็นวัตถุดิบ (FG ที่นำมาผลิตเป็นสินค้าขนาดใหม่)
+          fg_materials: fgMaterials.map((m: any) => {
+            // หา replenishment items ที่ตรงกับ SKU นี้
+            const rawPalletItems = replenishmentItems.filter(r => r.sku_id === m.material_sku_id);
+            const palletMap = new Map<string, any>();
+            rawPalletItems.forEach(r => {
+              const key = r.pallet_id || 'no-pallet';
+              if (palletMap.has(key)) {
+                palletMap.get(key)!.qty += r.confirmed_qty;
+              } else {
+                palletMap.set(key, {
+                  pallet_id: r.pallet_id,
+                  production_date: r.production_date,
+                  expiry_date: r.expiry_date,
+                  qty: r.confirmed_qty,
+                  from_location_id: r.from_location_id
+                });
+              }
+            });
+            return {
+              sku_id: m.material_sku_id,
+              sku_name: m.material_sku?.sku_name,
+              issued_qty: parseFloat(m.issued_qty) || 0,
+              actual_qty: Math.round(parseFloat(m.actual_qty)) || 0,
+              variance_qty: parseFloat(m.variance_qty) || 0,
+              variance_type: m.variance_type,
+              uom: m.uom,
+              material_production_date: m.material_production_date || null,
+              material_expiry_date: m.material_expiry_date || null,
+              pallet_id: m.pallet_id || null,
+              pallet_details: palletMap.size > 0 ? Array.from(palletMap.values()) : null
+            };
+          })
         }
       };
     });

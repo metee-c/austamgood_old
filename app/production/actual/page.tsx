@@ -358,6 +358,57 @@ const ActualProductionPage = () => {
       foodTotal = calc.food_materials.reduce((sum: number, m: any) => sum + m.actual_qty, 0);
     }
 
+    // สร้าง rows สำหรับสินค้าสำเร็จรูปที่ใช้เป็นวัตถุดิบ
+    let fgMaterialRows = '';
+    let fgMaterialTotal = 0;
+    if (calc?.fg_materials && calc.fg_materials.length > 0) {
+      fgMaterialRows = calc.fg_materials.map((item: any, index: number) => {
+        let mfgDate = '-';
+        let expDate = '-';
+
+        if (item.material_production_date) {
+          mfgDate = formatDateShort(item.material_production_date);
+        } else if (item.pallet_details && item.pallet_details.length > 0 && item.pallet_details[0].production_date) {
+          mfgDate = formatDateShort(item.pallet_details[0].production_date);
+        }
+
+        if (item.material_expiry_date) {
+          expDate = formatDateShort(item.material_expiry_date);
+        } else if (item.pallet_details && item.pallet_details.length > 0 && item.pallet_details[0].expiry_date) {
+          expDate = formatDateShort(item.pallet_details[0].expiry_date);
+        }
+
+        let mainRow = `
+          <tr>
+            <td style="padding: 6px; border: 1px solid #000; text-align: center;">${index + 1}</td>
+            <td style="padding: 6px; border: 1px solid #000; font-family: monospace; font-size: 9pt;">${item.sku_id}</td>
+            <td style="padding: 6px; border: 1px solid #000;">${item.sku_name || '-'}</td>
+            <td style="padding: 6px; border: 1px solid #000; text-align: right; font-weight: bold;">${item.actual_qty.toLocaleString()} ${item.uom}</td>
+            <td style="padding: 6px; border: 1px solid #000; font-size: 8pt;">EXP: ${expDate}</td>
+          </tr>
+        `;
+
+        // แถวย่อยรายพาเลท (ถ้ามี)
+        let palletRows = '';
+        if (item.pallet_details && item.pallet_details.length > 0) {
+          palletRows = item.pallet_details.map((pallet: any, pIdx: number) => `
+            <tr style="background: #fafafa;">
+              <td style="padding: 4px 6px; border: 1px solid #ddd; text-align: center; font-size: 8pt; color: #666;">${index + 1}.${pIdx + 1}</td>
+              <td style="padding: 4px 6px; border: 1px solid #ddd; font-family: monospace; font-size: 8pt; color: #333;">${pallet.pallet_id || '-'}</td>
+              <td style="padding: 4px 6px; border: 1px solid #ddd; font-size: 8pt;">
+                <span style="color: #666;">EXP:</span> ${formatDateShort(pallet.expiry_date)}
+              </td>
+              <td style="padding: 4px 6px; border: 1px solid #ddd; text-align: right; font-size: 8pt;">${pallet.qty?.toLocaleString() || '-'} ${item.uom}</td>
+              <td style="padding: 4px 6px; border: 1px solid #ddd; font-size: 8pt; color: #666;">${pallet.from_location_id || ''}</td>
+            </tr>
+          `).join('');
+        }
+
+        return mainRow + palletRows;
+      }).join('');
+      fgMaterialTotal = calc.fg_materials.reduce((sum: number, m: any) => sum + m.actual_qty, 0);
+    }
+
     // สร้าง rows สำหรับวัสดุบรรจุภัณฑ์
     let packagingRows = '';
     let packagingTotal = 0;
@@ -420,7 +471,27 @@ const ActualProductionPage = () => {
           <td style="padding: 6px; border: 1px solid #000;"></td>
         </tr>
         ` : ''}
-        
+
+        ${calc?.fg_materials && calc.fg_materials.length > 0 ? `
+        <!-- Section: สินค้าสำเร็จรูปที่ใช้ผลิต -->
+        <tr style="background: #e5e5e5;">
+          <td colspan="5" style="padding: 8px 10px; font-weight: bold; font-size: 10pt; border: 1px solid #000;">สินค้าสำเร็จรูปที่ใช้ผลิต (${calc.fg_materials.length} รายการ)</td>
+        </tr>
+        <tr style="background: #f5f5f5;">
+          <th style="padding: 6px; text-align: left; font-weight: 600; width: 6%; border: 1px solid #000;">#</th>
+          <th style="padding: 6px; text-align: left; font-weight: 600; width: 18%; border: 1px solid #000;">รหัสสินค้า</th>
+          <th style="padding: 6px; text-align: left; font-weight: 600; border: 1px solid #000;">ชื่อสินค้า</th>
+          <th style="padding: 6px; text-align: right; font-weight: 600; width: 15%; border: 1px solid #000;">ใช้จริง</th>
+          <th style="padding: 6px; text-align: left; font-weight: 600; width: 20%; border: 1px solid #000;">หมายเหตุ</th>
+        </tr>
+        ${fgMaterialRows}
+        <tr style="background: #f5f5f5;">
+          <td colspan="3" style="padding: 6px; text-align: right; border: 1px solid #000; font-weight: bold;">รวม:</td>
+          <td style="padding: 6px; text-align: right; font-weight: bold; border: 1px solid #000;">${fgMaterialTotal.toLocaleString()}</td>
+          <td style="padding: 6px; border: 1px solid #000;"></td>
+        </tr>
+        ` : ''}
+
         ${calc?.packaging_materials && calc.packaging_materials.length > 0 ? `
         <!-- Section: วัสดุบรรจุภัณฑ์ -->
         <tr style="background: #e5e5e5;">

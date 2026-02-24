@@ -33,6 +33,7 @@ interface CalculatedData {
   total_waste: number;
   food_materials: MaterialData[];
   packaging_materials: MaterialData[];
+  fg_materials?: MaterialData[];
 }
 
 // Interface สำหรับ Production Receipt
@@ -655,6 +656,53 @@ const ProductionReceiptPrintDocument = forwardRef<HTMLDivElement, ProductionRece
                   <td colSpan={3} style={{ textAlign: 'right' }}>รวม:</td>
                   <td className="right">{calc.food_materials.reduce((sum, m) => sum + m.issued_qty, 0).toLocaleString()}</td>
                   <td className="right" style={{ fontWeight: 'bold' }}>{calc.food_materials.reduce((sum, m) => sum + m.actual_qty, 0).toLocaleString()}</td>
+                  <td colSpan={3}></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        )}
+
+        {/* FG Materials Table (สินค้าสำเร็จรูปที่ใช้ผลิต) */}
+        {calc?.fg_materials && calc.fg_materials.length > 0 && (
+          <div className="materials-section">
+            <div className="section-title">🏭 สินค้าสำเร็จรูปที่ใช้ผลิต ({calc.fg_materials.length} รายการ)</div>
+            <table className="materials-table">
+              <thead>
+                <tr>
+                  <th style={{ width: '4%' }}>#</th>
+                  <th style={{ width: '18%' }}>รหัสสินค้า</th>
+                  <th style={{ width: '22%' }}>ชื่อสินค้า</th>
+                  <th className="right" style={{ width: '9%' }}>เบิก</th>
+                  <th className="right" style={{ width: '9%' }}>ใช้จริง</th>
+                  <th className="center" style={{ width: '10%' }}>วันผลิต</th>
+                  <th className="center" style={{ width: '10%' }}>วันหมดอายุ</th>
+                  <th className="center" style={{ width: '18%' }}>ส่วนต่าง</th>
+                </tr>
+              </thead>
+              <tbody>
+                {calc.fg_materials.map((item: any, index: number) => (
+                  <tr key={item.sku_id}>
+                    <td>{index + 1}</td>
+                    <td style={{ fontFamily: 'monospace', fontSize: '8pt' }}>{item.sku_id}</td>
+                    <td>{item.sku_name}</td>
+                    <td className="right">{item.issued_qty.toLocaleString()} {item.uom}</td>
+                    <td className="right" style={{ fontWeight: 'bold' }}>{item.actual_qty.toLocaleString()} {item.uom}</td>
+                    <td className="center" style={{ fontSize: '8pt' }}>{formatDate(item.material_production_date)}</td>
+                    <td className="center" style={{ fontSize: '8pt' }}>{formatDate(item.material_expiry_date)}</td>
+                    <td className="center">
+                      <span className={`variance-badge ${getVarianceClass(item.variance_type)}`}>
+                        {item.variance_qty > 0 ? '+' : ''}{item.variance_qty.toLocaleString()} ({getVarianceTypeText(item.variance_type)})
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+              <tfoot>
+                <tr>
+                  <td colSpan={3} style={{ textAlign: 'right' }}>รวม:</td>
+                  <td className="right">{calc.fg_materials.reduce((sum: number, m: any) => sum + m.issued_qty, 0).toLocaleString()}</td>
+                  <td className="right" style={{ fontWeight: 'bold' }}>{calc.fg_materials.reduce((sum: number, m: any) => sum + m.actual_qty, 0).toLocaleString()}</td>
                   <td colSpan={3}></td>
                 </tr>
               </tfoot>
