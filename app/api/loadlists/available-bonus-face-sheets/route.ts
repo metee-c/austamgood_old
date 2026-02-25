@@ -94,14 +94,23 @@ async function _GET(request: NextRequest) {
     );
     
     // Query packages ที่ยังมี storage_location (ยังไม่ได้ย้ายไป staging/โหลด)
-    const { data: unloadedPackages } = await supabase
-      .from('bonus_face_sheet_packages')
-      .select('id, face_sheet_id, trip_number, order_id, storage_location')
-      .in('face_sheet_id', bfsIds)
-      .not('storage_location', 'is', null);
+    // ✅ FIX: ใช้ loop เพื่อดึง packages ทุก row (Supabase default limit = 1000)
+    let unloadedPackages: { id: number; face_sheet_id: number; trip_number: string | null; order_id: number; storage_location: string | null }[] = [];
+    const BATCH_SIZE = 1000;
+    for (let offset = 0; ; offset += BATCH_SIZE) {
+      const { data: batch } = await supabase
+        .from('bonus_face_sheet_packages')
+        .select('id, face_sheet_id, trip_number, order_id, storage_location')
+        .in('face_sheet_id', bfsIds)
+        .not('storage_location', 'is', null)
+        .range(offset, offset + BATCH_SIZE - 1);
+      if (!batch || batch.length === 0) break;
+      unloadedPackages = unloadedPackages.concat(batch);
+      if (batch.length < BATCH_SIZE) break;
+    }
 
     // ✅ FIX 3: กรอง packages ที่ยังไม่ถูกแมพ (ไม่อยู่ใน matched_package_ids)
-    const availablePackages = (unloadedPackages || []).filter(pkg => {
+    const availablePackages = unloadedPackages.filter(pkg => {
       const usedPackages = usedPackagesByBFS.get(pkg.face_sheet_id);
       // ถ้าไม่มี usedPackages หรือ package นี้ไม่อยู่ใน usedPackages = available
       return !usedPackages || !usedPackages.has(pkg.id);
@@ -277,7 +286,7 @@ async function _GET(request: NextRequest) {
         total_completed_bfs: bonusFaceSheets?.length || 0,
         bfs_with_unloaded_packages: availableBonusFaceSheets.length,
         bfs_ids_checked: bfsIds,
-        unloaded_packages_count: unloadedPackages?.length || 0
+        unloaded_packages_count: unloadedPackages.length
       }
     });
 

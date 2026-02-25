@@ -92,16 +92,25 @@ async function handleGet(request: NextRequest) {
       });
 
       // 3. ดึง packages ที่ยังมี storage_location (ยังไม่ได้โหลด)
-      const { data: allPackages } = await supabase
-        .from('bonus_face_sheet_packages')
-        .select('id, face_sheet_id, trip_number, order_id, storage_location')
-        .in('face_sheet_id', bfsIds)
-        .not('storage_location', 'is', null);
+      // ✅ FIX: ใช้ loop เพื่อดึง packages ทุก row (Supabase default limit = 1000)
+      let allPackages: { id: number; face_sheet_id: number; trip_number: string | null; order_id: number; storage_location: string | null }[] = [];
+      const BATCH_SIZE = 1000;
+      for (let offset = 0; ; offset += BATCH_SIZE) {
+        const { data: batch } = await supabase
+          .from('bonus_face_sheet_packages')
+          .select('id, face_sheet_id, trip_number, order_id, storage_location')
+          .in('face_sheet_id', bfsIds)
+          .not('storage_location', 'is', null)
+          .range(offset, offset + BATCH_SIZE - 1);
+        if (!batch || batch.length === 0) break;
+        allPackages = allPackages.concat(batch);
+        if (batch.length < BATCH_SIZE) break;
+      }
 
       // 4. กรอง packages ที่ยังไม่ถูกแมพ
       const availablePackagesByBFS = new Map<number, typeof allPackages>();
       
-      for (const pkg of allPackages || []) {
+      for (const pkg of allPackages) {
         const usedPackages = usedPackagesByBFS.get(pkg.face_sheet_id);
         const isUsed = usedPackages && usedPackages.has(pkg.id);
         

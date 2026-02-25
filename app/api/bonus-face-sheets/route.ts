@@ -46,12 +46,22 @@ async function handleGet(request: NextRequest, context: any) {
     let packageStats: Record<number, { assigned: number; unassigned: number }> = {};
     
     if (faceSheetIds.length > 0) {
-      const { data: packages, error: pkgError } = await supabase
-        .from('bonus_face_sheet_packages')
-        .select('id, face_sheet_id, storage_location')
-        .in('face_sheet_id', faceSheetIds);
+      // ✅ FIX: ใช้ loop เพื่อดึง packages ทุก row (Supabase default limit = 1000)
+      let allPackages: { id: number; face_sheet_id: number; storage_location: string | null }[] = [];
+      const BATCH_SIZE = 1000;
+      for (let offset = 0; ; offset += BATCH_SIZE) {
+        const { data: batch, error: batchErr } = await supabase
+          .from('bonus_face_sheet_packages')
+          .select('id, face_sheet_id, storage_location')
+          .in('face_sheet_id', faceSheetIds)
+          .range(offset, offset + BATCH_SIZE - 1);
+        if (batchErr || !batch || batch.length === 0) break;
+        allPackages = allPackages.concat(batch);
+        if (batch.length < BATCH_SIZE) break;
+      }
+      const packages = allPackages;
       
-      if (!pkgError && packages) {
+      if (packages.length > 0) {
         // Group by face_sheet_id and count assigned/unassigned
         for (const pkg of packages) {
           if (!packageStats[pkg.face_sheet_id]) {
