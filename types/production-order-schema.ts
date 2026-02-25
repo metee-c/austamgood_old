@@ -168,6 +168,7 @@ export interface PlanDataForOrder {
   }[];
   materials: {
     material_sku_id: string;
+    finished_sku_id: string;
     material_name: string;
     gross_requirement: number;
     material_uom?: string;

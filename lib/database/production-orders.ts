@@ -168,6 +168,7 @@ export async function getPlanDataForOrder(planId: string): Promise<PlanDataForOr
       ),
       material_requirements(
         material_sku_id,
+        finished_sku_id,
         gross_requirement,
         material_uom,
         material_sku:master_sku!material_requirements_material_sku_id_fkey(sku_id, sku_name)
@@ -194,6 +195,7 @@ export async function getPlanDataForOrder(planId: string): Promise<PlanDataForOr
     })),
     materials: (plan.material_requirements || []).map((mat: any) => ({
       material_sku_id: mat.material_sku_id,
+      finished_sku_id: mat.finished_sku_id,
       material_name: mat.material_sku?.sku_name || mat.material_sku_id,
       gross_requirement: Number(mat.gross_requirement),
       material_uom: mat.material_uom,

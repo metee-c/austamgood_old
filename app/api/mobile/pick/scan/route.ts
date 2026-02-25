@@ -82,9 +82,9 @@ try {
       );
     }
 
-    // ✅ CHECK: ถ้า item ถูก picked ไปแล้ว ให้ return already_processed
-    if (item.status === 'picked' || item.status === 'processing') {
-      console.log(`⚠️ Item ${item_id} already picked/processing, skipping`);
+    // ✅ CHECK: ถ้า item ถูก picked ไปแล้ว (จริงๆ) ให้ return already_processed
+    if (item.status === 'picked') {
+      console.log(`⚠️ Item ${item_id} already picked, skipping`);
       return NextResponse.json({
         success: true,
         message: 'รายการนี้ถูกบันทึกไปแล้ว',
@@ -95,26 +95,7 @@ try {
       });
     }
 
-    // ✅ ATOMIC LOCK: ป้องกัน race condition - claim item ด้วย conditional UPDATE
-    const { data: claimed, error: claimError } = await supabase
-      .from('picklist_items')
-      .update({ status: 'processing' })
-      .eq('id', item_id)
-      .eq('status', 'pending')
-      .select('id')
-      .maybeSingle();
-
-    if (!claimed || claimError) {
-      console.log(`⚠️ Item ${item_id} already claimed by another request`);
-      return NextResponse.json({
-        success: true,
-        message: 'รายการนี้กำลังถูกดำเนินการอยู่',
-        already_processed: true,
-        picklist_status: item.picklists.status,
-        picklist_completed: false,
-        quantity_picked: quantity_picked
-      });
-    }
+    // ✅ PRE-LOCK VALIDATIONS: ตรวจสอบก่อน atomic lock เพื่อไม่ให้ item ค้าง 'processing'
 
     // 2. ตรวจสอบ QR Code (ถ้ามี)
     if (scanned_code && scanned_code !== item.picklists.picklist_code) {
@@ -138,6 +119,37 @@ try {
         { error: `จำนวนที่หยิบ (${quantity_picked}) มากกว่าที่ต้องการ (${item.quantity_to_pick})` },
         { status: 400 }
       );
+    }
+
+    // ✅ RECOVERY: ถ้า item ค้าง 'processing' จากครั้งก่อน → รีเซ็ตเป็น 'pending' ก่อน
+    if (item.status === 'processing') {
+      console.log(`🔄 Item ${item_id} stuck in 'processing' - resetting to 'pending'`);
+      await supabase
+        .from('picklist_items')
+        .update({ status: 'pending' })
+        .eq('id', item_id)
+        .eq('status', 'processing');
+    }
+
+    // ✅ ATOMIC LOCK: ป้องกัน race condition - claim item ด้วย conditional UPDATE
+    const { data: claimed, error: claimError } = await supabase
+      .from('picklist_items')
+      .update({ status: 'processing' })
+      .eq('id', item_id)
+      .eq('status', 'pending')
+      .select('id')
+      .maybeSingle();
+
+    if (!claimed || claimError) {
+      console.log(`⚠️ Item ${item_id} already claimed by another request`);
+      return NextResponse.json({
+        success: true,
+        message: 'รายการนี้กำลังถูกดำเนินการอยู่',
+        already_processed: true,
+        picklist_status: item.picklists.status,
+        picklist_completed: false,
+        quantity_picked: quantity_picked
+      });
     }
 
     // ✅ CHECK: ถ้าเป็น SKU สติ๊กเกอร์ ให้ข้ามการย้ายสต็อก แค่อัพเดทสถานะเป็น picked
@@ -236,6 +248,8 @@ try {
       ?.receiving_route_plans?.warehouse_id;
 
     if (!warehouseId) {
+      // ✅ ROLLBACK: คืนสถานะ item กลับเป็น pending
+      await supabase.from('picklist_items').update({ status: 'pending' }).eq('id', item_id);
       return NextResponse.json(
         { error: 'ไม่พบข้อมูลคลังสินค้า' },
         { status: 404 }
@@ -256,6 +270,8 @@ try {
       .single();
 
     if (destError || !destinationLocation) {
+      // ✅ ROLLBACK: คืนสถานะ item กลับเป็น pending
+      await supabase.from('picklist_items').update({ status: 'pending' }).eq('id', item_id);
       return NextResponse.json(
         { error: `ไม่พบ ${destinationCode} location`, details: destError?.message },
         { status: 404 }
@@ -428,6 +444,8 @@ try {
 
         if (balanceError || !balance) {
           console.error(`Cannot find balance ${reservation.balance_id}:`, balanceError);
+          // ✅ ROLLBACK: คืนสถานะ item กลับเป็น pending
+          await supabase.from('picklist_items').update({ status: 'pending' }).eq('id', item_id);
           return NextResponse.json(
             { error: `ไม่พบข้อมูลสต็อคที่จองไว้ (balance_id: ${reservation.balance_id})` },
             { status: 500 }
@@ -541,6 +559,8 @@ try {
 
     if (!movementResult.success) {
       console.error('🔴 CRITICAL: executeStockMovements failed:', movementResult.error);
+      // ✅ ROLLBACK: คืนสถานะ item กลับเป็น pending เพื่อให้ลองใหม่ได้
+      await supabase.from('picklist_items').update({ status: 'pending' }).eq('id', item_id);
       return NextResponse.json({
         success: false,
         error: 'ไม่สามารถบันทึกการเคลื่อนย้ายสต็อกได้ กรุณาติดต่อผู้ดูแลระบบ',

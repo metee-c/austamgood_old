@@ -507,15 +507,20 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
   const [selectedPallets, setSelectedPallets] = useState<Map<number, PalletSelection>>(new Map()); // balance_id -> PalletSelection
   const [editingPalletQty, setEditingPalletQty] = useState<number | null>(null); // balance_id ที่กำลังแก้ไขจำนวน
 
-  // Get selected SKU and its materials
+  // Get selected SKU and its materials (filtered by finished_sku_id)
   const selectedSku = planData?.items[selectedSkuIndex];
-  const foodMaterials = useMemo(() => 
-    planData?.materials.filter(m => m.material_sku_id.startsWith('00-')) || [], 
-    [planData]
+  const selectedSkuMaterials = useMemo(() => {
+    if (!planData?.materials || !selectedSku) return [];
+    // Filter materials by finished_sku_id matching selected SKU
+    return planData.materials.filter(m => m.finished_sku_id === selectedSku.sku_id);
+  }, [planData, selectedSku]);
+  const foodMaterials = useMemo(() =>
+    selectedSkuMaterials.filter(m => m.material_sku_id.startsWith('00-')),
+    [selectedSkuMaterials]
   );
-  const nonFoodMaterials = useMemo(() => 
-    planData?.materials.filter(m => !m.material_sku_id.startsWith('00-')) || [], 
-    [planData]
+  const nonFoodMaterials = useMemo(() =>
+    selectedSkuMaterials.filter(m => !m.material_sku_id.startsWith('00-')),
+    [selectedSkuMaterials]
   );
 
   // Initialize form when plan data loads
@@ -660,13 +665,13 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
     // Build items from materials - เฉพาะวัตถุดิบที่ไม่ใช่อาหาร (packaging)
     // วัตถุดิบอาหาร (SKU ขึ้นต้นด้วย 00-) จะใช้ selected_pallets แทน ไม่ต้องใส่ใน items
     // เพื่อป้องกันการสร้างรายการซ้ำ
-    const items = planData?.materials
+    const items = selectedSkuMaterials
       .filter(mat => !mat.material_sku_id.startsWith('00-')) // กรองเอาเฉพาะ non-food materials
       .map(mat => ({
         material_sku_id: mat.material_sku_id,
         required_qty: mat.gross_requirement,
         uom: mat.material_uom,
-      })) || [];
+      }));
 
     // Build selected_pallets from selectedPallets Map
     const selected_pallets: Array<{
@@ -766,6 +771,9 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
                     const idx = Number(e.target.value);
                     setSelectedSkuIndex(idx);
                     setQuantity(String(planData.items[idx]?.required_qty || ''));
+                    // Reset selected pallets when changing SKU
+                    setSelectedPallets(new Map());
+                    setFoodStock([]);
                   }}
                   className="w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500"
                 >
