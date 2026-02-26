@@ -303,40 +303,74 @@ const InboundPage = () => {
       return;
     }
 
+    // Split comma-separated PO numbers and process each one
+    const poNumbers = productionNo.split(',').map((po: string) => po.trim()).filter(Boolean);
+    if (poNumbers.length === 0) {
+      alert('กรุณากรอกเลขใบสั่งผลิต');
+      return;
+    }
+
     setSavingProductionRef((prev) => ({ ...prev, [receiveId]: true }));
     setShowLinkingModal(true);
     setLinkingReceiveId(receiveId);
 
     try {
-      const response = await fetch(`/api/receives/${receiveId}/link-production-order`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          production_no: productionNo.trim(),
-        }),
-      });
+      const results: { po: string; success: boolean; consumed: number; error?: string }[] = [];
 
-      const result = await response.json();
+      for (const po of poNumbers) {
+        const response = await fetch(`/api/receives/${receiveId}/link-production-order`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            production_no: po,
+          }),
+        });
 
-      if (!response.ok || result.error) {
-        alert(`เกิดข้อผิดพลาด: ${result.error}`);
-        return;
+        const result = await response.json();
+
+        if (!response.ok || result.error) {
+          results.push({ po, success: false, consumed: 0, error: result.error });
+        } else {
+          results.push({ po, success: true, consumed: result.data?.materials_consumed || 0 });
+        }
       }
 
-      // Success - show result and refresh data
-      const consumedCount = result.data?.materials_consumed || 0;
-      alert(`บันทึกสำเร็จ!\n\nเชื่อมโยงกับใบสั่งผลิต: ${productionNo}\nตัดวัตถุดิบจาก Repack: ${consumedCount} รายการ`);
-      
-      // Clear editing state
-      setEditingProductionRef((prev) => {
-        const newState = { ...prev };
-        delete newState[receiveId];
-        return newState;
-      });
-      
-      refetch();
+      // Build summary message
+      const successResults = results.filter(r => r.success);
+      const failResults = results.filter(r => !r.success);
+      const totalConsumed = successResults.reduce((sum, r) => sum + r.consumed, 0);
+
+      let message = '';
+      if (successResults.length > 0) {
+        message += `บันทึกสำเร็จ ${successResults.length} รายการ!\n`;
+        message += `เชื่อมโยงกับใบสั่งผลิต: ${successResults.map(r => r.po).join(', ')}\n`;
+        message += `ตัดวัตถุดิบจาก Repack: ${totalConsumed} รายการ`;
+      }
+      if (failResults.length > 0) {
+        if (message) message += '\n\n';
+        message += `ล้มเหลว ${failResults.length} รายการ:\n`;
+        message += failResults.map(r => `- ${r.po}: ${r.error}`).join('\n');
+      }
+
+      alert(message);
+
+      // Clear editing state if at least one succeeded
+      if (successResults.length > 0) {
+        setEditingProductionRef((prev) => {
+          const newState = { ...prev };
+          // Keep only failed POs in the input for retry
+          if (failResults.length > 0) {
+            newState[receiveId] = failResults.map(r => r.po).join(',');
+          } else {
+            delete newState[receiveId];
+          }
+          return newState;
+        });
+
+        refetch();
+      }
     } catch (error) {
       console.error('Error saving production reference:', error);
       alert('เกิดข้อผิดพลาดในการบันทึก');
