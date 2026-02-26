@@ -65,11 +65,12 @@ export async function GET(request: Request) {
       const from = dateFrom || monthStartStr(currentYear, currentMonth);
       const to = dateTo || todayStr;
 
+      // NOTE: Removed status filter to match KPI totals
       const { data: provinceRaw } = await supabase.from('wms_orders')
         .select('province, status, total_weight')
         .gte('delivery_date', from)
         .lte('delivery_date', to)
-        .in('status', ['loaded', 'in_transit', 'delivered'])
+        // Removed: .in('status', ['loaded', 'in_transit', 'delivered'])
         .not('province', 'is', null);
 
       const provMap = new Map<string, { count: number; totalWeight: number; deliveredWeight: number }>();
@@ -206,12 +207,15 @@ export async function GET(request: Request) {
       });
     }
 
-    // ── PROVINCE DATA (current month, same criteria as outbound KPI) ──
+    // ── PROVINCE DATA (current month, all statuses to match KPI) ──
+    // NOTE: Removed status filter to match sum_outbound_weight RPC behavior
+    // Previously filtered by: ['loaded', 'in_transit', 'delivered']
+    // This caused mismatch: KPI showed 399.3t but province total showed only 193.2t
     const { data: provinceRaw } = await supabase.from('wms_orders')
       .select('province, status, total_weight')
       .gte('delivery_date', rangeFrom)
       .lte('delivery_date', rangeTo)
-      .in('status', ['loaded', 'in_transit', 'delivered'])
+      // Removed: .in('status', ['loaded', 'in_transit', 'delivered'])
       .not('province', 'is', null);
     const provMap = new Map<string, { count: number; totalWeight: number; deliveredWeight: number }>();
     provinceRaw?.forEach(o => {

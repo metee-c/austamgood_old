@@ -26,7 +26,7 @@ export default function PageHeaderWithFilters({
 }: PageHeaderWithFiltersProps) {
   return (
     <div className={`bg-white/80 backdrop-blur-sm border border-white/20 rounded-lg px-2 py-1.5 shadow-sm flex-shrink-0 ${className}`}>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <h1 className="text-base font-bold text-thai-gray-900 font-thai whitespace-nowrap">{title}</h1>
         {children}
       </div>

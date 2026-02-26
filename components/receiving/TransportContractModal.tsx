@@ -466,6 +466,11 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
         // total_cost รวมค่าเพิ่มเติมแล้ว (shipping_cost + porterage_fee + other_fees + extra_delivery_stops)
         const grandTotal = summary.total_cost;
         
+        // ✅ ใช้ plan_date + 1 วัน เป็น contract_date (วันส่งสินค้า = วันถัดจากวันจัดรถ)
+        const planDate = new Date(selectedPlan.plan_date);
+        planDate.setDate(planDate.getDate() + 1);
+        const contractDate = planDate.toISOString().split('T')[0]; // YYYY-MM-DD
+
         const response = await fetch('/api/transport-contracts', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -475,7 +480,8 @@ const TransportContractModal: React.FC<TransportContractModalProps> = ({ isOpen,
             supplier_name: summary.supplier_name,
             total_trips: summary.trip_count,
             total_cost: grandTotal,
-            printed_by: currentUser
+            printed_by: currentUser,
+            contract_date: contractDate
           })
         });
         

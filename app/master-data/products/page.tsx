@@ -11,8 +11,10 @@ import {
   ChevronDown,
   ChevronsUpDown,
   Box,
-  AlertTriangle
+  AlertTriangle,
+  Download
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
@@ -228,6 +230,59 @@ const ProductsPage = () => {
   };
 
 
+  const handleExportExcel = () => {
+    const excelData = sortedProducts.map((p) => ({
+      'รหัส SKU': p.sku_id || '',
+      'ชื่อสินค้า': p.sku_name || '',
+      'ชื่ออีคอมเมิร์ซ': p.ecommerce_name || '',
+      'คำอธิบาย': p.sku_description || '',
+      'หมวดหมู่': p.category || '',
+      'หมวดหมู่ย่อย': p.sub_category || '',
+      'ยี่ห้อ': p.brand || '',
+      'ประเภทสินค้า': p.product_type || '',
+      'หน่วยพื้นฐาน': p.uom_base || '',
+      'จำนวน/แพ็ค': p.qty_per_pack ?? '',
+      'จำนวน/พาเลท': p.qty_per_pallet ?? '',
+      'น้ำหนัก/ชิ้น(กก.)': p.weight_per_piece_kg ?? '',
+      'น้ำหนัก/แพ็ค(กก.)': p.weight_per_pack_kg ?? '',
+      'น้ำหนัก/พาเลท(กก.)': p.weight_per_pallet_kg ?? '',
+      'ยาว(ซม.)': p.dimension_length_cm ?? '',
+      'กว้าง(ซม.)': p.dimension_width_cm ?? '',
+      'สูง(ซม.)': p.dimension_height_cm ?? '',
+      'บาร์โค้ด': p.barcode || '',
+      'บาร์โค้ดแพ็ค': p.pack_barcode || '',
+      'บาร์โค้ดพาเลท': p.pallet_barcode || '',
+      'เงื่อนไขการจัดเก็บ': p.storage_condition || '',
+      'ระดับการจัดเก็บ': p.storage_class || '',
+      'หมายเหตุการจัดเก็บ': p.storage_notes || '',
+      'ตำแหน่งเริ่มต้น': p.default_location || '',
+      'อายุการเก็บ(วัน)': p.shelf_life_days ?? '',
+      'ต้องติดตามล็อต': p.lot_tracking_required ? 'ใช่' : 'ไม่',
+      'ต้องมีวันหมดอายุ': p.expiry_date_required ? 'ใช่' : 'ไม่',
+      'ABC Class': p.abc_class || '',
+      'วิธีหมุนเวียน': p.putaway_rotation_method || '',
+      'ระดับอันตราย': p.hazard_class || '',
+      'ผสมวันหมดอายุ': p.allow_mixed_expiry ? 'ใช่' : 'ไม่',
+      'ผสมล็อต': p.allow_mixed_lot ? 'ใช่' : 'ไม่',
+      'ต้องการพาเลทเต็ม': p.prefer_full_pallet ? 'ใช่' : 'ไม่',
+      'อุณหภูมิต่ำสุด(°C)': p.temperature_min_c ?? '',
+      'อุณหภูมิสูงสุด(°C)': p.temperature_max_c ?? '',
+      'ความชื้นต่ำสุด(%)': p.humidity_min_percent ?? '',
+      'ความชื้นสูงสุด(%)': p.humidity_max_percent ?? '',
+      'จุดสั่งซื้อใหม่': p.reorder_point ?? '',
+      'สต็อคปลอดภัย': p.safety_stock ?? '',
+      'ตัวอย่าง': p.is_sample ? 'ใช่' : 'ไม่',
+      'สถานะ': p.status === 'active' ? 'ใช้งาน' : 'ไม่ใช้งาน',
+      'วันที่สร้าง': p.created_at ? new Date(p.created_at).toLocaleString('th-TH') : '',
+      'วันที่แก้ไขล่าสุด': p.updated_at ? new Date(p.updated_at).toLocaleString('th-TH') : '',
+    }));
+
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(excelData);
+    XLSX.utils.book_append_sheet(wb, ws, 'ข้อมูลสินค้า');
+    XLSX.writeFile(wb, `ข้อมูลสินค้า_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  };
+
   // Build category options for FilterSelect
   const categoryOptions = categories.map(cat => ({ value: cat, label: cat }));
 
@@ -244,6 +299,14 @@ const ProductsPage = () => {
           onChange={setSelectedCategory}
           options={categoryOptions}
         />
+        <Button
+          variant="outline"
+          icon={Download}
+          onClick={handleExportExcel}
+          disabled={sortedProducts.length === 0}
+        >
+          ส่งออก Excel
+        </Button>
         <Button
           variant="outline"
           icon={Package}

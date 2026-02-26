@@ -11,14 +11,17 @@ import {
   ChevronDown,
   ChevronsUpDown,
   Package,
-  AlertTriangle
+  AlertTriangle,
+  Download
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import { PermissionGuard } from '@/components/auth/PermissionGuard';
 import Button from '@/components/ui/Button';
 import Modal from '@/components/ui/Modal';
 import AddLocationForm from '@/components/forms/AddLocationForm';
 import EditLocationForm from '@/components/forms/EditLocationForm';
 import ImportLocationForm from '@/components/forms/ImportLocationForm';
+import { createClient } from '@/lib/supabase/client';
 import { locationService, warehouseService } from '@/lib/database/warehouse';
 import { LocationFilters } from '@/types/database/warehouse';
 import { LocationWithWarehouse, MasterWarehouse } from '@/types/database/warehouse';
@@ -203,6 +206,84 @@ const LocationsPage = () => {
     fetchData(); // Refresh data
   };
 
+  const [exporting, setExporting] = useState(false);
+
+  const handleExportExcel = async () => {
+    setExporting(true);
+    try {
+      const supabase = createClient();
+      const batchSize = 1000;
+      let allData: LocationWithWarehouse[] = [];
+      let from = 0;
+      let hasMore = true;
+
+      while (hasMore) {
+        let query = supabase
+          .from('master_location')
+          .select('*, warehouse:master_warehouse(warehouse_name)')
+          .order('created_at', { ascending: false })
+          .range(from, from + batchSize - 1);
+
+        if (selectedWarehouse && selectedWarehouse !== 'ทั้งหมด') {
+          query = query.eq('warehouse_id', selectedWarehouse);
+        }
+        if (selectedZone && selectedZone !== 'ทั้งหมด') {
+          query = query.eq('zone', selectedZone);
+        }
+        if (selectedType && selectedType !== 'ทั้งหมด') {
+          query = query.eq('location_type', selectedType);
+        }
+        if (searchTerm) {
+          query = query.or(`location_code.ilike.%${searchTerm}%,location_name.ilike.%${searchTerm}%`);
+        }
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        allData = [...allData, ...(data || [])];
+        hasMore = (data?.length || 0) === batchSize;
+        from += batchSize;
+      }
+
+      const typeLabels: Record<string, string> = {
+        rack: 'ชั้นวาง',
+        floor: 'กองพื้น',
+        bulk: 'พื้นที่รวม',
+        other: 'อื่นๆ',
+      };
+
+      const excelData = allData.map((l: any) => ({
+        'รหัสโลเคชั่น': l.location_code || '',
+        'ชื่อโลเคชั่น': l.location_name || '',
+        'คลังสินค้า': l.warehouse?.warehouse_name || '',
+        'ประเภท': typeLabels[l.location_type || ''] || l.location_type || '',
+        'โซน': l.zone || '',
+        'ความจุ(ชิ้น)': l.max_capacity_qty ?? '',
+        'ความจุ(กก.)': l.max_capacity_weight_kg ?? '',
+        'ปัจจุบัน(ชิ้น)': l.current_qty ?? '',
+        'ปัจจุบัน(กก.)': l.current_weight_kg ?? '',
+        'กลยุทธ์': l.putaway_strategy || '',
+        'ตั้งแถว': l.aisle || '',
+        'ชั้นวาง': l.rack || '',
+        'ชั้น': l.shelf || '',
+        'ตำแหน่ง': l.bin || '',
+        'ควบคุมอุณหภูมิ': l.temperature_controlled ? 'ใช่' : 'ไม่ใช่',
+        'ควบคุมความชื้น': l.humidity_controlled ? 'ใช่' : 'ไม่ใช่',
+        'สถานะ': l.active_status === 'active' ? 'ใช้งาน' : 'ไม่ใช้งาน',
+      }));
+
+      const wb = XLSX.utils.book_new();
+      const ws = XLSX.utils.json_to_sheet(excelData);
+      XLSX.utils.book_append_sheet(wb, ws, 'ข้อมูลโลเคชั่น');
+      XLSX.writeFile(wb, `ข้อมูลโลเคชั่น_${new Date().toISOString().slice(0, 10)}.xlsx`);
+    } catch (err) {
+      console.error('Export error:', err);
+      setError('เกิดข้อผิดพลาดในการส่งออกข้อมูล');
+    } finally {
+      setExporting(false);
+    }
+  };
+
   // Build options for FilterSelect
   const warehouseOptions = [
     { value: '', label: 'ทุกคลัง' },
@@ -242,6 +323,14 @@ const LocationsPage = () => {
           onChange={setSelectedType}
           options={typeOptions}
         />
+        <Button
+          variant="outline"
+          icon={Download}
+          onClick={handleExportExcel}
+          disabled={sortedLocations.length === 0 || exporting}
+        >
+          {exporting ? 'กำลังส่งออก...' : 'ส่งออก Excel'}
+        </Button>
         <Button
           variant="outline"
           icon={Package}

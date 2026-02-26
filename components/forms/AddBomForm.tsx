@@ -32,7 +32,7 @@ const bomSchema = z.object({
   bom_id: z.string().min(1, 'กรุณาระบุรหัส BOM'),
   finished_sku_id: z.string().min(1, 'กรุณาเลือกสินค้าสำเร็จรูป'),
   material_sku_id: z.string().min(1, 'กรุณาเลือกวัตถุดิบ'),
-  material_qty: z.number().min(0.001, 'กรุณาระบุปริมาณวัตถุดิบ'),
+  material_qty: z.number().min(0.00001, 'กรุณาระบุปริมาณวัตถุดิบ'),
   material_uom: z.string().min(1, 'กรุณาระบุหน่วยวัด'),
   step_order: z.number().min(1, 'กรุณาระบุลำดับขั้นตอน'),
   step_name: z.string().optional(),
@@ -363,15 +363,15 @@ const AddBomForm: React.FC<AddBomFormProps> = ({
             </p>
             <input
               type="number"
-              step="0.001"
+              step="0.00001"
               {...register('material_qty', { valueAsNumber: true })}
               className="
                 w-full px-4 py-3 border border-thai-gray-300 rounded-lg
                 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent
                 text-sm font-thai
               "
-              placeholder="1.000"
-              min="0.001"
+              placeholder="1.00000"
+              min="0.00001"
             />
             {errors.material_qty && (
               <p className="text-red-500 text-xs font-thai mt-1">{errors.material_qty.message}</p>

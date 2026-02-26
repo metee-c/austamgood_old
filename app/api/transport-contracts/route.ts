@@ -192,23 +192,73 @@ async function _POST(request: NextRequest) {
       }
     }
 
-    // Call the stored function to get or create contract
-    const { data, error } = await supabase.rpc('get_or_create_transport_contract', {
-      p_plan_id: plan_id,
-      p_supplier_id: supplier_id,
-      p_supplier_name: supplier_name || null,
-      p_total_trips: total_trips || 0,
-      p_total_cost: total_cost || 0,
-      p_printed_by: printed_by || null,
-    });
+    // Check if custom contract_date is provided
+    let contract: any;
 
-    if (error) {
-      console.error('Error creating transport contract:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (contract_date) {
+      // ✅ Custom contract_date: bypass RPC and create directly
+      // Check if contract already exists for this plan + supplier
+      const { data: existing } = await supabase
+        .from('transport_contracts')
+        .select('*')
+        .eq('plan_id', plan_id)
+        .eq('supplier_id', supplier_id)
+        .maybeSingle();
+
+      if (existing) {
+        contract = { ...existing, is_new: false };
+      } else {
+        // Generate contract number: TC-YYYYMMDD-XXX
+        const dateStr = contract_date.replace(/-/g, '');
+        const { count } = await supabase
+          .from('transport_contracts')
+          .select('*', { count: 'exact', head: true })
+          .eq('contract_date', contract_date);
+
+        const seq = (count || 0) + 1;
+        const contractNo = `TC-${dateStr}-${String(seq).padStart(3, '0')}`;
+
+        const { data: inserted, error: insertError } = await supabase
+          .from('transport_contracts')
+          .insert({
+            contract_no: contractNo,
+            plan_id,
+            supplier_id,
+            supplier_name: supplier_name || null,
+            contract_date,
+            total_trips: total_trips || 0,
+            total_cost: total_cost || 0,
+            printed_at: new Date().toISOString(),
+            printed_by: printed_by || null,
+          })
+          .select()
+          .single();
+
+        if (insertError) {
+          console.error('Error creating transport contract:', insertError);
+          return NextResponse.json({ error: insertError.message }, { status: 500 });
+        }
+
+        contract = { ...inserted, is_new: true };
+      }
+    } else {
+      // Original logic: use RPC with plan_date
+      const { data, error } = await supabase.rpc('get_or_create_transport_contract', {
+        p_plan_id: plan_id,
+        p_supplier_id: supplier_id,
+        p_supplier_name: supplier_name || null,
+        p_total_trips: total_trips || 0,
+        p_total_cost: total_cost || 0,
+        p_printed_by: printed_by || null,
+      });
+
+      if (error) {
+        console.error('Error creating transport contract:', error);
+        return NextResponse.json({ error: error.message }, { status: 500 });
+      }
+
+      contract = Array.isArray(data) ? data[0] : data;
     }
-
-    // data is an array from the function, get first item
-    const contract = Array.isArray(data) ? data[0] : data;
 
     // Insert junction records for single plan if trip_ids provided
     if (trip_ids && trip_ids.length > 0 && contract && contract.id) {

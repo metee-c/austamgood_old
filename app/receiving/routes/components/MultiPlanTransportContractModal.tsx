@@ -248,6 +248,15 @@ export function MultiPlanTransportContractModal({
       const planIds = [...new Set(selectedTrips.map(t => t.plan?.plan_id).filter(Boolean))] as number[];
       const planCodes = [...new Set(selectedTrips.map(t => t.plan?.plan_code).filter(Boolean))] as string[];
       
+      // ✅ ใช้ plan_date + 1 วัน เป็น contract_date (วันส่งสินค้า = วันถัดจากวันจัดรถ)
+      const firstPlanDate = selectedTrips[0]?.plan?.plan_date;
+      let contractDate: string | undefined;
+      if (firstPlanDate) {
+        const d = new Date(firstPlanDate);
+        d.setDate(d.getDate() + 1);
+        contractDate = d.toISOString().split('T')[0];
+      }
+
       // สร้างเลขที่ใบว่าจ้างรวม (TCM) สำหรับหลายแผน
       const response = await fetch('/api/transport-contracts', {
         method: 'POST',
@@ -261,7 +270,8 @@ export function MultiPlanTransportContractModal({
           supplier_name: supplierName,
           total_trips: selectedTrips.length,
           total_cost: selectedTrips.reduce((sum, t) => sum + (Number(t.shipping_cost) || 0), 0),
-          printed_by: currentUser
+          printed_by: currentUser,
+          contract_date: contractDate
         })
       });
       
