@@ -115,28 +115,110 @@ async function handleGet(request: NextRequest, context: any) {
     // ดึง production_no ทั้งหมดเพื่อ query replenishment_queue
     const productionNos = [...new Set((data || []).map((r: any) => r.production_order?.production_no).filter(Boolean))];
     
-    // ดึง production_order_id ทั้งหมดเพื่อ query wms_receive_items (FG ที่รับเข้าจากการผลิต)
-    const productionOrderIds = [...new Set((data || []).map((r: any) => r.production_order_id).filter(Boolean))];
-    
-    // ดึงข้อมูล FG ที่รับเข้าจาก wms_receive_items (รวม piece_quantity ตาม production_order_id)
+    // ดึงข้อมูล FG ที่รับเข้าจาก wms_receives โดยใช้ reference_doc (เพราะ production_order_id บน wms_receive_items
+    // จะชี้ไปที่ PO แรกเท่านั้นเมื่อหลาย PO แชร์ GR เดียวกัน)
+    // Key: production_order_id, Value: total piece_quantity
     let fgReceivedMap: Record<string, number> = {};
-    
-    if (productionOrderIds.length > 0) {
-      const { data: receiveItemsData } = await supabase
-        .from('wms_receive_items')
-        .select('production_order_id, piece_quantity')
-        .in('production_order_id', productionOrderIds);
-      
-      if (receiveItemsData && receiveItemsData.length > 0) {
-        // รวม piece_quantity ตาม production_order_id
-        receiveItemsData.forEach((item: any) => {
-          const orderId = item.production_order_id;
-          const qty = parseFloat(item.piece_quantity) || 0;
-          if (!fgReceivedMap[orderId]) {
-            fgReceivedMap[orderId] = 0;
+
+    if (productionNos.length > 0) {
+      // 1. ดึง GR ทั้งหมดที่เป็นประเภท 'การผลิต' และมี reference_doc
+      const { data: receivesData } = await supabase
+        .from('wms_receives')
+        .select('receive_id, reference_doc')
+        .eq('receive_type', 'การผลิต')
+        .not('reference_doc', 'is', null);
+
+      if (receivesData && receivesData.length > 0) {
+        // 2. หา GR ที่ reference_doc มี production_no ของเรา
+        const relevantReceives: { receive_id: number; referencedPOs: string[] }[] = [];
+
+        for (const recv of receivesData) {
+          const refs = (recv.reference_doc || '').split(',').map((r: string) => r.trim()).filter(Boolean);
+          const hasMatch = refs.some((ref: string) => productionNos.includes(ref));
+          if (hasMatch) {
+            relevantReceives.push({
+              receive_id: recv.receive_id,
+              referencedPOs: refs
+            });
           }
-          fgReceivedMap[orderId] += qty;
-        });
+        }
+
+        if (relevantReceives.length > 0) {
+          // 3. ดึง receive items จาก GR ที่เกี่ยวข้อง
+          const receiveIds = relevantReceives.map(r => r.receive_id);
+          const { data: receiveItemsData } = await supabase
+            .from('wms_receive_items')
+            .select('receive_id, sku_id, piece_quantity')
+            .in('receive_id', receiveIds);
+
+          if (receiveItemsData && receiveItemsData.length > 0) {
+            // สร้าง map: production_no -> { production_order_id, sku_id, produced_qty }
+            const poInfoMap: Record<string, { id: string; sku_id: string; produced_qty: number }> = {};
+            (data || []).forEach((receipt: any) => {
+              const po = receipt.production_order;
+              if (po?.production_no && !poInfoMap[po.production_no]) {
+                poInfoMap[po.production_no] = {
+                  id: receipt.production_order_id,
+                  sku_id: po.sku_id,
+                  produced_qty: parseFloat(po.produced_qty) || parseFloat(po.quantity) || 0
+                };
+              }
+            });
+
+            // Group receive items by receive_id
+            const itemsByReceive: Record<number, { sku_id: string; qty: number }[]> = {};
+            receiveItemsData.forEach((item: any) => {
+              if (!itemsByReceive[item.receive_id]) itemsByReceive[item.receive_id] = [];
+              itemsByReceive[item.receive_id].push({
+                sku_id: item.sku_id,
+                qty: parseFloat(item.piece_quantity) || 0
+              });
+            });
+
+            // 4. จัดสรร FG received ให้แต่ละ PO
+            for (const recv of relevantReceives) {
+              const items = itemsByReceive[recv.receive_id] || [];
+
+              // รวม qty ตาม sku_id
+              const qtyBySku: Record<string, number> = {};
+              items.forEach(item => {
+                qtyBySku[item.sku_id] = (qtyBySku[item.sku_id] || 0) + item.qty;
+              });
+
+              // หา PO ที่อ้างอิงใน GR นี้ (เฉพาะที่เรามีข้อมูล)
+              const posInThisGR = recv.referencedPOs
+                .map(pno => poInfoMap[pno])
+                .filter(Boolean);
+
+              // จัดสรรตาม sku_id
+              for (const [skuId, totalQty] of Object.entries(qtyBySku)) {
+                const posForSku = posInThisGR.filter(po => po.sku_id === skuId);
+
+                if (posForSku.length === 1) {
+                  // PO เดียวผลิต SKU นี้ → ให้ทั้งหมด
+                  const poId = posForSku[0].id;
+                  fgReceivedMap[poId] = (fgReceivedMap[poId] || 0) + totalQty;
+                } else if (posForSku.length > 1) {
+                  // หลาย PO ผลิต SKU เดียวกัน → แบ่งตามสัดส่วน produced_qty
+                  const totalProduced = posForSku.reduce((sum, po) => sum + po.produced_qty, 0);
+                  if (totalProduced > 0) {
+                    for (const po of posForSku) {
+                      const share = totalQty * (po.produced_qty / totalProduced);
+                      fgReceivedMap[po.id] = (fgReceivedMap[po.id] || 0) + share;
+                    }
+                  } else {
+                    // ถ้าไม่มีข้อมูล produced_qty ให้แบ่งเท่าๆ กัน
+                    const equalShare = totalQty / posForSku.length;
+                    for (const po of posForSku) {
+                      fgReceivedMap[po.id] = (fgReceivedMap[po.id] || 0) + equalShare;
+                    }
+                  }
+                }
+                // ถ้า posForSku.length === 0 → ไม่มี PO ที่ตรงกับ SKU นี้ (ข้ามไป)
+              }
+            }
+          }
+        }
       }
     }
     

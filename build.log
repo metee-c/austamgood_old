@@ -5,7 +5,7 @@
    Creating an optimized production build ...
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
- ✓ Compiled successfully in 34.3s
+ ✓ Compiled successfully in 14.7s
    Running TypeScript ...
    Collecting page data using 13 workers ...
 [baseline-browser-mapping] The data in this module is over two months old.  To ensure accurate Baseline data, please update: `npm i baseline-browser-mapping@latest -D`
@@ -36,7 +36,7 @@
    Generating static pages using 13 workers (64/257) 
    Generating static pages using 13 workers (128/257) 
    Generating static pages using 13 workers (192/257) 
- ✓ Generating static pages using 13 workers (257/257) in 5.0s
+ ✓ Generating static pages using 13 workers (257/257) in 3.4s
    Finalizing page optimization ...
 
 Route (app)
