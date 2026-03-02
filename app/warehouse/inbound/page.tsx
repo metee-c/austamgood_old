@@ -333,7 +333,9 @@ const InboundPage = () => {
         if (!response.ok || result.error) {
           results.push({ po, success: false, consumed: 0, error: result.error });
         } else {
-          results.push({ po, success: true, consumed: result.data?.materials_consumed || 0 });
+          const d = result.data;
+          console.log(`[link-PO] ${po}:`, d?.material_source, d?.diagnostics, d?.movement_result);
+          results.push({ po, success: true, consumed: d?.materials_consumed || 0 });
         }
       }
 

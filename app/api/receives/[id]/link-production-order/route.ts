@@ -1,16 +1,22 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createServiceRoleClient } from '@/lib/supabase/server';
 import { withShadowLog } from '@/lib/logging/with-shadow-log';
+import { executeStockMovements, StockMovement } from '@/lib/database/inventory-transaction';
+
 /**
  * POST /api/receives/[id]/link-production-order
  * Links a production receive to a production order retroactively
  * and consumes materials from Repack location
+ *
+ * แก้ไข:
+ * - ใช้ executeStockMovements แทน insert ledger ตรงๆ (match balance ที่ Repack ถูกต้อง)
+ * - Fallback ไปใช้ BOM เมื่อไม่มี production_receipt (รองรับ PO ที่ยังไม่ได้บันทึกผลิตจริง)
  */
 async function _POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-const supabase = createServiceRoleClient();
+  const supabase = createServiceRoleClient();
   const { id } = await params;
   const receiveId = parseInt(id);
 
@@ -89,8 +95,11 @@ const supabase = createServiceRoleClient();
       );
     }
 
-    // 5. Get the production receipt for this production order (to get materials info)
-    const { data: productionReceipt, error: receiptError } = await supabase
+    // 5. Get materials to consume - try production_receipt first, fallback to BOM
+    let materialsToConsume: { material_sku_id: string; issued_qty: number; actual_qty: number; uom: string }[] = [];
+
+    // 5a. Try production_receipt_materials
+    const { data: productionReceipt } = await supabase
       .from('production_receipts')
       .select('id')
       .eq('production_order_id', productionOrder.id)
@@ -98,22 +107,39 @@ const supabase = createServiceRoleClient();
       .limit(1)
       .single();
 
-    let materialsToConsume: any[] = [];
-
     if (productionReceipt) {
-      // Get materials from production_receipt_materials
-      const { data: materials, error: materialsError } = await supabase
+      const { data: materials } = await supabase
         .from('production_receipt_materials')
-        .select(`
-          material_sku_id,
-          issued_qty,
-          actual_qty,
-          uom
-        `)
+        .select('material_sku_id, issued_qty, actual_qty, uom')
         .eq('receipt_id', productionReceipt.id);
 
-      if (!materialsError && materials) {
+      if (materials && materials.length > 0) {
         materialsToConsume = materials;
+      }
+    }
+
+    // 5b. Fallback: ถ้าไม่มี production_receipt หรือไม่มี materials ให้ใช้ BOM
+    if (materialsToConsume.length === 0) {
+      console.log(`[link-production-order] No production receipt for ${production_no}, using BOM fallback`);
+
+      const { data: bomData } = await supabase
+        .from('bom_sku')
+        .select('material_sku_id, material_qty, uom')
+        .eq('finished_sku_id', productionOrder.sku_id)
+        .eq('status', 'active');
+
+      if (bomData && bomData.length > 0) {
+        const poQty = parseFloat(productionOrder.quantity) || 0;
+        materialsToConsume = bomData.map((bom: any) => {
+          const materialQty = (parseFloat(bom.material_qty) || 0) * poQty;
+          return {
+            material_sku_id: bom.material_sku_id,
+            issued_qty: materialQty,
+            actual_qty: materialQty,
+            uom: bom.uom || 'ชิ้น'
+          };
+        });
+        console.log(`[link-production-order] BOM fallback: ${materialsToConsume.length} materials, PO qty=${poQty}`);
       }
     }
 
@@ -145,11 +171,22 @@ const supabase = createServiceRoleClient();
       console.error('Error updating receive:', updateReceiveError);
     }
 
-    // 8. Consume materials from Repack (create OUT ledger entries)
+    // 8. Consume materials from Repack using executeStockMovements (atomic balance update)
     const repackLocation = 'Repack';
     const consumedMaterials: any[] = [];
+    let materialSource = 'none';
+    let movementResult: any = null;
+    const diagnostics: any = {
+      has_production_receipt: !!productionReceipt,
+      materials_count: materialsToConsume.length,
+      materials_skus: materialsToConsume.map(m => m.material_sku_id),
+      repack_balances_found: 0,
+      movements_created: 0
+    };
 
     if (materialsToConsume.length > 0) {
+      materialSource = productionReceipt ? 'production_receipt' : 'bom_fallback';
+
       // Get qty_per_pack for each material
       const materialSkuIds = materialsToConsume.map(m => m.material_sku_id);
       const { data: skuData } = await supabase
@@ -159,54 +196,112 @@ const supabase = createServiceRoleClient();
 
       const skuQtyPerPackMap = new Map<string, number>();
       if (skuData) {
-        skuData.forEach(sku => {
+        skuData.forEach((sku: any) => {
           skuQtyPerPackMap.set(sku.sku_id, sku.qty_per_pack || 1);
         });
       }
 
+      // Query actual balances at Repack — ใช้ total_piece_qty (ไม่หัก reserved)
+      // เพราะ stock ที่ Repack ถูก replenish มาเพื่อการผลิตโดยเฉพาะ
+      const { data: repackBalances } = await supabase
+        .from('wms_inventory_balances')
+        .select('balance_id, sku_id, pallet_id, production_date, expiry_date, lot_no, total_piece_qty, reserved_piece_qty')
+        .eq('location_id', repackLocation)
+        .eq('warehouse_id', receive.warehouse_id)
+        .in('sku_id', materialSkuIds)
+        .gt('total_piece_qty', 0)
+        .order('expiry_date', { ascending: true }); // FEFO
+
+      diagnostics.repack_balances_found = repackBalances?.length || 0;
+      diagnostics.repack_balances = (repackBalances || []).map((b: any) => ({
+        sku_id: b.sku_id, pallet_id: b.pallet_id, total: b.total_piece_qty, reserved: b.reserved_piece_qty
+      }));
+
+      // Group balances by sku_id
+      const balancesBySku: Record<string, any[]> = {};
+      if (repackBalances) {
+        repackBalances.forEach((b: any) => {
+          if (!balancesBySku[b.sku_id]) balancesBySku[b.sku_id] = [];
+          balancesBySku[b.sku_id].push(b);
+        });
+      }
+
+      const movements: StockMovement[] = [];
+
       for (const material of materialsToConsume) {
-        // Determine quantity to consume:
-        // Food materials (00-): use actual_qty
-        // Packaging: use issued_qty
         const isFood = material.material_sku_id.startsWith('00-');
         const qtyToConsume = isFood
-          ? (material.actual_qty || 0)
-          : (material.issued_qty || 0);
+          ? (Number(material.actual_qty) || 0)
+          : (Number(material.issued_qty) || 0);
 
         if (qtyToConsume <= 0) continue;
 
         const qtyPerPack = skuQtyPerPackMap.get(material.material_sku_id) || 1;
-        const packQty = qtyPerPack > 0 ? Math.floor(qtyToConsume / qtyPerPack) : 0;
 
-        // Create OUT ledger entry
-        const { error: ledgerError } = await supabase
-          .from('wms_inventory_ledger')
-          .insert({
-            transaction_type: 'production_consume',
-            warehouse_id: receive.warehouse_id,
-            location_id: repackLocation,
-            sku_id: material.material_sku_id,
-            pallet_id: null,
-            pack_qty: packQty,
-            piece_qty: qtyToConsume,
-            direction: 'out',
-            movement_at: new Date().toISOString(),
-            reference_doc_type: 'production_order',
-            reference_no: `PROD-${production_no}`,
-            created_by: 1, // System user
-            remarks: isFood
-              ? `ตัดวัตถุดิบอาหาร (ย้อนหลัง) สำหรับการผลิต ${production_no}`
-              : `ตัดวัสดุบรรจุภัณฑ์ (ย้อนหลัง) สำหรับการผลิต ${production_no}`
-          });
+        // Find matching balance at Repack (FEFO order)
+        const availableBalances = balancesBySku[material.material_sku_id] || [];
+        let remainingQty = qtyToConsume;
 
-        if (ledgerError) {
-          console.error('Error creating ledger entry:', ledgerError);
+        if (availableBalances.length > 0) {
+          // Consume from actual balance records (with correct pallet_id)
+          // ใช้ total_piece_qty ไม่หัก reserved เพราะเป็น production consume
+          for (const balance of availableBalances) {
+            if (remainingQty <= 0) break;
+
+            const totalQty = parseFloat(balance.total_piece_qty) || 0;
+            if (totalQty <= 0) continue;
+
+            const consumeFromThis = Math.min(remainingQty, totalQty);
+            const packQty = qtyPerPack > 0 ? Math.floor(consumeFromThis / qtyPerPack) : 0;
+
+            movements.push({
+              direction: 'out',
+              warehouse_id: receive.warehouse_id,
+              location_id: repackLocation,
+              sku_id: material.material_sku_id,
+              pallet_id: balance.pallet_id || null,
+              production_date: balance.production_date || null,
+              expiry_date: balance.expiry_date || null,
+              lot_no: balance.lot_no || null,
+              pack_qty: packQty,
+              piece_qty: consumeFromThis,
+              transaction_type: 'production_consume',
+              reference_doc_type: 'production_order',
+              reference_no: `PROD-${production_no}`,
+              created_by: 1,
+              remarks: isFood
+                ? `ตัดวัตถุดิบอาหาร (ย้อนหลัง) สำหรับการผลิต ${production_no}`
+                : `ตัดวัสดุบรรจุภัณฑ์ (ย้อนหลัง) สำหรับการผลิต ${production_no}`
+            });
+
+            remainingQty -= consumeFromThis;
+          }
+        }
+
+        // ถ้ายังเหลือ qty ที่ไม่มี balance → log แต่ไม่สร้าง movement (จะ error)
+        if (remainingQty > 0) {
+          console.warn(`[link-production-order] SKU ${material.material_sku_id}: remaining ${remainingQty} has no balance at Repack`);
+        }
+
+        consumedMaterials.push({
+          sku_id: material.material_sku_id,
+          qty: qtyToConsume,
+          consumed: qtyToConsume - remainingQty,
+          no_balance: remainingQty,
+          type: isFood ? 'food' : 'packaging'
+        });
+      }
+
+      diagnostics.movements_created = movements.length;
+
+      // Execute all movements atomically
+      if (movements.length > 0) {
+        const result = await executeStockMovements(movements);
+        movementResult = result;
+        if (!result.success) {
+          console.error(`[link-production-order] Failed to execute movements for ${production_no}:`, result.error);
         } else {
-          consumedMaterials.push({
-            sku_id: material.material_sku_id,
-            qty: qtyToConsume,
-            type: isFood ? 'food' : 'packaging'
-          });
+          console.log(`[link-production-order] Consumed ${movements.length} material movements for ${production_no}`);
         }
       }
     }
@@ -221,7 +316,10 @@ const supabase = createServiceRoleClient();
         production_no: production_no,
         items_updated: receiveItems.length,
         materials_consumed: consumedMaterials.length,
-        consumed_materials: consumedMaterials
+        consumed_materials: consumedMaterials,
+        material_source: materialSource,
+        movement_result: movementResult,
+        diagnostics
       }
     });
 
