@@ -118,18 +118,36 @@ async function _POST(
       }
     }
 
-    // 5b. Fallback: ถ้าไม่มี production_receipt หรือไม่มี materials ให้ใช้ BOM
-    if (materialsToConsume.length === 0) {
-      console.log(`[link-production-order] No production receipt for ${production_no}, using BOM fallback`);
+    // 5b. Merge BOM materials — เสริมวัสดุที่ไม่มีใน production_receipt (เช่น ถุง/สติ๊กเกอร์)
+    const { data: bomData } = await supabase
+      .from('bom_sku')
+      .select('material_sku_id, material_qty, uom')
+      .eq('finished_sku_id', productionOrder.sku_id)
+      .eq('status', 'active');
 
-      const { data: bomData } = await supabase
-        .from('bom_sku')
-        .select('material_sku_id, material_qty, uom')
-        .eq('finished_sku_id', productionOrder.sku_id)
-        .eq('status', 'active');
+    if (bomData && bomData.length > 0) {
+      const poQty = parseFloat(productionOrder.quantity) || 0;
+      const existingSkuIds = new Set(materialsToConsume.map(m => m.material_sku_id));
 
-      if (bomData && bomData.length > 0) {
-        const poQty = parseFloat(productionOrder.quantity) || 0;
+      // เพิ่มเฉพาะ BOM materials ที่ยังไม่มีใน production_receipt
+      const missingFromReceipt = bomData.filter((bom: any) => !existingSkuIds.has(bom.material_sku_id));
+
+      if (missingFromReceipt.length > 0) {
+        const bomMaterials = missingFromReceipt.map((bom: any) => {
+          const materialQty = (parseFloat(bom.material_qty) || 0) * poQty;
+          return {
+            material_sku_id: bom.material_sku_id,
+            issued_qty: materialQty,
+            actual_qty: materialQty,
+            uom: bom.uom || 'ชิ้น'
+          };
+        });
+        materialsToConsume = [...materialsToConsume, ...bomMaterials];
+        console.log(`[link-production-order] BOM supplement: added ${missingFromReceipt.length} materials not in receipt (${missingFromReceipt.map((b: any) => b.material_sku_id).join(', ')}), PO qty=${poQty}`);
+      }
+
+      if (materialsToConsume.length === 0) {
+        // ไม่มี receipt เลย ใช้ BOM ทั้งหมด
         materialsToConsume = bomData.map((bom: any) => {
           const materialQty = (parseFloat(bom.material_qty) || 0) * poQty;
           return {
@@ -139,7 +157,7 @@ async function _POST(
             uom: bom.uom || 'ชิ้น'
           };
         });
-        console.log(`[link-production-order] BOM fallback: ${materialsToConsume.length} materials, PO qty=${poQty}`);
+        console.log(`[link-production-order] BOM full fallback: ${materialsToConsume.length} materials, PO qty=${poQty}`);
       }
     }
 
@@ -230,9 +248,8 @@ async function _POST(
 
       for (const material of materialsToConsume) {
         const isFood = material.material_sku_id.startsWith('00-');
-        const qtyToConsume = isFood
-          ? (Number(material.actual_qty) || 0)
-          : (Number(material.issued_qty) || 0);
+        // ใช้ actual_qty ก่อน ถ้าเป็น 0 ให้ fallback เป็น issued_qty
+        const qtyToConsume = Number(material.actual_qty) || Number(material.issued_qty) || 0;
 
         if (qtyToConsume <= 0) continue;
 
