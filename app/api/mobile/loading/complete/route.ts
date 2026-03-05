@@ -593,7 +593,8 @@ try {
         console.error(`❌ Error fetching SKU ${skuId}:`, skuError);
       }
       if (!skuInfo) {
-        console.warn(`⚠️ SKU ${skuId} not found in master_sku - will use defaults`);
+        console.warn(`⏭️ SKU ${skuId} not found in master_sku - skipping stock check`);
+        continue; // ข้าม SKU ที่ไม่มีในมาสเตอร์
       }
 
       // ✅ FIX: สำหรับ legacy loadlist ค้นหาสต็อกจากทุกตำแหน่ง ไม่ใช่แค่ Dispatch
@@ -685,6 +686,12 @@ try {
     // Step 4: ถ้าสต็อกพอทุก SKU ให้เพิ่ม items เข้า itemsToProcess
     if (insufficientStockItems.length === 0) {
       for (const item of allDispatchItems) {
+        // ข้าม SKU ที่ไม่มีใน cache (ไม่มีในมาสเตอร์ → ถูก skip ไปแล้ว)
+        if (!skuBalanceCache.has(item.sku_id)) {
+          console.log(`⏭️ Skipping item ${item.sku_id} - not in master_sku`);
+          continue;
+        }
+
         const { data: skuInfo } = await supabase
           .from('master_sku')
           .select('qty_per_pack')
@@ -783,17 +790,15 @@ try {
         if (isSticker(item.sku_id)) continue;
 
         // Get SKU info
-        const { data: skuInfo, error: skuError } = await supabase
+        const { data: skuInfo } = await supabase
           .from('master_sku')
           .select('qty_per_pack, sku_name')
           .eq('sku_id', item.sku_id)
-          .single();
+          .maybeSingle();
 
-        if (skuError) {
-          return NextResponse.json(
-            { error: `ไม่พบข้อมูล SKU: ${item.sku_id}`, details: skuError.message },
-            { status: 500 }
-          );
+        if (!skuInfo) {
+          console.warn(`⏭️ BFS SKU ${item.sku_id} not found in master_sku - skipping`);
+          continue; // ข้าม SKU ที่ไม่มีในมาสเตอร์
         }
 
         const qtyPerPack = skuInfo?.qty_per_pack || 1;
