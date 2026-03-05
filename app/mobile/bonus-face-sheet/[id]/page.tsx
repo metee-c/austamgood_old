@@ -384,6 +384,10 @@ const BonusFaceSheetPickPage = () => {
                   continue; // ไม่ break - ดำเนินการต่อกับ item อื่น
                 }
 
+                if (result.skipped) {
+                  console.log(`⏭️ Skipped: ${item.sku_id} - ${result.message}`);
+                }
+
                 successCount++;
               }
 

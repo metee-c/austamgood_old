@@ -213,40 +213,119 @@ try {
       });
     }
 
-    // Get SKU info
-    const { data: skuInfo } = await supabase
+    // ✅ CHECK: ตรวจสอบว่า SKU มีในมาสเตอร์หรือไม่
+    const { data: skuInfo, error: skuError } = await supabase
       .from('master_sku')
-      .select('qty_per_pack')
+      .select('sku_id, qty_per_pack')
       .eq('sku_id', item.sku_id)
-      .single();
+      .maybeSingle();
 
-    const qtyPerPack = skuInfo?.qty_per_pack || 1;
+    if (!skuInfo) {
+      console.log(`⏭️ SKU ${item.sku_id} ไม่มีในมาสเตอร์ → ข้ามรายการนี้`);
+
+      // Mark as picked (skip) เพื่อไม่ให้ค้าง
+      await supabase
+        .from('bonus_face_sheet_items')
+        .update({
+          status: 'picked',
+          quantity_picked: 0,
+          picked_at: new Date().toISOString()
+        })
+        .eq('id', item_id);
+
+      return NextResponse.json({
+        success: true,
+        message: `ข้ามสินค้า ${item.sku_id} (ไม่มีในมาสเตอร์)`,
+        skipped: true,
+        bonus_face_sheet_status: (item.bonus_face_sheets as any).status,
+        bonus_face_sheet_completed: false,
+        quantity_picked: 0
+      });
+    }
+
+    const qtyPerPack = skuInfo.qty_per_pack || 1;
     const packQty = quantity_picked / qtyPerPack;
     const now = new Date().toISOString();
+    const faceSheetNo = (item.bonus_face_sheets as any).face_sheet_no;
 
-    // 7. ดึงข้อมูลการจอง (bonus_face_sheet_item_reservations)
-    const { data: reservations, error: reservationError } = await supabase
+    // ✅ หาบ้านหยิบ (Preparation Area) ของ SKU นี้ — ใช้เป็น source เสมอ
+    const { data: prepAreaMapping } = await supabase
+      .from('sku_preparation_area_mapping')
+      .select(`preparation_area (area_id, area_code, location_id)`)
+      .eq('sku_id', item.sku_id)
+      .eq('warehouse_id', warehouseId)
+      .maybeSingle();
+
+    let sourceLocationId: string | null = null;
+    let sourceLocationCode: string = 'Unknown';
+
+    if (prepAreaMapping?.preparation_area) {
+      const prepArea = prepAreaMapping.preparation_area as any;
+      sourceLocationId = prepArea.location_id;
+      sourceLocationCode = prepArea.area_code;
+    } else {
+      // Fallback: ใช้ default_location จาก master_sku
+      const { data: skuDefault } = await supabase
+        .from('master_sku')
+        .select('default_location')
+        .eq('sku_id', item.sku_id)
+        .single();
+
+      if (skuDefault?.default_location) {
+        const { data: defaultLoc } = await supabase
+          .from('master_location')
+          .select('location_id, location_code')
+          .eq('location_code', skuDefault.default_location)
+          .eq('warehouse_id', warehouseId)
+          .eq('active_status', 'active')
+          .maybeSingle();
+
+        if (defaultLoc) {
+          sourceLocationId = defaultLoc.location_id;
+          sourceLocationCode = defaultLoc.location_code;
+        }
+      }
+    }
+
+    if (!sourceLocationId) {
+      console.log(`⏭️ SKU ${item.sku_id} ไม่มีบ้านหยิบ → ข้ามรายการนี้`);
+
+      // Mark as picked (skip) เพื่อไม่ให้ค้าง
+      await supabase
+        .from('bonus_face_sheet_items')
+        .update({
+          status: 'picked',
+          quantity_picked: 0,
+          picked_at: now
+        })
+        .eq('id', item_id);
+
+      return NextResponse.json({
+        success: true,
+        message: `ข้ามสินค้า ${item.sku_id} (ไม่มีบ้านหยิบ)`,
+        skipped: true,
+        bonus_face_sheet_status: (item.bonus_face_sheets as any).status,
+        bonus_face_sheet_completed: false,
+        quantity_picked: 0
+      });
+    }
+
+    console.log(`✅ บ้านหยิบของ ${item.sku_id}: ${sourceLocationCode} (${sourceLocationId})`);
+
+    // ดึงข้อมูลการจอง (bonus_face_sheet_item_reservations)
+    const { data: reservations } = await supabase
       .from('bonus_face_sheet_item_reservations')
       .select('reservation_id, balance_id, reserved_piece_qty, reserved_pack_qty')
       .eq('bonus_face_sheet_item_id', item_id)
       .eq('status', 'reserved')
       .order('reservation_id', { ascending: true });
 
-    if (reservationError) {
-      console.error('❌ Reservation error:', reservationError);
-      return NextResponse.json(
-        { error: 'ไม่สามารถดึงข้อมูลการจองได้', details: reservationError.message },
-        { status: 500 }
-      );
-    }
-
     console.log('📦 Reservations found:', reservations?.length || 0);
 
-    // ✅ ATOMIC APPROACH: ใช้ executeStockMovements RPC แทน manual balance updates
+    // ✅ ATOMIC APPROACH: ใช้ executeStockMovements RPC
     const { executeStockMovements } = await import('@/lib/database/inventory-transaction');
     type Unreservation = { balance_id: number; piece_qty: number; pack_qty: number };
 
-    let remainingQty = quantity_picked;
     const movements: any[] = [];
     const unreservations: Unreservation[] = [];
     const processedReservations: number[] = [];
@@ -254,216 +333,66 @@ try {
     let sourceExpiryDate: string | null = null;
     let sourceLotNo: string | null = null;
 
-    // 8. ย้ายสต็อคจาก Preparation Area → Storage Location
+    // ดึง balance ที่บ้านหยิบเพื่อเอาวันที่
+    const { data: prepBalance } = await supabase
+      .from('wms_inventory_balances')
+      .select('balance_id, total_piece_qty, production_date, expiry_date, lot_no')
+      .eq('warehouse_id', warehouseId)
+      .eq('location_id', sourceLocationId)
+      .eq('sku_id', item.sku_id)
+      .order('expiry_date', { ascending: true, nullsFirst: false })
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    if (prepBalance) {
+      sourceProductionDate = prepBalance.production_date;
+      sourceExpiryDate = prepBalance.expiry_date;
+    }
+
+    // ✅ UNRESERVE: ถ้ามี reservation ให้ unreserve ก่อน (ไม่ว่าจะจากโลเคชั่นไหน)
     if (reservations && reservations.length > 0) {
-      console.log(`✅ Using reservations: ${reservations.length} found`);
-
       for (const reservation of reservations) {
-        if (remainingQty <= 0) break;
-
-        const qtyToDeduct = Math.min(reservation.reserved_piece_qty, remainingQty);
-        const packToDeduct = qtyToDeduct / qtyPerPack;
-
-        const { data: balance, error: balanceError } = await supabase
-          .from('wms_inventory_balances')
-          .select('balance_id, location_id, pallet_id, total_piece_qty, reserved_piece_qty, total_pack_qty, reserved_pack_qty, production_date, expiry_date, lot_no')
-          .eq('balance_id', reservation.balance_id)
-          .single();
-
-        if (balanceError || !balance) {
-          console.error(`Cannot find balance ${reservation.balance_id}:`, balanceError);
-          return NextResponse.json(
-            { error: `ไม่พบข้อมูลสต็อคที่จองไว้ (balance_id: ${reservation.balance_id})` },
-            { status: 500 }
-          );
-        }
-
-        if (!sourceProductionDate && balance.production_date) sourceProductionDate = balance.production_date;
-        if (!sourceExpiryDate && balance.expiry_date) sourceExpiryDate = balance.expiry_date;
-        if (!sourceLotNo && balance.lot_no) sourceLotNo = balance.lot_no;
-
-        const isVirtualPallet = (balance.pallet_id && (balance.pallet_id.startsWith('VIRTUAL-') || balance.pallet_id.startsWith('VIRT-'))) ||
-                                (balance.location_id && balance.location_id === 'VIRTUAL-PALLET');
-
-        // ✅ อนุญาตหักติดลบที่บ้านหยิบเสมอ (เมื่อเติมสต็อคเข้ามา trigger จะหักยอดอัตโนมัติ)
-        if (balance.total_piece_qty < qtyToDeduct) {
-          console.log(`⚠️ สต็อคไม่พอที่ ${balance.location_id}: ต้องการ ${qtyToDeduct} มี ${balance.total_piece_qty} → อนุญาตหักติดลบ`);
-        }
-
-        // สะสม unreservation เพื่อทำ atomic ใน RPC เดียวกับ movements
+        // Unreserve ที่ balance เดิมที่จองไว้
         unreservations.push({
-          balance_id: balance.balance_id,
-          piece_qty: qtyToDeduct,
-          pack_qty: packToDeduct,
+          balance_id: reservation.balance_id,
+          piece_qty: reservation.reserved_piece_qty,
+          pack_qty: reservation.reserved_pack_qty,
         });
-
-        // สร้าง OUT movement
-        movements.push({
-          direction: 'out',
-          warehouse_id: warehouseId,
-          location_id: balance.location_id,
-          sku_id: item.sku_id,
-          pallet_id: balance.pallet_id || null,
-          production_date: balance.production_date || null,
-          expiry_date: balance.expiry_date || null,
-          pack_qty: packToDeduct,
-          piece_qty: qtyToDeduct,
-          transaction_type: 'pick',
-          reference_no: (item.bonus_face_sheets as any).face_sheet_no,
-          reference_doc_type: 'bonus_face_sheet',
-          reference_doc_id: bonus_face_sheet_id,
-          order_item_id: item.order_item_id,
-          remarks: `หยิบของแถมจาก ${balance.location_id}${isVirtualPallet ? ' (Virtual Pallet)' : ''} (balance_id: ${balance.balance_id})`,
-          created_by: userId,
-        });
-
         processedReservations.push(reservation.reservation_id);
-        remainingQty -= qtyToDeduct;
-      }
-
-      // ถ้าจองไว้ไม่พอ → หักติดลบที่บ้านหยิบเดิม
-      if (remainingQty > 0) {
-        // หา source location จาก reservation แรก หรือ item
-        const sourceLocId = movements.length > 0 ? movements[0].location_id : item.source_location_id || 'PK001';
-        console.log(`⚠️ สต็อคที่จองไว้ไม่พอ ขาดอีก ${remainingQty} ชิ้น → หักติดลบที่บ้านหยิบ ${sourceLocId}`);
-        const faceSheetNo = (item.bonus_face_sheets as any).face_sheet_no;
-        const shortfall = remainingQty;
-        const shortfallPack = shortfall / qtyPerPack;
-
-        movements.push({
-          direction: 'out',
-          warehouse_id: warehouseId,
-          location_id: sourceLocId,
-          sku_id: item.sku_id,
-          pallet_id: null,
-          production_date: sourceProductionDate,
-          expiry_date: sourceExpiryDate,
-          pack_qty: shortfallPack,
-          piece_qty: shortfall,
-          transaction_type: 'pick',
-          reference_no: faceSheetNo,
-          reference_doc_type: 'bonus_face_sheet',
-          reference_doc_id: bonus_face_sheet_id,
-          order_item_id: item.order_item_id,
-          remarks: `หยิบของแถมจากบ้านหยิบ ${sourceLocId} (สต็อคไม่พอ ขาด ${shortfall} ชิ้น)`,
-          created_by: userId,
-        });
-
-        remainingQty = 0;
       }
 
       // อัปเดตสถานะการจอง
-      if (processedReservations.length > 0) {
-        await supabase
-          .from('bonus_face_sheet_item_reservations')
-          .update({ status: 'picked', picked_at: now, updated_at: now })
-          .in('reservation_id', processedReservations);
-      }
-    } else {
-      // ไม่มี reservations - หาสต็อกจากบ้านหยิบโดยตรง
-      console.log(`⚠️ No reservations found for item ${item_id}, looking for prep area balance directly`);
-
-      const { data: prepAreaMapping } = await supabase
-        .from('sku_preparation_area_mapping')
-        .select(`preparation_area (area_id, area_code, location_id)`)
-        .eq('sku_id', item.sku_id)
-        .eq('warehouse_id', warehouseId)
-        .single();
-
-      let sourceLocationId: string | null = null;
-      let sourceLocationCode: string = 'Unknown';
-
-      if (prepAreaMapping?.preparation_area) {
-        const prepArea = prepAreaMapping.preparation_area as any;
-        sourceLocationId = prepArea.location_id;
-        sourceLocationCode = prepArea.area_code;
-      } else {
-        const { data: skuData } = await supabase
-          .from('master_sku')
-          .select('default_location')
-          .eq('sku_id', item.sku_id)
-          .single();
-
-        if (skuData?.default_location) {
-          const { data: defaultLoc } = await supabase
-            .from('master_location')
-            .select('location_id, location_code')
-            .eq('location_code', skuData.default_location)
-            .eq('warehouse_id', warehouseId)
-            .eq('active_status', 'active')
-            .single();
-
-          if (defaultLoc) {
-            sourceLocationId = defaultLoc.location_id;
-            sourceLocationCode = defaultLoc.location_code;
-          }
-        }
-
-        if (!sourceLocationId) {
-          const { data: dispatchLoc } = await supabase
-            .from('master_location')
-            .select('location_id, location_code')
-            .eq('location_code', 'Dispatch')
-            .eq('warehouse_id', warehouseId)
-            .single();
-
-          if (dispatchLoc) {
-            sourceLocationId = dispatchLoc.location_id;
-            sourceLocationCode = dispatchLoc.location_code;
-          }
-        }
-      }
-
-      if (!sourceLocationId) {
-        return NextResponse.json(
-          { error: `ไม่พบบ้านหยิบสำหรับ SKU: ${item.sku_id}` },
-          { status: 400 }
-        );
-      }
-
-      // ดึง balance เพื่อเอาวันที่
-      const { data: prepBalance } = await supabase
-        .from('wms_inventory_balances')
-        .select('balance_id, total_piece_qty, production_date, expiry_date, lot_no')
-        .eq('warehouse_id', warehouseId)
-        .eq('location_id', sourceLocationId)
-        .eq('sku_id', item.sku_id)
-        .maybeSingle();
-
-      if (prepBalance) {
-        if (!sourceProductionDate && prepBalance.production_date) sourceProductionDate = prepBalance.production_date;
-        if (!sourceExpiryDate && prepBalance.expiry_date) sourceExpiryDate = prepBalance.expiry_date;
-        if (!sourceLotNo && prepBalance.lot_no) sourceLotNo = prepBalance.lot_no;
-      }
-
-      const currentPieceQty = prepBalance?.total_piece_qty || 0;
-      const isPrepAreaLocation = await isPreparationArea(supabase, sourceLocationId);
-      const shortfall = quantity_picked - Math.min(currentPieceQty, quantity_picked);
-
-      // ✅ หักจากบ้านหยิบโดยตรง (อนุญาตติดลบ เมื่อเติมสต็อคเข้ามา trigger จะหักยอดอัตโนมัติ)
-      if (shortfall > 0) {
-        console.log(`⚠️ สต็อคไม่พอที่ ${sourceLocationCode}: ต้องการ ${quantity_picked} มี ${currentPieceQty} → หักติดลบ ${shortfall} ชิ้น`);
-      }
-      movements.push({
-        direction: 'out',
-        warehouse_id: warehouseId,
-        location_id: sourceLocationId,
-        sku_id: item.sku_id,
-        production_date: sourceProductionDate || null,
-        expiry_date: sourceExpiryDate || null,
-        pack_qty: packQty,
-        piece_qty: quantity_picked,
-        transaction_type: 'pick',
-        reference_no: (item.bonus_face_sheets as any).face_sheet_no,
-        reference_doc_type: 'bonus_face_sheet',
-        reference_doc_id: bonus_face_sheet_id,
-        order_item_id: item.order_item_id,
-        remarks: `หยิบของแถมจาก ${sourceLocationCode} (ไม่มี reservation)${shortfall > 0 ? ` - สต็อคไม่พอ ขาด ${shortfall} ชิ้น` : ''}`,
-        created_by: userId,
-      });
-
-      remainingQty = 0;
+      await supabase
+        .from('bonus_face_sheet_item_reservations')
+        .update({ status: 'picked', picked_at: now, updated_at: now })
+        .in('reservation_id', processedReservations);
     }
+
+    // ✅ CORE: หักสต็อคจากบ้านหยิบเสมอ (อนุญาตติดลบ)
+    const currentPieceQty = prepBalance?.total_piece_qty || 0;
+    if (currentPieceQty < quantity_picked) {
+      console.log(`⚠️ สต็อคไม่พอที่บ้านหยิบ ${sourceLocationCode}: ต้องการ ${quantity_picked} มี ${currentPieceQty} → หักติดลบ`);
+    }
+
+    movements.push({
+      direction: 'out',
+      warehouse_id: warehouseId,
+      location_id: sourceLocationId,
+      sku_id: item.sku_id,
+      pallet_id: null,
+      production_date: sourceProductionDate || null,
+      expiry_date: sourceExpiryDate || null,
+      pack_qty: packQty,
+      piece_qty: quantity_picked,
+      transaction_type: 'pick',
+      reference_no: faceSheetNo,
+      reference_doc_type: 'bonus_face_sheet',
+      reference_doc_id: bonus_face_sheet_id,
+      order_item_id: item.order_item_id,
+      remarks: `หยิบของแถมจากบ้านหยิบ ${sourceLocationCode}${currentPieceQty < quantity_picked ? ` (สต็อคไม่พอ ขาด ${quantity_picked - currentPieceQty} ชิ้น)` : ''}`,
+      created_by: userId,
+    });
 
     // IN ไปยัง Storage Location (RPC จะ upsert balance ให้อัตโนมัติ)
     movements.push({

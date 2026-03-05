@@ -108,7 +108,8 @@
       "Bash(cmd /c:*)",
       "Bash(timeout:*)",
       "mcp__supabase__search_docs",
-      "Bash(# Let me try to find info about BFS-20260223-001 through a different approach # Check if there''s a detail endpoint curl -s \"\"http://localhost:3000/api/bonus-face-sheets/177\"\")"
+      "Bash(# Let me try to find info about BFS-20260223-001 through a different approach # Check if there''s a detail endpoint curl -s \"\"http://localhost:3000/api/bonus-face-sheets/177\"\")",
+      "Bash(npx -y @supabase/mcp-server-supabase@latest --help)"
     ],
     "deny": [],
     "ask": []

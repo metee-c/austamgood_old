@@ -1,11 +1,8 @@
 {
   "mcpServers": {
     "supabase": {
-      "type": "http",
-      "url": "https://mcp.supabase.com/mcp?project_ref=iwlkslewdgenckuejbit",
-      "headers": {
-        "Authorization": "Bearer sbp_53d63891b306ad746b9e52161b8b50f0160ec9b6"
-      }
+      "command": "cmd",
+      "args": ["/c", "npx -y @supabase/mcp-server-supabase@latest --project-ref iwlkslewdgenckuejbit --access-token sbp_f38263598ae9aaa38c752505e36f2b54d5fd64e3"]
     }
   }
 }
