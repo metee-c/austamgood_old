@@ -376,10 +376,16 @@ const LoadlistsPage = () => {
         new Set(data?.map(item => item.shipping_provider).filter(Boolean))
       ).sort();
 
-      console.log('✅ Unique providers:', uniqueProviders);
-      console.log('🔄 Setting state with:', uniqueProviders);
-      
-      setAvailableShippingProviders(uniqueProviders as string[]);
+      // Ensure default providers are always available
+      const defaultProviders = ['J&T Express'];
+      const mergedProviders = Array.from(
+        new Set([...uniqueProviders, ...defaultProviders])
+      ).sort();
+
+      console.log('✅ Unique providers:', mergedProviders);
+      console.log('🔄 Setting state with:', mergedProviders);
+
+      setAvailableShippingProviders(mergedProviders as string[]);
       
       console.log('✅ State set complete');
     } catch (error) {
