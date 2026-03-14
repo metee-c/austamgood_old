@@ -39,7 +39,7 @@ const COLUMN_MAPPINGS = {
     order_number: ['Order ID'],
     buyer_name: ['Buyer Username'],
     tracking_number: ['Tracking ID'],
-    parent_sku: ['Seller SKU'],
+    parent_sku: ['Seller SKU', 'SellerSKU', 'SKU ID'],
     product_name: ['Product Name'],
     quantity: ['Quantity'],
     shipping_provider: ['Shipping Provider Name']
