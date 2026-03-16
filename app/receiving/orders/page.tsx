@@ -249,18 +249,27 @@ const OrdersPage = () => {
     if (searchTerm) params.append('searchTerm', searchTerm);
     if (startDate) params.append('startDate', startDate);
     if (endDate) params.append('endDate', endDate);
+    params.append('page', currentPage.toString());
+    params.append('pageSize', pageSize.toString());
     return params.toString();
-  }, [selectedType, selectedStatus, selectedPriority, searchTerm, startDate, endDate]);
+  }, [selectedType, selectedStatus, selectedPriority, searchTerm, startDate, endDate, currentPage, pageSize]);
 
-  // Fetch orders with items using SWR
-  const { data: orders, error: ordersError, mutate: refetch } = useSWR(
+  // Fetch orders with items using SWR (server-side pagination)
+  const { data: ordersResponse, error: ordersError, mutate: refetch } = useSWR(
     `/api/orders/with-items?${queryParams}`,
-    fetcher
+    async (url: string) => {
+      const res = await fetch(url);
+      const result = await res.json();
+      return result;
+    }
   );
+
+  const orders = ordersResponse?.data || null;
+  const totalCount = ordersResponse?.count || 0;
 
   const { data: dashboardData, error: dashboardError } = useSWR('/api/orders/dashboard', fetcher);
 
-  const ordersLoading = !orders && !ordersError;
+  const ordersLoading = !ordersResponse && !ordersError;
 
   // Debug: Log sample order data
   React.useEffect(() => {
@@ -920,21 +929,20 @@ const OrdersPage = () => {
   };
 
   const toggleSelectAll = () => {
-    const currentPageOrders = sortedOrders.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-    const allSelected = currentPageOrders.every((order: any) => selectedOrderIds.has(order.order_id.toString()));
-    
+    const allSelected = sortedOrders.every((order: any) => selectedOrderIds.has(order.order_id.toString()));
+
     if (allSelected) {
       // Deselect all on current page
       setSelectedOrderIds(prev => {
         const newSet = new Set(prev);
-        currentPageOrders.forEach((order: any) => newSet.delete(order.order_id.toString()));
+        sortedOrders.forEach((order: any) => newSet.delete(order.order_id.toString()));
         return newSet;
       });
     } else {
       // Select all on current page
       setSelectedOrderIds(prev => {
         const newSet = new Set(prev);
-        currentPageOrders.forEach((order: any) => newSet.add(order.order_id.toString()));
+        sortedOrders.forEach((order: any) => newSet.add(order.order_id.toString()));
         return newSet;
       });
     }
@@ -1134,9 +1142,8 @@ const OrdersPage = () => {
   // Check if all orders on current page are selected
   const isAllCurrentPageSelected = useMemo(() => {
     if (!sortedOrders || sortedOrders.length === 0) return false;
-    const currentPageOrders = sortedOrders.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-    return currentPageOrders.length > 0 && currentPageOrders.every((order: any) => selectedOrderIds.has(order.order_id.toString()));
-  }, [sortedOrders, currentPage, pageSize, selectedOrderIds]);
+    return sortedOrders.length > 0 && sortedOrders.every((order: any) => selectedOrderIds.has(order.order_id.toString()));
+  }, [sortedOrders, selectedOrderIds]);
 
   // Calculate totals for selected orders (จำนวน และ น้ำหนัก)
   const selectedOrdersTotals = useMemo(() => {
@@ -1634,7 +1641,7 @@ const OrdersPage = () => {
                   </Table.Cell>
                 </tr>
               ) : (
-                  sortedOrders.slice((currentPage - 1) * pageSize, currentPage * pageSize).map((order: any) => (
+                  sortedOrders.map((order: any) => (
                     <React.Fragment key={order.order_id}>
                       {/* Main Row */}
                       <Table.Row className={`${
@@ -2001,13 +2008,13 @@ const OrdersPage = () => {
           <div className="text-sm text-thai-gray-600 font-thai">
             {ordersLoading ? 'กำลังโหลด...' : 
              ordersError ? 'เกิดข้อผิดพลาด' :
-             sortedOrders.length === 0 ? 'ไม่พบข้อมูล' :
-             `แสดง ${((currentPage - 1) * pageSize) + 1} - ${Math.min(currentPage * pageSize, sortedOrders.length)} จาก ${sortedOrders.length.toLocaleString()} รายการ`}
+             totalCount === 0 ? 'ไม่พบข้อมูล' :
+             `แสดง ${((currentPage - 1) * pageSize) + 1} - ${Math.min(currentPage * pageSize, totalCount)} จาก ${totalCount.toLocaleString()} รายการ`}
           </div>
           <div className="flex items-center gap-2">
             <button
               onClick={() => setCurrentPage(1)}
-              disabled={currentPage === 1 || sortedOrders.length === 0}
+              disabled={currentPage === 1 || totalCount === 0}
               className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
               title="หน้าแรก"
             >
@@ -2015,26 +2022,26 @@ const OrdersPage = () => {
             </button>
             <button
               onClick={() => setCurrentPage(currentPage - 1)}
-              disabled={currentPage === 1 || sortedOrders.length === 0}
+              disabled={currentPage === 1 || totalCount === 0}
               className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
               title="หน้าก่อนหน้า"
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
             <span className="px-3 py-1 text-sm font-thai">
-              หน้า {sortedOrders.length === 0 ? 0 : currentPage} / {Math.max(1, Math.ceil(sortedOrders.length / pageSize))}
+              หน้า {totalCount === 0 ? 0 : currentPage} / {Math.max(1, Math.ceil(totalCount / pageSize))}
             </span>
             <button
               onClick={() => setCurrentPage(currentPage + 1)}
-              disabled={currentPage >= Math.ceil(sortedOrders.length / pageSize) || sortedOrders.length === 0}
+              disabled={currentPage >= Math.ceil(totalCount / pageSize) || totalCount === 0}
               className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
               title="หน้าถัดไป"
             >
               <ChevronRight className="w-4 h-4" />
             </button>
             <button
-              onClick={() => setCurrentPage(Math.ceil(sortedOrders.length / pageSize))}
-              disabled={currentPage >= Math.ceil(sortedOrders.length / pageSize) || sortedOrders.length === 0}
+              onClick={() => setCurrentPage(Math.ceil(totalCount / pageSize))}
+              disabled={currentPage >= Math.ceil(totalCount / pageSize) || totalCount === 0}
               className="p-1.5 rounded border border-gray-300 hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
               title="หน้าสุดท้าย"
             >

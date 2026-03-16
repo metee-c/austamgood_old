@@ -7,10 +7,16 @@ async function handleGet(request: NextRequest, context: any) {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
 
-    // Build query
+    // Pagination
+    const page = parseInt(searchParams.get('page') || '1');
+    const pageSize = parseInt(searchParams.get('pageSize') || '50');
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
+
+    // Build query with count
     let query = supabase
       .from('wms_orders')
-      .select('*')
+      .select('*', { count: 'exact' })
       .order('order_date', { ascending: false });
 
     // Apply filters
@@ -54,14 +60,17 @@ async function handleGet(request: NextRequest, context: any) {
       query = query.lte('order_date', endDate);
     }
 
-    const { data, error } = await query;
+    // Apply pagination
+    query = query.range(from, to);
+
+    const { data, error, count } = await query;
 
     if (error) {
       console.error('Error fetching orders:', error);
       return NextResponse.json({ data: null, error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ data, error: null });
+    return NextResponse.json({ data, error: null, count, page, pageSize });
   } catch (error) {
     console.error('API Error in GET /api/orders:', error);
 

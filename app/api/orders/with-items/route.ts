@@ -7,10 +7,13 @@ async function _GET(request: NextRequest) {
     const supabase = await createClient();
     const { searchParams } = new URL(request.url);
     
-    // ✅ REMOVED PAGINATION: เอาการจำกัดออกเพื่อความเร็ว
+    // Server-side pagination
+    const page = parseInt(searchParams.get('page') || '1');
+    const pageSize = parseInt(searchParams.get('pageSize') || '100');
+    const from = (page - 1) * pageSize;
+    const to = from + pageSize - 1;
 
-    // Pagination parameters
-    // Build query - get all orders with items first
+    // Build query with count
     let query = supabase
       .from('wms_orders')
       .select(`
@@ -18,7 +21,7 @@ async function _GET(request: NextRequest) {
         items:wms_order_items(*),
         created_by_user:master_system_user!created_by(user_id, username, full_name),
         updated_by_user:master_system_user!updated_by(user_id, username, full_name)
-      `)
+      `, { count: 'exact' })
       .order('order_date', { ascending: false });
 
     // Apply filters
@@ -64,10 +67,10 @@ async function _GET(request: NextRequest) {
       query = query.lte('order_date', endDate);
     }
 
-    // Apply pagination
-    query = query;
+    // Apply server-side pagination
+    query = query.range(from, to);
 
-    const { data: ordersData, error } = await query;
+    const { data: ordersData, error, count } = await query;
 
     if (error) {
       console.error('Error fetching orders with items:', error);
@@ -369,9 +372,12 @@ async function _GET(request: NextRequest) {
     console.log('[API] Orders with plan_code (route_planning):', ordersWithCustomer.filter(o => o.order_type === 'route_planning' && o.plan_code).length);
     console.log('[API] Orders with trip_code:', ordersWithCustomer.filter(o => o.trip_code).length);
 
-    return NextResponse.json({ 
-      data: ordersWithCustomer, 
-      error: null
+    return NextResponse.json({
+      data: ordersWithCustomer,
+      error: null,
+      count,
+      page,
+      pageSize
     });
   } catch (error) {
     console.error('API Error in GET /api/orders/with-items:', error);
