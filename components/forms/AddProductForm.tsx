@@ -116,8 +116,8 @@ const AddProductForm: React.FC<AddProductFormProps> = ({ onSuccess, onCancel, in
 
       let result;
       if (initialData) {
-        // Update existing product
-        result = await masterSkuService.updateMasterSku(submissionData.sku_id!, submissionData as any);
+        // Update existing product - use original sku_id for WHERE clause
+        result = await masterSkuService.updateMasterSku(initialData.sku_id!, submissionData as any);
       } else {
         // Create new product
         result = await masterSkuService.createMasterSku(submissionData as any);

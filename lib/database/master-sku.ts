@@ -123,6 +123,7 @@ export class MasterSkuService {
         .update(updates)
         .eq('sku_id', skuId)
         .select()
+        .limit(1)
         .single()
 
       if (error) {
