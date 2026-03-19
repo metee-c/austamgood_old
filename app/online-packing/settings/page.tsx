@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { PageContainer, PageHeaderWithFilters } from '@/components/ui/page-components'
+import * as XLSX from 'xlsx'
 
 // --- TYPE DEFINITIONS ---
 interface Box {
@@ -257,6 +258,7 @@ export default function SettingsPage() {
           {[
             { id: 'stock', name: 'สต็อกกล่อง' },
             { id: 'boxes', name: 'ขนาดกล่อง' },
+            { id: 'history', name: 'ประวัติกล่อง' },
           ].map(tab => (
             <button
               key={tab.id}
@@ -284,6 +286,7 @@ export default function SettingsPage() {
             <div>
               {activeTab === 'boxes' && <BoxDimensionsTab boxes={boxes} />}
               {activeTab === 'stock' && <BoxStockTab boxStocks={boxStocks} setBoxStocks={setBoxStocks} currentUser={currentUser} onDataRefresh={fetchData} />}
+              {activeTab === 'history' && <BoxHistoryTab />}
             </div>
           )}
         </div>
@@ -716,4 +719,226 @@ const BoxDimensionsTab = ({ boxes }: { boxes: Box[] }) => (
 
 
 
-// BoxStockHistoryTab removed - history is now tracked in wms_inventory_ledger
+const BoxHistoryTab = () => {
+  const [history, setHistory] = useState<any[]>([])
+  const [isLoading, setIsLoading] = useState(true)
+  const [dateFilter, setDateFilter] = useState('')
+  const supabase = createClient()
+
+  const fetchHistory = async () => {
+    setIsLoading(true)
+    try {
+      // Step 1: Get box SKU IDs
+      const { data: boxSkus } = await supabase
+        .from('master_sku')
+        .select('sku_id')
+        .ilike('sku_name', '%กล่อง%')
+
+      const boxSkuIds = (boxSkus?.map(s => s.sku_id) || []).filter(id => id.startsWith('OTHER'))
+      if (boxSkuIds.length === 0) {
+        setHistory([])
+        setIsLoading(false)
+        return
+      }
+
+      // Step 2: Fetch all ledger entries for box SKUs with pagination
+      let allData: any[] = []
+      const batchSize = 1000
+      let from = 0
+      let hasMore = true
+      const maxRecords = 10000
+
+      while (hasMore && allData.length < maxRecords) {
+        let query = supabase
+          .from('wms_inventory_ledger')
+          .select(`
+            ledger_id,
+            movement_at,
+            transaction_type,
+            direction,
+            sku_id,
+            piece_qty,
+            reference_no,
+            reference_doc_type,
+            remarks,
+            created_by,
+            created_at,
+            location_id,
+            master_sku!sku_id(sku_name),
+            master_location!location_id(location_name)
+          `)
+          .in('sku_id', boxSkuIds)
+          .order('movement_at', { ascending: false })
+          .range(from, from + batchSize - 1)
+
+        if (dateFilter) {
+          query = query.gte('movement_at', `${dateFilter}T00:00:00+07:00`)
+          query = query.lte('movement_at', `${dateFilter}T23:59:59+07:00`)
+        }
+
+        const { data: batch, error: batchError } = await query
+        if (batchError) throw batchError
+
+        allData = [...allData, ...(batch || [])]
+        hasMore = (batch?.length || 0) === batchSize
+        from += batchSize
+      }
+
+      const data = allData
+      const error = null
+
+      if (error) {
+        console.error('Error fetching box history:', error)
+        setHistory([])
+      } else {
+        setHistory(data || [])
+      }
+    } catch (err) {
+      console.error('Failed to fetch box history:', err)
+      setHistory([])
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchHistory()
+  }, [dateFilter])
+
+  // Group by reference_no (each deduction batch)
+  const groupedHistory = useMemo(() => {
+    const groups: Record<string, any[]> = {}
+    history.forEach(item => {
+      const key = item.reference_no || item.ledger_id
+      if (!groups[key]) groups[key] = []
+      groups[key].push(item)
+    })
+    return Object.entries(groups).sort((a, b) => {
+      const dateA = a[1][0]?.movement_at || ''
+      const dateB = b[1][0]?.movement_at || ''
+      return dateB.localeCompare(dateA)
+    })
+  }, [history])
+
+  return (
+    <div>
+      <div className="flex justify-between items-start mb-4">
+        <div>
+          <h2 className="text-base font-bold text-gray-800 mb-1 font-thai">ประวัติตัดสต็อกกล่อง</h2>
+          <p className="text-xs text-gray-500 font-thai">แสดงประวัติการตัดสต็อกจาก Inventory Ledger</p>
+        </div>
+        <div className="flex gap-2 items-center">
+          <input
+            type="date"
+            value={dateFilter}
+            onChange={(e) => setDateFilter(e.target.value)}
+            className="border border-gray-300 rounded-lg px-2 py-1 text-xs"
+          />
+          <button
+            onClick={fetchHistory}
+            className="bg-primary-500 hover:bg-primary-600 text-white px-3 py-1.5 rounded-lg font-medium text-xs font-thai transition-colors"
+          >
+            รีเฟรช
+          </button>
+          <button
+            onClick={() => {
+              if (history.length === 0) return
+              const rows = history.map((item: any) => {
+                const d = new Date(item.movement_at)
+                const isIn = item.direction === 'in'
+                const typeMap: Record<string, string> = { box_deduction: 'ตัดสต็อก', receive: 'รับเข้า', move: 'โอนย้าย', import: 'นำเข้า', IMPORT: 'นำเข้า', stock_import: 'นำเข้าสต็อก', adjustment: 'ปรับสต็อก', transfer: 'โอนย้าย', pick: 'หยิบสินค้า', issue: 'เบิกออก', ship: 'จัดส่ง' }
+                return {
+                  'วันที่': d.toLocaleDateString('th-TH'),
+                  'เวลา': d.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' }),
+                  'ประเภท': (isIn ? 'เข้า' : 'ออก') + ' - ' + (typeMap[item.transaction_type] || item.transaction_type),
+                  'เลขที่เอกสาร': item.reference_no || '-',
+                  'รหัส SKU': item.sku_id,
+                  'ชื่อกล่อง': (item.master_sku as any)?.sku_name || '-',
+                  'จำนวน': isIn ? item.piece_qty : -item.piece_qty,
+                  'โลเคชั่น': (item.master_location as any)?.location_name || '-',
+                  'หมายเหตุ': item.remarks || '-',
+                }
+              })
+              const ws = XLSX.utils.json_to_sheet(rows)
+              const wb = XLSX.utils.book_new()
+              XLSX.utils.book_append_sheet(wb, ws, 'ประวัติกล่อง')
+              XLSX.writeFile(wb, `ประวัติกล่อง_${dateFilter || 'ทั้งหมด'}.xlsx`)
+            }}
+            disabled={history.length === 0}
+            className="bg-green-500 hover:bg-green-600 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg font-medium text-xs font-thai transition-colors"
+          >
+            ส่งออก Excel
+          </button>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-8">
+          <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary-600 mx-auto mb-2"></div>
+        </div>
+      ) : history.length === 0 ? (
+        <div className="text-center py-8 text-gray-500 font-thai text-xs">ไม่พบประวัติการตัดสต็อกกล่อง</div>
+      ) : (
+        <div className="overflow-x-auto">
+          <table className="w-full table-auto border-collapse">
+            <thead>
+              <tr className="bg-gray-50 border-b border-gray-200">
+                <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">วันที่/เวลา</th>
+                <th className="text-center py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">ประเภท</th>
+                <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">เลขที่เอกสาร</th>
+                <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">รหัส SKU</th>
+                <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">ชื่อกล่อง</th>
+                <th className="text-center py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">จำนวน</th>
+                <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">โลเคชั่น</th>
+                <th className="text-left py-1.5 px-2 font-semibold text-gray-700 text-[10px] font-thai">หมายเหตุ</th>
+              </tr>
+            </thead>
+            <tbody>
+              {history.map((item: any) => {
+                const movementDate = new Date(item.movement_at)
+                const isIn = item.direction === 'in'
+                const typeLabel: Record<string, string> = {
+                  'box_deduction': 'ตัดสต็อก',
+                  'receive': 'รับเข้า',
+                  'move': 'โอนย้าย',
+                  'import': 'นำเข้า',
+                  'IMPORT': 'นำเข้า',
+                  'stock_import': 'นำเข้าสต็อก',
+                  'adjustment': 'ปรับสต็อก',
+                  'transfer': 'โอนย้าย',
+                  'pick': 'หยิบสินค้า',
+                  'issue': 'เบิกออก',
+                  'ship': 'จัดส่ง',
+                }
+                const label = typeLabel[item.transaction_type] || item.transaction_type
+                return (
+                  <tr key={item.ledger_id} className="hover:bg-gray-50 border-b border-gray-100 transition-colors">
+                    <td className="py-1.5 px-2"><span className="text-[10px] text-gray-600">{movementDate.toLocaleDateString('th-TH')} {movementDate.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span></td>
+                    <td className="py-1.5 px-2 text-center">
+                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium font-thai ${
+                        isIn ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                      }`}>
+                        {isIn ? '▲ ' : '▼ '}{label}
+                      </span>
+                    </td>
+                    <td className="py-1.5 px-2"><span className="font-mono text-[10px] font-medium text-primary-600">{item.reference_no || '-'}</span></td>
+                    <td className="py-1.5 px-2"><span className="font-mono text-[10px] text-gray-700">{item.sku_id}</span></td>
+                    <td className="py-1.5 px-2"><span className="text-[10px] text-gray-800 font-thai">{(item.master_sku as any)?.sku_name || '-'}</span></td>
+                    <td className="py-1.5 px-2 text-center">
+                      <span className={`text-xs font-bold ${isIn ? 'text-green-600' : 'text-red-600'}`}>
+                        {isIn ? '+' : '-'}{item.piece_qty}
+                      </span>
+                    </td>
+                    <td className="py-1.5 px-2"><span className="text-[10px] text-gray-600 font-thai">{(item.master_location as any)?.location_name || '-'}</span></td>
+                    <td className="py-1.5 px-2"><span className="text-[10px] text-gray-500 font-thai truncate max-w-[200px] block">{item.remarks || '-'}</span></td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+          <div className="text-right mt-2 text-[10px] text-gray-400 font-thai">แสดง {history.length} รายการ</div>
+        </div>
+      )}
+    </div>
+  )
+}

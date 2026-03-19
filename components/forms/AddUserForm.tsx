@@ -72,11 +72,12 @@ const AddUserForm: React.FC<AddUserFormProps> = ({ isOpen, onClose, onSubmit }) 
 
   const fetchRoles = async () => {
     try {
-      const response = await fetch('/api/roles');
+      const response = await fetch('/api/roles/list');
       const data = await response.json();
       if (response.ok) {
-        // Handle both array and object with roles property
         setRoles(Array.isArray(data) ? data : (data.roles || []));
+      } else {
+        console.error('Failed to fetch roles:', response.status, data);
       }
     } catch (err) {
       console.error('Failed to fetch roles:', err);

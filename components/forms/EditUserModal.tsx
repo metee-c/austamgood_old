@@ -95,7 +95,7 @@ const EditUserModal: React.FC<EditUserModalProps> = ({ isOpen, onClose, user, on
 
   const fetchRoles = async () => {
     try {
-      const response = await fetch('/api/roles');
+      const response = await fetch('/api/roles/list');
       const data = await response.json();
       if (response.ok) {
         setRoles(Array.isArray(data) ? data : (data.roles || []));

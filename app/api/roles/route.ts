@@ -19,13 +19,8 @@ async function _GET(request: NextRequest) {
       );
     }
 
-    // Check if user has permission to view roles
-    if (sessionResult.session.role_name !== 'Admin' && sessionResult.session.role_name !== 'Super Admin') {
-      return NextResponse.json(
-        { error: 'ไม่มีสิทธิ์เข้าถึงข้อมูลนี้' },
-        { status: 403 }
-      );
-    }
+    // Note: All authenticated users can view role list (needed for user forms)
+    // Role creation/modification still requires Admin/Super Admin
 
     const supabase = createServiceRoleClient();
 
