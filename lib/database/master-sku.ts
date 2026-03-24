@@ -33,13 +33,33 @@ export class MasterSkuService {
 
       // Apply filters
       if (filters.search) {
-        // Escape LIKE wildcards only (% and _)
-        // Note: | is NOT a special character in PostgREST filter syntax
-        const escapedSearch = filters.search
-          .replace(/\\/g, '\\\\')  // Escape backslash first
-          .replace(/%/g, '\\%')    // Escape percent (LIKE wildcard)
-          .replace(/_/g, '\\_')    // Escape underscore (LIKE single char wildcard)
-        query = query.or(`sku_name.ilike.%${escapedSearch}%,sku_id.ilike.%${escapedSearch}%,barcode.ilike.%${escapedSearch}%`)
+        const hasSpecialChars = /[,()\\]/.test(filters.search)
+        if (hasSpecialChars) {
+          // PostgREST .or() breaks with , in search term — use separate queries
+          const escaped = filters.search
+            .replace(/%/g, '\\%')
+            .replace(/_/g, '\\_')
+          const [r1, r2, r3] = await Promise.all([
+            this.supabase.from('master_sku').select('sku_id').ilike('sku_id', `%${escaped}%`),
+            this.supabase.from('master_sku').select('sku_id').ilike('sku_name', `%${escaped}%`),
+            this.supabase.from('master_sku').select('sku_id').ilike('barcode', `%${escaped}%`)
+          ])
+          const matchedIds = [...new Set([
+            ...(r1.data?.map(r => r.sku_id) || []),
+            ...(r2.data?.map(r => r.sku_id) || []),
+            ...(r3.data?.map(r => r.sku_id) || [])
+          ])]
+          if (matchedIds.length > 0) {
+            query = query.in('sku_id', matchedIds)
+          } else {
+            return { data: [], error: null }
+          }
+        } else {
+          const escapedSearch = filters.search
+            .replace(/%/g, '\\%')
+            .replace(/_/g, '\\_')
+          query = query.or(`sku_name.ilike.%${escapedSearch}%,sku_id.ilike.%${escapedSearch}%,barcode.ilike.%${escapedSearch}%`)
+        }
       }
 
       if (filters.category) {
