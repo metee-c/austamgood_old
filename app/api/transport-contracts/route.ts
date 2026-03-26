@@ -208,35 +208,62 @@ async function _POST(request: NextRequest) {
       if (existing) {
         contract = { ...existing, is_new: false };
       } else {
-        // Generate contract number: TC-YYYYMMDD-XXX
+        // Generate contract number: TC-YYYYMMDD-XXX with retry on duplicate
         const dateStr = contract_date.replace(/-/g, '');
-        const { count } = await supabase
-          .from('transport_contracts')
-          .select('*', { count: 'exact', head: true })
-          .eq('contract_date', contract_date);
+        let inserted = null;
+        let attempt = 0;
+        const maxAttempts = 15;
 
-        const seq = (count || 0) + 1;
-        const contractNo = `TC-${dateStr}-${String(seq).padStart(3, '0')}`;
+        while (!inserted && attempt < maxAttempts) {
+          // Query max existing number for this date to avoid race conditions
+          const { data: maxRow } = await supabase
+            .from('transport_contracts')
+            .select('contract_no')
+            .like('contract_no', `TC-${dateStr}-%`)
+            .order('contract_no', { ascending: false })
+            .limit(1)
+            .maybeSingle();
 
-        const { data: inserted, error: insertError } = await supabase
-          .from('transport_contracts')
-          .insert({
-            contract_no: contractNo,
-            plan_id,
-            supplier_id,
-            supplier_name: supplier_name || null,
-            contract_date,
-            total_trips: total_trips || 0,
-            total_cost: total_cost || 0,
-            printed_at: new Date().toISOString(),
-            printed_by: printed_by || null,
-          })
-          .select()
-          .single();
+          let nextSeq = 1;
+          if (maxRow?.contract_no) {
+            const parts = maxRow.contract_no.split('-');
+            const lastSeq = parseInt(parts[parts.length - 1] || '0', 10);
+            nextSeq = lastSeq + 1 + attempt;
+          } else {
+            nextSeq = 1 + attempt;
+          }
 
-        if (insertError) {
-          console.error('Error creating transport contract:', insertError);
-          return NextResponse.json({ error: insertError.message }, { status: 500 });
+          const contractNo = `TC-${dateStr}-${String(nextSeq).padStart(3, '0')}`;
+
+          const { data: insertData, error: insertError } = await supabase
+            .from('transport_contracts')
+            .insert({
+              contract_no: contractNo,
+              plan_id,
+              supplier_id,
+              supplier_name: supplier_name || null,
+              contract_date,
+              total_trips: total_trips || 0,
+              total_cost: total_cost || 0,
+              printed_at: new Date().toISOString(),
+              printed_by: printed_by || null,
+            })
+            .select()
+            .single();
+
+          if (!insertError) {
+            inserted = insertData;
+          } else if (insertError.code === '23505') {
+            // Duplicate key: another request took this number, retry
+            attempt++;
+          } else {
+            console.error('Error creating transport contract:', insertError);
+            return NextResponse.json({ error: insertError.message }, { status: 500 });
+          }
+        }
+
+        if (!inserted) {
+          return NextResponse.json({ error: 'ไม่สามารถสร้างเลขใบว่าจ้างได้ กรุณาลองใหม่' }, { status: 500 });
         }
 
         contract = { ...inserted, is_new: true };
