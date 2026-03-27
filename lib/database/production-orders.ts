@@ -19,22 +19,33 @@ import {
  * ใช้ start_date (วันที่ผลิตจริงที่ผู้ใช้เลือกในหน้าบันทึกผลิตจริง)
  * ไม่ใช่ production_date (วันผลิตของ FG) หรือ created_at (วันที่สร้างบันทึก)
  */
-async function generateProductionNo(startDate?: string): Promise<string> {
+async function generateProductionNo(startDate?: string, attempt = 0): Promise<string> {
   const supabase = await createClient();
-  
+
   // ใช้ start_date ถ้ามี ไม่งั้นใช้วันที่ปัจจุบัน
   const dateToUse = startDate ? new Date(startDate) : new Date();
   const dateStr = dateToUse.toISOString().split('T')[0].replace(/-/g, '');
   const prefix = `PO-${dateStr}`;
 
-  // Get count of orders with same date prefix
-  const { count } = await supabase
+  // Use MAX-based lookup instead of COUNT to avoid race conditions
+  const { data: maxRow } = await supabase
     .from('production_orders')
-    .select('*', { count: 'exact', head: true })
-    .like('production_no', `${prefix}%`);
+    .select('production_no')
+    .like('production_no', `${prefix}-%`)
+    .order('production_no', { ascending: false })
+    .limit(1)
+    .maybeSingle();
 
-  const sequence = String((count || 0) + 1).padStart(3, '0');
-  return `${prefix}-${sequence}`;
+  let nextSeq = 1;
+  if (maxRow?.production_no) {
+    const parts = maxRow.production_no.split('-');
+    const lastSeq = parseInt(parts[parts.length - 1] || '0', 10);
+    nextSeq = lastSeq + 1 + attempt;
+  } else {
+    nextSeq = 1 + attempt;
+  }
+
+  return `${prefix}-${String(nextSeq).padStart(3, '0')}`;
 }
 
 /**
@@ -215,44 +226,58 @@ export async function createProductionOrder(
   console.log('🏭 [createProductionOrder] Starting with input:', JSON.stringify(input, null, 2));
 
   try {
-    // 1. Generate production order number (ใช้ start_date วันที่ผลิตจริงที่ผู้ใช้เลือก)
-    const productionNo = await generateProductionNo(input.start_date);
-    console.log('🏭 [createProductionOrder] Generated production_no:', productionNo, 'from start_date:', input.start_date);
-
     // 2. Get SKU info for UOM
     const { data: skuData } = await supabase
       .from('master_sku')
       .select('uom_base')
       .eq('sku_id', input.sku_id)
-      .single();
+      .maybeSingle();
     console.log('🏭 [createProductionOrder] SKU data:', skuData);
 
-    // 3. Create production order header
-    const { data: order, error: orderError } = await supabase
-      .from('production_orders')
-      .insert({
-        production_no: productionNo,
-        plan_id: input.plan_id,
-        sku_id: input.sku_id,
-        quantity: input.quantity,
-        produced_qty: 0,
-        uom: input.uom || skuData?.uom_base,
-        start_date: input.start_date,
-        due_date: input.due_date,
-        production_date: input.production_date,
-        expiry_date: input.expiry_date,
-        fg_remarks: input.fg_remarks,
-        priority: input.priority || 5,
-        status: 'planned',
-        remarks: input.remarks,
-        created_by: userId,
-      })
-      .select()
-      .single();
+    // 3. Create production order header (retry on duplicate production_no)
+    let order: any = null;
+    const maxAttempts = 10;
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      const productionNo = await generateProductionNo(input.start_date, attempt);
+      console.log('🏭 [createProductionOrder] Attempting production_no:', productionNo, '(attempt', attempt + 1, ')');
 
-    if (orderError || !order) {
-      console.error('🏭 [createProductionOrder] Error creating production order:', orderError);
-      throw new Error('Failed to create production order');
+      const { data: insertData, error: orderError } = await supabase
+        .from('production_orders')
+        .insert({
+          production_no: productionNo,
+          plan_id: input.plan_id,
+          sku_id: input.sku_id,
+          quantity: input.quantity,
+          produced_qty: 0,
+          uom: input.uom || skuData?.uom_base,
+          start_date: input.start_date,
+          due_date: input.due_date,
+          production_date: input.production_date,
+          expiry_date: input.expiry_date,
+          fg_remarks: input.fg_remarks,
+          priority: input.priority || 5,
+          status: 'planned',
+          remarks: input.remarks,
+          created_by: userId,
+        })
+        .select()
+        .single();
+
+      if (!orderError) {
+        order = insertData;
+        break;
+      } else if (orderError.code === '23505') {
+        // Duplicate production_no - retry with next sequence
+        console.warn('🏭 [createProductionOrder] Duplicate production_no, retrying...');
+        continue;
+      } else {
+        console.error('🏭 [createProductionOrder] Error creating production order:', orderError);
+        throw new Error(orderError.message || 'Failed to create production order');
+      }
+    }
+
+    if (!order) {
+      throw new Error('ไม่สามารถสร้างเลขใบสั่งผลิตได้ กรุณาลองใหม่');
     }
     console.log('🏭 [createProductionOrder] Order header created:', order.id);
 
@@ -281,7 +306,7 @@ export async function createProductionOrder(
         console.error('🏭 [createProductionOrder] Error creating order items:', itemsError);
         // Rollback - delete the order
         await supabase.from('production_orders').delete().eq('id', order.id);
-        throw new Error('Failed to create order items');
+        throw new Error(itemsError.message || 'Failed to create order items');
       }
       console.log('🏭 [createProductionOrder] Order items created successfully');
     } else {

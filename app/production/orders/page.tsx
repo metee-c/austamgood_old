@@ -472,7 +472,7 @@ interface CreateOrderModalProps {
 
 function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps) {
   const { planData, isLoading: loadingPlan } = usePlanDataForOrder(planId);
-  const { createOrder, isLoading: creating } = useProductionOrderMutations();
+  const { createOrder, isLoading: creating, error: createError } = useProductionOrderMutations();
 
   // If no planId provided, show error and close
   if (!planId) {
@@ -1019,16 +1019,21 @@ function CreateOrderModal({ planId, onClose, onSuccess }: CreateOrderModalProps)
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 px-4 py-3 border-t bg-gray-50">
-          <Button variant="outline" onClick={onClose} disabled={creating}>ยกเลิก</Button>
-          <Button 
-            variant="primary" 
-            onClick={handleSubmit} 
-            disabled={creating || loadingPlan || !planData}
-            icon={creating ? Loader2 : Plus}
-          >
-            {creating ? 'กำลังสร้าง...' : 'สร้างใบสั่งผลิต'}
-          </Button>
+        <div className="flex flex-col gap-2 px-4 py-3 border-t bg-gray-50">
+          {createError && (
+            <p className="text-sm text-red-600 font-thai">เกิดข้อผิดพลาด: {createError}</p>
+          )}
+          <div className="flex items-center justify-end gap-2">
+            <Button variant="outline" onClick={onClose} disabled={creating}>ยกเลิก</Button>
+            <Button
+              variant="primary"
+              onClick={handleSubmit}
+              disabled={creating || loadingPlan || !planData}
+              icon={creating ? Loader2 : Plus}
+            >
+              {creating ? 'กำลังสร้าง...' : 'สร้างใบสั่งผลิต'}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
