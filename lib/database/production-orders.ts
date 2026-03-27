@@ -236,9 +236,10 @@ export async function createProductionOrder(
 
     // 3. Create production order header (retry on duplicate production_no)
     let order: any = null;
+    let productionNo = '';
     const maxAttempts = 10;
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
-      const productionNo = await generateProductionNo(input.start_date, attempt);
+      productionNo = await generateProductionNo(input.start_date, attempt);
       console.log('🏭 [createProductionOrder] Attempting production_no:', productionNo, '(attempt', attempt + 1, ')');
 
       const { data: insertData, error: orderError } = await supabase
